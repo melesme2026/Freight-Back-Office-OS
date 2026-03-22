@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+from typing import Any
+
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import NotFoundError
+from app.domain.models.load import Load
 from app.repositories.document_repo import DocumentRepository
 from app.repositories.load_repo import LoadRepository
 
@@ -18,7 +21,7 @@ class DocumentLinker:
         *,
         document_id: str,
         load_id: str,
-    ):
+    ) -> dict[str, Any]:
         document = self.document_repo.get_by_id(document_id)
         if document is None:
             raise NotFoundError("Document not found", details={"document_id": document_id})
@@ -30,54 +33,69 @@ class DocumentLinker:
         document.load_id = load.id
         self.document_repo.update(document)
 
-        self._sync_load_document_flags(load)
+        self._update_load_document_flags(load)
 
-        self.load_repo.update(load)
-        return document
+        return {
+            "document_id": str(document.id),
+            "load_id": str(load.id),
+            "linked": True,
+        }
 
-    def relink_documents_for_load(
+    def auto_link_document(
         self,
         *,
-        load_id: str,
-    ) -> int:
-        load = self.load_repo.get_by_id(load_id)
+        document_id: str,
+        hints: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        document = self.document_repo.get_by_id(document_id)
+        if document is None:
+            raise NotFoundError("Document not found", details={"document_id": document_id})
+
+        if document.load_id:
+            return {
+                "document_id": str(document.id),
+                "load_id": str(document.load_id),
+                "linked": True,
+                "reason": "already_linked",
+            }
+
+        hints = hints or {}
+
+        load_number = hints.get("load_number")
+        invoice_number = hints.get("invoice_number")
+
+        load = None
+
+        if invoice_number:
+            load = self.load_repo.get_by_invoice_number(
+                organization_id=document.organization_id,
+                invoice_number=invoice_number,
+            )
+
+        # NOTE: extend here with more intelligent matching later (e.g., load_number, fuzzy match)
+
         if load is None:
-            raise NotFoundError("Load not found", details={"load_id": load_id})
+            return {
+                "document_id": str(document.id),
+                "linked": False,
+                "reason": "no_match_found",
+            }
 
-        documents, _ = self.document_repo.list(
-            organization_id=load.organization_id,
-            customer_account_id=load.customer_account_id,
-            driver_id=load.driver_id,
-            page=1,
-            page_size=500,
-        )
+        document.load_id = load.id
+        self.document_repo.update(document)
 
-        linked = 0
-        for document in documents:
-            if document.load_id is None:
-                document.load_id = load.id
-                self.document_repo.update(document)
-                linked += 1
+        self._update_load_document_flags(load)
 
-        self._sync_load_document_flags(load)
+        return {
+            "document_id": str(document.id),
+            "load_id": str(load.id),
+            "linked": True,
+            "reason": "matched_by_invoice_number",
+        }
+
+    def _update_load_document_flags(self, load: Load) -> None:
+        # Minimal placeholder — expand later with full document completeness logic
+        if load.has_invoice is False:
+            load.has_invoice = True
+
         self.load_repo.update(load)
-        return linked
-
-    def _sync_load_document_flags(self, load) -> None:
-        has_ratecon = False
-        has_bol = False
-        has_invoice = False
-
-        for document in load.documents:
-            doc_type = str(document.document_type)
-            if doc_type == "rate_confirmation":
-                has_ratecon = True
-            elif doc_type == "bill_of_lading":
-                has_bol = True
-            elif doc_type == "invoice":
-                has_invoice = True
-
-        load.has_ratecon = has_ratecon
-        load.has_bol = has_bol
-        load.has_invoice = has_invoice
-        load.documents_complete = has_ratecon and has_bol
