@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, ForeignKey, Index, String
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -76,7 +77,10 @@ class OnboardingChecklist(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         default=False,
         server_default="false",
     )
-    completed_at: Mapped[str | None] = mapped_column(nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
 
     organization: Mapped["Organization"] = relationship(lazy="selectin")
     customer_account: Mapped["CustomerAccount"] = relationship(
