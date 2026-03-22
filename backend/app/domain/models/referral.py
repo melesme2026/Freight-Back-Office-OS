@@ -52,3 +52,4 @@ class Referral(UUIDPrimaryKeyMixin, TimestampMixin, Base):
             f"Referral(id={self.id!s}, referred_by_name={self.referred_by_name!r}, "
             f"customer_account_id={self.customer_account_id!s})"
         )
+        
