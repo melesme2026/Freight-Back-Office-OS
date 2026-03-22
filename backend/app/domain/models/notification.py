@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import ForeignKey, Index, String, Text
+from sqlalchemy import DateTime, ForeignKey, Index, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -73,9 +74,18 @@ class Notification(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         nullable=False,
         default=NotificationStatus.QUEUED,
     )
-    sent_at: Mapped[str | None] = mapped_column(nullable=True)
-    delivered_at: Mapped[str | None] = mapped_column(nullable=True)
-    failed_at: Mapped[str | None] = mapped_column(nullable=True)
+    sent_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    delivered_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    failed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     organization: Mapped["Organization"] = relationship(
