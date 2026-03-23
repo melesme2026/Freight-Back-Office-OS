@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+import uuid
 from typing import Any
 
 from sqlalchemy.orm import Session
 
+from app.core.exceptions import ValidationError
 from app.domain.models.audit_log import AuditLog
 from app.repositories.audit_repo import AuditRepository
 
@@ -21,19 +22,38 @@ class AuditService:
         entity_type: str,
         entity_id: str,
         action: str,
-        actor_staff_user_id: str | None = None,
+        actor_id: str | None = None,
         actor_type: str = "system",
+        changes_json: dict[str, Any] | list[Any] | None = None,
         metadata_json: dict[str, Any] | list[Any] | None = None,
     ) -> AuditLog:
+        try:
+            parsed_entity_id = uuid.UUID(str(entity_id))
+        except ValueError as exc:
+            raise ValidationError(
+                "Invalid entity_id for audit log",
+                details={"entity_id": entity_id},
+            ) from exc
+
+        parsed_actor_id: uuid.UUID | None = None
+        if actor_id:
+            try:
+                parsed_actor_id = uuid.UUID(str(actor_id))
+            except ValueError as exc:
+                raise ValidationError(
+                    "Invalid actor_id for audit log",
+                    details={"actor_id": actor_id},
+                ) from exc
+
         log = AuditLog(
             organization_id=organization_id,
-            entity_type=entity_type,
-            entity_id=entity_id,
-            action=action,
-            actor_staff_user_id=actor_staff_user_id,
             actor_type=actor_type,
+            actor_id=parsed_actor_id,
+            entity_type=entity_type,
+            entity_id=parsed_entity_id,
+            action=action,
+            changes_json=changes_json,
             metadata_json=metadata_json,
-            created_at=datetime.now(timezone.utc),
         )
         return self.audit_repo.create(log)
 
@@ -47,10 +67,20 @@ class AuditService:
         page: int = 1,
         page_size: int = 100,
     ) -> tuple[list[AuditLog], int]:
+        parsed_entity_id: uuid.UUID | None = None
+        if entity_id:
+            try:
+                parsed_entity_id = uuid.UUID(str(entity_id))
+            except ValueError as exc:
+                raise ValidationError(
+                    "Invalid entity_id filter for audit logs",
+                    details={"entity_id": entity_id},
+                ) from exc
+
         return self.audit_repo.list(
             organization_id=organization_id,
             entity_type=entity_type,
-            entity_id=entity_id,
+            entity_id=parsed_entity_id,
             action=action,
             page=page,
             page_size=page_size,
