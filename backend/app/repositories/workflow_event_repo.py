@@ -18,15 +18,16 @@ class WorkflowEventRepository:
         self.db.refresh(workflow_event)
         return workflow_event
 
-    def get_by_id(self, event_id: uuid.UUID) -> WorkflowEvent | None:
-        stmt = select(WorkflowEvent).where(WorkflowEvent.id == event_id)
+    def get_by_id(self, event_id: uuid.UUID | str) -> WorkflowEvent | None:
+        normalized_id = self._normalize_uuid(event_id, field_name="event_id")
+        stmt = select(WorkflowEvent).where(WorkflowEvent.id == normalized_id)
         return self.db.scalar(stmt)
 
     def list(
         self,
         *,
-        organization_id: uuid.UUID | None = None,
-        load_id: uuid.UUID | None = None,
+        organization_id: uuid.UUID | str | None = None,
+        load_id: uuid.UUID | str | None = None,
         event_type: str | None = None,
         page: int = 1,
         page_size: int = 100,
@@ -35,12 +36,19 @@ class WorkflowEventRepository:
         count_stmt: Select[tuple[int]] = select(func.count()).select_from(WorkflowEvent)
 
         if organization_id is not None:
-            stmt = stmt.where(WorkflowEvent.organization_id == organization_id)
-            count_stmt = count_stmt.where(WorkflowEvent.organization_id == organization_id)
+            normalized_organization_id = self._normalize_uuid(
+                organization_id,
+                field_name="organization_id",
+            )
+            stmt = stmt.where(WorkflowEvent.organization_id == normalized_organization_id)
+            count_stmt = count_stmt.where(
+                WorkflowEvent.organization_id == normalized_organization_id
+            )
 
         if load_id is not None:
-            stmt = stmt.where(WorkflowEvent.load_id == load_id)
-            count_stmt = count_stmt.where(WorkflowEvent.load_id == load_id)
+            normalized_load_id = self._normalize_uuid(load_id, field_name="load_id")
+            stmt = stmt.where(WorkflowEvent.load_id == normalized_load_id)
+            count_stmt = count_stmt.where(WorkflowEvent.load_id == normalized_load_id)
 
         if event_type:
             stmt = stmt.where(WorkflowEvent.event_type == event_type)
@@ -67,3 +75,12 @@ class WorkflowEventRepository:
     def delete(self, workflow_event: WorkflowEvent) -> None:
         self.db.delete(workflow_event)
         self.db.flush()
+
+    def _normalize_uuid(self, value: uuid.UUID | str, *, field_name: str) -> uuid.UUID:
+        if isinstance(value, uuid.UUID):
+            return value
+
+        try:
+            return uuid.UUID(str(value))
+        except ValueError as exc:
+            raise ValueError(f"Invalid {field_name}: {value}") from exc
