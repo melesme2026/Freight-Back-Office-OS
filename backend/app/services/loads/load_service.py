@@ -47,7 +47,7 @@ class LoadService:
             driver_id=driver_id,
             broker_id=broker_id,
             source_channel=self._normalize_channel(source_channel),
-            status=self._default_new_status(),
+            status=LoadStatus.NEW,
             processing_status=ProcessingStatus.PENDING,
             load_number=self._clean_text(load_number),
             rate_confirmation_number=self._clean_text(rate_confirmation_number),
@@ -201,10 +201,8 @@ class LoadService:
 
         load.documents_complete = bool(load.has_ratecon and load.has_bol and load.has_invoice)
 
-        if load.documents_complete and load.status == self._default_new_status():
-            next_status = self._docs_received_status()
-            if next_status is not None:
-                load.status = next_status
+        if load.documents_complete and load.status == LoadStatus.NEW:
+            load.status = LoadStatus.DOCS_RECEIVED
 
         return self.load_repo.update(load)
 
@@ -234,11 +232,11 @@ class LoadService:
         normalized = str(value).strip().lower()
 
         aliases: dict[str, Channel] = {
-            "manual": Channel.MANUAL,
+            "web": Channel.WEB,
             "whatsapp": Channel.WHATSAPP,
             "email": Channel.EMAIL,
             "api": Channel.API,
-            "system": Channel.SYSTEM,
+            "manual": Channel.MANUAL,
         }
 
         if normalized in aliases:
@@ -256,7 +254,7 @@ class LoadService:
         allow_none: bool = False,
     ) -> LoadStatus | None:
         if value is None:
-            return None if allow_none else self._default_new_status()
+            return None if allow_none else LoadStatus.NEW
 
         if isinstance(value, LoadStatus):
             return value
@@ -319,7 +317,7 @@ class LoadService:
         allow_none: bool = False,
     ) -> date | None:
         if value is None or value == "":
-            return None if allow_none or True else None
+            return None if allow_none else None
 
         if isinstance(value, date) and not isinstance(value, datetime):
             return value
@@ -341,15 +339,3 @@ class LoadService:
 
         cleaned = str(value).strip()
         return cleaned or None
-
-    def _default_new_status(self) -> LoadStatus:
-        for candidate in ("NEW", "CREATED"):
-            if hasattr(LoadStatus, candidate):
-                return getattr(LoadStatus, candidate)
-        return next(iter(LoadStatus))
-
-    def _docs_received_status(self) -> LoadStatus | None:
-        for candidate in ("DOCS_RECEIVED", "DOCUMENTS_RECEIVED", "PROCESSING"):
-            if hasattr(LoadStatus, candidate):
-                return getattr(LoadStatus, candidate)
-        return None
