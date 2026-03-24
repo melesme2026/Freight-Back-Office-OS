@@ -284,3 +284,4 @@ class DocumentService:
             hasher.update(fingerprint.encode("utf-8"))
 
         return hasher.hexdigest()
+        
