@@ -8,6 +8,7 @@ class LoadStateMachine:
     ALLOWED_TRANSITIONS: dict[LoadStatus, set[LoadStatus]] = {
         LoadStatus.NEW: {
             LoadStatus.DOCS_RECEIVED,
+            LoadStatus.EXTRACTING,
             LoadStatus.EXCEPTION,
             LoadStatus.ARCHIVED,
         },
@@ -53,6 +54,8 @@ class LoadStateMachine:
             LoadStatus.ARCHIVED,
         },
         LoadStatus.EXCEPTION: {
+            LoadStatus.DOCS_RECEIVED,
+            LoadStatus.EXTRACTING,
             LoadStatus.NEEDS_REVIEW,
             LoadStatus.VALIDATED,
             LoadStatus.ARCHIVED,
@@ -66,6 +69,9 @@ class LoadStateMachine:
         current_status: LoadStatus,
         new_status: LoadStatus,
     ) -> bool:
+        if current_status == new_status:
+            return True
+
         return new_status in self.ALLOWED_TRANSITIONS.get(current_status, set())
 
     def assert_transition_allowed(
@@ -74,14 +80,15 @@ class LoadStateMachine:
         current_status: LoadStatus,
         new_status: LoadStatus,
     ) -> None:
-        if current_status == new_status:
-            return
-
         if not self.can_transition(current_status=current_status, new_status=new_status):
             raise InvalidTransitionError(
                 f"Cannot transition load from {current_status} to {new_status}",
                 details={
                     "current_status": str(current_status),
                     "new_status": str(new_status),
+                    "allowed_transitions": sorted(
+                        str(status)
+                        for status in self.ALLOWED_TRANSITIONS.get(current_status, set())
+                    ),
                 },
             )
