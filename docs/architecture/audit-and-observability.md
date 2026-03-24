@@ -1,9 +1,3 @@
-Yes — this exact tree is our V1 foundation, and yes, let’s finish it cleanly, then run it, then wire the website for your uncle and a few early testers.
-
-We’ll stay locked to this structure and complete the missing files in order without drifting.
-
-docs/architecture/audit-and-observability.md
-
 # Audit and Observability
 
 ## Purpose
