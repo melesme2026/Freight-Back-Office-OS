@@ -1,0 +1,30 @@
+name: Deploy
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "backend/**"
+      - "frontend/**"
+      - "infra/**"
+      - "docker-compose.yml"
+      - "pyproject.toml"
+      - "package.json"
+
+jobs:
+  deploy-placeholder:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Deployment placeholder
+        run: |
+          echo "Add staging/production deployment steps here."
+          echo "Examples:"
+          echo "- Build and push Docker images"
+          echo "- Apply database migrations"
+          echo "- Deploy API, worker, and web services"
