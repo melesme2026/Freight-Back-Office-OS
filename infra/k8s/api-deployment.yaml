@@ -1,0 +1,61 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: freight-api
+  labels:
+    app: freight-api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: freight-api
+  template:
+    metadata:
+      labels:
+        app: freight-api
+    spec:
+      containers:
+        - name: api
+          image: freight-back-office-os/api:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+          env:
+            - name: APP_ENV
+              value: "staging"
+            - name: DATABASE_URL
+              value: "postgresql+psycopg://postgres:postgres@postgres:5432/freight_back_office_os"
+            - name: CELERY_BROKER_URL
+              value: "redis://redis:6379/0"
+            - name: CELERY_RESULT_BACKEND
+              value: "redis://redis:6379/1"
+            - name: REDIS_URL
+              value: "redis://redis:6379/0"
+            - name: SECRET_KEY
+              value: "change-me"
+            - name: STORAGE_LOCAL_ROOT_PATH
+              value: "/app/data/sandbox/uploaded-docs"
+          readinessProbe:
+            httpGet:
+              path: /api/v1/health/ready
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          livenessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: 8000
+            initialDelaySeconds: 20
+            periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: freight-api
+spec:
+  selector:
+    app: freight-api
+  ports:
+    - protocol: TCP
+      port: 8000
+      targetPort: 8000
