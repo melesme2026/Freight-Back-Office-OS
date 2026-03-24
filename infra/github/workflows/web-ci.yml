@@ -1,0 +1,41 @@
+name: Web CI
+
+on:
+  push:
+    paths:
+      - "frontend/**"
+      - "package.json"
+      - "infra/github/workflows/web-ci.yml"
+  pull_request:
+    paths:
+      - "frontend/**"
+      - "package.json"
+      - "infra/github/workflows/web-ci.yml"
+
+jobs:
+  test-web:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        run: |
+          cd frontend
+          npm install
+
+      - name: Lint
+        run: |
+          cd frontend
+          npm run lint --if-present
+
+      - name: Build
+        run: |
+          cd frontend
+          npm run build
