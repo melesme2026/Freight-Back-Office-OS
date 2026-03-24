@@ -1,0 +1,15 @@
+{
+  "document_type": "bill_of_lading",
+  "source_channel": "manual",
+  "original_filename": "bol_1001.jpg",
+  "load_number": "LOAD-1001",
+  "shipper_name": "Motor City Parts",
+  "consignee_name": "Ohio Distribution Center",
+  "pickup_location": "Detroit, MI",
+  "delivery_location": "Columbus, OH",
+  "pickup_date": "2026-03-24",
+  "delivery_date": "2026-03-25",
+  "driver_name": "John Doe",
+  "signature_present": true,
+  "notes": "Sample BOL payload for validation and extraction testing"
+}
