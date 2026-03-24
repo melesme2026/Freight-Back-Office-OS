@@ -115,3 +115,4 @@ def metadata_dict() -> dict[str, Any]:
     return {
         "tables": sorted(Base.metadata.tables.keys()),
     }
+    
