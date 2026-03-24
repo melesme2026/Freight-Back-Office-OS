@@ -57,6 +57,8 @@ class Settings(BaseSettings):
     postgres_db: str = Field(default="freight_back_office_os")
     postgres_user: str = Field(default="postgres")
     postgres_password: str = Field(default="postgres")
+    database_url_override: str | None = Field(default=None)
+
     sqlalchemy_echo: bool = Field(default=False)
     sqlalchemy_pool_pre_ping: bool = Field(default=True)
     sqlalchemy_pool_size: int = Field(default=10, ge=1)
@@ -66,6 +68,7 @@ class Settings(BaseSettings):
     redis_port: int = Field(default=6379)
     redis_db: int = Field(default=0, ge=0)
     redis_password: str | None = Field(default=None)
+    redis_url_override: str | None = Field(default=None)
 
     celery_broker_url: str | None = Field(default=None)
     celery_result_backend: str | None = Field(default=None)
@@ -141,6 +144,14 @@ class Settings(BaseSettings):
     def _validate_environment(cls, value: str) -> str:
         return value.lower()
 
+    @field_validator("storage_local_root")
+    @classmethod
+    def _validate_storage_local_root(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("storage_local_root cannot be empty")
+        return cleaned
+
     @computed_field
     @property
     def is_local(self) -> bool:
@@ -164,6 +175,9 @@ class Settings(BaseSettings):
     @computed_field
     @property
     def database_url(self) -> str:
+        if self.database_url_override:
+            return self.database_url_override
+
         return (
             f"postgresql+psycopg://{self.postgres_user}:{self.postgres_password}"
             f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
@@ -172,6 +186,9 @@ class Settings(BaseSettings):
     @computed_field
     @property
     def redis_url(self) -> str:
+        if self.redis_url_override:
+            return self.redis_url_override
+
         auth = f":{self.redis_password}@" if self.redis_password else ""
         return f"redis://{auth}{self.redis_host}:{self.redis_port}/{self.redis_db}"
 
@@ -210,7 +227,18 @@ class Settings(BaseSettings):
     def app_path(self) -> Path:
         return APP_DIR
 
+    @computed_field
+    @property
+    def infra_path(self) -> Path:
+        return INFRA_DIR
+
+    @computed_field
+    @property
+    def shared_path(self) -> Path:
+        return SHARED_DIR
+
     def ensure_runtime_directories(self) -> None:
+        self.data_path.mkdir(parents=True, exist_ok=True)
         self.storage_local_root_path.mkdir(parents=True, exist_ok=True)
 
     def validate_runtime_configuration(self) -> None:
@@ -219,16 +247,33 @@ class Settings(BaseSettings):
                 raise ValueError("secret_key must be changed in production")
             if self.debug:
                 raise ValueError("debug must be False in production")
+
             if self.storage_provider in {"s3", "minio"}:
                 if not self.storage_access_key or not self.storage_secret_key:
                     raise ValueError(
                         "storage_access_key and storage_secret_key are required "
                         "when using s3/minio in production"
                     )
+
             if self.whatsapp_enabled and self.whatsapp_provider == "none":
-                raise ValueError("whatsapp_provider must be configured when whatsapp_enabled=True")
+                raise ValueError(
+                    "whatsapp_provider must be configured when whatsapp_enabled=True"
+                )
+
+            if self.email_enabled and self.email_provider == "none":
+                raise ValueError(
+                    "email_provider must be configured when email_enabled=True"
+                )
+
             if self.billing_enabled and self.payment_provider == "none":
-                raise ValueError("payment_provider must be configured when billing_enabled=True")
+                raise ValueError(
+                    "payment_provider must be configured when billing_enabled=True"
+                )
+
+            if self.ai_enabled and not self.openai_api_key:
+                raise ValueError(
+                    "openai_api_key must be configured when ai_enabled=True"
+                )
 
 
 @lru_cache(maxsize=1)
