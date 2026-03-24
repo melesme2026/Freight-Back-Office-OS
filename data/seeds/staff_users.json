@@ -1,0 +1,18 @@
+[
+  {
+    "id": "50000000-0000-0000-0000-000000000001",
+    "organization_id": "00000000-0000-0000-0000-000000000001",
+    "full_name": "Merhawi Meles",
+    "email": "admin@adwafreight.com",
+    "role": "admin",
+    "is_active": true
+  },
+  {
+    "id": "50000000-0000-0000-0000-000000000002",
+    "organization_id": "00000000-0000-0000-0000-000000000001",
+    "full_name": "Operations Reviewer",
+    "email": "reviewer@adwafreight.com",
+    "role": "ops",
+    "is_active": true
+  }
+]
