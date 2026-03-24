@@ -51,3 +51,4 @@ def get_readiness_status() -> dict[str, Any]:
         },
         "environment": settings.environment,
     }
+    
