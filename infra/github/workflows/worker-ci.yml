@@ -1,0 +1,35 @@
+name: Worker CI
+
+on:
+  push:
+    paths:
+      - "backend/**"
+      - "pyproject.toml"
+      - "infra/github/workflows/worker-ci.yml"
+  pull_request:
+    paths:
+      - "backend/**"
+      - "pyproject.toml"
+      - "infra/github/workflows/worker-ci.yml"
+
+jobs:
+  test-worker:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .[dev]
+
+      - name: Smoke import worker app
+        run: |
+          python -c "from backend.app.workers.celery_app import celery_app; print(celery_app.main)"
