@@ -19,9 +19,9 @@ app = FastAPI(
     version=settings.app_version,
     debug=settings.debug,
     lifespan=lifespan,
-    openapi_url=f"{settings.api_v1_prefix}/openapi.json",
-    docs_url=f"{settings.api_v1_prefix}/docs",
-    redoc_url=f"{settings.api_v1_prefix}/redoc",
+    openapi_url="/api/v1/openapi.json",
+    docs_url="/api/v1/docs",
+    redoc_url="/api/v1/redoc",
 )
 
 app.add_middleware(RequestContextMiddleware)
@@ -41,4 +41,4 @@ app.add_middleware(
 
 register_exception_handlers(app)
 
-app.include_router(api_router, prefix=settings.api_v1_prefix)
+app.include_router(api_router)
