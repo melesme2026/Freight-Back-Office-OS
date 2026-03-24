@@ -20,8 +20,9 @@ class DocumentRepository:
         self.db.refresh(document)
         return document
 
-    def get_by_id(self, document_id: uuid.UUID) -> LoadDocument | None:
-        stmt = select(LoadDocument).where(LoadDocument.id == document_id)
+    def get_by_id(self, document_id: uuid.UUID | str) -> LoadDocument | None:
+        normalized_id = self._normalize_uuid(document_id, field_name="document_id")
+        stmt = select(LoadDocument).where(LoadDocument.id == normalized_id)
         return self.db.scalar(stmt)
 
     def get_by_file_hash(
@@ -81,7 +82,7 @@ class DocumentRepository:
 
         offset = max(page - 1, 0) * page_size
         stmt = (
-            stmt.order_by(LoadDocument.received_at.desc())
+            stmt.order_by(LoadDocument.received_at.desc(), LoadDocument.created_at.desc())
             .offset(offset)
             .limit(page_size)
         )
@@ -98,3 +99,12 @@ class DocumentRepository:
     def delete(self, document: LoadDocument) -> None:
         self.db.delete(document)
         self.db.flush()
+
+    def _normalize_uuid(self, value: uuid.UUID | str, *, field_name: str) -> uuid.UUID:
+        if isinstance(value, uuid.UUID):
+            return value
+
+        try:
+            return uuid.UUID(str(value))
+        except ValueError as exc:
+            raise ValueError(f"Invalid {field_name}: {value}") from exc
