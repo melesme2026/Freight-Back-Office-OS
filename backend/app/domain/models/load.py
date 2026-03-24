@@ -45,6 +45,8 @@ class Load(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         Index("ix_loads_rate_confirmation_number", "rate_confirmation_number"),
         Index("ix_loads_bol_number", "bol_number"),
         Index("ix_loads_invoice_number", "invoice_number"),
+        Index("ix_loads_pickup_date", "pickup_date"),
+        Index("ix_loads_delivery_date", "delivery_date"),
     )
 
     organization_id: Mapped[uuid.UUID] = mapped_column(
@@ -206,6 +208,10 @@ class Load(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     def __repr__(self) -> str:
         return (
-            f"Load(id={self.id!s}, load_number={self.load_number!r}, "
-            f"status={self.status!r}, processing_status={self.processing_status!r})"
+            "Load("
+            f"id={self.id!s}, "
+            f"load_number={self.load_number!r}, "
+            f"status={self.status!r}, "
+            f"processing_status={self.processing_status!r}"
+            ")"
         )
