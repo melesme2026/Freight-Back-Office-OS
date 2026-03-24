@@ -33,6 +33,7 @@ class LoadDocument(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         Index("ix_load_documents_load_id", "load_id"),
         Index("ix_load_documents_document_type", "document_type"),
         Index("ix_load_documents_processing_status", "processing_status"),
+        Index("ix_load_documents_received_at", "received_at"),
         Index("ix_load_documents_file_hash_sha256", "file_hash_sha256", unique=True),
     )
 
@@ -69,7 +70,7 @@ class LoadDocument(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     original_filename: Mapped[str | None] = mapped_column(String(255), nullable=True)
     mime_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    file_size_bytes: Mapped[int | None] = mapped_column(nullable=True)
+    file_size_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
     storage_bucket: Mapped[str | None] = mapped_column(String(255), nullable=True)
     storage_key: Mapped[str] = mapped_column(String, nullable=False)
     file_hash_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
@@ -119,6 +120,10 @@ class LoadDocument(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     def __repr__(self) -> str:
         return (
-            f"LoadDocument(id={self.id!s}, document_type={self.document_type!r}, "
-            f"processing_status={self.processing_status!r}, storage_key={self.storage_key!r})"
+            "LoadDocument("
+            f"id={self.id!s}, "
+            f"document_type={self.document_type!r}, "
+            f"processing_status={self.processing_status!r}, "
+            f"storage_key={self.storage_key!r}"
+            ")"
         )
