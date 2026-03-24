@@ -6,7 +6,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from app.core.exceptions import DuplicateRecordError, NotFoundError
+from app.core.exceptions import DuplicateRecordError, NotFoundError, ValidationError
 from app.domain.enums.document_type import DocumentType
 from app.domain.enums.processing_status import ProcessingStatus
 from app.domain.models.load_document import LoadDocument
@@ -36,6 +36,8 @@ class DocumentService:
         uploaded_by_staff_user_id: str | None = None,
         file_bytes: bytes | None = None,
     ) -> LoadDocument:
+        normalized_document_type = self._normalize_document_type(document_type)
+
         file_hash_sha256 = self._build_file_hash(
             storage_key=storage_key,
             file_bytes=file_bytes,
@@ -59,7 +61,7 @@ class DocumentService:
             driver_id=driver_id,
             load_id=load_id,
             source_channel=source_channel,
-            document_type=document_type or DocumentType.UNKNOWN,
+            document_type=normalized_document_type,
             original_filename=original_filename,
             mime_type=mime_type,
             file_size_bytes=file_size_bytes,
@@ -93,13 +95,19 @@ class DocumentService:
         page: int = 1,
         page_size: int = 25,
     ) -> tuple[list[LoadDocument], int]:
+        normalized_document_type = self._normalize_document_type(document_type, allow_none=True)
+        normalized_processing_status = self._normalize_processing_status(
+            processing_status,
+            allow_none=True,
+        )
+
         return self.document_repo.list(
             organization_id=organization_id,
             customer_account_id=customer_account_id,
             driver_id=driver_id,
             load_id=load_id,
-            document_type=document_type,
-            processing_status=processing_status,
+            document_type=normalized_document_type,
+            processing_status=normalized_processing_status,
             page=page,
             page_size=page_size,
         )
@@ -113,7 +121,9 @@ class DocumentService:
         page_count: int | None = None,
     ) -> LoadDocument:
         document = self.get_document(document_id)
-        document.processing_status = processing_status
+        normalized_processing_status = self._normalize_processing_status(processing_status)
+
+        document.processing_status = normalized_processing_status
 
         if classification_confidence is not None:
             document.classification_confidence = classification_confidence
@@ -121,7 +131,7 @@ class DocumentService:
         if page_count is not None:
             document.page_count = page_count
 
-        if processing_status == ProcessingStatus.COMPLETED:
+        if normalized_processing_status == ProcessingStatus.COMPLETED:
             document.ocr_completed_at = datetime.now(timezone.utc)
 
         return self.document_repo.update(document)
@@ -134,9 +144,13 @@ class DocumentService:
         classification_confidence: float | None = None,
     ) -> LoadDocument:
         document = self.get_document(document_id)
-        document.document_type = document_type
+        normalized_document_type = self._normalize_document_type(document_type)
+
+        document.document_type = normalized_document_type
+
         if classification_confidence is not None:
             document.classification_confidence = classification_confidence
+
         return self.document_repo.update(document)
 
     def attach_to_load(
@@ -157,10 +171,13 @@ class DocumentService:
         force_reextraction: bool = False,
     ) -> dict[str, Any]:
         document = self.get_document(document_id)
+
         document.processing_status = ProcessingStatus.PENDING
+
         if force_reclassification:
             document.document_type = DocumentType.UNKNOWN
             document.classification_confidence = None
+
         if force_reextraction:
             document.ocr_completed_at = None
 
@@ -172,6 +189,83 @@ class DocumentService:
             "force_reclassification": force_reclassification,
             "force_reextraction": force_reextraction,
         }
+
+    def _normalize_document_type(
+        self,
+        value: str | DocumentType | None,
+        *,
+        allow_none: bool = False,
+    ) -> DocumentType | None:
+        if value is None:
+            if allow_none:
+                return None
+            return DocumentType.UNKNOWN
+
+        if isinstance(value, DocumentType):
+            return value
+
+        normalized = str(value).strip().lower()
+
+        aliases: dict[str, DocumentType] = {
+            "unknown": DocumentType.UNKNOWN,
+            "rate_confirmation": DocumentType.RATE_CONFIRMATION,
+            "rateconfirmation": DocumentType.RATE_CONFIRMATION,
+            "ratecon": DocumentType.RATE_CONFIRMATION,
+            "bill_of_lading": DocumentType.BILL_OF_LADING,
+            "billoflading": DocumentType.BILL_OF_LADING,
+            "bol": DocumentType.BILL_OF_LADING,
+            "proof_of_delivery": DocumentType.PROOF_OF_DELIVERY,
+            "proofofdelivery": DocumentType.PROOF_OF_DELIVERY,
+            "pod": DocumentType.PROOF_OF_DELIVERY,
+            "invoice": DocumentType.INVOICE,
+        }
+
+        if normalized in aliases:
+            return aliases[normalized]
+
+        raise ValidationError(
+            "Invalid document_type",
+            details={"document_type": value},
+        )
+
+    def _normalize_processing_status(
+        self,
+        value: str | ProcessingStatus | None,
+        *,
+        allow_none: bool = False,
+    ) -> ProcessingStatus | None:
+        if value is None:
+            if allow_none:
+                return None
+            raise ValidationError(
+                "processing_status is required",
+                details={"processing_status": value},
+            )
+
+        if isinstance(value, ProcessingStatus):
+            return value
+
+        normalized = str(value).strip().lower()
+
+        aliases: dict[str, ProcessingStatus] = {
+            "pending": ProcessingStatus.PENDING,
+            "not_started": ProcessingStatus.PENDING,
+            "processing": ProcessingStatus.IN_PROGRESS,
+            "in_progress": ProcessingStatus.IN_PROGRESS,
+            "inprogress": ProcessingStatus.IN_PROGRESS,
+            "completed": ProcessingStatus.COMPLETED,
+            "complete": ProcessingStatus.COMPLETED,
+            "failed": ProcessingStatus.FAILED,
+            "error": ProcessingStatus.FAILED,
+        }
+
+        if normalized in aliases:
+            return aliases[normalized]
+
+        raise ValidationError(
+            "Invalid processing_status",
+            details={"processing_status": value},
+        )
 
     @staticmethod
     def _build_file_hash(
