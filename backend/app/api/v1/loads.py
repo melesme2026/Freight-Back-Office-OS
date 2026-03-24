@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import uuid
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
+from typing import Any
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
@@ -15,6 +16,90 @@ from app.services.workflow.workflow_engine import WorkflowEngine
 
 
 router = APIRouter()
+
+
+def _validate_uuid(value: str | None, field_name: str) -> None:
+    if value is None:
+        return
+    try:
+        uuid.UUID(value)
+    except ValueError as exc:
+        raise ValidationError(
+            f"Invalid {field_name}",
+            details={field_name: value},
+        ) from exc
+
+
+def _validate_uuid_fields(**fields: str | None) -> None:
+    for field_name, value in fields.items():
+        _validate_uuid(value, field_name)
+
+
+def _parse_decimal(value: str | None, field_name: str) -> Decimal | None:
+    if value is None:
+        return None
+    try:
+        return Decimal(value)
+    except (InvalidOperation, ValueError) as exc:
+        raise ValidationError(
+            f"Invalid {field_name}",
+            details={field_name: value},
+        ) from exc
+
+
+def _serialize_load(item: Any, *, detailed: bool = False) -> dict[str, Any]:
+    base = {
+        "id": str(item.id),
+        "organization_id": str(item.organization_id),
+        "customer_account_id": str(item.customer_account_id),
+        "driver_id": str(item.driver_id),
+        "broker_id": str(item.broker_id) if item.broker_id else None,
+        "source_channel": str(item.source_channel),
+        "status": str(item.status),
+        "processing_status": str(item.processing_status),
+        "load_number": item.load_number,
+        "rate_confirmation_number": item.rate_confirmation_number,
+        "bol_number": item.bol_number,
+        "invoice_number": item.invoice_number,
+        "gross_amount": format(item.gross_amount, "f") if item.gross_amount is not None else None,
+        "currency_code": item.currency_code,
+        "pickup_date": item.pickup_date.isoformat() if item.pickup_date else None,
+        "delivery_date": item.delivery_date.isoformat() if item.delivery_date else None,
+        "documents_complete": item.documents_complete,
+        "has_ratecon": item.has_ratecon,
+        "has_bol": item.has_bol,
+        "has_invoice": item.has_invoice,
+        "created_at": item.created_at.isoformat(),
+        "updated_at": item.updated_at.isoformat(),
+    }
+
+    if not detailed:
+        return base
+
+    base.update(
+        {
+            "broker_name_raw": item.broker_name_raw,
+            "broker_email_raw": item.broker_email_raw,
+            "pickup_location": item.pickup_location,
+            "delivery_location": item.delivery_location,
+            "extraction_confidence_avg": (
+                format(item.extraction_confidence_avg, "f")
+                if item.extraction_confidence_avg is not None
+                else None
+            ),
+            "last_reviewed_by": str(item.last_reviewed_by) if getattr(item, "last_reviewed_by", None) else None,
+            "last_reviewed_at": (
+                item.last_reviewed_at.isoformat()
+                if getattr(item, "last_reviewed_at", None)
+                else None
+            ),
+            "submitted_at": item.submitted_at.isoformat() if item.submitted_at else None,
+            "funded_at": item.funded_at.isoformat() if item.funded_at else None,
+            "paid_at": item.paid_at.isoformat() if item.paid_at else None,
+            "notes": item.notes,
+        }
+    )
+    return base
 
 
 @router.post("/loads", response_model=ApiResponse)
@@ -40,24 +125,12 @@ def create_load(
     notes: str | None = None,
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
-    try:
-        uuid.UUID(organization_id)
-        uuid.UUID(customer_account_id)
-        uuid.UUID(driver_id)
-        if broker_id:
-            uuid.UUID(broker_id)
-    except ValueError as exc:
-        raise ValidationError(
-            "Invalid UUID provided",
-            details={
-                "organization_id": organization_id,
-                "customer_account_id": customer_account_id,
-                "driver_id": driver_id,
-                "broker_id": broker_id,
-            },
-        ) from exc
-
-    amount_value = Decimal(gross_amount) if gross_amount is not None else None
+    _validate_uuid_fields(
+        organization_id=organization_id,
+        customer_account_id=customer_account_id,
+        driver_id=driver_id,
+        broker_id=broker_id,
+    )
 
     service = LoadService(db)
     item = service.create_load(
@@ -76,45 +149,13 @@ def create_load(
         delivery_date=delivery_date,
         pickup_location=pickup_location,
         delivery_location=delivery_location,
-        gross_amount=amount_value,
+        gross_amount=_parse_decimal(gross_amount, "gross_amount"),
         currency_code=currency_code,
         notes=notes,
     )
 
     return ApiResponse(
-        data={
-            "id": str(item.id),
-            "organization_id": str(item.organization_id),
-            "customer_account_id": str(item.customer_account_id),
-            "driver_id": str(item.driver_id),
-            "broker_id": str(item.broker_id) if item.broker_id else None,
-            "source_channel": str(item.source_channel),
-            "status": str(item.status),
-            "processing_status": str(item.processing_status),
-            "load_number": item.load_number,
-            "rate_confirmation_number": item.rate_confirmation_number,
-            "bol_number": item.bol_number,
-            "invoice_number": item.invoice_number,
-            "broker_name_raw": item.broker_name_raw,
-            "broker_email_raw": item.broker_email_raw,
-            "pickup_date": item.pickup_date.isoformat() if item.pickup_date else None,
-            "delivery_date": item.delivery_date.isoformat() if item.delivery_date else None,
-            "pickup_location": item.pickup_location,
-            "delivery_location": item.delivery_location,
-            "gross_amount": format(item.gross_amount, "f") if item.gross_amount is not None else None,
-            "currency_code": item.currency_code,
-            "documents_complete": item.documents_complete,
-            "has_ratecon": item.has_ratecon,
-            "has_bol": item.has_bol,
-            "has_invoice": item.has_invoice,
-            "extraction_confidence_avg": format(item.extraction_confidence_avg, "f") if item.extraction_confidence_avg is not None else None,
-            "submitted_at": item.submitted_at.isoformat() if item.submitted_at else None,
-            "funded_at": item.funded_at.isoformat() if item.funded_at else None,
-            "paid_at": item.paid_at.isoformat() if item.paid_at else None,
-            "notes": item.notes,
-            "created_at": item.created_at.isoformat(),
-            "updated_at": item.updated_at.isoformat(),
-        },
+        data=_serialize_load(item, detailed=True),
         meta={},
         error=None,
     )
@@ -135,22 +176,11 @@ def list_loads(
     page_size: int = Query(default=25, ge=1, le=200),
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
-    try:
-        if organization_id:
-            uuid.UUID(organization_id)
-        if customer_account_id:
-            uuid.UUID(customer_account_id)
-        if driver_id:
-            uuid.UUID(driver_id)
-    except ValueError as exc:
-        raise ValidationError(
-            "Invalid UUID provided",
-            details={
-                "organization_id": organization_id,
-                "customer_account_id": customer_account_id,
-                "driver_id": driver_id,
-            },
-        ) from exc
+    _validate_uuid_fields(
+        organization_id=organization_id,
+        customer_account_id=customer_account_id,
+        driver_id=driver_id,
+    )
 
     service = LoadService(db)
     items, total = service.list_loads(
@@ -167,31 +197,12 @@ def list_loads(
     )
 
     return ApiResponse(
-        data=[
-            {
-                "id": str(item.id),
-                "organization_id": str(item.organization_id),
-                "customer_account_id": str(item.customer_account_id),
-                "driver_id": str(item.driver_id),
-                "broker_id": str(item.broker_id) if item.broker_id else None,
-                "source_channel": str(item.source_channel),
-                "status": str(item.status),
-                "processing_status": str(item.processing_status),
-                "load_number": item.load_number,
-                "rate_confirmation_number": item.rate_confirmation_number,
-                "bol_number": item.bol_number,
-                "invoice_number": item.invoice_number,
-                "gross_amount": format(item.gross_amount, "f") if item.gross_amount is not None else None,
-                "currency_code": item.currency_code,
-                "pickup_date": item.pickup_date.isoformat() if item.pickup_date else None,
-                "delivery_date": item.delivery_date.isoformat() if item.delivery_date else None,
-                "documents_complete": item.documents_complete,
-                "created_at": item.created_at.isoformat(),
-                "updated_at": item.updated_at.isoformat(),
-            }
-            for item in items
-        ],
-        meta={"page": page, "page_size": page_size, "total": total},
+        data=[_serialize_load(item, detailed=False) for item in items],
+        meta={
+            "page": page,
+            "page_size": page_size,
+            "total": total,
+        },
         error=None,
     )
 
@@ -201,53 +212,13 @@ def get_load(
     load_id: str,
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
-    try:
-        uuid.UUID(load_id)
-    except ValueError as exc:
-        raise ValidationError(
-            "Invalid load_id",
-            details={"load_id": load_id},
-        ) from exc
+    _validate_uuid(load_id, "load_id")
 
     service = LoadService(db)
     item = service.get_load(load_id)
 
     return ApiResponse(
-        data={
-            "id": str(item.id),
-            "organization_id": str(item.organization_id),
-            "customer_account_id": str(item.customer_account_id),
-            "driver_id": str(item.driver_id),
-            "broker_id": str(item.broker_id) if item.broker_id else None,
-            "source_channel": str(item.source_channel),
-            "status": str(item.status),
-            "processing_status": str(item.processing_status),
-            "load_number": item.load_number,
-            "rate_confirmation_number": item.rate_confirmation_number,
-            "bol_number": item.bol_number,
-            "invoice_number": item.invoice_number,
-            "broker_name_raw": item.broker_name_raw,
-            "broker_email_raw": item.broker_email_raw,
-            "pickup_date": item.pickup_date.isoformat() if item.pickup_date else None,
-            "delivery_date": item.delivery_date.isoformat() if item.delivery_date else None,
-            "pickup_location": item.pickup_location,
-            "delivery_location": item.delivery_location,
-            "gross_amount": format(item.gross_amount, "f") if item.gross_amount is not None else None,
-            "currency_code": item.currency_code,
-            "documents_complete": item.documents_complete,
-            "has_ratecon": item.has_ratecon,
-            "has_bol": item.has_bol,
-            "has_invoice": item.has_invoice,
-            "extraction_confidence_avg": format(item.extraction_confidence_avg, "f") if item.extraction_confidence_avg is not None else None,
-            "last_reviewed_by": str(item.last_reviewed_by) if item.last_reviewed_by else None,
-            "last_reviewed_at": item.last_reviewed_at.isoformat() if item.last_reviewed_at else None,
-            "submitted_at": item.submitted_at.isoformat() if item.submitted_at else None,
-            "funded_at": item.funded_at.isoformat() if item.funded_at else None,
-            "paid_at": item.paid_at.isoformat() if item.paid_at else None,
-            "notes": item.notes,
-            "created_at": item.created_at.isoformat(),
-            "updated_at": item.updated_at.isoformat(),
-        },
+        data=_serialize_load(item, detailed=True),
         meta={},
         error=None,
     )
@@ -280,24 +251,12 @@ def update_load(
     notes: str | None = None,
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
-    try:
-        uuid.UUID(load_id)
-        if customer_account_id:
-            uuid.UUID(customer_account_id)
-        if driver_id:
-            uuid.UUID(driver_id)
-        if broker_id:
-            uuid.UUID(broker_id)
-    except ValueError as exc:
-        raise ValidationError(
-            "Invalid UUID provided",
-            details={
-                "load_id": load_id,
-                "customer_account_id": customer_account_id,
-                "driver_id": driver_id,
-                "broker_id": broker_id,
-            },
-        ) from exc
+    _validate_uuid_fields(
+        load_id=load_id,
+        customer_account_id=customer_account_id,
+        driver_id=driver_id,
+        broker_id=broker_id,
+    )
 
     service = LoadService(db)
     item = service.update_load(
@@ -316,7 +275,7 @@ def update_load(
         delivery_date=delivery_date,
         pickup_location=pickup_location,
         delivery_location=delivery_location,
-        gross_amount=Decimal(gross_amount) if gross_amount is not None else None,
+        gross_amount=_parse_decimal(gross_amount, "gross_amount"),
         currency_code=currency_code,
         documents_complete=documents_complete,
         has_ratecon=has_ratecon,
@@ -326,35 +285,7 @@ def update_load(
     )
 
     return ApiResponse(
-        data={
-            "id": str(item.id),
-            "organization_id": str(item.organization_id),
-            "customer_account_id": str(item.customer_account_id),
-            "driver_id": str(item.driver_id),
-            "broker_id": str(item.broker_id) if item.broker_id else None,
-            "source_channel": str(item.source_channel),
-            "status": str(item.status),
-            "processing_status": str(item.processing_status),
-            "load_number": item.load_number,
-            "rate_confirmation_number": item.rate_confirmation_number,
-            "bol_number": item.bol_number,
-            "invoice_number": item.invoice_number,
-            "broker_name_raw": item.broker_name_raw,
-            "broker_email_raw": item.broker_email_raw,
-            "pickup_date": item.pickup_date.isoformat() if item.pickup_date else None,
-            "delivery_date": item.delivery_date.isoformat() if item.delivery_date else None,
-            "pickup_location": item.pickup_location,
-            "delivery_location": item.delivery_location,
-            "gross_amount": format(item.gross_amount, "f") if item.gross_amount is not None else None,
-            "currency_code": item.currency_code,
-            "documents_complete": item.documents_complete,
-            "has_ratecon": item.has_ratecon,
-            "has_bol": item.has_bol,
-            "has_invoice": item.has_invoice,
-            "notes": item.notes,
-            "created_at": item.created_at.isoformat(),
-            "updated_at": item.updated_at.isoformat(),
-        },
+        data=_serialize_load(item, detailed=True),
         meta={},
         error=None,
     )
@@ -370,19 +301,17 @@ def transition_load_status(
     notes: str | None = None,
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
+    _validate_uuid_fields(
+        load_id=load_id,
+        actor_staff_user_id=actor_staff_user_id,
+    )
+
     try:
-        uuid.UUID(load_id)
-        if actor_staff_user_id:
-            uuid.UUID(actor_staff_user_id)
         parsed_status = LoadStatus(new_status)
     except ValueError as exc:
         raise ValidationError(
-            "Invalid status transition input",
-            details={
-                "load_id": load_id,
-                "new_status": new_status,
-                "actor_staff_user_id": actor_staff_user_id,
-            },
+            "Invalid new_status",
+            details={"new_status": new_status},
         ) from exc
 
     engine = WorkflowEngine(db)
