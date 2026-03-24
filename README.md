@@ -1,3 +1,32 @@
+Because I gave you a second, shorter README later, and that created drift. The earlier one you pasted is better and more complete.
+
+Use the earlier README as the source of truth, but clean it up in two ways:
+	1.	remove the accidental trailing instruction text:
+	•	After you commit that, the next file is:
+	•	.gitignore
+	2.	fix the markdown formatting where plain text and bullets got flattened
+
+So the difference is not that the project changed meaningfully. It is that I produced a simplified README later, and that was unnecessary. The stronger one is the right direction for this project.
+
+Recommendation
+
+Keep the earlier, more detailed README, not the shorter replacement.
+
+Why the earlier README is better
+
+It includes:
+	•	clearer vision
+	•	stronger architecture summary
+	•	better explanation of operational problem
+	•	better local development guidance
+	•	better milestone framing
+
+That fits your project much better than the short lightweight one.
+
+What to do now
+
+Use this cleaned final version for README.md:
+
 # Freight Back Office OS
 
 Enterprise-grade back-office operating system for freight and dispatch teams, designed to centralize document intake, load lifecycle tracking, validation, billing, onboarding, notifications, and support workflows.
@@ -34,16 +63,16 @@ This repository currently includes a production-oriented backend foundation with
 The current backend is organized around these domains:
 
 - **Organizations**: tenant boundary for customers and operations
-- **Customer Accounts**: freight customers / business accounts
+- **Customer Accounts**: freight customers and business accounts
 - **Drivers**: driver records and related load activity
 - **Brokers**: broker master records and commercial metadata
 - **Loads**: core operational record representing shipment lifecycle
-- **Documents**: uploaded paperwork such as rate cons, BOLs, PODs, invoices
-- **Extraction & Validation**: AI / OCR assisted field extraction and business rule checks
+- **Documents**: uploaded paperwork such as rate cons, BOLs, PODs, and invoices
+- **Extraction and Validation**: AI and OCR-assisted field extraction and business rule checks
 - **Workflow**: load state transitions and workflow event history
 - **Notifications**: outbound or inbound operational communications
 - **Onboarding**: go-live readiness tracking for customer accounts
-- **Billing**: service plans, subscriptions, invoices, payments, usage, ledger
+- **Billing**: service plans, subscriptions, invoices, payments, usage, and ledger
 - **Support**: support ticket intake and routing
 - **Audit**: auditable event tracking across the platform
 
@@ -74,7 +103,7 @@ Backend stack
 	•	Pydantic
 	•	Celery
 	•	PostgreSQL-ready schema design
-	•	Redis / broker-ready worker configuration
+	•	Redis and broker-ready worker configuration
 	•	pytest
 
 Current API surface
@@ -110,7 +139,7 @@ Development status
 
 This project is currently in a foundational build stage.
 
-What is already in place:
+What is already in place
 	•	enterprise-style folder structure
 	•	initial domain model coverage
 	•	repositories for major entities
@@ -120,15 +149,15 @@ What is already in place:
 	•	validation rules and workflow transition patterns
 	•	test scaffolding across unit and integration levels
 
-What still needs to be completed next:
+What still needs to be completed next
 	•	normalize and verify all model relationships and enum usage end-to-end
 	•	finalize database compatibility for PostgreSQL and SQLite test modes
 	•	add Alembic migrations
 	•	complete exception handling and middleware behavior
-	•	harden request / response contracts
-	•	replace placeholder OCR / LLM services with real implementations
+	•	harden request and response contracts
+	•	replace placeholder OCR and LLM services with real implementations
 	•	add file upload streaming and object storage support
-	•	add authentication / authorization enforcement across all routes
+	•	add authentication and authorization enforcement across all routes
 	•	implement frontend and operator dashboards
 	•	add full billing automation and webhook reconciliation
 	•	package deployment and CI/CD workflows
@@ -244,7 +273,7 @@ Recommended next milestones
 	3.	add Alembic migrations for the current domain
 	4.	make route contracts consistently use typed schema responses
 	5.	wire real upload handling and document persistence
-	6.	implement real OCR / extraction pipeline
+	6.	implement real OCR and extraction pipeline
 	7.	add authentication and permission checks
 	8.	build the operator frontend and driver portal
 	9.	harden billing flows and payment webhooks
@@ -252,9 +281,10 @@ Recommended next milestones
 
 License
 
-Proprietary / private internal project unless explicitly relicensed by the repository owner.
+Proprietary and private internal project unless explicitly relicensed by the repository owner.
 
-After you commit that, the next file is:
+From here on, for markdown files, I’ll keep giving you:
+- the exact file path
+- then only the raw markdown content, with no trailing “next file” text inside it
 
-```text
-.gitignore
+Proceed and I’ll continue with `.gitignore` cleanly.
