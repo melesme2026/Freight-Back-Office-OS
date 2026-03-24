@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: freight-web
+  labels:
+    app: freight-web
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: freight-web
+  template:
+    metadata:
+      labels:
+        app: freight-web
+    spec:
+      containers:
+        - name: web
+          image: freight-back-office-os/web:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 3000
+          env:
+            - name: NODE_ENV
+              value: "production"
+            - name: NEXT_PUBLIC_API_BASE_URL
+              value: "http://freight-api:8000/api/v1"
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 3000
+            initialDelaySeconds: 20
+            periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: freight-web
+spec:
+  selector:
+    app: freight-web
+  ports:
+    - protocol: TCP
+      port: 3000
+      targetPort: 3000
