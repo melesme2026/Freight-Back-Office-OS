@@ -1,0 +1,8 @@
+<svg width="160" height="40" viewBox="0 0 160 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="160" height="40" rx="10" fill="#0F172A"/>
+  <rect x="8" y="8" width="24" height="24" rx="6" fill="#377DFF"/>
+  <path d="M14 14H22C24.7614 14 27 16.2386 27 19C27 21.7614 24.7614 24 22 24H18V28H14V14ZM18 20H21.5C22.3284 20 23 19.3284 23 18.5C23 17.6716 22.3284 17 21.5 17H18V20Z" fill="white"/>
+  <text x="42" y="24" fill="white" font-family="Arial, Helvetica, sans-serif" font-size="14" font-weight="700">
+    Freight Back Office OS
+  </text>
+</svg>
