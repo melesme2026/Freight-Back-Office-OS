@@ -21,19 +21,40 @@ class LoadRepository:
         self.db.refresh(load)
         return load
 
-    def get_by_id(self, load_id: uuid.UUID) -> Load | None:
-        stmt = select(Load).where(Load.id == load_id)
+    def get_by_id(self, load_id: uuid.UUID | str) -> Load | None:
+        normalized_id = self._normalize_uuid(load_id, field_name="load_id")
+        stmt = select(Load).where(Load.id == normalized_id)
         return self.db.scalar(stmt)
 
     def get_by_invoice_number(
         self,
         *,
-        organization_id: uuid.UUID,
+        organization_id: uuid.UUID | str,
         invoice_number: str,
     ) -> Load | None:
+        normalized_organization_id = self._normalize_uuid(
+            organization_id,
+            field_name="organization_id",
+        )
         stmt = select(Load).where(
-            Load.organization_id == organization_id,
+            Load.organization_id == normalized_organization_id,
             Load.invoice_number == invoice_number,
+        )
+        return self.db.scalar(stmt)
+
+    def get_by_load_number(
+        self,
+        *,
+        organization_id: uuid.UUID | str,
+        load_number: str,
+    ) -> Load | None:
+        normalized_organization_id = self._normalize_uuid(
+            organization_id,
+            field_name="organization_id",
+        )
+        stmt = select(Load).where(
+            Load.organization_id == normalized_organization_id,
+            Load.load_number == load_number,
         )
         return self.db.scalar(stmt)
 
@@ -113,3 +134,12 @@ class LoadRepository:
     def delete(self, load: Load) -> None:
         self.db.delete(load)
         self.db.flush()
+
+    def _normalize_uuid(self, value: uuid.UUID | str, *, field_name: str) -> uuid.UUID:
+        if isinstance(value, uuid.UUID):
+            return value
+
+        try:
+            return uuid.UUID(str(value))
+        except ValueError as exc:
+            raise ValueError(f"Invalid {field_name}: {value}") from exc
