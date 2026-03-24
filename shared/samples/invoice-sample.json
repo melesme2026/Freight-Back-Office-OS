@@ -1,0 +1,23 @@
+{
+  "document_type": "invoice",
+  "source_channel": "manual",
+  "original_filename": "invoice_1001.pdf",
+  "invoice_number": "INV-1001",
+  "load_number": "LOAD-1001",
+  "customer_name": "Alpha Logistics",
+  "issue_date": "2026-03-26",
+  "due_date": "2026-03-30",
+  "line_items": [
+    {
+      "description": "Freight charge",
+      "quantity": 1,
+      "unit_price": 1250.0,
+      "line_total": 1250.0
+    }
+  ],
+  "subtotal_amount": 1250.0,
+  "tax_amount": 0.0,
+  "total_amount": 1250.0,
+  "currency_code": "USD",
+  "notes": "Sample invoice payload for billing and reconciliation testing"
+}
