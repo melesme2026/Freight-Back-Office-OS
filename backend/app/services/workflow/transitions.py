@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from app.domain.enums.load_status import LoadStatus
+from app.domain.enums.processing_status import ProcessingStatus
 from app.domain.models.load import Load
 
 
@@ -13,38 +14,30 @@ class LoadTransitionApplier:
         load: Load,
         new_status: LoadStatus,
     ) -> Load:
-        load.status = new_status
-
         now = datetime.now(timezone.utc)
 
-        if new_status == LoadStatus.SUBMITTED:
+        load.status = new_status
+
+        if new_status == LoadStatus.SUBMITTED and load.submitted_at is None:
             load.submitted_at = now
 
-        if new_status == LoadStatus.FUNDED:
+        if new_status == LoadStatus.FUNDED and load.funded_at is None:
             load.funded_at = now
 
-        if new_status == LoadStatus.PAID:
+        if new_status == LoadStatus.PAID and load.paid_at is None:
             load.paid_at = now
 
-        if new_status in {
-            LoadStatus.DOCS_RECEIVED,
-            LoadStatus.EXTRACTING,
-            LoadStatus.NEEDS_REVIEW,
+        if new_status == LoadStatus.EXTRACTING:
+            load.processing_status = ProcessingStatus.IN_PROGRESS
+        elif new_status in {
             LoadStatus.VALIDATED,
             LoadStatus.READY_TO_SUBMIT,
+            LoadStatus.SUBMITTED,
+            LoadStatus.FUNDED,
+            LoadStatus.PAID,
         }:
-            if new_status == LoadStatus.EXTRACTING:
-                load.processing_status = "in_progress"
-            elif new_status in {
-                LoadStatus.VALIDATED,
-                LoadStatus.READY_TO_SUBMIT,
-                LoadStatus.SUBMITTED,
-                LoadStatus.FUNDED,
-                LoadStatus.PAID,
-            }:
-                load.processing_status = "completed"
-
-        if new_status == LoadStatus.EXCEPTION:
-            load.processing_status = "failed"
+            load.processing_status = ProcessingStatus.COMPLETED
+        elif new_status == LoadStatus.EXCEPTION:
+            load.processing_status = ProcessingStatus.FAILED
 
         return load
