@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import Select, func, select
+from sqlalchemy import Select, delete, func, select
 from sqlalchemy.orm import Session
 
 from app.domain.models.extracted_field import ExtractedField
@@ -19,14 +19,20 @@ class ExtractedFieldRepository:
         return extracted_field
 
     def create_many(self, extracted_fields: list[ExtractedField]) -> list[ExtractedField]:
+        if not extracted_fields:
+            return []
+
         self.db.add_all(extracted_fields)
         self.db.flush()
+
         for item in extracted_fields:
             self.db.refresh(item)
+
         return extracted_fields
 
-    def get_by_id(self, field_id: uuid.UUID) -> ExtractedField | None:
-        stmt = select(ExtractedField).where(ExtractedField.id == field_id)
+    def get_by_id(self, field_id: uuid.UUID | str) -> ExtractedField | None:
+        normalized_id = self._normalize_uuid(field_id, field_name="field_id")
+        stmt = select(ExtractedField).where(ExtractedField.id == normalized_id)
         return self.db.scalar(stmt)
 
     def list(
@@ -70,12 +76,19 @@ class ExtractedFieldRepository:
         items = list(self.db.scalars(stmt).all())
         return items, total
 
-    def delete_for_document(self, document_id: uuid.UUID) -> int:
-        items, _ = self.list(document_id=document_id, page=1, page_size=10000)
-        count = len(items)
-        for item in items:
-            self.db.delete(item)
+    def delete_for_document(self, document_id: uuid.UUID | str) -> int:
+        normalized_id = self._normalize_uuid(document_id, field_name="document_id")
+
+        count_stmt = select(func.count()).where(ExtractedField.document_id == normalized_id)
+        count = self.db.scalar(count_stmt) or 0
+
+        if count == 0:
+            return 0
+
+        stmt = delete(ExtractedField).where(ExtractedField.document_id == normalized_id)
+        self.db.execute(stmt)
         self.db.flush()
+
         return count
 
     def update(self, extracted_field: ExtractedField) -> ExtractedField:
@@ -87,3 +100,12 @@ class ExtractedFieldRepository:
     def delete(self, extracted_field: ExtractedField) -> None:
         self.db.delete(extracted_field)
         self.db.flush()
+
+    def _normalize_uuid(self, value: uuid.UUID | str, *, field_name: str) -> uuid.UUID:
+        if isinstance(value, uuid.UUID):
+            return value
+
+        try:
+            return uuid.UUID(str(value))
+        except ValueError as exc:
+            raise ValueError(f"Invalid {field_name}: {value}") from exc
