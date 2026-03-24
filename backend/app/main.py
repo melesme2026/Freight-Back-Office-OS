@@ -10,35 +10,41 @@ from app.core.logging import configure_logging
 from app.core.middleware import ProcessTimeMiddleware, RequestContextMiddleware
 from app.lifespan import lifespan
 
-settings = get_settings()
 
-configure_logging()
+def create_app() -> FastAPI:
+    settings = get_settings()
 
-app = FastAPI(
-    title=settings.app_name,
-    version=settings.app_version,
-    debug=settings.debug,
-    lifespan=lifespan,
-    openapi_url="/api/v1/openapi.json",
-    docs_url="/api/v1/docs",
-    redoc_url="/api/v1/redoc",
-)
+    configure_logging()
 
-app.add_middleware(RequestContextMiddleware)
-app.add_middleware(ProcessTimeMiddleware)
+    app = FastAPI(
+        title=settings.app_name,
+        version=settings.app_version,
+        debug=settings.debug,
+        lifespan=lifespan,
+        openapi_url="/api/v1/openapi.json",
+        docs_url="/api/v1/docs",
+        redoc_url="/api/v1/redoc",
+    )
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=getattr(
-        settings,
-        "cors_allowed_origins",
-        getattr(settings, "cors_allowed_origins_list", ["*"]),
-    ),
-    allow_credentials=getattr(settings, "cors_allow_credentials", True),
-    allow_methods=getattr(settings, "cors_allow_methods", ["*"]),
-    allow_headers=getattr(settings, "cors_allow_headers", ["*"]),
-)
+    app.add_middleware(RequestContextMiddleware)
+    app.add_middleware(ProcessTimeMiddleware)
 
-register_exception_handlers(app)
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=getattr(
+            settings,
+            "cors_allowed_origins",
+            getattr(settings, "cors_allowed_origins_list", ["*"]),
+        ),
+        allow_credentials=getattr(settings, "cors_allow_credentials", True),
+        allow_methods=getattr(settings, "cors_allow_methods", ["*"]),
+        allow_headers=getattr(settings, "cors_allow_headers", ["*"]),
+    )
 
-app.include_router(api_router)
+    register_exception_handlers(app)
+    app.include_router(api_router)
+
+    return app
+
+
+app = create_app()
