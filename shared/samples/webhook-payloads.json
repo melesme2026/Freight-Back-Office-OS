@@ -1,0 +1,44 @@
+{
+  "whatsapp_inbound": {
+    "channel": "whatsapp",
+    "from": "+13135551234",
+    "message_type": "document",
+    "timestamp": "2026-03-24T14:22:00Z",
+    "document": {
+      "filename": "bol_1001.jpg",
+      "mime_type": "image/jpeg",
+      "url": "https://example.com/files/bol_1001.jpg"
+    },
+    "metadata": {
+      "driver_name": "John Doe"
+    }
+  },
+  "email_inbound": {
+    "channel": "email",
+    "from": "driver@example.com",
+    "subject": "Load 1001 documents",
+    "timestamp": "2026-03-24T14:25:00Z",
+    "attachments": [
+      {
+        "filename": "rate_confirmation_1001.pdf",
+        "mime_type": "application/pdf"
+      },
+      {
+        "filename": "invoice_1001.pdf",
+        "mime_type": "application/pdf"
+      }
+    ]
+  },
+  "payment_webhook": {
+    "provider": "stripe",
+    "event_type": "payment_intent.succeeded",
+    "timestamp": "2026-03-24T15:10:00Z",
+    "data": {
+      "payment_id": "pay_1001",
+      "invoice_id": "inv_1001",
+      "amount": 44900,
+      "currency": "usd",
+      "status": "succeeded"
+    }
+  }
+}
