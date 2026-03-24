@@ -1,0 +1,83 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: freight-worker
+  labels:
+    app: freight-worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: freight-worker
+  template:
+    metadata:
+      labels:
+        app: freight-worker
+    spec:
+      containers:
+        - name: worker
+          image: freight-back-office-os/worker:latest
+          imagePullPolicy: IfNotPresent
+          command:
+            - celery
+            - -A
+            - app.workers.celery_app.celery_app
+            - worker
+            - --loglevel=info
+          env:
+            - name: APP_ENV
+              value: "staging"
+            - name: DATABASE_URL
+              value: "postgresql+psycopg://postgres:postgres@postgres:5432/freight_back_office_os"
+            - name: CELERY_BROKER_URL
+              value: "redis://redis:6379/0"
+            - name: CELERY_RESULT_BACKEND
+              value: "redis://redis:6379/1"
+            - name: REDIS_URL
+              value: "redis://redis:6379/0"
+            - name: SECRET_KEY
+              value: "change-me"
+            - name: STORAGE_LOCAL_ROOT_PATH
+              value: "/app/data/sandbox/uploaded-docs"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: freight-beat
+  labels:
+    app: freight-beat
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: freight-beat
+  template:
+    metadata:
+      labels:
+        app: freight-beat
+    spec:
+      containers:
+        - name: beat
+          image: freight-back-office-os/worker:latest
+          imagePullPolicy: IfNotPresent
+          command:
+            - celery
+            - -A
+            - app.workers.celery_app.celery_app
+            - beat
+            - --loglevel=info
+          env:
+            - name: APP_ENV
+              value: "staging"
+            - name: DATABASE_URL
+              value: "postgresql+psycopg://postgres:postgres@postgres:5432/freight_back_office_os"
+            - name: CELERY_BROKER_URL
+              value: "redis://redis:6379/0"
+            - name: CELERY_RESULT_BACKEND
+              value: "redis://redis:6379/1"
+            - name: REDIS_URL
+              value: "redis://redis:6379/0"
+            - name: SECRET_KEY
+              value: "change-me"
+            - name: STORAGE_LOCAL_ROOT_PATH
+              value: "/app/data/sandbox/uploaded-docs"
