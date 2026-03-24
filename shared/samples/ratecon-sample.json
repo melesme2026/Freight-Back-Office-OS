@@ -1,0 +1,14 @@
+{
+  "document_type": "rate_confirmation",
+  "source_channel": "manual",
+  "original_filename": "rate_confirmation_1001.pdf",
+  "load_number": "LOAD-1001",
+  "broker_name": "Alpha Logistics",
+  "pickup_location": "Detroit, MI",
+  "delivery_location": "Columbus, OH",
+  "pickup_date": "2026-03-24",
+  "delivery_date": "2026-03-25",
+  "gross_amount": 1250.0,
+  "currency_code": "USD",
+  "notes": "Sample rate confirmation payload for V1 testing"
+}
