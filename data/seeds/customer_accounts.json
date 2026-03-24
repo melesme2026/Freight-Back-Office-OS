@@ -1,0 +1,18 @@
+[
+  {
+    "id": "10000000-0000-0000-0000-000000000001",
+    "organization_id": "00000000-0000-0000-0000-000000000001",
+    "account_name": "Alpha Logistics",
+    "account_code": "ALPHA",
+    "status": "active",
+    "billing_email": "billing@alphalogistics.com"
+  },
+  {
+    "id": "10000000-0000-0000-0000-000000000002",
+    "organization_id": "00000000-0000-0000-0000-000000000001",
+    "account_name": "North Peak Freight",
+    "account_code": "NPEAK",
+    "status": "active",
+    "billing_email": "accounts@northpeakfreight.com"
+  }
+]
