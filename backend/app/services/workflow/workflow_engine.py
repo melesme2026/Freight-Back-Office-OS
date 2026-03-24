@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import Any
 
 from sqlalchemy.orm import Session
 
-from app.core.exceptions import NotFoundError
+from app.core.exceptions import NotFoundError, ValidationError
 from app.domain.enums.audit_actor_type import AuditActorType
 from app.domain.enums.load_status import LoadStatus
 from app.domain.models.load import Load
@@ -36,13 +37,15 @@ class WorkflowEngine:
         load_id: str,
         new_status: LoadStatus,
         actor_staff_user_id: str | None = None,
-        actor_type: str = AuditActorType.SYSTEM,
+        actor_type: str | AuditActorType = AuditActorType.SYSTEM,
         notes: str | None = None,
-    ) -> dict[str, object]:
+    ) -> dict[str, Any]:
         load = self.get_load(load_id)
 
-        current_status = LoadStatus(str(load.status))
-        target_status = LoadStatus(str(new_status))
+        current_status = self._normalize_load_status(load.status)
+        target_status = self._normalize_load_status(new_status)
+        normalized_actor_type = self._normalize_actor_type(actor_type)
+        changed_at = datetime.now(timezone.utc)
 
         self.state_machine.assert_transition_allowed(
             current_status=current_status,
@@ -58,9 +61,14 @@ class WorkflowEngine:
                 load.id
             )
             if blocking_issue_count > 0:
-                raise ValueError(
-                    f"Load cannot transition to {target_status} while unresolved blocking "
-                    f"validation issues exist ({blocking_issue_count})."
+                raise ValidationError(
+                    "Load cannot transition while unresolved blocking validation issues exist",
+                    details={
+                        "load_id": str(load.id),
+                        "current_status": str(current_status),
+                        "target_status": str(target_status),
+                        "blocking_issue_count": blocking_issue_count,
+                    },
                 )
 
         old_status = current_status
@@ -69,7 +77,7 @@ class WorkflowEngine:
             new_status=target_status,
         )
 
-        updated_load.last_reviewed_at = datetime.now(timezone.utc)
+        updated_load.last_reviewed_at = changed_at
         if actor_staff_user_id:
             updated_load.last_reviewed_by = actor_staff_user_id
 
@@ -83,12 +91,46 @@ class WorkflowEngine:
             new_status=str(target_status),
             event_payload={"notes": notes} if notes else None,
             actor_staff_user_id=actor_staff_user_id,
-            actor_type=actor_type,
+            actor_type=str(normalized_actor_type),
         )
 
         return {
             "id": str(updated_load.id),
             "old_status": old_status,
             "new_status": target_status,
-            "changed_at": datetime.now(timezone.utc),
+            "changed_at": changed_at,
         }
+
+    def _normalize_load_status(self, value: LoadStatus | str) -> LoadStatus:
+        if isinstance(value, LoadStatus):
+            return value
+
+        normalized = str(value).strip().lower()
+
+        for status in LoadStatus:
+            if normalized == status.value.lower():
+                return status
+            if normalized == status.name.lower():
+                return status
+
+        raise ValidationError(
+            "Invalid load status",
+            details={"status": value},
+        )
+
+    def _normalize_actor_type(self, value: AuditActorType | str) -> AuditActorType:
+        if isinstance(value, AuditActorType):
+            return value
+
+        normalized = str(value).strip().lower()
+
+        for actor_type in AuditActorType:
+            if normalized == actor_type.value.lower():
+                return actor_type
+            if normalized == actor_type.name.lower():
+                return actor_type
+
+        raise ValidationError(
+            "Invalid actor_type",
+            details={"actor_type": value},
+        )
