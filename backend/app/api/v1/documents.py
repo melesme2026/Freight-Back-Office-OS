@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from typing import Any
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
@@ -14,6 +15,53 @@ from app.services.documents.document_service import DocumentService
 
 
 router = APIRouter()
+
+
+def _validate_uuid(value: str | None, field_name: str) -> None:
+    if value is None:
+        return
+    try:
+        uuid.UUID(value)
+    except ValueError as exc:
+        raise ValidationError(
+            f"Invalid {field_name}",
+            details={field_name: value},
+        ) from exc
+
+
+def _validate_uuid_fields(**fields: str | None) -> None:
+    for field_name, value in fields.items():
+        _validate_uuid(value, field_name)
+
+
+def _serialize_document(item: Any) -> dict[str, Any]:
+    return {
+        "id": str(item.id),
+        "organization_id": str(item.organization_id),
+        "customer_account_id": str(item.customer_account_id),
+        "driver_id": str(item.driver_id) if item.driver_id else None,
+        "load_id": str(item.load_id) if item.load_id else None,
+        "source_channel": str(item.source_channel),
+        "document_type": str(item.document_type),
+        "original_filename": item.original_filename,
+        "mime_type": item.mime_type,
+        "file_size_bytes": item.file_size_bytes,
+        "storage_bucket": item.storage_bucket,
+        "storage_key": item.storage_key,
+        "file_hash_sha256": item.file_hash_sha256,
+        "page_count": item.page_count,
+        "processing_status": str(item.processing_status),
+        "classification_confidence": item.classification_confidence,
+        "ocr_completed_at": item.ocr_completed_at.isoformat() if item.ocr_completed_at else None,
+        "received_at": item.received_at.isoformat(),
+        "uploaded_by_staff_user_id": (
+            str(item.uploaded_by_staff_user_id)
+            if item.uploaded_by_staff_user_id
+            else None
+        ),
+        "created_at": item.created_at.isoformat(),
+        "updated_at": item.updated_at.isoformat(),
+    }
 
 
 @router.post("/documents", response_model=ApiResponse)
@@ -34,26 +82,13 @@ def create_document(
     uploaded_by_staff_user_id: str | None = None,
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
-    try:
-        uuid.UUID(organization_id)
-        uuid.UUID(customer_account_id)
-        if driver_id:
-            uuid.UUID(driver_id)
-        if load_id:
-            uuid.UUID(load_id)
-        if uploaded_by_staff_user_id:
-            uuid.UUID(uploaded_by_staff_user_id)
-    except ValueError as exc:
-        raise ValidationError(
-            "Invalid UUID provided",
-            details={
-                "organization_id": organization_id,
-                "customer_account_id": customer_account_id,
-                "driver_id": driver_id,
-                "load_id": load_id,
-                "uploaded_by_staff_user_id": uploaded_by_staff_user_id,
-            },
-        ) from exc
+    _validate_uuid_fields(
+        organization_id=organization_id,
+        customer_account_id=customer_account_id,
+        driver_id=driver_id,
+        load_id=load_id,
+        uploaded_by_staff_user_id=uploaded_by_staff_user_id,
+    )
 
     service = DocumentService(db)
     item = service.create_document(
@@ -73,29 +108,7 @@ def create_document(
     )
 
     return ApiResponse(
-        data={
-            "id": str(item.id),
-            "organization_id": str(item.organization_id),
-            "customer_account_id": str(item.customer_account_id),
-            "driver_id": str(item.driver_id) if item.driver_id else None,
-            "load_id": str(item.load_id) if item.load_id else None,
-            "source_channel": str(item.source_channel),
-            "document_type": str(item.document_type),
-            "original_filename": item.original_filename,
-            "mime_type": item.mime_type,
-            "file_size_bytes": item.file_size_bytes,
-            "storage_bucket": item.storage_bucket,
-            "storage_key": item.storage_key,
-            "file_hash_sha256": item.file_hash_sha256,
-            "page_count": item.page_count,
-            "processing_status": str(item.processing_status),
-            "classification_confidence": item.classification_confidence,
-            "ocr_completed_at": item.ocr_completed_at.isoformat() if item.ocr_completed_at else None,
-            "received_at": item.received_at.isoformat(),
-            "uploaded_by_staff_user_id": str(item.uploaded_by_staff_user_id) if item.uploaded_by_staff_user_id else None,
-            "created_at": item.created_at.isoformat(),
-            "updated_at": item.updated_at.isoformat(),
-        },
+        data=_serialize_document(item),
         meta={},
         error=None,
     )
@@ -114,25 +127,12 @@ def list_documents(
     page_size: int = Query(default=25, ge=1, le=200),
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
-    try:
-        if organization_id:
-            uuid.UUID(organization_id)
-        if customer_account_id:
-            uuid.UUID(customer_account_id)
-        if driver_id:
-            uuid.UUID(driver_id)
-        if load_id:
-            uuid.UUID(load_id)
-    except ValueError as exc:
-        raise ValidationError(
-            "Invalid UUID provided",
-            details={
-                "organization_id": organization_id,
-                "customer_account_id": customer_account_id,
-                "driver_id": driver_id,
-                "load_id": load_id,
-            },
-        ) from exc
+    _validate_uuid_fields(
+        organization_id=organization_id,
+        customer_account_id=customer_account_id,
+        driver_id=driver_id,
+        load_id=load_id,
+    )
 
     service = DocumentService(db)
     items, total = service.list_documents(
@@ -147,33 +147,12 @@ def list_documents(
     )
 
     return ApiResponse(
-        data=[
-            {
-                "id": str(item.id),
-                "organization_id": str(item.organization_id),
-                "customer_account_id": str(item.customer_account_id),
-                "driver_id": str(item.driver_id) if item.driver_id else None,
-                "load_id": str(item.load_id) if item.load_id else None,
-                "source_channel": str(item.source_channel),
-                "document_type": str(item.document_type),
-                "original_filename": item.original_filename,
-                "mime_type": item.mime_type,
-                "file_size_bytes": item.file_size_bytes,
-                "storage_bucket": item.storage_bucket,
-                "storage_key": item.storage_key,
-                "file_hash_sha256": item.file_hash_sha256,
-                "page_count": item.page_count,
-                "processing_status": str(item.processing_status),
-                "classification_confidence": item.classification_confidence,
-                "ocr_completed_at": item.ocr_completed_at.isoformat() if item.ocr_completed_at else None,
-                "received_at": item.received_at.isoformat(),
-                "uploaded_by_staff_user_id": str(item.uploaded_by_staff_user_id) if item.uploaded_by_staff_user_id else None,
-                "created_at": item.created_at.isoformat(),
-                "updated_at": item.updated_at.isoformat(),
-            }
-            for item in items
-        ],
-        meta={"page": page, "page_size": page_size, "total": total},
+        data=[_serialize_document(item) for item in items],
+        meta={
+            "page": page,
+            "page_size": page_size,
+            "total": total,
+        },
         error=None,
     )
 
@@ -183,41 +162,13 @@ def get_document(
     document_id: str,
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
-    try:
-        uuid.UUID(document_id)
-    except ValueError as exc:
-        raise ValidationError(
-            "Invalid document_id",
-            details={"document_id": document_id},
-        ) from exc
+    _validate_uuid(document_id, "document_id")
 
     service = DocumentService(db)
     item = service.get_document(document_id)
 
     return ApiResponse(
-        data={
-            "id": str(item.id),
-            "organization_id": str(item.organization_id),
-            "customer_account_id": str(item.customer_account_id),
-            "driver_id": str(item.driver_id) if item.driver_id else None,
-            "load_id": str(item.load_id) if item.load_id else None,
-            "source_channel": str(item.source_channel),
-            "document_type": str(item.document_type),
-            "original_filename": item.original_filename,
-            "mime_type": item.mime_type,
-            "file_size_bytes": item.file_size_bytes,
-            "storage_bucket": item.storage_bucket,
-            "storage_key": item.storage_key,
-            "file_hash_sha256": item.file_hash_sha256,
-            "page_count": item.page_count,
-            "processing_status": str(item.processing_status),
-            "classification_confidence": item.classification_confidence,
-            "ocr_completed_at": item.ocr_completed_at.isoformat() if item.ocr_completed_at else None,
-            "received_at": item.received_at.isoformat(),
-            "uploaded_by_staff_user_id": str(item.uploaded_by_staff_user_id) if item.uploaded_by_staff_user_id else None,
-            "created_at": item.created_at.isoformat(),
-            "updated_at": item.updated_at.isoformat(),
-        },
+        data=_serialize_document(item),
         meta={},
         error=None,
     )
@@ -230,18 +181,16 @@ def extract_document(
     force: bool = False,
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
-    try:
-        uuid.UUID(document_id)
-    except ValueError as exc:
-        raise ValidationError(
-            "Invalid document_id",
-            details={"document_id": document_id},
-        ) from exc
+    _validate_uuid(document_id, "document_id")
 
     service = ExtractionService(db)
     result = service.extract_document(document_id=document_id, force=force)
 
-    return ApiResponse(data=result, meta={}, error=None)
+    return ApiResponse(
+        data=result,
+        meta={},
+        error=None,
+    )
 
 
 @router.post("/documents/{document_id}/reprocess", response_model=ApiResponse)
@@ -252,13 +201,7 @@ def reprocess_document(
     force_reextraction: bool = False,
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
-    try:
-        uuid.UUID(document_id)
-    except ValueError as exc:
-        raise ValidationError(
-            "Invalid document_id",
-            details={"document_id": document_id},
-        ) from exc
+    _validate_uuid(document_id, "document_id")
 
     service = DocumentService(db)
     result = service.reprocess_document(
@@ -267,7 +210,11 @@ def reprocess_document(
         force_reextraction=force_reextraction,
     )
 
-    return ApiResponse(data=result, meta={}, error=None)
+    return ApiResponse(
+        data=result,
+        meta={},
+        error=None,
+    )
 
 
 @router.post("/documents/{document_id}/link", response_model=ApiResponse)
@@ -277,16 +224,19 @@ def link_document_to_load(
     load_id: str,
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
-    try:
-        uuid.UUID(document_id)
-        uuid.UUID(load_id)
-    except ValueError as exc:
-        raise ValidationError(
-            "Invalid UUID provided",
-            details={"document_id": document_id, "load_id": load_id},
-        ) from exc
+    _validate_uuid_fields(
+        document_id=document_id,
+        load_id=load_id,
+    )
 
     linker = DocumentLinker(db)
-    result = linker.link_document_to_load(document_id=document_id, load_id=load_id)
+    result = linker.link_document_to_load(
+        document_id=document_id,
+        load_id=load_id,
+    )
 
-    return ApiResponse(data=result, meta={}, error=None)
+    return ApiResponse(
+        data=result,
+        meta={},
+        error=None,
+    )
