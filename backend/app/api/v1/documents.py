@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import uuid
+from datetime import date, datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_db_session
-from app.core.exceptions import ValidationError
 from app.schemas.common import ApiResponse
 from app.services.ai.extraction_service import ExtractionService
 from app.services.documents.document_linker import DocumentLinker
@@ -17,21 +17,26 @@ from app.services.documents.document_service import DocumentService
 router = APIRouter()
 
 
-def _validate_uuid(value: str | None, field_name: str) -> None:
+def _uuid_to_str(value: uuid.UUID | None) -> str | None:
+    return str(value) if value is not None else None
+
+
+def _normalize_optional_text(value: str | None) -> str | None:
     if value is None:
-        return
-    try:
-        uuid.UUID(value)
-    except ValueError as exc:
-        raise ValidationError(
-            f"Invalid {field_name}",
-            details={field_name: value},
-        ) from exc
+        return None
+    normalized = value.strip()
+    return normalized or None
 
 
-def _validate_uuid_fields(**fields: str | None) -> None:
-    for field_name, value in fields.items():
-        _validate_uuid(value, field_name)
+def _to_iso_or_none(value: object | None) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
+    isoformat = getattr(value, "isoformat", None)
+    if callable(isoformat):
+        return isoformat()
+    return str(value)
 
 
 def _serialize_document(item: Any) -> dict[str, Any]:
@@ -52,59 +57,51 @@ def _serialize_document(item: Any) -> dict[str, Any]:
         "page_count": item.page_count,
         "processing_status": str(item.processing_status),
         "classification_confidence": item.classification_confidence,
-        "ocr_completed_at": item.ocr_completed_at.isoformat() if item.ocr_completed_at else None,
-        "received_at": item.received_at.isoformat(),
+        "ocr_completed_at": _to_iso_or_none(item.ocr_completed_at),
+        "received_at": _to_iso_or_none(item.received_at),
         "uploaded_by_staff_user_id": (
             str(item.uploaded_by_staff_user_id)
             if item.uploaded_by_staff_user_id
             else None
         ),
-        "created_at": item.created_at.isoformat(),
-        "updated_at": item.updated_at.isoformat(),
+        "created_at": _to_iso_or_none(item.created_at),
+        "updated_at": _to_iso_or_none(item.updated_at),
     }
 
 
 @router.post("/documents", response_model=ApiResponse)
 def create_document(
     *,
-    organization_id: str,
-    customer_account_id: str,
+    organization_id: uuid.UUID,
+    customer_account_id: uuid.UUID,
     storage_key: str,
     source_channel: str,
-    driver_id: str | None = None,
-    load_id: str | None = None,
+    driver_id: uuid.UUID | None = None,
+    load_id: uuid.UUID | None = None,
     document_type: str | None = None,
     original_filename: str | None = None,
     mime_type: str | None = None,
     file_size_bytes: int | None = None,
     storage_bucket: str | None = None,
     page_count: int | None = None,
-    uploaded_by_staff_user_id: str | None = None,
+    uploaded_by_staff_user_id: uuid.UUID | None = None,
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
-    _validate_uuid_fields(
-        organization_id=organization_id,
-        customer_account_id=customer_account_id,
-        driver_id=driver_id,
-        load_id=load_id,
-        uploaded_by_staff_user_id=uploaded_by_staff_user_id,
-    )
-
     service = DocumentService(db)
     item = service.create_document(
-        organization_id=organization_id,
-        customer_account_id=customer_account_id,
-        storage_key=storage_key,
-        source_channel=source_channel,
-        driver_id=driver_id,
-        load_id=load_id,
-        document_type=document_type,
-        original_filename=original_filename,
-        mime_type=mime_type,
+        organization_id=str(organization_id),
+        customer_account_id=str(customer_account_id),
+        storage_key=storage_key.strip(),
+        source_channel=source_channel.strip(),
+        driver_id=_uuid_to_str(driver_id),
+        load_id=_uuid_to_str(load_id),
+        document_type=_normalize_optional_text(document_type),
+        original_filename=_normalize_optional_text(original_filename),
+        mime_type=_normalize_optional_text(mime_type),
         file_size_bytes=file_size_bytes,
-        storage_bucket=storage_bucket,
+        storage_bucket=_normalize_optional_text(storage_bucket),
         page_count=page_count,
-        uploaded_by_staff_user_id=uploaded_by_staff_user_id,
+        uploaded_by_staff_user_id=_uuid_to_str(uploaded_by_staff_user_id),
     )
 
     return ApiResponse(
@@ -117,31 +114,24 @@ def create_document(
 @router.get("/documents", response_model=ApiResponse)
 def list_documents(
     *,
-    organization_id: str | None = None,
-    customer_account_id: str | None = None,
-    driver_id: str | None = None,
-    load_id: str | None = None,
+    organization_id: uuid.UUID | None = None,
+    customer_account_id: uuid.UUID | None = None,
+    driver_id: uuid.UUID | None = None,
+    load_id: uuid.UUID | None = None,
     document_type: str | None = None,
     processing_status: str | None = None,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=25, ge=1, le=200),
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
-    _validate_uuid_fields(
-        organization_id=organization_id,
-        customer_account_id=customer_account_id,
-        driver_id=driver_id,
-        load_id=load_id,
-    )
-
     service = DocumentService(db)
     items, total = service.list_documents(
-        organization_id=organization_id,
-        customer_account_id=customer_account_id,
-        driver_id=driver_id,
-        load_id=load_id,
-        document_type=document_type,
-        processing_status=processing_status,
+        organization_id=_uuid_to_str(organization_id),
+        customer_account_id=_uuid_to_str(customer_account_id),
+        driver_id=_uuid_to_str(driver_id),
+        load_id=_uuid_to_str(load_id),
+        document_type=_normalize_optional_text(document_type),
+        processing_status=_normalize_optional_text(processing_status),
         page=page,
         page_size=page_size,
     )
@@ -159,13 +149,11 @@ def list_documents(
 
 @router.get("/documents/{document_id}", response_model=ApiResponse)
 def get_document(
-    document_id: str,
+    document_id: uuid.UUID,
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
-    _validate_uuid(document_id, "document_id")
-
     service = DocumentService(db)
-    item = service.get_document(document_id)
+    item = service.get_document(str(document_id))
 
     return ApiResponse(
         data=_serialize_document(item),
@@ -176,15 +164,13 @@ def get_document(
 
 @router.post("/documents/{document_id}/extract", response_model=ApiResponse)
 def extract_document(
-    document_id: str,
+    document_id: uuid.UUID,
     *,
     force: bool = False,
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
-    _validate_uuid(document_id, "document_id")
-
     service = ExtractionService(db)
-    result = service.extract_document(document_id=document_id, force=force)
+    result = service.extract_document(document_id=str(document_id), force=force)
 
     return ApiResponse(
         data=result,
@@ -195,17 +181,15 @@ def extract_document(
 
 @router.post("/documents/{document_id}/reprocess", response_model=ApiResponse)
 def reprocess_document(
-    document_id: str,
+    document_id: uuid.UUID,
     *,
     force_reclassification: bool = False,
     force_reextraction: bool = False,
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
-    _validate_uuid(document_id, "document_id")
-
     service = DocumentService(db)
     result = service.reprocess_document(
-        document_id=document_id,
+        document_id=str(document_id),
         force_reclassification=force_reclassification,
         force_reextraction=force_reextraction,
     )
@@ -219,20 +203,15 @@ def reprocess_document(
 
 @router.post("/documents/{document_id}/link", response_model=ApiResponse)
 def link_document_to_load(
-    document_id: str,
+    document_id: uuid.UUID,
     *,
-    load_id: str,
+    load_id: uuid.UUID,
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
-    _validate_uuid_fields(
-        document_id=document_id,
-        load_id=load_id,
-    )
-
     linker = DocumentLinker(db)
     result = linker.link_document_to_load(
-        document_id=document_id,
-        load_id=load_id,
+        document_id=str(document_id),
+        load_id=str(load_id),
     )
 
     return ApiResponse(

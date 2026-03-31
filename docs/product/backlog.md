@@ -6,21 +6,21 @@ This backlog captures all known and anticipated work for Freight Back Office OS.
 
 It includes:
 
-- features
-- improvements
-- technical debt
-- future ideas
+- Features
+- Improvements
+- Technical debt
+- Future ideas
 
 Items are grouped by priority and phase.
 
 ---
 
-## Priority levels
+## Priority Levels
 
-- P0 → Critical (must have for V1 validation)
-- P1 → High (needed soon after V1)
-- P2 → Medium (important but not urgent)
-- P3 → Low (future or nice-to-have)
+- **P0** → Critical (must have for V1 validation)
+- **P1** → High (needed soon after V1)
+- **P2** → Medium (important but not urgent)
+- **P3** → Low (future or nice to have)
 
 ---
 
@@ -28,11 +28,11 @@ Items are grouped by priority and phase.
 
 These are required to make the system usable with real paperwork.
 
-### Core workflow
+### Core Workflow
 
-- [ ] Upload real documents (rate con, BOL, invoice)
+- [ ] Upload real documents (rate confirmation, BOL, invoice)
 - [ ] Link documents to loads correctly
-- [ ] Ensure load lifecycle works end-to-end
+- [ ] Ensure load lifecycle works end to end
 - [ ] Ensure workflow transitions are correct
 
 ---
@@ -40,8 +40,8 @@ These are required to make the system usable with real paperwork.
 ### Extraction
 
 - [ ] Identify real fields from actual documents
-- [ ] Improve extraction_service based on real samples
-- [ ] Handle missing/unclear fields gracefully
+- [ ] Improve `extraction_service` based on real samples
+- [ ] Handle missing or unclear fields gracefully
 
 ---
 
@@ -49,15 +49,15 @@ These are required to make the system usable with real paperwork.
 
 - [ ] Ensure validation rules match real-world issues
 - [ ] Add missing rules discovered during testing
-- [ ] Ensure blocking vs non-blocking logic is correct
+- [ ] Ensure blocking vs. non-blocking logic is correct
 
 ---
 
-### Review flow
+### Review Flow
 
-- [ ] Review queue shows real issues clearly
-- [ ] Ability to correct extracted fields
-- [ ] Ability to resolve validation issues
+- [ ] Ensure review queue shows real issues clearly
+- [ ] Add ability to correct extracted fields
+- [ ] Add ability to resolve validation issues
 
 ---
 
@@ -69,13 +69,13 @@ These are required to make the system usable with real paperwork.
 
 ---
 
-## P1 — High priority
+## P1 — High Priority
 
 These improve usability and reduce manual effort.
 
 ### Automation
 
-- [ ] Auto-classify documents more accurately
+- [ ] Improve document auto-classification accuracy
 - [ ] Auto-link documents to loads
 - [ ] Improve load matching logic
 
@@ -83,8 +83,8 @@ These improve usability and reduce manual effort.
 
 ### Notifications
 
-- [ ] Notify driver when document missing
-- [ ] Notify when load is ready
+- [ ] Notify driver when a document is missing
+- [ ] Notify when a load is ready
 - [ ] Notify on validation issues
 
 ---
@@ -97,16 +97,16 @@ These improve usability and reduce manual effort.
 
 ---
 
-### UI (basic)
+### UI (Basic)
 
-- [ ] Load list page
-- [ ] Load detail page
-- [ ] Review queue UI
-- [ ] Document viewer
+- [ ] Complete load list page
+- [ ] Complete load detail page
+- [ ] Complete review queue UI
+- [ ] Complete document viewer
 
 ---
 
-## P2 — Medium priority
+## P2 — Medium Priority
 
 These support scaling and better operations.
 
@@ -120,10 +120,10 @@ These support scaling and better operations.
 
 ### Reporting
 
-- [ ] Basic dashboard metrics
-- [ ] Load counts
-- [ ] billing totals
-- [ ] processing time
+- [ ] Add basic dashboard metrics
+- [ ] Add load counts
+- [ ] Add billing totals
+- [ ] Add processing time metrics
 
 ---
 
@@ -135,7 +135,7 @@ These support scaling and better operations.
 
 ---
 
-### API improvements
+### API Improvements
 
 - [ ] Add filtering and search
 - [ ] Improve pagination
@@ -143,7 +143,7 @@ These support scaling and better operations.
 
 ---
 
-## P3 — Low priority / Future
+## P3 — Low Priority / Future
 
 These are long-term improvements.
 
@@ -155,69 +155,69 @@ These are long-term improvements.
 
 ---
 
-### Billing advanced
+### Billing Advanced
 
-- [ ] Discounts and coupons
-- [ ] Tax calculation
-- [ ] multi-currency support
-- [ ] refund handling
+- [ ] Add discounts and coupons
+- [ ] Add tax calculation
+- [ ] Add multi-currency support
+- [ ] Add refund handling
 
 ---
 
 ### Platform
 
-- [ ] multi-tenant isolation improvements
-- [ ] role-based access control
-- [ ] API rate limiting
+- [ ] Improve multi-tenant isolation
+- [ ] Add role-based access control
+- [ ] Add API rate limiting
 
 ---
 
 ### Integrations
 
-- [ ] Stripe integration
-- [ ] QuickBooks integration
-- [ ] factoring systems
+- [ ] Add Stripe integration
+- [ ] Add QuickBooks integration
+- [ ] Add factoring system integrations
 
 ---
 
-## Tech debt
+## Tech Debt
 
-- [ ] clean up placeholder services
-- [ ] refactor duplicated logic
-- [ ] improve logging consistency
-- [ ] improve error handling
-- [ ] improve test coverage
-
----
-
-## Ideas / future exploration
-
-- [ ] driver mobile experience
-- [ ] AI assistant for support
-- [ ] automatic load reconciliation
-- [ ] predictive billing insights
+- [ ] Clean up placeholder services
+- [ ] Refactor duplicated logic
+- [ ] Improve logging consistency
+- [ ] Improve error handling
+- [ ] Improve test coverage
 
 ---
 
-## Backlog usage
+## Ideas / Future Exploration
+
+- [ ] Improve driver mobile experience
+- [ ] Add AI assistant for support
+- [ ] Add automatic load reconciliation
+- [ ] Add predictive billing insights
+
+---
+
+## Backlog Usage
 
 This backlog should be:
 
-- reviewed weekly
-- updated after real workflow testing
-- refined based on actual pain points
+- Reviewed weekly
+- Updated after real workflow testing
+- Refined based on actual pain points
 
 ---
 
-## Key rule
+## Key Rule
 
-Do not blindly build from backlog.
+Do not blindly build from the backlog.
 
 Always prioritize based on:
 
-1. real workflow issues
-2. actual user pain
-3. operational bottlenecks
+1. Real workflow issues
+2. Actual user pain
+3. Operational bottlenecks
 
 ---
 
@@ -225,4 +225,4 @@ Always prioritize based on:
 
 The backlog is a living document that guides development.
 
-It evolves as the system is tested with real freight operations.
+It should evolve as the system is tested with real freight operations.

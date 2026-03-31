@@ -8,7 +8,7 @@ class UploadService:
     def ingest(self, payload: dict[str, Any]) -> dict[str, Any]:
         return {
             "accepted": True,
-            "channel": "manual",
+            "channel": "upload",
             "received_at": datetime.now(timezone.utc).isoformat(),
             "payload": payload,
         }

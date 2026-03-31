@@ -10,6 +10,10 @@ from app.domain.models.customer_account import CustomerAccount
 
 
 class CustomerAccountRepository:
+    DEFAULT_PAGE = 1
+    DEFAULT_PAGE_SIZE = 25
+    MAX_PAGE_SIZE = 500
+
     def __init__(self, db: Session) -> None:
         self.db = db
 
@@ -36,9 +40,12 @@ class CustomerAccountRepository:
         organization_id: uuid.UUID | None = None,
         status: CustomerAccountStatus | None = None,
         search: str | None = None,
-        page: int = 1,
-        page_size: int = 25,
+        page: int = DEFAULT_PAGE,
+        page_size: int = DEFAULT_PAGE_SIZE,
     ) -> tuple[list[CustomerAccount], int]:
+        normalized_page = max(page, 1)
+        normalized_page_size = min(max(page_size, 1), self.MAX_PAGE_SIZE)
+
         stmt = select(CustomerAccount)
         count_stmt: Select[tuple[int]] = select(func.count()).select_from(CustomerAccount)
 
@@ -64,11 +71,11 @@ class CustomerAccountRepository:
 
         total = self.db.scalar(count_stmt) or 0
 
-        offset = max(page - 1, 0) * page_size
+        offset = (normalized_page - 1) * normalized_page_size
         stmt = (
             stmt.order_by(CustomerAccount.created_at.desc())
             .offset(offset)
-            .limit(page_size)
+            .limit(normalized_page_size)
         )
 
         items = list(self.db.scalars(stmt).all())

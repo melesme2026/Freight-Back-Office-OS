@@ -2,20 +2,24 @@ const settingsSections = [
   {
     title: "Organization",
     description: "Manage organization profile, branding, and contact defaults.",
+    status: "Planned after V1",
   },
   {
     title: "Notifications",
     description: "Configure notification channels, templates, and reminder behavior.",
+    status: "Planned after V1",
   },
   {
     title: "Billing Preferences",
     description: "Set invoice defaults, billing contacts, and payment collection options.",
+    status: "Planned after V1",
   },
   {
     title: "Security",
     description: "Review authentication, API access, and future role-based controls.",
+    status: "Planned after V1",
   },
-];
+] as const;
 
 export default function SettingsPage() {
   return (
@@ -36,12 +40,14 @@ export default function SettingsPage() {
               key={section.title}
               className="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft"
             >
-              <h2 className="text-lg font-semibold text-slate-950">{section.title}</h2>
-              <p className="mt-2 text-sm leading-6 text-slate-600">{section.description}</p>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <h2 className="text-lg font-semibold text-slate-950">{section.title}</h2>
+                <span className="inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+                  {section.status}
+                </span>
+              </div>
 
-              <button className="mt-5 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100">
-                Open {section.title}
-              </button>
+              <p className="mt-2 text-sm leading-6 text-slate-600">{section.description}</p>
             </div>
           ))}
         </section>

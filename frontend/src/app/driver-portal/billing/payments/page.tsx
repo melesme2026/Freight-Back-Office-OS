@@ -1,42 +1,23 @@
-const payments = [
+const paymentSections = [
   {
-    id: "pay-1001",
-    invoiceNumber: "INV-1001",
-    provider: "manual",
-    status: "succeeded",
-    amount: "$200.00",
-    attemptedAt: "2026-03-23 09:15 AM",
+    title: "Payment History",
+    description:
+      "Driver-facing payment history will appear here once the driver portal billing API is wired to live payment records.",
+    status: "Planned after V1",
   },
   {
-    id: "pay-1002",
-    invoiceNumber: "INV-1002",
-    provider: "stripe",
-    status: "succeeded",
-    amount: "$299.00",
-    attemptedAt: "2026-03-21 01:40 PM",
+    title: "Payment Attempts",
+    description:
+      "Recorded payment attempts, retry outcomes, and applied invoice references will be shown here when live payment data is available.",
+    status: "Planned after V1",
   },
   {
-    id: "pay-1003",
-    invoiceNumber: "INV-1003",
-    provider: "stripe",
-    status: "failed",
-    amount: "$180.00",
-    attemptedAt: "2026-03-22 11:10 AM",
+    title: "Provider Status",
+    description:
+      "Provider details and succeeded, failed, or pending payment states should only be shown after release-safe billing integration is complete.",
+    status: "Planned after V1",
   },
-];
-
-function statusBadge(status: string) {
-  switch (status) {
-    case "succeeded":
-      return "bg-emerald-100 text-emerald-800";
-    case "failed":
-      return "bg-rose-100 text-rose-800";
-    case "pending":
-      return "bg-amber-100 text-amber-800";
-    default:
-      return "bg-slate-100 text-slate-700";
-  }
-}
+] as const;
 
 export default function DriverBillingPaymentsPage() {
   return (
@@ -48,46 +29,36 @@ export default function DriverBillingPaymentsPage() {
           </p>
           <h1 className="text-3xl font-bold tracking-tight text-slate-950">Payments</h1>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-            Review recorded payment attempts, statuses, and the invoices they were applied to.
+            Payment visibility in the driver portal is intentionally lightweight in V1 to avoid
+            showing hardcoded payment activity or unsupported transaction state.
           </p>
         </div>
 
-        <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-soft">
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-slate-200 text-sm">
-              <thead className="bg-slate-50">
-                <tr className="text-left text-slate-600">
-                  <th className="px-5 py-4 font-semibold">Payment</th>
-                  <th className="px-5 py-4 font-semibold">Invoice</th>
-                  <th className="px-5 py-4 font-semibold">Provider</th>
-                  <th className="px-5 py-4 font-semibold">Status</th>
-                  <th className="px-5 py-4 font-semibold">Amount</th>
-                  <th className="px-5 py-4 font-semibold">Attempted At</th>
-                </tr>
-              </thead>
+        <section className="grid gap-5 md:grid-cols-3">
+          {paymentSections.map((section) => (
+            <div
+              key={section.title}
+              className="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft"
+            >
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <h2 className="text-lg font-semibold text-slate-950">{section.title}</h2>
+                <span className="inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+                  {section.status}
+                </span>
+              </div>
 
-              <tbody className="divide-y divide-slate-100">
-                {payments.map((payment) => (
-                  <tr key={payment.id} className="hover:bg-slate-50">
-                    <td className="px-5 py-4">
-                      <div className="font-semibold text-slate-900">{payment.id}</div>
-                    </td>
-                    <td className="px-5 py-4 text-slate-700">{payment.invoiceNumber}</td>
-                    <td className="px-5 py-4 text-slate-700">{payment.provider}</td>
-                    <td className="px-5 py-4">
-                      <span
-                        className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${statusBadge(payment.status)}`}
-                      >
-                        {payment.status}
-                      </span>
-                    </td>
-                    <td className="px-5 py-4 font-medium text-slate-900">{payment.amount}</td>
-                    <td className="px-5 py-4 text-slate-700">{payment.attemptedAt}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+              <p className="mt-2 text-sm leading-6 text-slate-600">{section.description}</p>
+            </div>
+          ))}
+        </section>
+
+        <section className="mt-8 rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
+          <h2 className="text-lg font-semibold text-slate-950">V1 note</h2>
+          <p className="mt-2 text-sm leading-6 text-slate-600">
+            Live payment IDs, provider names, attempt timestamps, and transaction outcomes should
+            only be shown after the driver portal is connected to real billing endpoints with proper
+            session-scoped access control and response normalization.
+          </p>
         </section>
       </div>
     </main>

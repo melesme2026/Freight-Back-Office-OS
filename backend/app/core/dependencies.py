@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Generator
+from typing import Annotated
 
 from fastapi import Depends
 from sqlalchemy.orm import Session
@@ -13,8 +13,7 @@ def get_app_settings() -> Settings:
     return get_settings()
 
 
-def get_db_session(db: Session = Depends(get_db)) -> Generator[Session, None, None]:
-    try:
-        yield db
-    finally:
-        pass
+def get_db_session(
+    db: Annotated[Session, Depends(get_db)],
+) -> Session:
+    return db

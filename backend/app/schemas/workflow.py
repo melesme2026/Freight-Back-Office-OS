@@ -53,7 +53,7 @@ class WorkflowEventResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     data: WorkflowEventRead
-    meta: dict[str, Any] = {}
+    meta: dict[str, Any] = Field(default_factory=dict)
     error: ApiError | None = None
 
 
@@ -61,7 +61,7 @@ class WorkflowTimelineResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     data: list[WorkflowEventRead]
-    meta: dict[str, Any] = {}
+    meta: dict[str, Any] = Field(default_factory=dict)
     error: ApiError | None = None
 
 
@@ -69,5 +69,5 @@ class WorkflowStatusTransitionResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     data: WorkflowStatusTransitionData
-    meta: dict[str, Any] = {}
+    meta: dict[str, Any] = Field(default_factory=dict)
     error: ApiError | None = None

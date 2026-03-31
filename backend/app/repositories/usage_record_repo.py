@@ -10,6 +10,10 @@ from app.domain.models.usage_record import UsageRecord
 
 
 class UsageRecordRepository:
+    DEFAULT_PAGE = 1
+    DEFAULT_PAGE_SIZE = 100
+    MAX_PAGE_SIZE = 500
+
     def __init__(self, db: Session) -> None:
         self.db = db
 
@@ -20,10 +24,15 @@ class UsageRecordRepository:
         return usage_record
 
     def create_many(self, usage_records: list[UsageRecord]) -> list[UsageRecord]:
+        if not usage_records:
+            return []
+
         self.db.add_all(usage_records)
         self.db.flush()
+
         for item in usage_records:
             self.db.refresh(item)
+
         return usage_records
 
     def get_by_id(self, usage_record_id: uuid.UUID) -> UsageRecord | None:
@@ -41,9 +50,12 @@ class UsageRecordRepository:
         usage_type: str | None = None,
         usage_date_from: date | None = None,
         usage_date_to: date | None = None,
-        page: int = 1,
-        page_size: int = 100,
+        page: int = DEFAULT_PAGE,
+        page_size: int = DEFAULT_PAGE_SIZE,
     ) -> tuple[list[UsageRecord], int]:
+        normalized_page = max(page, 1)
+        normalized_page_size = min(max(page_size, 1), self.MAX_PAGE_SIZE)
+
         stmt = select(UsageRecord)
         count_stmt: Select[tuple[int]] = select(func.count()).select_from(UsageRecord)
 
@@ -83,11 +95,11 @@ class UsageRecordRepository:
 
         total = self.db.scalar(count_stmt) or 0
 
-        offset = max(page - 1, 0) * page_size
+        offset = (normalized_page - 1) * normalized_page_size
         stmt = (
             stmt.order_by(UsageRecord.usage_date.desc(), UsageRecord.created_at.desc())
             .offset(offset)
-            .limit(page_size)
+            .limit(normalized_page_size)
         )
 
         items = list(self.db.scalars(stmt).all())

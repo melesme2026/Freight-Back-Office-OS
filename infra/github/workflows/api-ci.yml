@@ -5,12 +5,12 @@ on:
     paths:
       - "backend/**"
       - "pyproject.toml"
-      - ".github/workflows/api-ci.yml"
+      - "infra/github/workflows/api-ci.yml"
   pull_request:
     paths:
       - "backend/**"
       - "pyproject.toml"
-      - ".github/workflows/api-ci.yml"
+      - "infra/github/workflows/api-ci.yml"
 
 jobs:
   test-api:

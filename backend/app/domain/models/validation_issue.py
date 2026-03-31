@@ -4,7 +4,8 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String, Text
+from sqlalchemy import Boolean, DateTime, Enum as SqlEnum
+from sqlalchemy import ForeignKey, Index, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -48,7 +49,13 @@ class ValidationIssue(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     rule_code: Mapped[str] = mapped_column(String(100), nullable=False)
     severity: Mapped[ValidationSeverity] = mapped_column(
-        String(50),
+        SqlEnum(
+            ValidationSeverity,
+            name="validation_severity",
+            native_enum=False,
+            validate_strings=True,
+            values_callable=lambda enum_cls: [member.value for member in enum_cls],
+        ),
         nullable=False,
     )
     title: Mapped[str] = mapped_column(String(255), nullable=False)

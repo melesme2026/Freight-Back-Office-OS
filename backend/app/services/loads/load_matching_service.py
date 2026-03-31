@@ -21,6 +21,21 @@ class LoadMatchingService:
         rate_confirmation_number: str | None = None,
         bol_number: str | None = None,
     ) -> list[dict[str, Any]]:
+        normalized_invoice_number = self._normalize_match_value(invoice_number)
+        normalized_load_number = self._normalize_match_value(load_number)
+        normalized_rate_confirmation_number = self._normalize_match_value(rate_confirmation_number)
+        normalized_bol_number = self._normalize_match_value(bol_number)
+
+        if not any(
+            [
+                normalized_invoice_number,
+                normalized_load_number,
+                normalized_rate_confirmation_number,
+                normalized_bol_number,
+            ]
+        ):
+            return []
+
         candidates: list[dict[str, Any]] = []
 
         page = 1
@@ -36,19 +51,29 @@ class LoadMatchingService:
             score = 0
             reasons: list[str] = []
 
-            if invoice_number and load.invoice_number == invoice_number:
+            load_invoice_number = self._normalize_match_value(load.invoice_number)
+            load_load_number = self._normalize_match_value(load.load_number)
+            load_rate_confirmation_number = self._normalize_match_value(
+                load.rate_confirmation_number
+            )
+            load_bol_number = self._normalize_match_value(load.bol_number)
+
+            if normalized_invoice_number and load_invoice_number == normalized_invoice_number:
                 score += 100
                 reasons.append("invoice_number")
 
-            if load_number and load.load_number == load_number:
+            if normalized_load_number and load_load_number == normalized_load_number:
                 score += 80
                 reasons.append("load_number")
 
-            if rate_confirmation_number and load.rate_confirmation_number == rate_confirmation_number:
+            if (
+                normalized_rate_confirmation_number
+                and load_rate_confirmation_number == normalized_rate_confirmation_number
+            ):
                 score += 70
                 reasons.append("rate_confirmation_number")
 
-            if bol_number and load.bol_number == bol_number:
+            if normalized_bol_number and load_bol_number == normalized_bol_number:
                 score += 60
                 reasons.append("bol_number")
 
@@ -85,3 +110,11 @@ class LoadMatchingService:
             return None
 
         return candidates[0]
+
+    @staticmethod
+    def _normalize_match_value(value: Any) -> str | None:
+        if value is None:
+            return None
+
+        normalized = str(value).strip().lower()
+        return normalized or None

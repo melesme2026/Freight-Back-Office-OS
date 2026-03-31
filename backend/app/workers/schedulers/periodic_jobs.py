@@ -6,6 +6,7 @@ from app.workers.celery_app import celery_app
 
 
 celery_app.conf.beat_schedule = {
+    **(celery_app.conf.beat_schedule or {}),
     "generate-recurring-invoices-daily": {
         "task": "app.workers.tasks.generate_recurring_invoices",
         "schedule": crontab(hour=1, minute=0),

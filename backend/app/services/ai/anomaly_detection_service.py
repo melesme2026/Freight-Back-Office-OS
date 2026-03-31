@@ -1,10 +1,22 @@
 from __future__ import annotations
 
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 
 class AnomalyDetectionService:
+    LOW_CONFIDENCE_THRESHOLD = Decimal("0.70")
+
+    @staticmethod
+    def _to_decimal(value: Any) -> Decimal | None:
+        if value is None:
+            return None
+
+        try:
+            return Decimal(str(value))
+        except (InvalidOperation, ValueError, TypeError):
+            return None
+
     def analyze(
         self,
         *,
@@ -12,7 +24,11 @@ class AnomalyDetectionService:
     ) -> dict[str, Any]:
         issues: list[dict[str, Any]] = []
 
-        field_names = {item.get("field_name") for item in extracted_fields}
+        field_names = {
+            item.get("field_name")
+            for item in extracted_fields
+            if item.get("field_name")
+        }
 
         if "document_type" not in field_names:
             issues.append(
@@ -24,18 +40,18 @@ class AnomalyDetectionService:
             )
 
         confidence_values: list[Decimal] = []
-        for item in extracted_fields:
-            raw_confidence = item.get("confidence_score")
-            if raw_confidence is None:
-                continue
-            confidence_values.append(Decimal(str(raw_confidence)))
+        low_confidence_fields: list[str] = []
 
-        low_confidence_fields = [
-            item.get("field_name")
-            for item in extracted_fields
-            if item.get("confidence_score") is not None
-            and Decimal(str(item["confidence_score"])) < Decimal("0.70")
-        ]
+        for item in extracted_fields:
+            confidence = self._to_decimal(item.get("confidence_score"))
+            if confidence is None:
+                continue
+
+            confidence_values.append(confidence)
+
+            field_name = item.get("field_name")
+            if confidence < self.LOW_CONFIDENCE_THRESHOLD and field_name:
+                low_confidence_fields.append(field_name)
 
         if low_confidence_fields:
             issues.append(

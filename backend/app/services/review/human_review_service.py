@@ -27,12 +27,12 @@ class HumanReviewService:
         field_value_number: Any = None,
         field_value_date: Any = None,
         field_value_json: dict[str, Any] | list[Any] | None = None,
-    ):
+    ) -> Any:
         extracted_field = self.extracted_field_repo.get_by_id(field_id)
         if extracted_field is None:
             raise NotFoundError("Extracted field not found", details={"field_id": field_id})
 
-        extracted_field.field_value_text = field_value_text
+        extracted_field.field_value_text = self._clean_text(field_value_text)
         extracted_field.field_value_number = field_value_number
         extracted_field.field_value_date = field_value_date
         extracted_field.field_value_json = field_value_json
@@ -48,7 +48,7 @@ class HumanReviewService:
         issue_id: str,
         staff_user_id: str,
         resolution_notes: str | None = None,
-    ):
+    ) -> Any:
         issue = self.validation_repo.get_by_id(issue_id)
         if issue is None:
             raise NotFoundError("Validation issue not found", details={"issue_id": issue_id})
@@ -56,7 +56,7 @@ class HumanReviewService:
         issue.is_resolved = True
         issue.resolved_by_staff_user_id = staff_user_id
         issue.resolved_at = datetime.now(timezone.utc)
-        issue.resolution_notes = resolution_notes
+        issue.resolution_notes = self._clean_text(resolution_notes)
 
         return self.validation_repo.update(issue)
 
@@ -65,7 +65,7 @@ class HumanReviewService:
         *,
         load_id: str,
         staff_user_id: str,
-    ):
+    ) -> Any:
         load = self.load_repo.get_by_id(load_id)
         if load is None:
             raise NotFoundError("Load not found", details={"load_id": load_id})
@@ -74,3 +74,11 @@ class HumanReviewService:
         load.last_reviewed_at = datetime.now(timezone.utc)
 
         return self.load_repo.update(load)
+
+    @staticmethod
+    def _clean_text(value: str | None) -> str | None:
+        if value is None:
+            return None
+
+        cleaned = str(value).strip()
+        return cleaned or None

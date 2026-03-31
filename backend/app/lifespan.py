@@ -6,14 +6,15 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from app.core.config import get_settings
+from app.core.database import init_db
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings = get_settings()
 
-    # Ensure required runtime directories exist before serving requests.
     settings.ensure_runtime_directories()
+    init_db(import_models=True)
 
     try:
         yield

@@ -9,14 +9,12 @@ from app.domain.enums.invoice_status import InvoiceStatus
 from app.domain.models.billing_invoice import BillingInvoice
 from app.domain.models.billing_invoice_line import BillingInvoiceLine
 from app.repositories.billing_invoice_repo import BillingInvoiceRepository
-from app.repositories.subscription_repo import SubscriptionRepository
 
 
 class InvoiceService:
     def __init__(self, db: Session) -> None:
         self.db = db
         self.billing_invoice_repo = BillingInvoiceRepository(db)
-        self.subscription_repo = SubscriptionRepository(db)
 
     def create_invoice(
         self,
@@ -59,8 +57,9 @@ class InvoiceService:
                 )
             )
 
+        subtotal_amount = subtotal_amount.quantize(Decimal("0.01"))
         tax_amount = Decimal("0.00")
-        total_amount = subtotal_amount + tax_amount
+        total_amount = (subtotal_amount + tax_amount).quantize(Decimal("0.01"))
         amount_paid = Decimal("0.00")
         amount_due = total_amount
 
@@ -136,8 +135,12 @@ class InvoiceService:
         paid_at=None,
     ) -> BillingInvoice:
         invoice = self.get_invoice(invoice_id)
-        invoice.amount_paid = (Decimal(invoice.amount_paid) + amount).quantize(Decimal("0.01"))
-        invoice.amount_due = (Decimal(invoice.total_amount) - Decimal(invoice.amount_paid)).quantize(
+
+        payment_amount = Decimal(str(amount)).quantize(Decimal("0.01"))
+        invoice.amount_paid = (Decimal(str(invoice.amount_paid)) + payment_amount).quantize(
+            Decimal("0.01")
+        )
+        invoice.amount_due = (Decimal(str(invoice.total_amount)) - invoice.amount_paid).quantize(
             Decimal("0.01")
         )
 
@@ -152,7 +155,7 @@ class InvoiceService:
 
     def mark_past_due(self, *, invoice_id: str) -> BillingInvoice:
         invoice = self.get_invoice(invoice_id)
-        if invoice.status != InvoiceStatus.PAID:
+        if invoice.status == InvoiceStatus.OPEN:
             invoice.status = InvoiceStatus.PAST_DUE
         return self.billing_invoice_repo.update(invoice)
 
@@ -171,6 +174,7 @@ class InvoiceService:
         )
         invoice.amount_paid = Decimal(str(invoice.amount_paid or "0.00")).quantize(Decimal("0.01"))
         invoice.amount_due = (invoice.total_amount - invoice.amount_paid).quantize(Decimal("0.01"))
+
         if invoice.amount_due < Decimal("0.00"):
             invoice.amount_due = Decimal("0.00")
 

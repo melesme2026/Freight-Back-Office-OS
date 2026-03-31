@@ -1,7 +1,6 @@
-# create_project_structure.ps1
 $ErrorActionPreference = "Stop"
 
-$Root = "C:\development\Freight-Back-Office-OS"
+$Root = "C:\Development\Freight-Back-Office-OS"
 
 $directories = @(
     "$Root\docs\architecture",
@@ -52,27 +51,36 @@ $directories = @(
     "$Root\backend\tests\fixtures\payloads",
 
     "$Root\frontend\public",
+    "$Root\frontend\src\app",
+    "$Root\frontend\src\app\(auth)",
     "$Root\frontend\src\app\(auth)\login",
+    "$Root\frontend\src\app\dashboard",
+    "$Root\frontend\src\app\dashboard\loads",
     "$Root\frontend\src\app\dashboard\loads\[loadId]",
+    "$Root\frontend\src\app\dashboard\drivers",
     "$Root\frontend\src\app\dashboard\drivers\[driverId]",
     "$Root\frontend\src\app\dashboard\review-queue",
     "$Root\frontend\src\app\dashboard\documents\[documentId]",
     "$Root\frontend\src\app\dashboard\notifications",
     "$Root\frontend\src\app\dashboard\onboarding",
+    "$Root\frontend\src\app\dashboard\customers",
     "$Root\frontend\src\app\dashboard\customers\[customerId]",
+    "$Root\frontend\src\app\dashboard\billing",
     "$Root\frontend\src\app\dashboard\billing\plans",
     "$Root\frontend\src\app\dashboard\billing\subscriptions",
+    "$Root\frontend\src\app\dashboard\billing\invoices",
     "$Root\frontend\src\app\dashboard\billing\invoices\[invoiceId]",
     "$Root\frontend\src\app\dashboard\billing\payments",
     "$Root\frontend\src\app\dashboard\support",
     "$Root\frontend\src\app\dashboard\settings",
-
+    "$Root\frontend\src\app\driver-portal",
     "$Root\frontend\src\app\driver-portal\uploads",
     "$Root\frontend\src\app\driver-portal\loads",
+    "$Root\frontend\src\app\driver-portal\billing",
     "$Root\frontend\src\app\driver-portal\billing\invoices",
     "$Root\frontend\src\app\driver-portal\billing\payments",
     "$Root\frontend\src\app\driver-portal\support",
-
+    "$Root\frontend\src\app\api",
     "$Root\frontend\src\app\api\health",
 
     "$Root\frontend\src\components\layout",
@@ -93,6 +101,7 @@ $directories = @(
     "$Root\frontend\src\types",
     "$Root\frontend\src\styles",
 
+    "$Root\shared\contracts",
     "$Root\shared\contracts\api-schemas",
     "$Root\shared\samples",
 
@@ -110,7 +119,6 @@ $files = @(
     "$Root\docker-compose.yml",
     "$Root\Makefile",
     "$Root\pyproject.toml",
-    "$Root\package.json",
 
     "$Root\docs\architecture\system-overview.md",
     "$Root\docs\architecture\domain-model.md",
@@ -414,6 +422,8 @@ $files = @(
     "$Root\backend\tests\integration\test_invoice_generation.py",
     "$Root\backend\tests\integration\test_payment_webhook.py",
 
+    "$Root\frontend\package.json",
+    "$Root\frontend\next-env.d.ts",
     "$Root\frontend\next.config.ts",
     "$Root\frontend\tsconfig.json",
     "$Root\frontend\postcss.config.js",
@@ -457,12 +467,15 @@ $files = @(
     "$Root\frontend\src\app\layout.tsx",
     "$Root\frontend\src\app\page.tsx",
 
+    "$Root\frontend\src\components\layout\AppShell.tsx",
+
     "$Root\frontend\src\lib\api-client.ts",
     "$Root\frontend\src\lib\auth.ts",
     "$Root\frontend\src\lib\config.ts",
     "$Root\frontend\src\lib\formatters.ts",
     "$Root\frontend\src\lib\validators.ts",
     "$Root\frontend\src\lib\billing.ts",
+    "$Root\frontend\src\lib\dashboard.ts",
 
     "$Root\frontend\src\hooks\useLoads.ts",
     "$Root\frontend\src\hooks\useDrivers.ts",

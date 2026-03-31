@@ -7,11 +7,15 @@ class MissingSignatureRule:
     rule_code = "missing_signature"
 
     def evaluate(self, *, payload: dict[str, Any]) -> list[dict[str, Any]]:
-        document_type = str(payload.get("document_type", "")).lower()
+        document_type = self._normalize_text(payload.get("document_type"))
         extracted_fields = payload.get("extracted_fields", [])
 
         signature_field = next(
-            (item for item in extracted_fields if item.get("field_name") == "signature_present"),
+            (
+                item
+                for item in extracted_fields
+                if self._normalize_text(item.get("field_name")) == "signature_present"
+            ),
             None,
         )
 
@@ -29,8 +33,8 @@ class MissingSignatureRule:
                 }
             ]
 
-        value = str(signature_field.get("field_value_text") or "").strip().lower()
-        if value in {"true", "yes", "present", "signed"}:
+        value = self._normalize_text(signature_field.get("field_value_text"))
+        if value in {"true", "yes", "present", "signed", "1"}:
             return []
 
         return [
@@ -42,3 +46,7 @@ class MissingSignatureRule:
                 "is_blocking": True,
             }
         ]
+
+    @staticmethod
+    def _normalize_text(value: Any) -> str:
+        return str(value or "").strip().lower()

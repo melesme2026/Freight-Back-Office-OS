@@ -14,7 +14,7 @@ const navItems = [
   { href: "/dashboard/customers", label: "Customers" },
   { href: "/dashboard/billing", label: "Billing" },
   { href: "/dashboard/support", label: "Support" },
-];
+] as const;
 
 export function AppShell({ title, subtitle, children }: AppShellProps) {
   return (

@@ -4,7 +4,8 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String
+from sqlalchemy import Boolean, DateTime, Enum as SqlEnum
+from sqlalchemy import ForeignKey, Index, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -14,9 +15,9 @@ from app.domain.models.organization import TimestampMixin, UUIDPrimaryKeyMixin
 
 
 if TYPE_CHECKING:
-    from app.domain.models.organization import Organization
     from app.domain.models.load import Load
     from app.domain.models.notification import Notification
+    from app.domain.models.organization import Organization
     from app.domain.models.payment import Payment
     from app.domain.models.support_ticket import SupportTicket
     from app.domain.models.validation_issue import ValidationIssue
@@ -41,9 +42,16 @@ class StaffUser(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     full_name: Mapped[str] = mapped_column(String(255), nullable=False)
     password_hash: Mapped[str] = mapped_column(String, nullable=False)
     role: Mapped[Role] = mapped_column(
-        String(50),
+        SqlEnum(
+            Role,
+            name="role",
+            native_enum=False,
+            validate_strings=True,
+            values_callable=lambda enum_cls: [member.value for member in enum_cls],
+        ),
         nullable=False,
         default=Role.OPS_AGENT,
+        server_default=Role.OPS_AGENT.value,
     )
     is_active: Mapped[bool] = mapped_column(
         Boolean,

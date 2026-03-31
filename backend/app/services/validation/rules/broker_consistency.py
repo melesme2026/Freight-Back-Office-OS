@@ -7,17 +7,21 @@ class BrokerConsistencyRule:
     rule_code = "broker_consistency"
 
     def evaluate(self, *, payload: dict[str, Any]) -> list[dict[str, Any]]:
-        broker_name_raw = str(payload.get("broker_name_raw") or "").strip().lower()
-        broker_email_raw = str(payload.get("broker_email_raw") or "").strip().lower()
+        broker_name_raw = self._normalize_text(payload.get("broker_name_raw"))
+        broker_email_raw = self._normalize_text(payload.get("broker_email_raw"))
         extracted_fields = payload.get("extracted_fields", [])
 
-        extracted_broker_name = self._get_text_field(extracted_fields, "broker_name")
-        extracted_broker_email = self._get_text_field(extracted_fields, "broker_email")
+        extracted_broker_name = self._normalize_text(
+            self._get_text_field(extracted_fields, "broker_name")
+        )
+        extracted_broker_email = self._normalize_text(
+            self._get_text_field(extracted_fields, "broker_email")
+        )
 
         issues: list[dict[str, Any]] = []
 
         if broker_name_raw and extracted_broker_name:
-            if broker_name_raw != extracted_broker_name.strip().lower():
+            if broker_name_raw != extracted_broker_name:
                 issues.append(
                     {
                         "rule_code": self.rule_code,
@@ -32,7 +36,7 @@ class BrokerConsistencyRule:
                 )
 
         if broker_email_raw and extracted_broker_email:
-            if broker_email_raw != extracted_broker_email.strip().lower():
+            if broker_email_raw != extracted_broker_email:
                 issues.append(
                     {
                         "rule_code": self.rule_code,
@@ -59,3 +63,11 @@ class BrokerConsistencyRule:
                 if value:
                     return str(value)
         return None
+
+    @staticmethod
+    def _normalize_text(value: Any) -> str | None:
+        if value is None:
+            return None
+
+        normalized = str(value).strip().lower()
+        return normalized or None

@@ -5,7 +5,8 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Date, DateTime, ForeignKey, Index, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import Date, DateTime, Enum as SqlEnum
+from sqlalchemy import ForeignKey, Index, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -55,9 +56,16 @@ class BillingInvoice(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     invoice_number: Mapped[str] = mapped_column(String(100), nullable=False)
     status: Mapped[InvoiceStatus] = mapped_column(
-        String(50),
+        SqlEnum(
+            InvoiceStatus,
+            name="invoice_status",
+            native_enum=False,
+            validate_strings=True,
+            values_callable=lambda enum_cls: [member.value for member in enum_cls],
+        ),
         nullable=False,
         default=InvoiceStatus.DRAFT,
+        server_default=InvoiceStatus.DRAFT.value,
     )
     currency_code: Mapped[str] = mapped_column(String(3), nullable=False, default="USD")
 

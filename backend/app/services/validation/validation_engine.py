@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any, Protocol
 
+from app.core.exceptions import ValidationError
+
 
 class ValidationRule(Protocol):
     rule_code: str
@@ -21,7 +23,14 @@ class ValidationEngine:
         issues: list[dict[str, Any]] = []
 
         for rule in self.rules:
-            results = rule.evaluate(payload=payload)
+            try:
+                results = rule.evaluate(payload=payload)
+            except Exception as exc:
+                raise ValidationError(
+                    "Validation rule execution failed",
+                    details={"rule_code": getattr(rule, "rule_code", "unknown")},
+                ) from exc
+
             if results:
                 issues.extend(results)
 

@@ -9,8 +9,7 @@ if (Test-Path ".venv\Scripts\Activate.ps1") {
 
 $env:PYTHONPATH = "$root\backend"
 
-python - <<'PY'
-from datetime import datetime, timezone
+$pythonCode = @'
 from decimal import Decimal
 
 from app.core.database import SessionLocal
@@ -110,4 +109,6 @@ try:
     print("Seed data inserted successfully.")
 finally:
     db.close()
-PY
+'@
+
+$pythonCode | python -

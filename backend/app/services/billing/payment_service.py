@@ -9,7 +9,6 @@ from app.core.exceptions import BillingError, NotFoundError
 from app.domain.enums.payment_provider import PaymentProvider
 from app.domain.enums.payment_status import PaymentStatus
 from app.domain.models.payment import Payment
-from app.repositories.billing_invoice_repo import BillingInvoiceRepository
 from app.repositories.payment_method_repo import PaymentMethodRepository
 from app.repositories.payment_repo import PaymentRepository
 from app.services.billing.invoice_service import InvoiceService
@@ -20,7 +19,6 @@ class PaymentService:
         self.db = db
         self.payment_repo = PaymentRepository(db)
         self.payment_method_repo = PaymentMethodRepository(db)
-        self.billing_invoice_repo = BillingInvoiceRepository(db)
         self.invoice_service = InvoiceService(db)
 
     def collect_payment(
@@ -34,12 +32,9 @@ class PaymentService:
         driver_id: str | None = None,
         recorded_by_staff_user_id: str | None = None,
     ) -> Payment:
-        invoice = self.billing_invoice_repo.get_by_id(billing_invoice_id)
-        if invoice is None:
-            raise NotFoundError(
-                "Invoice not found",
-                details={"billing_invoice_id": billing_invoice_id},
-            )
+        normalized_amount = Decimal(str(amount))
+
+        invoice = self.invoice_service.get_invoice(billing_invoice_id)
 
         if Decimal(str(invoice.amount_due)) <= Decimal("0.00"):
             raise BillingError(
@@ -47,13 +42,13 @@ class PaymentService:
                 details={"billing_invoice_id": billing_invoice_id},
             )
 
-        if amount > Decimal(str(invoice.amount_due)):
+        if normalized_amount > Decimal(str(invoice.amount_due)):
             raise BillingError(
                 "Payment amount exceeds outstanding invoice amount",
                 details={
                     "billing_invoice_id": billing_invoice_id,
                     "amount_due": str(invoice.amount_due),
-                    "requested_amount": str(amount),
+                    "requested_amount": str(normalized_amount),
                 },
             )
 
@@ -81,7 +76,7 @@ class PaymentService:
             provider=provider,
             provider_payment_id=None,
             status=PaymentStatus.PROCESSING,
-            amount=amount,
+            amount=normalized_amount,
             currency_code=invoice.currency_code,
             attempted_at=now,
             succeeded_at=None,
@@ -97,7 +92,7 @@ class PaymentService:
 
         self.invoice_service.apply_payment(
             invoice_id=billing_invoice_id,
-            amount=amount,
+            amount=normalized_amount,
             paid_at=now,
         )
 

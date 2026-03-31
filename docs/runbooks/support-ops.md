@@ -1,5 +1,3 @@
-Paste this into:
-
 docs/runbooks/support-ops.md
 
 # Support Operations Runbook
@@ -272,8 +270,3 @@ Support operations are effective when:
 This runbook ensures structured and scalable support handling.
 
 ---
-
-## Next file (aligned with your structure)
-
-```text
-docs/runbooks/incident-response.md

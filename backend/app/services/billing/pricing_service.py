@@ -12,7 +12,7 @@ class PricingService:
         *,
         service_plan: ServicePlan,
     ) -> Decimal:
-        return Decimal(service_plan.base_price)
+        return Decimal(str(service_plan.base_price))
 
     def calculate_usage_price(
         self,
@@ -21,13 +21,25 @@ class PricingService:
         load_count: int = 0,
         driver_count: int = 0,
     ) -> Decimal:
+        if load_count < 0:
+            raise BillingError(
+                "Load count cannot be negative",
+                details={"load_count": load_count},
+            )
+
+        if driver_count < 0:
+            raise BillingError(
+                "Driver count cannot be negative",
+                details={"driver_count": driver_count},
+            )
+
         total = Decimal("0.00")
 
         if service_plan.per_load_price is not None:
-            total += Decimal(service_plan.per_load_price) * Decimal(load_count)
+            total += Decimal(str(service_plan.per_load_price)) * Decimal(load_count)
 
         if service_plan.per_driver_price is not None:
-            total += Decimal(service_plan.per_driver_price) * Decimal(driver_count)
+            total += Decimal(str(service_plan.per_driver_price)) * Decimal(driver_count)
 
         return total
 

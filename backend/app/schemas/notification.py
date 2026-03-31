@@ -74,7 +74,7 @@ class NotificationResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     data: NotificationRead
-    meta: dict[str, Any] = {}
+    meta: dict[str, Any] = Field(default_factory=dict)
     error: ApiError | None = None
 
 

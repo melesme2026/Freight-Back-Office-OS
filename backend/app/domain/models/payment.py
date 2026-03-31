@@ -5,13 +5,14 @@ from datetime import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import DateTime, ForeignKey, Index, Numeric, String, Text
+from sqlalchemy import DateTime, Enum as SqlEnum
+from sqlalchemy import ForeignKey, Index, Numeric, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
-from app.domain.enums.payment_status import PaymentStatus
 from app.domain.enums.payment_provider import PaymentProvider
+from app.domain.enums.payment_status import PaymentStatus
 from app.domain.models.organization import TimestampMixin, UUIDPrimaryKeyMixin
 
 
@@ -70,15 +71,29 @@ class Payment(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
 
     provider: Mapped[PaymentProvider] = mapped_column(
-        String(50),
+        SqlEnum(
+            PaymentProvider,
+            name="payment_provider",
+            native_enum=False,
+            validate_strings=True,
+            values_callable=lambda enum_cls: [member.value for member in enum_cls],
+        ),
         nullable=False,
         default=PaymentProvider.MANUAL,
+        server_default=PaymentProvider.MANUAL.value,
     )
     provider_payment_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     status: Mapped[PaymentStatus] = mapped_column(
-        String(50),
+        SqlEnum(
+            PaymentStatus,
+            name="payment_status",
+            native_enum=False,
+            validate_strings=True,
+            values_callable=lambda enum_cls: [member.value for member in enum_cls],
+        ),
         nullable=False,
         default=PaymentStatus.PENDING,
+        server_default=PaymentStatus.PENDING.value,
     )
 
     amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)

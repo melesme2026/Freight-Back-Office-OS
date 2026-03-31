@@ -4,19 +4,19 @@
     "organization_id": "00000000-0000-0000-0000-000000000001",
     "name": "Global Freight Brokers",
     "mc_number": "MC123456",
-    "contact_name": "Lisa Carter",
-    "contact_email": "lisa@globalfreight.com",
-    "contact_phone": "+13135550001",
-    "is_active": true
+    "email": "lisa@globalfreight.com",
+    "phone": "+13135550001",
+    "payment_terms_days": 30,
+    "notes": "Primary contact: Lisa Carter"
   },
   {
     "id": "30000000-0000-0000-0000-000000000002",
     "organization_id": "00000000-0000-0000-0000-000000000001",
     "name": "Summit Logistics Group",
     "mc_number": "MC654321",
-    "contact_name": "David Kim",
-    "contact_email": "david@summitlogistics.com",
-    "contact_phone": "+13135550002",
-    "is_active": true
+    "email": "david@summitlogistics.com",
+    "phone": "+13135550002",
+    "payment_terms_days": 30,
+    "notes": "Primary contact: David Kim"
   }
 ]

@@ -1,5 +1,3 @@
-docs/architecture/security-model.md
-
 # Security Model
 
 ## Purpose
@@ -8,14 +6,14 @@ This document defines the security model for Freight Back Office OS.
 
 It covers:
 
-- authentication
-- authorization direction
-- tenant isolation
-- API security
-- webhook security
-- file security
-- secrets handling
-- V1 security priorities
+* authentication
+* authorization direction
+* tenant isolation
+* API security
+* webhook security
+* file security
+* secrets handling
+* V1 security priorities
 
 ---
 
@@ -23,17 +21,16 @@ It covers:
 
 This platform handles sensitive operational and financial data such as:
 
-- driver contact information
-- customer account information
-- load and broker data
-- billing records
-- invoice and payment information
-- uploaded freight documents
+* driver contact information
+* customer account information
+* load and broker data
+* billing records
+* invoice and payment information
+* uploaded freight documents
 
 Even in V1, security must be treated as a core design concern.
 
-The goal is not perfect enterprise compliance on day one.  
-The goal is to build a secure foundation that can be hardened over time.
+The goal is not perfect enterprise compliance on day one. The goal is to build a secure foundation that can be hardened over time.
 
 ---
 
@@ -41,13 +38,13 @@ The goal is to build a secure foundation that can be hardened over time.
 
 The platform follows these principles:
 
-- least privilege
-- explicit access boundaries
-- secure defaults
-- tenant-aware data handling
-- no hardcoded secrets
-- auditability of sensitive actions
-- progressive hardening over time
+* least privilege
+* explicit access boundaries
+* secure defaults
+* tenant-aware data handling
+* no hardcoded secrets
+* auditability of sensitive actions
+* progressive hardening over time
 
 ---
 
@@ -74,27 +71,23 @@ Authentication determines who or what is calling the system.
 
 The project includes:
 
-- `auth_service.py`
-- `token_service.py`
-- password hashing
-- bearer token handling
-- staff user auth routes
-- API client model foundation
-
----
+* `auth_service.py`
+* `token_service.py`
+* password hashing
+* bearer token handling
+* staff user auth routes
+* API client model foundation
 
 ### Staff authentication
 
 Staff users authenticate using:
 
-- email
-- password
+* email
+* password
 
 Passwords must never be stored in plain text.
 
 Passwords should be stored as secure password hashes.
-
----
 
 ### Token-based access
 
@@ -104,416 +97,425 @@ Typical pattern:
 
 ```text
 Authorization: Bearer <token>
+```
 
 The token should identify:
-	•	user ID
-	•	organization ID
-	•	role
-	•	expiration
 
-⸻
+* user ID
+* organization ID
+* role
+* expiration
 
-API client authentication
+### API client authentication
 
-The ApiClient model exists for machine-to-machine access.
+The `ApiClient` model exists for machine-to-machine access.
 
 This is useful for:
-	•	external integrations
-	•	internal automation
-	•	system webhooks
-	•	partner APIs
+
+* external integrations
+* internal automation
+* system webhooks
+* partner APIs
 
 V1 may keep this simple, but the model should support API-key or token-based access later.
 
-⸻
+---
 
-2. Authorization
+## 2. Authorization
 
 Authorization determines what an authenticated actor is allowed to do.
 
-V1 status
+### V1 status
 
 V1 includes the structural foundation for roles, but full fine-grained RBAC is not expected to be complete yet.
 
 That is acceptable.
 
-⸻
-
-Role foundation
+### Role foundation
 
 The system includes a role enum and staff user role field.
 
 Examples of future roles:
-	•	admin
-	•	ops_agent
-	•	reviewer
-	•	finance_user
-	•	support_user
-	•	read_only_user
 
-⸻
+* `admin`
+* `ops_agent`
+* `reviewer`
+* `finance_user`
+* `support_user`
+* `read_only_user`
 
-Authorization direction
+### Authorization direction
 
 Eventually, authorization should control:
-	•	who can view or update loads
-	•	who can resolve validation issues
-	•	who can manage billing records
-	•	who can modify service plans
-	•	who can manage staff users
-	•	who can access support and audit data
 
-⸻
+* who can view or update loads
+* who can resolve validation issues
+* who can manage billing records
+* who can modify service plans
+* who can manage staff users
+* who can access support and audit data
 
-3. Tenant isolation
+---
+
+## 3. Tenant isolation
 
 Tenant isolation is one of the most important security boundaries in the system.
 
-Core rule
+### Core rule
 
-An organization must not be able to access another organization’s data.
+An organization must not be able to access another organization's data.
 
 This applies to:
-	•	customer accounts
-	•	drivers
-	•	brokers
-	•	loads
-	•	documents
-	•	invoices
-	•	payments
-	•	support tickets
-	•	audit logs
 
-⸻
+* customer accounts
+* drivers
+* brokers
+* loads
+* documents
+* invoices
+* payments
+* support tickets
+* audit logs
 
-Implementation pattern
+### Implementation pattern
 
-Most major records belong to an organization_id.
+Most major records belong to an `organization_id`.
 
 All repository and service logic should respect this boundary.
 
-⸻
-
-V1 requirement
+### V1 requirement
 
 Even if the system is initially used by one business, the code should still preserve tenant-aware design because the platform is intended to grow into multi-customer SaaS.
 
-⸻
+---
 
-4. Secrets handling
+## 4. Secrets handling
 
 Secrets must never be hardcoded into the codebase.
 
 Examples of secrets:
-	•	JWT secret keys
-	•	database credentials
-	•	Redis credentials
-	•	payment provider keys
-	•	webhook signing secrets
-	•	API client secrets
 
-⸻
+* JWT secret keys
+* database credentials
+* Redis credentials
+* payment provider keys
+* webhook signing secrets
+* API client secrets
 
-V1 rule
+### V1 rule
 
 Secrets should live in:
-	•	.env
-	•	environment variables
-	•	future secret manager integration
+
+* `.env`
+* environment variables
+* future secret manager integration
 
 Never commit live secrets to source control.
 
-⸻
+---
 
-5. Password security
+## 5. Password security
 
 Passwords must be:
-	•	hashed
-	•	salted
-	•	never logged
-	•	never returned in API responses
+
+* hashed
+* salted
+* never logged
+* never returned in API responses
 
 The backend should only store a password hash, not the original password.
 
-⸻
+---
 
-6. Webhook security
+## 6. Webhook security
 
 Webhook endpoints are external entry points and must be treated as sensitive.
 
 Current webhook endpoints include:
-	•	WhatsApp
-	•	email
-	•	payment
 
-⸻
+* WhatsApp
+* email
+* payment
 
-V1 acceptable baseline
+### V1 acceptable baseline
 
 In V1, basic payload validation and controlled routing are acceptable as a starting point.
 
-⸻
-
-Future hardening
+### Future hardening
 
 Webhook security should evolve to include:
-	•	signature verification
-	•	replay protection
-	•	source validation
-	•	rate limiting
-	•	idempotency tracking
 
-⸻
+* signature verification
+* replay protection
+* source validation
+* rate limiting
+* idempotency tracking
 
-7. File and document security
+---
+
+## 7. File and document security
 
 Uploaded documents are sensitive.
 
 Examples:
-	•	rate confirmations
-	•	BOLs
-	•	invoices
-	•	proofs of delivery
+
+* rate confirmations
+* bills of lading
+* invoices
+* proofs of delivery
 
 These may contain:
-	•	addresses
-	•	broker information
-	•	rates
-	•	customer details
-	•	signatures
 
-⸻
+* addresses
+* broker information
+* rates
+* customer details
+* signatures
 
-Required controls
+### Required controls
 
 At minimum, the system should:
-	•	restrict allowed file types
-	•	sanitize file names
-	•	store files in controlled locations
-	•	avoid exposing raw filesystem paths directly
-	•	avoid public access by default
 
-⸻
+* restrict allowed file types
+* sanitize file names
+* store files in controlled locations
+* avoid exposing raw filesystem paths directly
+* avoid public access by default
 
-Future controls
+### Future controls
 
 Later enhancements should include:
-	•	signed URL access
-	•	access-controlled download endpoints
-	•	malware scanning
-	•	file size restrictions
-	•	encryption at rest where applicable
 
-⸻
+* signed URL access
+* access-controlled download endpoints
+* malware scanning
+* file size restrictions
+* encryption at rest where applicable
 
-8. API security
+---
+
+## 8. API security
 
 The API is the operational control plane of the system.
 
 Security expectations include:
-	•	input validation
-	•	structured exception handling
-	•	no sensitive data leakage in errors
-	•	role-based enforcement later
-	•	organization-aware access patterns
-	•	secure auth flows
 
-⸻
+* input validation
+* structured exception handling
+* no sensitive data leakage in errors
+* role-based enforcement later
+* organization-aware access patterns
+* secure authentication flows
 
-Validation
+### Validation
 
 Pydantic schemas and explicit request validation help prevent malformed input.
 
-Error handling
+### Error handling
 
-Errors should be informative enough for diagnosis, but not leak secrets or internals.
+Errors should be informative enough for diagnosis, but should not leak secrets or internal implementation details.
 
-⸻
+---
 
-9. Auditability of sensitive actions
+## 9. Auditability of sensitive actions
 
 Sensitive actions should be auditable.
 
 Examples:
-	•	login activity
-	•	role or status changes
-	•	billing updates
-	•	payment changes
-	•	validation issue resolution
-	•	customer account edits
+
+* login activity
+* role or status changes
+* billing updates
+* payment changes
+* validation issue resolution
+* customer account edits
 
 This allows investigation of:
-	•	who changed data
-	•	when it changed
-	•	what changed
 
-⸻
+* who changed data
+* when it changed
+* what changed
 
-10. Operational security
+---
+
+## 10. Operational security
 
 Security is not only code-level.
 
 Operational security includes:
-	•	protecting environment variables
-	•	limiting infrastructure access
-	•	restricting DB access
-	•	controlling deployment credentials
-	•	rotating secrets
-	•	using HTTPS in non-local environments
 
-⸻
+* protecting environment variables
+* limiting infrastructure access
+* restricting database access
+* controlling deployment credentials
+* rotating secrets
+* using HTTPS in non-local environments
 
-11. Local development security
+---
+
+## 11. Local development security
 
 For local development:
-	•	test credentials are acceptable
-	•	fake secrets are acceptable
-	•	debug mode is acceptable
+
+* test credentials are acceptable
+* fake secrets are acceptable
+* debug mode is acceptable
 
 But even locally:
-	•	do not commit secrets
-	•	do not use production keys
-	•	do not expose local services publicly without intent
 
-⸻
+* do not commit secrets
+* do not use production keys
+* do not expose local services publicly without intent
 
-12. V1 realistic security priorities
+---
 
-The following are the most important security goals for V1:
+## 12. V1 realistic security priorities
 
-Must have
-	•	password hashing
-	•	basic token auth foundation
-	•	tenant-aware model design
-	•	no hardcoded secrets
-	•	input validation
-	•	safe file handling baseline
-	•	structured error handling
-	•	audit foundation
+The following are the most important security goals for V1.
 
-Can come later
-	•	full RBAC
-	•	advanced webhook signature validation
-	•	centralized secrets manager
-	•	advanced rate limiting
-	•	full production IAM model
-	•	deep compliance posture
+### Must have
 
-⸻
+* password hashing
+* basic token auth foundation
+* tenant-aware model design
+* no hardcoded secrets
+* input validation
+* safe file handling baseline
+* structured error handling
+* audit foundation
 
-13. Threat examples
+### Can come later
+
+* full RBAC
+* advanced webhook signature validation
+* centralized secrets manager
+* advanced rate limiting
+* full production IAM model
+* deep compliance posture
+
+---
+
+## 13. Threat examples
 
 The system should be designed with common risks in mind.
 
-Unauthorized data access
+### Unauthorized data access
 
 Risk:
-	•	one user accesses another organization’s data
+
+* one user accesses another organization's data
 
 Mitigation:
-	•	enforce organization boundaries
 
-⸻
+* enforce organization boundaries
 
-Secret leakage
+### Secret leakage
 
 Risk:
-	•	credentials committed to repo or exposed in logs
+
+* credentials committed to the repository or exposed in logs
 
 Mitigation:
-	•	environment variables
-	•	secret hygiene
-	•	log discipline
 
-⸻
+* environment variables
+* secret hygiene
+* log discipline
 
-Malicious upload
+### Malicious upload
 
 Risk:
-	•	dangerous or oversized files uploaded
+
+* dangerous or oversized files uploaded
 
 Mitigation:
-	•	file validation
-	•	controlled storage
-	•	future scanning
 
-⸻
+* file validation
+* controlled storage
+* future scanning
 
-Forged webhook
+### Forged webhook
 
 Risk:
-	•	attacker posts fake payment or ingestion payloads
+
+* attacker posts fake payment or ingestion payloads
 
 Mitigation:
-	•	future signature verification
-	•	idempotency
-	•	source validation
 
-⸻
+* future signature verification
+* idempotency
+* source validation
 
-Excessive privilege
+### Excessive privilege
 
 Risk:
-	•	too many users can modify billing or sensitive operations
+
+* too many users can modify billing or sensitive operations
 
 Mitigation:
-	•	future role-based authorization
-	•	audit logging
 
-⸻
+* future role-based authorization
+* audit logging
 
-14. Future security roadmap
+---
+
+## 14. Future security roadmap
 
 After V1, security should evolve toward:
-	•	full RBAC
-	•	stronger JWT or session policy
-	•	refresh token strategy
-	•	API key management for integrations
-	•	webhook signature verification
-	•	file malware scanning
-	•	download authorization
-	•	secret manager integration
-	•	security headers and CSP
-	•	rate limiting
-	•	SSO or enterprise auth options
 
-⸻
+* full RBAC
+* stronger JWT or session policy
+* refresh token strategy
+* API key management for integrations
+* webhook signature verification
+* file malware scanning
+* download authorization
+* secret manager integration
+* security headers and CSP
+* rate limiting
+* SSO or enterprise authentication options
 
-15. Security design summary
+---
 
-Identity
-	•	staff user auth
-	•	API client foundation
+## 15. Security design summary
 
-Access
-	•	tenant-aware design
-	•	role-aware future direction
+### Identity
 
-Data protection
-	•	safe secrets handling
-	•	password hashing
-	•	controlled document access
+* staff user authentication
+* API client foundation
 
-Accountability
-	•	audit logs
-	•	workflow event history
+### Access
 
-Hardening path
-	•	V1 secure foundation
-	•	post-V1 stronger enforcement
+* tenant-aware design
+* role-aware future direction
 
-⸻
+### Data protection
 
-Summary
+* safe secrets handling
+* password hashing
+* controlled document access
+
+### Accountability
+
+* audit logs
+* workflow event history
+
+### Hardening path
+
+* V1 secure foundation
+* post-V1 stronger enforcement
+
+---
+
+## Summary
 
 The security model for Freight Back Office OS is designed to be practical for V1 and strong enough to evolve into a serious multi-tenant SaaS platform.
 
 The immediate goal is to ensure:
-	•	authenticated access
-	•	safe secret handling
-	•	tenant-aware structure
-	•	secure file and API foundations
-	•	auditability of important actions
+
+* authenticated access
+* safe secret handling
+* tenant-aware structure
+* secure file and API foundations
+* auditability of important actions
 
 That gives the system a solid baseline without overcomplicating the first release.
-

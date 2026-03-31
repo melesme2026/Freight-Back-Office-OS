@@ -4,7 +4,8 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String, Text
+from sqlalchemy import Boolean, DateTime, Enum as SqlEnum
+from sqlalchemy import ForeignKey, Index, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -47,9 +48,16 @@ class Subscription(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
 
     status: Mapped[SubscriptionStatus] = mapped_column(
-        String(50),
+        SqlEnum(
+            SubscriptionStatus,
+            name="subscription_status",
+            native_enum=False,
+            validate_strings=True,
+            values_callable=lambda enum_cls: [member.value for member in enum_cls],
+        ),
         nullable=False,
         default=SubscriptionStatus.ACTIVE,
+        server_default=SubscriptionStatus.ACTIVE.value,
     )
     starts_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

@@ -18,7 +18,7 @@ class DocumentClassifier:
         filename = (original_filename or "").lower()
         mime = (mime_type or "").lower()
         text = (text_content or "").lower()
-        extra = str(metadata or {}).lower()
+        extra = self._normalize_metadata(metadata)
 
         combined = " ".join([filename, mime, text, extra])
         normalized = self._normalize_text(combined)
@@ -31,7 +31,6 @@ class DocumentClassifier:
             DocumentType.UNKNOWN: 0.0,
         }
 
-        # Rate Confirmation
         scores[DocumentType.RATE_CONFIRMATION] += self._score_matches(
             normalized,
             {
@@ -46,7 +45,6 @@ class DocumentClassifier:
             },
         )
 
-        # Bill of Lading
         scores[DocumentType.BILL_OF_LADING] += self._score_matches(
             normalized,
             {
@@ -59,19 +57,17 @@ class DocumentClassifier:
             },
         )
 
-        # Proof of Delivery
         scores[DocumentType.PROOF_OF_DELIVERY] += self._score_matches(
             normalized,
             {
                 r"\bproof of delivery\b": 0.75,
-                r"\bpod\b": 0.35,
+                r"\bpod\b": 0.18,
                 r"\bdelivered\b": 0.12,
                 r"\breceived by\b": 0.12,
                 r"\bsigned\b": 0.10,
             },
         )
 
-        # Invoice
         scores[DocumentType.INVOICE] += self._score_matches(
             normalized,
             {
@@ -85,7 +81,6 @@ class DocumentClassifier:
             },
         )
 
-        # File-name hints
         scores[DocumentType.RATE_CONFIRMATION] += self._filename_hint_score(
             filename,
             ["ratecon", "rate_confirmation", "rate-confirmation", "rate conf"],
@@ -107,7 +102,6 @@ class DocumentClassifier:
             0.20,
         )
 
-        # Image + signed hint for POD
         if filename.endswith((".jpg", ".jpeg", ".png", ".webp")) and "signed" in normalized:
             scores[DocumentType.PROOF_OF_DELIVERY] += 0.18
 
@@ -144,3 +138,8 @@ class DocumentClassifier:
         value = re.sub(r"[_\-]+", " ", value)
         value = re.sub(r"\s+", " ", value).strip()
         return value
+
+    def _normalize_metadata(self, metadata: dict[str, Any] | None) -> str:
+        if not metadata:
+            return ""
+        return self._normalize_text(" ".join(f"{key} {value}" for key, value in metadata.items()))

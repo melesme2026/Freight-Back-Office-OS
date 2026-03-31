@@ -47,7 +47,10 @@ class ExtractedField(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     field_name: Mapped[str] = mapped_column(String(100), nullable=False)
     field_value_text: Mapped[str | None] = mapped_column(Text, nullable=True)
-    field_value_number: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+    field_value_number: Mapped[Decimal | None] = mapped_column(
+        Numeric(12, 2),
+        nullable=True,
+    )
     field_value_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     field_value_json: Mapped[dict[str, Any] | list[Any] | None] = mapped_column(
         JSONB,
@@ -68,7 +71,7 @@ class ExtractedField(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         ForeignKey("staff_users.id", ondelete="SET NULL"),
         nullable=True,
     )
-    corrected_at: Mapped[date | None] = mapped_column(nullable=True)
+    corrected_at: Mapped[date | None] = mapped_column(Date, nullable=True)
 
     document: Mapped["LoadDocument"] = relationship(
         back_populates="extracted_fields",
@@ -83,5 +86,6 @@ class ExtractedField(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     def __repr__(self) -> str:
         return (
             f"ExtractedField(id={self.id!s}, field_name={self.field_name!r}, "
-            f"confidence_score={self.confidence_score!r}, is_human_corrected={self.is_human_corrected!r})"
+            f"confidence_score={self.confidence_score!r}, "
+            f"is_human_corrected={self.is_human_corrected!r})"
         )

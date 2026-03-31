@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.core.exceptions import ValidationError
 from app.domain.enums.channel import Channel
 from app.services.ingestion.ingestion_router import IngestionRouter
 
@@ -24,5 +25,12 @@ class ChannelDispatcher:
         channel_value: str,
         payload: dict[str, Any],
     ) -> dict[str, Any]:
-        channel = Channel(channel_value)
+        try:
+            channel = Channel(channel_value)
+        except ValueError as exc:
+            raise ValidationError(
+                "Invalid channel",
+                details={"channel": channel_value},
+            ) from exc
+
         return self.dispatch(channel=channel, payload=payload)

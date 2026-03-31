@@ -48,7 +48,7 @@ class DunningService:
         updated = 0
 
         for invoice in invoices:
-            if invoice.status != InvoiceStatus.PAID:
+            if invoice.status == InvoiceStatus.OPEN:
                 invoice.status = InvoiceStatus.PAST_DUE
                 self.billing_invoice_repo.update(invoice)
                 updated += 1

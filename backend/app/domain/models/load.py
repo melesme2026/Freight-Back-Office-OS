@@ -5,7 +5,8 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Index, Numeric, String, Text
+from sqlalchemy import Boolean, Date, DateTime, Enum as SqlEnum
+from sqlalchemy import ForeignKey, Index, Numeric, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -71,19 +72,40 @@ class Load(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
 
     source_channel: Mapped[Channel] = mapped_column(
-        String(50),
+        SqlEnum(
+            Channel,
+            name="channel",
+            native_enum=False,
+            validate_strings=True,
+            values_callable=lambda enum_cls: [member.value for member in enum_cls],
+        ),
         nullable=False,
         default=Channel.MANUAL,
+        server_default=Channel.MANUAL.value,
     )
     status: Mapped[LoadStatus] = mapped_column(
-        String(50),
+        SqlEnum(
+            LoadStatus,
+            name="load_status",
+            native_enum=False,
+            validate_strings=True,
+            values_callable=lambda enum_cls: [member.value for member in enum_cls],
+        ),
         nullable=False,
         default=LoadStatus.NEW,
+        server_default=LoadStatus.NEW.value,
     )
     processing_status: Mapped[ProcessingStatus] = mapped_column(
-        String(50),
+        SqlEnum(
+            ProcessingStatus,
+            name="processing_status",
+            native_enum=False,
+            validate_strings=True,
+            values_callable=lambda enum_cls: [member.value for member in enum_cls],
+        ),
         nullable=False,
         default=ProcessingStatus.PENDING,
+        server_default=ProcessingStatus.PENDING.value,
     )
 
     load_number: Mapped[str | None] = mapped_column(String(100), nullable=True)
@@ -171,6 +193,7 @@ class Load(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     last_reviewed_by_user: Mapped["StaffUser | None"] = relationship(
         back_populates="reviewed_loads",
+        foreign_keys=[last_reviewed_by],
         lazy="selectin",
     )
 

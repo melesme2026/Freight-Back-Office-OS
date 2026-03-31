@@ -1,19 +1,15 @@
-Paste this into:
-
-docs/architecture/billing-system.md
-
-# Billing System
+# Billing Architecture
 
 ## Overview
 
-The billing system is responsible for monetizing the freight back-office operations in a structured, auditable, and scalable way.
+The billing domain is responsible for monetizing freight back-office operations in a structured, auditable, and scalable way.
 
 It supports both:
 
-- subscription-based pricing (SaaS model)
-- usage-based billing (per load, per driver, etc.)
+* subscription-based pricing (SaaS model)
+* usage-based billing (per load, per driver, and similar operational units)
 
-The design separates billing from operations while still allowing tight linkage to real-world activity.
+The design keeps billing separate from operations while still allowing tight linkage to real-world activity.
 
 ---
 
@@ -21,17 +17,17 @@ The design separates billing from operations while still allowing tight linkage 
 
 In a manual workflow:
 
-- invoices are created ad hoc
-- payments are tracked in spreadsheets
-- no consistent pricing model exists
-- no linkage between usage and revenue
+* invoices are created ad hoc
+* payments are tracked in spreadsheets
+* no consistent pricing model exists
+* no reliable linkage between usage and revenue exists
 
 By separating billing into its own domain:
 
-- pricing becomes structured
-- revenue becomes predictable
-- usage can be measured
-- financial records become auditable
+* pricing becomes structured
+* revenue becomes more predictable
+* usage can be measured cleanly
+* financial records become auditable
 
 ---
 
@@ -43,36 +39,36 @@ Represents a pricing plan.
 
 Examples:
 
-- Starter plan
-- Growth plan
-- Enterprise plan
+* Starter plan
+* Growth plan
+* Enterprise plan
 
 Typical attributes:
 
-- name
-- code
-- billing cycle (monthly, yearly)
-- base price
-- per-load price
-- per-driver price
-- active flag
+* name
+* code
+* billing cycle (`monthly`, `yearly`)
+* base price
+* per-load price
+* per-driver price
+* active flag
 
 ---
 
 ### 2. Subscription
 
-Represents a customer’s enrollment in a plan.
+Represents a customer account's enrollment in a plan.
 
 Typical attributes:
 
-- customer account
-- service plan
-- status (active, cancelled, etc.)
-- billing period start/end
-- cancel at period end
-- billing email
+* customer account
+* service plan
+* status (`active`, `cancelled`, and related lifecycle states)
+* billing period start and end
+* cancel at period end
+* billing email
 
-A customer account can have one or more subscriptions.
+A customer account can have one or more subscriptions depending on the business model.
 
 ---
 
@@ -82,17 +78,17 @@ Tracks billable activity.
 
 Examples:
 
-- number of loads processed
-- number of drivers onboarded
-- premium features used
+* number of loads processed
+* number of drivers onboarded
+* premium features used
 
 Typical attributes:
 
-- usage type
-- quantity
-- unit price
-- usage date
-- metadata
+* usage type
+* quantity
+* unit price
+* usage date
+* metadata
 
 ---
 
@@ -102,28 +98,28 @@ Represents an invoice issued to a customer.
 
 Typical attributes:
 
-- invoice number
-- status (draft, open, paid, past_due)
-- subtotal
-- tax
-- total
-- amount paid
-- amount due
-- issued date
-- due date
-- paid date
+* invoice number
+* status (`draft`, `open`, `paid`, `past_due`)
+* subtotal
+* tax
+* total
+* amount paid
+* amount due
+* issued date
+* due date
+* paid date
 
 ---
 
 ### 5. BillingInvoiceLine
 
-Represents individual line items on an invoice.
+Represents an individual line item on an invoice.
 
 Examples:
 
-- base subscription fee
-- per-load usage
-- adjustments
+* base subscription fee
+* per-load usage
+* adjustments
 
 ---
 
@@ -133,22 +129,22 @@ Represents stored payment details.
 
 Examples:
 
-- card (last4, brand)
-- external provider reference (Stripe, etc.)
+* card metadata such as last4 and brand
+* external provider reference such as Stripe payment method identifiers
 
 ---
 
 ### 7. Payment
 
-Represents a payment attempt or success.
+Represents a payment attempt or completed payment.
 
 Typical attributes:
 
-- amount
-- currency
-- status (pending, succeeded, failed)
-- timestamps
-- failure reason
+* amount
+* currency
+* status (`pending`, `succeeded`, `failed`)
+* timestamps
+* failure reason
 
 ---
 
@@ -158,11 +154,11 @@ Represents financial accounting entries.
 
 Examples:
 
-- invoice posted
-- payment applied
-- adjustment made
+* invoice posted
+* payment applied
+* adjustment made
 
-This is the source of truth for financial audit.
+This should be treated as a source of truth for financial audit and reconciliation.
 
 ---
 
@@ -171,214 +167,229 @@ This is the source of truth for financial audit.
 ### Step 1: Subscription creation
 
 ```text
-CustomerAccount → Subscription → ServicePlan
+CustomerAccount -> Subscription -> ServicePlan
+```
 
 The customer is assigned a pricing model.
 
-⸻
+### Step 2: Usage tracking
 
-Step 2: Usage tracking
-
-Load activity → UsageRecord
+```text
+Load activity -> UsageRecord
+```
 
 Examples:
-	•	each load processed adds usage
-	•	premium features increment usage
 
-⸻
+* each processed load adds usage
+* premium features increment usage
 
-Step 3: Invoice generation
+### Step 3: Invoice generation
 
 Recurring job:
 
-Subscription + Usage → Invoice
+```text
+Subscription + Usage -> Invoice
+```
 
-Invoice contains:
-	•	base fee
-	•	usage charges
-	•	totals
+The invoice contains:
 
-⸻
+* base fee
+* usage charges
+* totals
 
-Step 4: Payment collection
+### Step 4: Payment collection
 
-Invoice → Payment → Ledger
+```text
+Invoice -> Payment -> Ledger
+```
 
 Payment updates:
-	•	invoice amount_paid
-	•	invoice amount_due
-	•	invoice status
 
-⸻
+* invoice `amount_paid`
+* invoice `amount_due`
+* invoice `status`
 
-Step 5: Overdue handling
+### Step 5: Overdue handling
 
-Unpaid invoice → past_due
+```text
+Unpaid invoice -> past_due
+```
 
-Triggers:
-	•	reminders
-	•	notifications
-	•	potential account actions (future)
+This can trigger:
 
-⸻
+* reminders
+* notifications
+* potential account actions in a future phase
 
-Invoice lifecycle
+---
 
-draft → open → paid
-              ↓
-           past_due
+## Invoice lifecycle
+
+```text
+draft -> open -> paid
+              \
+               -> past_due
+```
 
 States:
-	•	draft (optional future)
-	•	open (issued but unpaid)
-	•	paid
-	•	past_due
 
-⸻
+* `draft` (optional in a future phase)
+* `open` (issued but unpaid)
+* `paid`
+* `past_due`
 
-Payment lifecycle
+---
 
-pending → succeeded
-        → failed
+## Payment lifecycle
+
+```text
+pending -> succeeded
+        -> failed
+```
 
 Effects:
-	•	succeeded → updates invoice
-	•	failed → recorded for retry or manual follow-up
 
-⸻
+* `succeeded` updates invoice balances and status
+* `failed` is recorded for retry or manual follow-up
 
-Integration with loads
+---
 
-Billing connects to operations via:
-	•	load → usage record
-	•	customer account → subscription
-	•	invoice → customer account
+## Integration with loads
+
+Billing connects to operations through:
+
+* `load` -> usage record
+* `customer account` -> subscription
+* `invoice` -> customer account
 
 This ensures:
-	•	revenue reflects real work
-	•	no double counting
-	•	traceability from load → invoice → payment
 
-⸻
+* revenue reflects real work
+* double counting is reduced or prevented
+* traceability exists from load to invoice to payment
 
-Recurring jobs (Celery)
+---
 
-The system uses scheduled jobs:
+## Recurring jobs (Celery)
 
-Job	Purpose
-generate_recurring_invoices	create invoices from subscriptions
-mark_overdue_invoices	update overdue status
-send_billing_reminders	notify customers
-sync_payment_webhooks	reconcile external payments
+The system uses scheduled jobs such as:
 
+| Job                           | Purpose                                      |
+| ----------------------------- | -------------------------------------------- |
+| `generate_recurring_invoices` | Create invoices from subscriptions and usage |
+| `mark_overdue_invoices`       | Update overdue status                        |
+| `send_billing_reminders`      | Notify customers                             |
+| `sync_payment_webhooks`       | Reconcile external payments                  |
 
-⸻
+---
 
-Payment providers (future)
+## Payment providers (future)
 
-Currently placeholder-based.
+The current design is placeholder-friendly.
 
-Future integrations:
-	•	Stripe
-	•	QuickBooks
-	•	ACH systems
-	•	factoring integrations
+Future integrations may include:
 
-The system is designed so provider logic is abstracted behind services.
+* Stripe
+* QuickBooks
+* ACH systems
+* factoring integrations
 
-⸻
+Provider-specific behavior should remain abstracted behind billing services.
 
-Design decisions
+---
 
-1. Separation from Load
+## Design decisions
 
-Loads do NOT directly contain billing logic.
+### 1. Separation from load operations
+
+Loads should not directly contain billing logic.
 
 Why:
-	•	keeps operational logic clean
-	•	allows flexible pricing models
-	•	avoids tight coupling
 
-⸻
+* keeps operational logic clean
+* allows flexible pricing models
+* avoids tight coupling
 
-2. Ledger-based accounting
+### 2. Ledger-based accounting
 
 Every financial change should produce a ledger entry.
 
 Benefits:
-	•	auditability
-	•	financial traceability
-	•	reconciliation support
 
-⸻
+* auditability
+* financial traceability
+* reconciliation support
 
-3. Partial payments supported
+### 3. Partial payments supported
 
 Invoices can be:
-	•	partially paid
-	•	fully paid
-	•	unpaid
 
-⸻
+* partially paid
+* fully paid
+* unpaid
 
-4. Overpayment prevention
+### 4. Overpayment prevention
 
-The system prevents:
+The system should prevent this condition:
 
+```text
 payment > amount_due
+```
 
+---
 
-⸻
+## Example scenario
 
-Example scenario
-
-Scenario: Monthly subscription + usage
+### Scenario: Monthly subscription plus usage
 
 Customer:
-  Starter Plan ($99/month)
-  10 loads processed
-  $5 per load
+
+```text
+Starter Plan ($99/month)
+10 loads processed
+$5 per load
+```
 
 Invoice:
 
+```text
 Base: $99
-Usage: 10 × $5 = $50
+Usage: 10 x $5 = $50
 Total: $149
+```
 
 Payment:
 
+```text
 Paid: $100
 Remaining: $49
 Status: open
+```
 
+---
 
-⸻
+## Future enhancements
 
-Future enhancements
-	•	tax calculation
-	•	discounts and coupons
-	•	proration
-	•	multi-currency support
-	•	invoice PDF generation
-	•	automated retries for failed payments
-	•	payment reconciliation dashboards
-	•	revenue analytics
+* tax calculation
+* discounts and coupons
+* proration
+* multi-currency support
+* invoice PDF generation
+* automated retries for failed payments
+* payment reconciliation dashboards
+* revenue analytics
 
-⸻
+---
 
-Summary
+## Summary
 
-The billing system converts operational activity into structured revenue.
+The billing domain converts operational activity into structured revenue.
 
-It ensures:
-	•	consistent pricing
-	•	automated invoicing
-	•	accurate payment tracking
-	•	financial auditability
+It helps ensure:
+
+* consistent pricing
+* automated invoicing
+* accurate payment tracking
+* financial auditability
 
 It is a core pillar for turning this platform into a real business.
-
-After you commit that, the next file is:
-
-```text
-docs/setup/local-development.md

@@ -32,4 +32,4 @@ jobs:
 
       - name: Smoke import worker app
         run: |
-          python -c "from backend.app.workers.celery_app import celery_app; print(celery_app.main)"
+          python -c "from app.workers.celery_app import celery_app; print(celery_app.main)"

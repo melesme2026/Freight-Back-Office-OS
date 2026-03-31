@@ -4,6 +4,7 @@
     "organization_id": "00000000-0000-0000-0000-000000000001",
     "full_name": "Merhawi Meles",
     "email": "admin@adwafreight.com",
+    "password_hash": "__SET_VIA_SEED_RUNTIME__",
     "role": "admin",
     "is_active": true
   },
@@ -12,7 +13,8 @@
     "organization_id": "00000000-0000-0000-0000-000000000001",
     "full_name": "Operations Reviewer",
     "email": "reviewer@adwafreight.com",
-    "role": "ops",
+    "password_hash": "__SET_VIA_SEED_RUNTIME__",
+    "role": "ops_agent",
     "is_active": true
   }
 ]

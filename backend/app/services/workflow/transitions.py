@@ -27,7 +27,9 @@ class LoadTransitionApplier:
         if new_status == LoadStatus.PAID and load.paid_at is None:
             load.paid_at = now
 
-        if new_status == LoadStatus.EXTRACTING:
+        if new_status in {LoadStatus.NEW, LoadStatus.DOCS_RECEIVED}:
+            load.processing_status = ProcessingStatus.PENDING
+        elif new_status == LoadStatus.EXTRACTING:
             load.processing_status = ProcessingStatus.IN_PROGRESS
         elif new_status in {
             LoadStatus.VALIDATED,

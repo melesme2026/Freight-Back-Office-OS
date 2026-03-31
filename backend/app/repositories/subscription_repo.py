@@ -10,6 +10,10 @@ from app.domain.models.subscription import Subscription
 
 
 class SubscriptionRepository:
+    DEFAULT_PAGE = 1
+    DEFAULT_PAGE_SIZE = 25
+    MAX_PAGE_SIZE = 500
+
     def __init__(self, db: Session) -> None:
         self.db = db
 
@@ -30,9 +34,12 @@ class SubscriptionRepository:
         customer_account_id: uuid.UUID | None = None,
         service_plan_id: uuid.UUID | None = None,
         status: SubscriptionStatus | None = None,
-        page: int = 1,
-        page_size: int = 25,
+        page: int = DEFAULT_PAGE,
+        page_size: int = DEFAULT_PAGE_SIZE,
     ) -> tuple[list[Subscription], int]:
+        normalized_page = max(page, 1)
+        normalized_page_size = min(max(page_size, 1), self.MAX_PAGE_SIZE)
+
         stmt = select(Subscription)
         count_stmt: Select[tuple[int]] = select(func.count()).select_from(Subscription)
 
@@ -48,9 +55,7 @@ class SubscriptionRepository:
 
         if service_plan_id is not None:
             stmt = stmt.where(Subscription.service_plan_id == service_plan_id)
-            count_stmt = count_stmt.where(
-                Subscription.service_plan_id == service_plan_id
-            )
+            count_stmt = count_stmt.where(Subscription.service_plan_id == service_plan_id)
 
         if status is not None:
             stmt = stmt.where(Subscription.status == status)
@@ -58,8 +63,12 @@ class SubscriptionRepository:
 
         total = self.db.scalar(count_stmt) or 0
 
-        offset = max(page - 1, 0) * page_size
-        stmt = stmt.order_by(Subscription.created_at.desc()).offset(offset).limit(page_size)
+        offset = (normalized_page - 1) * normalized_page_size
+        stmt = (
+            stmt.order_by(Subscription.created_at.desc())
+            .offset(offset)
+            .limit(normalized_page_size)
+        )
 
         items = list(self.db.scalars(stmt).all())
         return items, total

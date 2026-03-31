@@ -1,0 +1,17 @@
+Subject: Follow-Up: Invoice #[Invoice Number] for Load #[Load Number]
+
+Hello,
+
+Following up on the invoice submission for the completed load below:
+
+Load Number: [Load Number]
+Invoice Number: [Invoice Number]
+Amount Due: $[Total Amount]
+
+Please confirm receipt and advise if any additional documentation is needed to process payment.
+
+Thank you,
+[Your Name]
+Adwa Express LLC
+[Phone Number]
+[Business Email]

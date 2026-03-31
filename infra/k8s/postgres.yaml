@@ -24,15 +24,21 @@ spec:
             - name: POSTGRES_DB
               value: "freight_back_office_os"
             - name: POSTGRES_USER
-              value: "postgres"
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secrets
+                  key: username
             - name: POSTGRES_PASSWORD
-              value: "postgres"
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secrets
+                  key: password
           readinessProbe:
             exec:
               command:
                 - /bin/sh
                 - -c
-                - pg_isready -U postgres -d freight_back_office_os
+                - pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"
             initialDelaySeconds: 10
             periodSeconds: 10
           livenessProbe:
@@ -40,7 +46,7 @@ spec:
               command:
                 - /bin/sh
                 - -c
-                - pg_isready -U postgres -d freight_back_office_os
+                - pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"
             initialDelaySeconds: 20
             periodSeconds: 15
 ---

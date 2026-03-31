@@ -1,12 +1,15 @@
 export const LOAD_STATUSES = [
-  "draft",
-  "documents_pending",
-  "under_review",
+  "new",
+  "docs_received",
+  "extracting",
+  "needs_review",
   "validated",
+  "ready_to_submit",
   "submitted",
-  "invoiced",
+  "funded",
   "paid",
-  "closed",
+  "exception",
+  "archived",
 ] as const;
 
 export type LoadStatus = (typeof LOAD_STATUSES)[number];

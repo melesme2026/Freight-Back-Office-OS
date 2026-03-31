@@ -37,12 +37,17 @@ class DocumentService:
         file_bytes: bytes | None = None,
     ) -> LoadDocument:
         normalized_document_type = self._normalize_document_type(document_type)
+        validated_file_size_bytes = self._validate_non_negative_int(
+            "file_size_bytes",
+            file_size_bytes,
+        )
+        validated_page_count = self._validate_non_negative_int("page_count", page_count)
 
         file_hash_sha256 = self._build_file_hash(
             storage_key=storage_key,
             file_bytes=file_bytes,
             original_filename=original_filename,
-            file_size_bytes=file_size_bytes,
+            file_size_bytes=validated_file_size_bytes,
         )
 
         existing = self.document_repo.get_by_file_hash(file_hash_sha256=file_hash_sha256)
@@ -64,11 +69,11 @@ class DocumentService:
             document_type=normalized_document_type,
             original_filename=original_filename,
             mime_type=mime_type,
-            file_size_bytes=file_size_bytes,
+            file_size_bytes=validated_file_size_bytes,
             storage_bucket=storage_bucket,
             storage_key=storage_key,
             file_hash_sha256=file_hash_sha256,
-            page_count=page_count,
+            page_count=validated_page_count,
             processing_status=ProcessingStatus.PENDING,
             classification_confidence=None,
             ocr_completed_at=None,
@@ -126,10 +131,12 @@ class DocumentService:
         document.processing_status = normalized_processing_status
 
         if classification_confidence is not None:
-            document.classification_confidence = classification_confidence
+            document.classification_confidence = self._validate_classification_confidence(
+                classification_confidence
+            )
 
         if page_count is not None:
-            document.page_count = page_count
+            document.page_count = self._validate_non_negative_int("page_count", page_count)
 
         if normalized_processing_status == ProcessingStatus.COMPLETED:
             document.ocr_completed_at = datetime.now(timezone.utc)
@@ -149,7 +156,9 @@ class DocumentService:
         document.document_type = normalized_document_type
 
         if classification_confidence is not None:
-            document.classification_confidence = classification_confidence
+            document.classification_confidence = self._validate_classification_confidence(
+                classification_confidence
+            )
 
         return self.document_repo.update(document)
 
@@ -284,4 +293,28 @@ class DocumentService:
             hasher.update(fingerprint.encode("utf-8"))
 
         return hasher.hexdigest()
-        
+
+    @staticmethod
+    def _validate_non_negative_int(field_name: str, value: int | None) -> int | None:
+        if value is None:
+            return None
+
+        if value < 0:
+            raise ValidationError(
+                f"{field_name} cannot be negative",
+                details={field_name: value},
+            )
+
+        return value
+
+    @staticmethod
+    def _validate_classification_confidence(value: float) -> float:
+        confidence = float(value)
+
+        if confidence < 0.0 or confidence > 1.0:
+            raise ValidationError(
+                "classification_confidence must be between 0.0 and 1.0",
+                details={"classification_confidence": value},
+            )
+
+        return confidence

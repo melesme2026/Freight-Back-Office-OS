@@ -28,6 +28,9 @@ class UsageBillingService:
         unit_price: Decimal | None = None,
         metadata_json: dict | list | None = None,
     ) -> UsageRecord:
+        normalized_quantity = Decimal(str(quantity))
+        normalized_unit_price = Decimal(str(unit_price)) if unit_price is not None else None
+
         usage_record = UsageRecord(
             organization_id=organization_id,
             customer_account_id=customer_account_id,
@@ -35,8 +38,8 @@ class UsageBillingService:
             driver_id=driver_id,
             load_id=load_id,
             usage_type=usage_type,
-            quantity=quantity,
-            unit_price=unit_price,
+            quantity=normalized_quantity,
+            unit_price=normalized_unit_price,
             usage_date=usage_date,
             metadata_json=metadata_json,
         )

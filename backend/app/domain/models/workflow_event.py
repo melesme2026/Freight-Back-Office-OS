@@ -3,6 +3,7 @@ from __future__ import annotations
 import uuid
 from typing import TYPE_CHECKING, Any
 
+from sqlalchemy import Enum as SqlEnum
 from sqlalchemy import ForeignKey, Index, String
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -38,8 +39,26 @@ class WorkflowEvent(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         nullable=False,
     )
     event_type: Mapped[str] = mapped_column(String(100), nullable=False)
-    old_status: Mapped[LoadStatus | None] = mapped_column(String(50), nullable=True)
-    new_status: Mapped[LoadStatus | None] = mapped_column(String(50), nullable=True)
+    old_status: Mapped[LoadStatus | None] = mapped_column(
+        SqlEnum(
+            LoadStatus,
+            name="load_status",
+            native_enum=False,
+            validate_strings=True,
+            values_callable=lambda enum_cls: [member.value for member in enum_cls],
+        ),
+        nullable=True,
+    )
+    new_status: Mapped[LoadStatus | None] = mapped_column(
+        SqlEnum(
+            LoadStatus,
+            name="load_status",
+            native_enum=False,
+            validate_strings=True,
+            values_callable=lambda enum_cls: [member.value for member in enum_cls],
+        ),
+        nullable=True,
+    )
     event_payload: Mapped[dict[str, Any] | list[Any] | None] = mapped_column(
         JSONB,
         nullable=True,
@@ -50,9 +69,16 @@ class WorkflowEvent(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         nullable=True,
     )
     actor_type: Mapped[AuditActorType] = mapped_column(
-        String(50),
+        SqlEnum(
+            AuditActorType,
+            name="audit_actor_type",
+            native_enum=False,
+            validate_strings=True,
+            values_callable=lambda enum_cls: [member.value for member in enum_cls],
+        ),
         nullable=False,
         default=AuditActorType.SYSTEM,
+        server_default=AuditActorType.SYSTEM.value,
     )
 
     organization: Mapped["Organization"] = relationship(

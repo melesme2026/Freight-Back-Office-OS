@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
         - name: worker
-          image: freight-back-office-os/worker:latest
+          image: freight-back-office-os/worker:0.1.0
           imagePullPolicy: IfNotPresent
           command:
             - celery
@@ -28,17 +28,35 @@ spec:
             - name: APP_ENV
               value: "staging"
             - name: DATABASE_URL
-              value: "postgresql+psycopg://postgres:postgres@postgres:5432/freight_back_office_os"
+              valueFrom:
+                secretKeyRef:
+                  name: freight-worker-secrets
+                  key: database-url
             - name: CELERY_BROKER_URL
-              value: "redis://redis:6379/0"
+              valueFrom:
+                secretKeyRef:
+                  name: freight-worker-secrets
+                  key: celery-broker-url
             - name: CELERY_RESULT_BACKEND
-              value: "redis://redis:6379/1"
+              valueFrom:
+                secretKeyRef:
+                  name: freight-worker-secrets
+                  key: celery-result-backend
             - name: REDIS_URL
-              value: "redis://redis:6379/0"
+              valueFrom:
+                secretKeyRef:
+                  name: freight-worker-secrets
+                  key: redis-url
             - name: SECRET_KEY
-              value: "change-me"
+              valueFrom:
+                secretKeyRef:
+                  name: freight-worker-secrets
+                  key: secret-key
             - name: STORAGE_LOCAL_ROOT_PATH
-              value: "/app/data/sandbox/uploaded-docs"
+              valueFrom:
+                configMapKeyRef:
+                  name: freight-worker-config
+                  key: storage-local-root-path
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -58,7 +76,7 @@ spec:
     spec:
       containers:
         - name: beat
-          image: freight-back-office-os/worker:latest
+          image: freight-back-office-os/worker:0.1.0
           imagePullPolicy: IfNotPresent
           command:
             - celery
@@ -70,14 +88,32 @@ spec:
             - name: APP_ENV
               value: "staging"
             - name: DATABASE_URL
-              value: "postgresql+psycopg://postgres:postgres@postgres:5432/freight_back_office_os"
+              valueFrom:
+                secretKeyRef:
+                  name: freight-worker-secrets
+                  key: database-url
             - name: CELERY_BROKER_URL
-              value: "redis://redis:6379/0"
+              valueFrom:
+                secretKeyRef:
+                  name: freight-worker-secrets
+                  key: celery-broker-url
             - name: CELERY_RESULT_BACKEND
-              value: "redis://redis:6379/1"
+              valueFrom:
+                secretKeyRef:
+                  name: freight-worker-secrets
+                  key: celery-result-backend
             - name: REDIS_URL
-              value: "redis://redis:6379/0"
+              valueFrom:
+                secretKeyRef:
+                  name: freight-worker-secrets
+                  key: redis-url
             - name: SECRET_KEY
-              value: "change-me"
+              valueFrom:
+                secretKeyRef:
+                  name: freight-worker-secrets
+                  key: secret-key
             - name: STORAGE_LOCAL_ROOT_PATH
-              value: "/app/data/sandbox/uploaded-docs"
+              valueFrom:
+                configMapKeyRef:
+                  name: freight-worker-config
+                  key: storage-local-root-path

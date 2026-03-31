@@ -4,7 +4,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.domain.enums.invoice_status import InvoiceStatus
 from app.domain.enums.payment_status import PaymentStatus
@@ -82,7 +82,7 @@ class BillingDashboardResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     data: BillingSummaryData
-    meta: dict[str, Any] = {}
+    meta: dict[str, Any] = Field(default_factory=dict)
     error: ApiError | None = None
 
 

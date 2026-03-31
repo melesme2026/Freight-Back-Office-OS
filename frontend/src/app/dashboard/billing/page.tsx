@@ -1,35 +1,94 @@
+"use client";
+
 import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
 
-const billingSummary = [
-  { label: "Active Subscriptions", value: "6" },
-  { label: "Open Invoices", value: "12" },
-  { label: "Past Due", value: "3" },
-  { label: "Collected This Month", value: "$4,820.00" },
-];
+type BillingMetrics = {
+  active_subscriptions?: number;
+  open_invoices?: number;
+  past_due_invoices?: number;
+  collected_this_month?: string | number | null;
+  currency_code?: string | null;
+};
 
-const recentInvoices = [
-  {
-    id: "inv-1001",
-    invoiceNumber: "INV-1001",
-    customer: "Demo Customer Account",
-    total: "$449.00",
-    status: "open",
-  },
-  {
-    id: "inv-1002",
-    invoiceNumber: "INV-1002",
-    customer: "North Route Logistics",
-    total: "$799.00",
-    status: "paid",
-  },
-  {
-    id: "inv-1003",
-    invoiceNumber: "INV-1003",
-    customer: "Metro Freight Group",
-    total: "$299.00",
-    status: "past_due",
-  },
-];
+type BillingSummaryResponse =
+  | BillingMetrics
+  | {
+      data?: BillingMetrics;
+      message?: string;
+    };
+
+type InvoiceListItem = {
+  id: string;
+  invoice_number: string;
+  customer_account_id?: string | null;
+  total_amount?: string | number | null;
+  status: string;
+  currency_code?: string | null;
+};
+
+type InvoiceListEnvelope = {
+  items?: InvoiceListItem[];
+  total?: number;
+  page?: number;
+  page_size?: number;
+  pages?: number;
+};
+
+type InvoiceListResponse =
+  | InvoiceListEnvelope
+  | {
+      data?: InvoiceListEnvelope;
+      message?: string;
+    };
+
+function getApiBaseUrl(): string {
+  const value = process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
+  return value && value.length > 0 ? value.replace(/\/+$/, "") : "http://127.0.0.1:8000";
+}
+
+function readStoredValue(key: string): string {
+  if (typeof window === "undefined") {
+    return "";
+  }
+  return window.localStorage.getItem(key)?.trim() ?? "";
+}
+
+function isWrappedResponse<T extends object>(
+  value: unknown
+): value is { data?: T; message?: string } {
+  return typeof value === "object" && value !== null && ("data" in value || "message" in value);
+}
+
+function normalizeBillingMetrics(payload: BillingSummaryResponse | null): Required<BillingMetrics> {
+  let root: BillingMetrics | null = null;
+
+  if (isWrappedResponse<BillingMetrics>(payload)) {
+    root = payload.data ?? null;
+  } else if (payload && typeof payload === "object") {
+    root = payload as BillingMetrics;
+  }
+
+  return {
+    active_subscriptions: Number(root?.active_subscriptions ?? 0),
+    open_invoices: Number(root?.open_invoices ?? 0),
+    past_due_invoices: Number(root?.past_due_invoices ?? 0),
+    collected_this_month: root?.collected_this_month ?? 0,
+    currency_code: root?.currency_code?.trim() || "USD",
+  };
+}
+
+function normalizeInvoiceList(payload: InvoiceListResponse | null): InvoiceListItem[] {
+  let root: InvoiceListEnvelope | null = null;
+
+  if (isWrappedResponse<InvoiceListEnvelope>(payload)) {
+    root = payload.data ?? null;
+  } else if (payload && typeof payload === "object") {
+    root = payload as InvoiceListEnvelope;
+  }
+
+  return Array.isArray(root?.items) ? root.items : [];
+}
 
 function invoiceBadge(status: string) {
   switch (status) {
@@ -39,12 +98,166 @@ function invoiceBadge(status: string) {
       return "bg-blue-100 text-blue-800";
     case "past_due":
       return "bg-rose-100 text-rose-800";
+    case "draft":
+      return "bg-amber-100 text-amber-800";
     default:
       return "bg-slate-100 text-slate-700";
   }
 }
 
+function formatMoney(value: string | number | null | undefined, currencyCode?: string | null): string {
+  const numeric = Number(value ?? 0);
+  if (!Number.isFinite(numeric)) {
+    return "—";
+  }
+
+  const normalizedCurrency = currencyCode?.trim() || "USD";
+
+  try {
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: normalizedCurrency,
+    }).format(numeric);
+  } catch {
+    return `${normalizedCurrency} ${numeric.toFixed(2)}`;
+  }
+}
+
 export default function BillingPage() {
+  const apiBaseUrl = useMemo(() => getApiBaseUrl(), []);
+  const [metrics, setMetrics] = useState<Required<BillingMetrics>>({
+    active_subscriptions: 0,
+    open_invoices: 0,
+    past_due_invoices: 0,
+    collected_this_month: 0,
+    currency_code: "USD",
+  });
+  const [recentInvoices, setRecentInvoices] = useState<InvoiceListItem[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    let isActive = true;
+
+    async function loadBillingData(): Promise<void> {
+      const token = readStoredValue("fbos_access_token");
+      const tokenType = readStoredValue("fbos_token_type") || "Bearer";
+      const organizationId = readStoredValue("fbos_organization_id");
+
+      if (!token || !organizationId) {
+        if (isActive) {
+          setErrorMessage("Missing session context. Please sign in again.");
+          setIsLoading(false);
+        }
+        return;
+      }
+
+      try {
+        setIsLoading(true);
+        setErrorMessage(null);
+
+        const commonHeaders = {
+          Accept: "application/json",
+          Authorization: `${tokenType} ${token}`,
+          "X-Organization-Id": organizationId,
+        };
+
+        const [summaryResponse, invoicesResponse] = await Promise.all([
+          fetch(`${apiBaseUrl}/api/v1/billing/dashboard`, {
+            method: "GET",
+            headers: commonHeaders,
+            cache: "no-store",
+          }),
+          fetch(`${apiBaseUrl}/api/v1/billing-invoices?page=1&page_size=5`, {
+            method: "GET",
+            headers: commonHeaders,
+            cache: "no-store",
+          }),
+        ]);
+
+        let summaryPayload: BillingSummaryResponse | null = null;
+        let invoicesPayload: InvoiceListResponse | null = null;
+
+        try {
+          summaryPayload = (await summaryResponse.json()) as BillingSummaryResponse;
+        } catch {
+          summaryPayload = null;
+        }
+
+        try {
+          invoicesPayload = (await invoicesResponse.json()) as InvoiceListResponse;
+        } catch {
+          invoicesPayload = null;
+        }
+
+        if (!summaryResponse.ok) {
+          const message =
+            summaryPayload &&
+            typeof summaryPayload === "object" &&
+            "message" in summaryPayload &&
+            typeof summaryPayload.message === "string" &&
+            summaryPayload.message.trim()
+              ? summaryPayload.message.trim()
+              : "Unable to load billing summary.";
+          throw new Error(message);
+        }
+
+        if (!invoicesResponse.ok) {
+          const message =
+            invoicesPayload &&
+            typeof invoicesPayload === "object" &&
+            "message" in invoicesPayload &&
+            typeof invoicesPayload.message === "string" &&
+            invoicesPayload.message.trim()
+              ? invoicesPayload.message.trim()
+              : "Unable to load recent invoices.";
+          throw new Error(message);
+        }
+
+        if (isActive) {
+          setMetrics(normalizeBillingMetrics(summaryPayload));
+          setRecentInvoices(normalizeInvoiceList(invoicesPayload));
+        }
+      } catch (error) {
+        if (isActive) {
+          setMetrics({
+            active_subscriptions: 0,
+            open_invoices: 0,
+            past_due_invoices: 0,
+            collected_this_month: 0,
+            currency_code: "USD",
+          });
+          setRecentInvoices([]);
+          setErrorMessage(
+            error instanceof Error && error.message
+              ? error.message
+              : "An unexpected error occurred while loading billing data."
+          );
+        }
+      } finally {
+        if (isActive) {
+          setIsLoading(false);
+        }
+      }
+    }
+
+    void loadBillingData();
+
+    return () => {
+      isActive = false;
+    };
+  }, [apiBaseUrl]);
+
+  const billingSummary = [
+    { label: "Active Subscriptions", value: String(metrics.active_subscriptions) },
+    { label: "Open Invoices", value: String(metrics.open_invoices) },
+    { label: "Past Due", value: String(metrics.past_due_invoices) },
+    {
+      label: "Collected This Month",
+      value: formatMoney(metrics.collected_this_month, metrics.currency_code),
+    },
+  ];
+
   return (
     <main className="min-h-screen bg-slate-50 text-slate-900">
       <div className="mx-auto max-w-7xl px-6 py-10">
@@ -74,6 +287,18 @@ export default function BillingPage() {
           </div>
         </div>
 
+        {isLoading ? (
+          <div className="mb-8 rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
+            <div className="text-sm text-slate-600">Loading billing overview...</div>
+          </div>
+        ) : null}
+
+        {!isLoading && errorMessage ? (
+          <div className="mb-8 rounded-2xl border border-red-200 bg-red-50 p-6 shadow-soft">
+            <div className="text-sm text-red-700">{errorMessage}</div>
+          </div>
+        ) : null}
+
         <section className="grid gap-4 md:grid-cols-4">
           {billingSummary.map((item) => (
             <div
@@ -98,29 +323,41 @@ export default function BillingPage() {
               </Link>
             </div>
 
-            <div className="space-y-3">
-              {recentInvoices.map((invoice) => (
-                <Link
-                  key={invoice.id}
-                  href={`/dashboard/billing/invoices/${invoice.id}`}
-                  className="flex items-center justify-between rounded-xl border border-slate-200 px-4 py-3 hover:bg-slate-50"
-                >
-                  <div>
-                    <div className="text-sm font-semibold text-slate-900">{invoice.invoiceNumber}</div>
-                    <div className="text-xs text-slate-500">{invoice.customer}</div>
-                  </div>
+            {recentInvoices.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-slate-200 px-4 py-6 text-sm text-slate-500">
+                No recent invoices available.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {recentInvoices.map((invoice) => (
+                  <Link
+                    key={invoice.id}
+                    href={`/dashboard/billing/invoices/${invoice.id}`}
+                    className="flex items-center justify-between rounded-xl border border-slate-200 px-4 py-3 hover:bg-slate-50"
+                  >
+                    <div>
+                      <div className="text-sm font-semibold text-slate-900">
+                        {invoice.invoice_number || "—"}
+                      </div>
+                      <div className="text-xs text-slate-500">
+                        {invoice.customer_account_id || "—"}
+                      </div>
+                    </div>
 
-                  <div className="flex items-center gap-3">
-                    <span className="text-sm font-medium text-slate-900">{invoice.total}</span>
-                    <span
-                      className={`rounded-full px-3 py-1 text-xs font-semibold ${invoiceBadge(invoice.status)}`}
-                    >
-                      {invoice.status.replace("_", " ")}
-                    </span>
-                  </div>
-                </Link>
-              ))}
-            </div>
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm font-medium text-slate-900">
+                        {formatMoney(invoice.total_amount, invoice.currency_code)}
+                      </span>
+                      <span
+                        className={`rounded-full px-3 py-1 text-xs font-semibold ${invoiceBadge(invoice.status)}`}
+                      >
+                        {(invoice.status || "unknown").replaceAll("_", " ")}
+                      </span>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            )}
           </section>
 
           <aside className="space-y-6">

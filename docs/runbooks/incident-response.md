@@ -1,5 +1,3 @@
-Paste this into:
-
 docs/runbooks/incident-response.md
 
 # Incident Response Runbook
@@ -285,8 +283,3 @@ Incident response is effective when:
 This runbook ensures controlled handling of system failures and protects operational integrity.
 
 ---
-
-## Next file (aligned with your structure)
-
-```text
-docs/api/openapi-notes.md

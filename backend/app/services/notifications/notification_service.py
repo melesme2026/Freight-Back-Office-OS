@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
 
-from app.core.exceptions import NotFoundError
+from app.core.exceptions import NotFoundError, ValidationError
 from app.domain.enums.notification_status import NotificationStatus
 from app.domain.models.notification import Notification
 from app.repositories.notification_repo import NotificationRepository
@@ -29,7 +29,7 @@ class NotificationService:
         subject: str | None = None,
         body_text: str | None = None,
         provider_message_id: str | None = None,
-        status: str = NotificationStatus.QUEUED,
+        status: str | NotificationStatus = NotificationStatus.QUEUED,
     ) -> Notification:
         notification = Notification(
             organization_id=organization_id,
@@ -37,13 +37,13 @@ class NotificationService:
             driver_id=driver_id,
             load_id=load_id,
             created_by_staff_user_id=created_by_staff_user_id,
-            channel=channel,
-            direction=direction,
-            message_type=message_type,
-            subject=subject,
+            channel=self._clean_text(channel),
+            direction=self._clean_text(direction),
+            message_type=self._clean_text(message_type),
+            subject=self._clean_text(subject),
             body_text=body_text,
-            provider_message_id=provider_message_id,
-            status=status,
+            provider_message_id=self._clean_text(provider_message_id),
+            status=self._normalize_status(status),
             sent_at=None,
             delivered_at=None,
             failed_at=None,
@@ -68,7 +68,7 @@ class NotificationService:
         driver_id: str | None = None,
         load_id: str | None = None,
         channel: str | None = None,
-        status: str | None = None,
+        status: str | NotificationStatus | None = None,
         page: int = 1,
         page_size: int = 100,
     ) -> tuple[list[Notification], int]:
@@ -77,8 +77,8 @@ class NotificationService:
             customer_account_id=customer_account_id,
             driver_id=driver_id,
             load_id=load_id,
-            channel=channel,
-            status=status,
+            channel=self._clean_text(channel),
+            status=self._normalize_status(status, allow_none=True),
             page=page,
             page_size=page_size,
         )
@@ -93,13 +93,15 @@ class NotificationService:
         notification.status = NotificationStatus.SENT
         notification.sent_at = datetime.now(timezone.utc)
         if provider_message_id:
-            notification.provider_message_id = provider_message_id
+            notification.provider_message_id = self._clean_text(provider_message_id)
+        notification.error_message = None
         return self.notification_repo.update(notification)
 
     def mark_delivered(self, *, notification_id: str) -> Notification:
         notification = self.get_notification(notification_id)
         notification.status = NotificationStatus.DELIVERED
         notification.delivered_at = datetime.now(timezone.utc)
+        notification.error_message = None
         return self.notification_repo.update(notification)
 
     def mark_failed(
@@ -111,5 +113,46 @@ class NotificationService:
         notification = self.get_notification(notification_id)
         notification.status = NotificationStatus.FAILED
         notification.failed_at = datetime.now(timezone.utc)
-        notification.error_message = error_message
+        notification.error_message = self._clean_text(error_message)
         return self.notification_repo.update(notification)
+
+    def _normalize_status(
+        self,
+        value: str | NotificationStatus | None,
+        *,
+        allow_none: bool = False,
+    ) -> NotificationStatus | None:
+        if value is None:
+            if allow_none:
+                return None
+            return NotificationStatus.QUEUED
+
+        if isinstance(value, NotificationStatus):
+            return value
+
+        normalized = str(value).strip().lower()
+
+        aliases: dict[str, NotificationStatus] = {
+            "queued": NotificationStatus.QUEUED,
+            "pending": NotificationStatus.QUEUED,
+            "sent": NotificationStatus.SENT,
+            "delivered": NotificationStatus.DELIVERED,
+            "failed": NotificationStatus.FAILED,
+            "error": NotificationStatus.FAILED,
+        }
+
+        if normalized in aliases:
+            return aliases[normalized]
+
+        raise ValidationError(
+            "Invalid notification status",
+            details={"status": value},
+        )
+
+    @staticmethod
+    def _clean_text(value: str | None) -> str | None:
+        if value is None:
+            return None
+
+        cleaned = str(value).strip()
+        return cleaned or None

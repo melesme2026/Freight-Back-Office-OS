@@ -28,7 +28,7 @@ class TokenService:
 
         try:
             user_id = uuid.UUID(str(subject))
-        except ValueError as exc:
+        except (TypeError, ValueError) as exc:
             raise UnauthorizedError("Invalid token subject") from exc
 
         user = self.staff_user_repo.get_by_id(user_id)

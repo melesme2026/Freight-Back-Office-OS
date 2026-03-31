@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import uuid
+from datetime import date, datetime
+from decimal import Decimal, InvalidOperation
+from typing import Any
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_db_session
-from app.core.exceptions import ValidationError
 from app.schemas.common import ApiResponse
 from app.services.billing.invoice_service import InvoiceService
 
@@ -14,89 +16,134 @@ from app.services.billing.invoice_service import InvoiceService
 router = APIRouter()
 
 
+def _uuid_to_str(value: uuid.UUID | None) -> str | None:
+    return str(value) if value is not None else None
+
+
+def _decimal_to_string(value: object) -> str:
+    if isinstance(value, Decimal):
+        return format(value, "f")
+
+    try:
+        return format(Decimal(str(value)), "f")
+    except (InvalidOperation, TypeError, ValueError):
+        return str(value)
+
+
+def _datetime_to_iso(value: object | None) -> str | None:
+    if value is None:
+        return None
+
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
+
+    isoformat = getattr(value, "isoformat", None)
+    if callable(isoformat):
+        return isoformat()
+
+    return str(value)
+
+
+def _serialize_invoice_line(line: Any) -> dict[str, Any]:
+    return {
+        "id": str(line.id),
+        "invoice_id": str(line.invoice_id),
+        "usage_record_id": str(line.usage_record_id) if line.usage_record_id else None,
+        "line_type": line.line_type,
+        "description": line.description,
+        "quantity": _decimal_to_string(line.quantity),
+        "unit_price": _decimal_to_string(line.unit_price),
+        "line_total": _decimal_to_string(line.line_total),
+        "metadata_json": line.metadata_json,
+        "created_at": _datetime_to_iso(line.created_at),
+        "updated_at": _datetime_to_iso(line.updated_at),
+    }
+
+
+def _serialize_invoice_base(invoice: Any) -> dict[str, Any]:
+    return {
+        "id": str(invoice.id),
+        "organization_id": str(invoice.organization_id),
+        "customer_account_id": str(invoice.customer_account_id),
+        "subscription_id": (
+            str(invoice.subscription_id) if invoice.subscription_id else None
+        ),
+        "invoice_number": invoice.invoice_number,
+        "status": str(invoice.status),
+        "currency_code": invoice.currency_code,
+        "subtotal_amount": _decimal_to_string(invoice.subtotal_amount),
+        "tax_amount": _decimal_to_string(invoice.tax_amount),
+        "total_amount": _decimal_to_string(invoice.total_amount),
+        "amount_paid": _decimal_to_string(invoice.amount_paid),
+        "amount_due": _decimal_to_string(invoice.amount_due),
+        "issued_at": _datetime_to_iso(invoice.issued_at),
+        "due_at": _datetime_to_iso(invoice.due_at),
+        "paid_at": _datetime_to_iso(invoice.paid_at),
+        "billing_period_start": _datetime_to_iso(invoice.billing_period_start),
+        "billing_period_end": _datetime_to_iso(invoice.billing_period_end),
+        "notes": invoice.notes,
+        "created_at": _datetime_to_iso(invoice.created_at),
+        "updated_at": _datetime_to_iso(invoice.updated_at),
+    }
+
+
+def _serialize_invoice_summary(invoice: Any) -> dict[str, Any]:
+    return _serialize_invoice_base(invoice)
+
+
+def _serialize_invoice_detail(invoice: Any) -> dict[str, Any]:
+    payload = _serialize_invoice_base(invoice)
+    payload["lines"] = [_serialize_invoice_line(line) for line in invoice.lines]
+    return payload
+
+
+def _serialize_invoice_update(invoice: Any) -> dict[str, Any]:
+    return {
+        "id": str(invoice.id),
+        "status": str(invoice.status),
+        "subtotal_amount": _decimal_to_string(invoice.subtotal_amount),
+        "tax_amount": _decimal_to_string(invoice.tax_amount),
+        "total_amount": _decimal_to_string(invoice.total_amount),
+        "amount_paid": _decimal_to_string(invoice.amount_paid),
+        "amount_due": _decimal_to_string(invoice.amount_due),
+        "issued_at": _datetime_to_iso(invoice.issued_at),
+        "due_at": _datetime_to_iso(invoice.due_at),
+        "paid_at": _datetime_to_iso(invoice.paid_at),
+        "updated_at": _datetime_to_iso(invoice.updated_at),
+    }
+
+
 @router.post("/billing-invoices", response_model=ApiResponse)
 def create_billing_invoice(
     *,
-    organization_id: str,
-    customer_account_id: str,
+    organization_id: uuid.UUID,
+    customer_account_id: uuid.UUID,
     issued_at: str,
-    subscription_id: str | None = None,
+    subscription_id: uuid.UUID | None = None,
     due_at: str | None = None,
     billing_period_start: str | None = None,
     billing_period_end: str | None = None,
     currency_code: str = "USD",
-    lines: list[dict] | None = None,
+    lines: list[dict[str, Any]] | None = None,
     notes: str | None = None,
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
-    try:
-        uuid.UUID(organization_id)
-        uuid.UUID(customer_account_id)
-        if subscription_id:
-            uuid.UUID(subscription_id)
-    except ValueError as exc:
-        raise ValidationError(
-            "Invalid UUID provided",
-            details={
-                "organization_id": organization_id,
-                "customer_account_id": customer_account_id,
-                "subscription_id": subscription_id,
-            },
-        ) from exc
-
     service = InvoiceService(db)
     item = service.create_invoice(
-        organization_id=organization_id,
-        customer_account_id=customer_account_id,
+        organization_id=str(organization_id),
+        customer_account_id=str(customer_account_id),
         issued_at=issued_at,
-        subscription_id=subscription_id,
+        subscription_id=_uuid_to_str(subscription_id),
         due_at=due_at,
         billing_period_start=billing_period_start,
         billing_period_end=billing_period_end,
-        currency_code=currency_code,
+        currency_code=currency_code.strip().upper(),
         lines=lines or [],
         notes=notes,
     )
 
     return ApiResponse(
-        data={
-            "id": str(item.id),
-            "organization_id": str(item.organization_id),
-            "customer_account_id": str(item.customer_account_id),
-            "subscription_id": str(item.subscription_id) if item.subscription_id else None,
-            "invoice_number": item.invoice_number,
-            "status": str(item.status),
-            "currency_code": item.currency_code,
-            "subtotal_amount": format(item.subtotal_amount, "f"),
-            "tax_amount": format(item.tax_amount, "f"),
-            "total_amount": format(item.total_amount, "f"),
-            "amount_paid": format(item.amount_paid, "f"),
-            "amount_due": format(item.amount_due, "f"),
-            "issued_at": item.issued_at.isoformat() if hasattr(item.issued_at, "isoformat") else str(item.issued_at),
-            "due_at": item.due_at.isoformat() if item.due_at and hasattr(item.due_at, "isoformat") else (str(item.due_at) if item.due_at else None),
-            "paid_at": item.paid_at.isoformat() if item.paid_at and hasattr(item.paid_at, "isoformat") else (str(item.paid_at) if item.paid_at else None),
-            "billing_period_start": item.billing_period_start.isoformat() if item.billing_period_start and hasattr(item.billing_period_start, "isoformat") else (str(item.billing_period_start) if item.billing_period_start else None),
-            "billing_period_end": item.billing_period_end.isoformat() if item.billing_period_end and hasattr(item.billing_period_end, "isoformat") else (str(item.billing_period_end) if item.billing_period_end else None),
-            "notes": item.notes,
-            "lines": [
-                {
-                    "id": str(line.id),
-                    "invoice_id": str(line.invoice_id),
-                    "usage_record_id": str(line.usage_record_id) if line.usage_record_id else None,
-                    "line_type": line.line_type,
-                    "description": line.description,
-                    "quantity": format(line.quantity, "f"),
-                    "unit_price": format(line.unit_price, "f"),
-                    "line_total": format(line.line_total, "f"),
-                    "metadata_json": line.metadata_json,
-                    "created_at": line.created_at.isoformat(),
-                    "updated_at": line.updated_at.isoformat(),
-                }
-                for line in item.lines
-            ],
-            "created_at": item.created_at.isoformat(),
-            "updated_at": item.updated_at.isoformat(),
-        },
+        data=_serialize_invoice_detail(item),
         meta={},
         error=None,
     )
@@ -105,129 +152,47 @@ def create_billing_invoice(
 @router.get("/billing-invoices", response_model=ApiResponse)
 def list_billing_invoices(
     *,
-    organization_id: str | None = None,
-    customer_account_id: str | None = None,
-    subscription_id: str | None = None,
+    organization_id: uuid.UUID | None = None,
+    customer_account_id: uuid.UUID | None = None,
+    subscription_id: uuid.UUID | None = None,
     status: str | None = None,
     due_before: str | None = None,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=25, ge=1, le=200),
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
-    try:
-        if organization_id:
-            uuid.UUID(organization_id)
-        if customer_account_id:
-            uuid.UUID(customer_account_id)
-        if subscription_id:
-            uuid.UUID(subscription_id)
-    except ValueError as exc:
-        raise ValidationError(
-            "Invalid UUID provided",
-            details={
-                "organization_id": organization_id,
-                "customer_account_id": customer_account_id,
-                "subscription_id": subscription_id,
-            },
-        ) from exc
-
     service = InvoiceService(db)
     items, total = service.list_invoices(
-        organization_id=organization_id,
-        customer_account_id=customer_account_id,
-        subscription_id=subscription_id,
-        status=status,
+        organization_id=_uuid_to_str(organization_id),
+        customer_account_id=_uuid_to_str(customer_account_id),
+        subscription_id=_uuid_to_str(subscription_id),
+        status=status.strip() if status else None,
         due_before=due_before,
         page=page,
         page_size=page_size,
     )
 
     return ApiResponse(
-        data=[
-            {
-                "id": str(item.id),
-                "organization_id": str(item.organization_id),
-                "customer_account_id": str(item.customer_account_id),
-                "subscription_id": str(item.subscription_id) if item.subscription_id else None,
-                "invoice_number": item.invoice_number,
-                "status": str(item.status),
-                "currency_code": item.currency_code,
-                "subtotal_amount": format(item.subtotal_amount, "f"),
-                "tax_amount": format(item.tax_amount, "f"),
-                "total_amount": format(item.total_amount, "f"),
-                "amount_paid": format(item.amount_paid, "f"),
-                "amount_due": format(item.amount_due, "f"),
-                "issued_at": item.issued_at.isoformat() if hasattr(item.issued_at, "isoformat") else str(item.issued_at),
-                "due_at": item.due_at.isoformat() if item.due_at and hasattr(item.due_at, "isoformat") else (str(item.due_at) if item.due_at else None),
-                "paid_at": item.paid_at.isoformat() if item.paid_at and hasattr(item.paid_at, "isoformat") else (str(item.paid_at) if item.paid_at else None),
-                "billing_period_start": item.billing_period_start.isoformat() if item.billing_period_start and hasattr(item.billing_period_start, "isoformat") else (str(item.billing_period_start) if item.billing_period_start else None),
-                "billing_period_end": item.billing_period_end.isoformat() if item.billing_period_end and hasattr(item.billing_period_end, "isoformat") else (str(item.billing_period_end) if item.billing_period_end else None),
-                "notes": item.notes,
-                "created_at": item.created_at.isoformat(),
-                "updated_at": item.updated_at.isoformat(),
-            }
-            for item in items
-        ],
-        meta={"page": page, "page_size": page_size, "total": total},
+        data=[_serialize_invoice_summary(item) for item in items],
+        meta={
+            "page": page,
+            "page_size": page_size,
+            "total": total,
+        },
         error=None,
     )
 
 
 @router.get("/billing-invoices/{invoice_id}", response_model=ApiResponse)
 def get_billing_invoice(
-    invoice_id: str,
+    invoice_id: uuid.UUID,
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
-    try:
-        uuid.UUID(invoice_id)
-    except ValueError as exc:
-        raise ValidationError(
-            "Invalid invoice_id",
-            details={"invoice_id": invoice_id},
-        ) from exc
-
     service = InvoiceService(db)
-    item = service.get_invoice(invoice_id)
+    item = service.get_invoice(str(invoice_id))
 
     return ApiResponse(
-        data={
-            "id": str(item.id),
-            "organization_id": str(item.organization_id),
-            "customer_account_id": str(item.customer_account_id),
-            "subscription_id": str(item.subscription_id) if item.subscription_id else None,
-            "invoice_number": item.invoice_number,
-            "status": str(item.status),
-            "currency_code": item.currency_code,
-            "subtotal_amount": format(item.subtotal_amount, "f"),
-            "tax_amount": format(item.tax_amount, "f"),
-            "total_amount": format(item.total_amount, "f"),
-            "amount_paid": format(item.amount_paid, "f"),
-            "amount_due": format(item.amount_due, "f"),
-            "issued_at": item.issued_at.isoformat() if hasattr(item.issued_at, "isoformat") else str(item.issued_at),
-            "due_at": item.due_at.isoformat() if item.due_at and hasattr(item.due_at, "isoformat") else (str(item.due_at) if item.due_at else None),
-            "paid_at": item.paid_at.isoformat() if item.paid_at and hasattr(item.paid_at, "isoformat") else (str(item.paid_at) if item.paid_at else None),
-            "billing_period_start": item.billing_period_start.isoformat() if item.billing_period_start and hasattr(item.billing_period_start, "isoformat") else (str(item.billing_period_start) if item.billing_period_start else None),
-            "billing_period_end": item.billing_period_end.isoformat() if item.billing_period_end and hasattr(item.billing_period_end, "isoformat") else (str(item.billing_period_end) if item.billing_period_end else None),
-            "notes": item.notes,
-            "lines": [
-                {
-                    "id": str(line.id),
-                    "invoice_id": str(line.invoice_id),
-                    "usage_record_id": str(line.usage_record_id) if line.usage_record_id else None,
-                    "line_type": line.line_type,
-                    "description": line.description,
-                    "quantity": format(line.quantity, "f"),
-                    "unit_price": format(line.unit_price, "f"),
-                    "line_total": format(line.line_total, "f"),
-                    "metadata_json": line.metadata_json,
-                    "created_at": line.created_at.isoformat(),
-                    "updated_at": line.updated_at.isoformat(),
-                }
-                for line in item.lines
-            ],
-            "created_at": item.created_at.isoformat(),
-            "updated_at": item.updated_at.isoformat(),
-        },
+        data=_serialize_invoice_detail(item),
         meta={},
         error=None,
     )
@@ -235,7 +200,7 @@ def get_billing_invoice(
 
 @router.patch("/billing-invoices/{invoice_id}", response_model=ApiResponse)
 def update_billing_invoice(
-    invoice_id: str,
+    invoice_id: uuid.UUID,
     *,
     status: str | None = None,
     issued_at: str | None = None,
@@ -246,18 +211,10 @@ def update_billing_invoice(
     notes: str | None = None,
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
-    try:
-        uuid.UUID(invoice_id)
-    except ValueError as exc:
-        raise ValidationError(
-            "Invalid invoice_id",
-            details={"invoice_id": invoice_id},
-        ) from exc
-
     service = InvoiceService(db)
     item = service.update_invoice(
-        invoice_id=invoice_id,
-        status=status,
+        invoice_id=str(invoice_id),
+        status=status.strip() if status else None,
         issued_at=issued_at,
         due_at=due_at,
         paid_at=paid_at,
@@ -267,19 +224,7 @@ def update_billing_invoice(
     )
 
     return ApiResponse(
-        data={
-            "id": str(item.id),
-            "status": str(item.status),
-            "subtotal_amount": format(item.subtotal_amount, "f"),
-            "tax_amount": format(item.tax_amount, "f"),
-            "total_amount": format(item.total_amount, "f"),
-            "amount_paid": format(item.amount_paid, "f"),
-            "amount_due": format(item.amount_due, "f"),
-            "issued_at": item.issued_at.isoformat() if hasattr(item.issued_at, "isoformat") else str(item.issued_at),
-            "due_at": item.due_at.isoformat() if item.due_at and hasattr(item.due_at, "isoformat") else (str(item.due_at) if item.due_at else None),
-            "paid_at": item.paid_at.isoformat() if item.paid_at and hasattr(item.paid_at, "isoformat") else (str(item.paid_at) if item.paid_at else None),
-            "updated_at": item.updated_at.isoformat(),
-        },
+        data=_serialize_invoice_update(item),
         meta={},
         error=None,
     )
@@ -287,26 +232,18 @@ def update_billing_invoice(
 
 @router.post("/billing-invoices/{invoice_id}/mark-past-due", response_model=ApiResponse)
 def mark_billing_invoice_past_due(
-    invoice_id: str,
+    invoice_id: uuid.UUID,
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
-    try:
-        uuid.UUID(invoice_id)
-    except ValueError as exc:
-        raise ValidationError(
-            "Invalid invoice_id",
-            details={"invoice_id": invoice_id},
-        ) from exc
-
     service = InvoiceService(db)
-    item = service.mark_past_due(invoice_id=invoice_id)
+    item = service.mark_past_due(invoice_id=str(invoice_id))
 
     return ApiResponse(
         data={
             "id": str(item.id),
             "status": str(item.status),
-            "amount_due": format(item.amount_due, "f"),
-            "updated_at": item.updated_at.isoformat(),
+            "amount_due": _decimal_to_string(item.amount_due),
+            "updated_at": _datetime_to_iso(item.updated_at),
         },
         meta={},
         error=None,

@@ -4,7 +4,8 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String
+from sqlalchemy import Boolean, DateTime, Enum as SqlEnum
+from sqlalchemy import ForeignKey, Index
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -37,9 +38,16 @@ class OnboardingChecklist(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         unique=True,
     )
     status: Mapped[OnboardingStatus] = mapped_column(
-        String(50),
+        SqlEnum(
+            OnboardingStatus,
+            name="onboarding_status",
+            native_enum=False,
+            validate_strings=True,
+            values_callable=lambda enum_cls: [member.value for member in enum_cls],
+        ),
         nullable=False,
         default=OnboardingStatus.NOT_STARTED,
+        server_default=OnboardingStatus.NOT_STARTED.value,
     )
     documents_received: Mapped[bool] = mapped_column(
         Boolean,

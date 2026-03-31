@@ -10,6 +10,10 @@ from app.domain.models.ledger_entry import LedgerEntry
 
 
 class LedgerRepository:
+    DEFAULT_PAGE = 1
+    DEFAULT_PAGE_SIZE = 100
+    MAX_PAGE_SIZE = 500
+
     def __init__(self, db: Session) -> None:
         self.db = db
 
@@ -20,10 +24,15 @@ class LedgerRepository:
         return ledger_entry
 
     def create_many(self, ledger_entries: list[LedgerEntry]) -> list[LedgerEntry]:
+        if not ledger_entries:
+            return []
+
         self.db.add_all(ledger_entries)
         self.db.flush()
+
         for item in ledger_entries:
             self.db.refresh(item)
+
         return ledger_entries
 
     def get_by_id(self, ledger_entry_id: uuid.UUID) -> LedgerEntry | None:
@@ -40,9 +49,12 @@ class LedgerRepository:
         entry_type: str | None = None,
         entry_date_from: date | None = None,
         entry_date_to: date | None = None,
-        page: int = 1,
-        page_size: int = 100,
+        page: int = DEFAULT_PAGE,
+        page_size: int = DEFAULT_PAGE_SIZE,
     ) -> tuple[list[LedgerEntry], int]:
+        normalized_page = max(page, 1)
+        normalized_page_size = min(max(page_size, 1), self.MAX_PAGE_SIZE)
+
         stmt = select(LedgerEntry)
         count_stmt: Select[tuple[int]] = select(func.count()).select_from(LedgerEntry)
 
@@ -80,11 +92,11 @@ class LedgerRepository:
 
         total = self.db.scalar(count_stmt) or 0
 
-        offset = max(page - 1, 0) * page_size
+        offset = (normalized_page - 1) * normalized_page_size
         stmt = (
             stmt.order_by(LedgerEntry.entry_date.desc(), LedgerEntry.created_at.desc())
             .offset(offset)
-            .limit(page_size)
+            .limit(normalized_page_size)
         )
 
         items = list(self.db.scalars(stmt).all())

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from app.services.ai.prompt_loader import prompt_loader
@@ -38,7 +38,7 @@ class LLMService:
 
         # Prompt is intentionally loaded now so architecture is correct even
         # before a real provider call is implemented.
-        _prompt_payload = self._build_prompt_payload(
+        _ = self._build_prompt_payload(
             prompt_template=prompt_template,
             text_content=text,
         )
@@ -90,25 +90,34 @@ class LLMService:
             self._text_field("raw_text_excerpt", text[:500] or None, "0.80"),
             self._text_field(
                 "load_number",
-                self._find_first(text, [
-                    r"\bload\s*(?:#|number|no\.?)?\s*[:\-]?\s*([A-Z0-9\-]+)\b",
-                    r"\bshipment\s*(?:#|number|no\.?)\s*[:\-]?\s*([A-Z0-9\-]+)\b",
-                ]),
+                self._find_first(
+                    text,
+                    [
+                        r"\bload\s*(?:#|number|no\.?)?\s*[:\-]?\s*([A-Z0-9\-]+)\b",
+                        r"\bshipment\s*(?:#|number|no\.?)\s*[:\-]?\s*([A-Z0-9\-]+)\b",
+                    ],
+                ),
                 "0.72",
             ),
             self._text_field(
                 "rate_confirmation_number",
-                self._find_first(text, [
-                    r"\brate\s*confirmation\s*(?:#|number|no\.?)?\s*[:\-]?\s*([A-Z0-9\-]+)\b",
-                    r"\brate\s*con\s*(?:#|number|no\.?)?\s*[:\-]?\s*([A-Z0-9\-]+)\b",
-                ]),
+                self._find_first(
+                    text,
+                    [
+                        r"\brate\s*confirmation\s*(?:#|number|no\.?)?\s*[:\-]?\s*([A-Z0-9\-]+)\b",
+                        r"\brate\s*con\s*(?:#|number|no\.?)?\s*[:\-]?\s*([A-Z0-9\-]+)\b",
+                    ],
+                ),
                 "0.78",
             ),
             self._text_field(
                 "broker_name",
-                self._find_first(text, [
-                    r"\bbroker\s*[:\-]?\s*([^\n\r]+)",
-                ]),
+                self._find_first(
+                    text,
+                    [
+                        r"\bbroker\s*[:\-]?\s*([^\n\r]+)",
+                    ],
+                ),
                 "0.68",
             ),
             self._text_field(
@@ -118,34 +127,46 @@ class LLMService:
             ),
             self._text_field(
                 "pickup_date",
-                self._find_first(text, [
-                    r"\bpickup\s*date\s*[:\-]?\s*([^\n\r]+)",
-                    r"\bship\s*date\s*[:\-]?\s*([^\n\r]+)",
-                ]),
+                self._find_first(
+                    text,
+                    [
+                        r"\bpickup\s*date\s*[:\-]?\s*([^\n\r]+)",
+                        r"\bship\s*date\s*[:\-]?\s*([^\n\r]+)",
+                    ],
+                ),
                 "0.70",
             ),
             self._text_field(
                 "delivery_date",
-                self._find_first(text, [
-                    r"\bdelivery\s*date\s*[:\-]?\s*([^\n\r]+)",
-                    r"\bdeliver\s*by\s*[:\-]?\s*([^\n\r]+)",
-                ]),
+                self._find_first(
+                    text,
+                    [
+                        r"\bdelivery\s*date\s*[:\-]?\s*([^\n\r]+)",
+                        r"\bdeliver\s*by\s*[:\-]?\s*([^\n\r]+)",
+                    ],
+                ),
                 "0.70",
             ),
             self._text_field(
                 "pickup_location",
-                self._find_first(text, [
-                    r"\bpickup\s*(?:location|city|address)?\s*[:\-]?\s*([^\n\r]+)",
-                    r"\borigin\s*[:\-]?\s*([^\n\r]+)",
-                ]),
+                self._find_first(
+                    text,
+                    [
+                        r"\bpickup\s*(?:location|city|address)?\s*[:\-]?\s*([^\n\r]+)",
+                        r"\borigin\s*[:\-]?\s*([^\n\r]+)",
+                    ],
+                ),
                 "0.66",
             ),
             self._text_field(
                 "delivery_location",
-                self._find_first(text, [
-                    r"\bdelivery\s*(?:location|city|address)?\s*[:\-]?\s*([^\n\r]+)",
-                    r"\bdestination\s*[:\-]?\s*([^\n\r]+)",
-                ]),
+                self._find_first(
+                    text,
+                    [
+                        r"\bdelivery\s*(?:location|city|address)?\s*[:\-]?\s*([^\n\r]+)",
+                        r"\bdestination\s*[:\-]?\s*([^\n\r]+)",
+                    ],
+                ),
                 "0.66",
             ),
             self._number_field(
@@ -163,62 +184,86 @@ class LLMService:
             self._text_field("raw_text_excerpt", text[:500] or None, "0.79"),
             self._text_field(
                 "bol_number",
-                self._find_first(text, [
-                    r"\bbol\s*(?:#|number|no\.?)?\s*[:\-]?\s*([A-Z0-9\-]+)\b",
-                    r"\bbill\s+of\s+lading\s*(?:#|number|no\.?)?\s*[:\-]?\s*([A-Z0-9\-]+)\b",
-                ]),
+                self._find_first(
+                    text,
+                    [
+                        r"\bbol\s*(?:#|number|no\.?)?\s*[:\-]?\s*([A-Z0-9\-]+)\b",
+                        r"\bbill\s+of\s+lading\s*(?:#|number|no\.?)?\s*[:\-]?\s*([A-Z0-9\-]+)\b",
+                    ],
+                ),
                 "0.83",
             ),
             self._text_field(
                 "load_number",
-                self._find_first(text, [
-                    r"\bload\s*(?:#|number|no\.?)?\s*[:\-]?\s*([A-Z0-9\-]+)\b",
-                ]),
+                self._find_first(
+                    text,
+                    [
+                        r"\bload\s*(?:#|number|no\.?)?\s*[:\-]?\s*([A-Z0-9\-]+)\b",
+                    ],
+                ),
                 "0.68",
             ),
             self._text_field(
                 "shipper_name",
-                self._find_first(text, [
-                    r"\bshipper\s*[:\-]?\s*([^\n\r]+)",
-                ]),
+                self._find_first(
+                    text,
+                    [
+                        r"\bshipper\s*[:\-]?\s*([^\n\r]+)",
+                    ],
+                ),
                 "0.72",
             ),
             self._text_field(
                 "consignee_name",
-                self._find_first(text, [
-                    r"\bconsignee\s*[:\-]?\s*([^\n\r]+)",
-                ]),
+                self._find_first(
+                    text,
+                    [
+                        r"\bconsignee\s*[:\-]?\s*([^\n\r]+)",
+                    ],
+                ),
                 "0.72",
             ),
             self._text_field(
                 "pickup_date",
-                self._find_first(text, [
-                    r"\bpickup\s*date\s*[:\-]?\s*([^\n\r]+)",
-                    r"\bship\s*date\s*[:\-]?\s*([^\n\r]+)",
-                ]),
+                self._find_first(
+                    text,
+                    [
+                        r"\bpickup\s*date\s*[:\-]?\s*([^\n\r]+)",
+                        r"\bship\s*date\s*[:\-]?\s*([^\n\r]+)",
+                    ],
+                ),
                 "0.68",
             ),
             self._text_field(
                 "delivery_date",
-                self._find_first(text, [
-                    r"\bdelivery\s*date\s*[:\-]?\s*([^\n\r]+)",
-                ]),
+                self._find_first(
+                    text,
+                    [
+                        r"\bdelivery\s*date\s*[:\-]?\s*([^\n\r]+)",
+                    ],
+                ),
                 "0.68",
             ),
             self._text_field(
                 "pickup_location",
-                self._find_first(text, [
-                    r"\borigin\s*[:\-]?\s*([^\n\r]+)",
-                    r"\bpickup\s*(?:location|address|city)?\s*[:\-]?\s*([^\n\r]+)",
-                ]),
+                self._find_first(
+                    text,
+                    [
+                        r"\borigin\s*[:\-]?\s*([^\n\r]+)",
+                        r"\bpickup\s*(?:location|address|city)?\s*[:\-]?\s*([^\n\r]+)",
+                    ],
+                ),
                 "0.66",
             ),
             self._text_field(
                 "delivery_location",
-                self._find_first(text, [
-                    r"\bdestination\s*[:\-]?\s*([^\n\r]+)",
-                    r"\bdelivery\s*(?:location|address|city)?\s*[:\-]?\s*([^\n\r]+)",
-                ]),
+                self._find_first(
+                    text,
+                    [
+                        r"\bdestination\s*[:\-]?\s*([^\n\r]+)",
+                        r"\bdelivery\s*(?:location|address|city)?\s*[:\-]?\s*([^\n\r]+)",
+                    ],
+                ),
                 "0.66",
             ),
         ]
@@ -231,46 +276,64 @@ class LLMService:
             self._text_field("raw_text_excerpt", text[:500] or None, "0.78"),
             self._text_field(
                 "invoice_number",
-                self._find_first(text, [
-                    r"\binvoice\s*(?:#|number|no\.?)?\s*[:\-]?\s*([A-Z0-9\-]+)\b",
-                ]),
+                self._find_first(
+                    text,
+                    [
+                        r"\binvoice\s*(?:#|number|no\.?)?\s*[:\-]?\s*([A-Z0-9\-]+)\b",
+                    ],
+                ),
                 "0.84",
             ),
             self._text_field(
                 "load_number",
-                self._find_first(text, [
-                    r"\bload\s*(?:#|number|no\.?)?\s*[:\-]?\s*([A-Z0-9\-]+)\b",
-                ]),
+                self._find_first(
+                    text,
+                    [
+                        r"\bload\s*(?:#|number|no\.?)?\s*[:\-]?\s*([A-Z0-9\-]+)\b",
+                    ],
+                ),
                 "0.68",
             ),
             self._text_field(
                 "bol_number",
-                self._find_first(text, [
-                    r"\bbol\s*(?:#|number|no\.?)?\s*[:\-]?\s*([A-Z0-9\-]+)\b",
-                ]),
+                self._find_first(
+                    text,
+                    [
+                        r"\bbol\s*(?:#|number|no\.?)?\s*[:\-]?\s*([A-Z0-9\-]+)\b",
+                    ],
+                ),
                 "0.68",
             ),
             self._text_field(
                 "invoice_date",
-                self._find_first(text, [
-                    r"\binvoice\s*date\s*[:\-]?\s*([^\n\r]+)",
-                    r"\bdate\s*[:\-]?\s*([^\n\r]+)",
-                ]),
+                self._find_first(
+                    text,
+                    [
+                        r"\binvoice\s*date\s*[:\-]?\s*([^\n\r]+)",
+                        r"\bdate\s*[:\-]?\s*([^\n\r]+)",
+                    ],
+                ),
                 "0.72",
             ),
             self._text_field(
                 "due_date",
-                self._find_first(text, [
-                    r"\bdue\s*date\s*[:\-]?\s*([^\n\r]+)",
-                ]),
+                self._find_first(
+                    text,
+                    [
+                        r"\bdue\s*date\s*[:\-]?\s*([^\n\r]+)",
+                    ],
+                ),
                 "0.74",
             ),
             self._text_field(
                 "billing_company_name",
-                self._find_first(text, [
-                    r"\bbill\s*to\s*[:\-]?\s*([^\n\r]+)",
-                    r"\bcustomer\s*[:\-]?\s*([^\n\r]+)",
-                ]),
+                self._find_first(
+                    text,
+                    [
+                        r"\bbill\s*to\s*[:\-]?\s*([^\n\r]+)",
+                        r"\bcustomer\s*[:\-]?\s*([^\n\r]+)",
+                    ],
+                ),
                 "0.70",
             ),
             self._number_field(
@@ -330,7 +393,11 @@ class LLMService:
         return None
 
     def _find_email(self, text: str) -> str | None:
-        match = re.search(r"\b[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}\b", text, flags=re.IGNORECASE)
+        match = re.search(
+            r"\b[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}\b",
+            text,
+            flags=re.IGNORECASE,
+        )
         if match:
             return match.group(0)
         return None
@@ -346,7 +413,7 @@ class LLMService:
         raw_value = match.group(1).replace(",", "")
         try:
             return Decimal(raw_value)
-        except Exception:
+        except (InvalidOperation, ValueError, TypeError):
             return None
 
     def _clean_text(self, value: str | None) -> str | None:

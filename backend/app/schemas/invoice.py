@@ -118,7 +118,7 @@ class BillingInvoiceResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     data: BillingInvoiceRead
-    meta: dict[str, Any] = {}
+    meta: dict[str, Any] = Field(default_factory=dict)
     error: ApiError | None = None
 
 

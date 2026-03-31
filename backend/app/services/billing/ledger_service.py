@@ -28,13 +28,15 @@ class LedgerService:
         currency_code: str = "USD",
         metadata_json: dict | list | None = None,
     ) -> LedgerEntry:
+        normalized_amount = Decimal(str(amount))
+
         entry = LedgerEntry(
             organization_id=organization_id,
             customer_account_id=customer_account_id,
             billing_invoice_id=billing_invoice_id,
             payment_id=payment_id,
             entry_type=entry_type,
-            amount=amount,
+            amount=normalized_amount,
             currency_code=currency_code,
             description=description,
             entry_date=entry_date,

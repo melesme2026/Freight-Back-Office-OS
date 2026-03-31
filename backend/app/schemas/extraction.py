@@ -55,5 +55,5 @@ class DocumentExtractionResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     data: DocumentExtractionResult
-    meta: dict[str, Any] = {}
+    meta: dict[str, Any] = Field(default_factory=dict)
     error: ApiError | None = None

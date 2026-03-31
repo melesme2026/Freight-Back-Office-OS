@@ -1,41 +1,21 @@
 import Link from "next/link";
 
-const summary = [
-  { label: "Open Invoices", value: "2" },
-  { label: "Paid Invoices", value: "5" },
-  { label: "Pending Payments", value: "1" },
-  { label: "Total Due", value: "$449.00" },
-];
-
-const recentInvoices = [
+const billingSections = [
   {
-    id: "inv-1001",
-    invoiceNumber: "INV-1001",
-    status: "open",
-    totalAmount: "$449.00",
-    dueAt: "2026-03-30",
+    title: "Invoices",
+    description:
+      "Review invoice history, due balances, and invoice-level detail once live driver billing data is wired.",
+    href: "/driver-portal/billing/invoices",
+    status: "Planned after V1",
   },
   {
-    id: "inv-1002",
-    invoiceNumber: "INV-1002",
-    status: "paid",
-    totalAmount: "$299.00",
-    dueAt: "2026-03-21",
+    title: "Payments",
+    description:
+      "Review payment attempts, transaction outcomes, and applied invoice payments after billing integration is release-ready.",
+    href: "/driver-portal/billing/payments",
+    status: "Planned after V1",
   },
-];
-
-function badgeClass(status: string) {
-  switch (status) {
-    case "paid":
-      return "bg-emerald-100 text-emerald-800";
-    case "open":
-      return "bg-blue-100 text-blue-800";
-    case "past_due":
-      return "bg-rose-100 text-rose-800";
-    default:
-      return "bg-slate-100 text-slate-700";
-  }
-}
+] as const;
 
 export default function DriverBillingPage() {
   return (
@@ -45,88 +25,47 @@ export default function DriverBillingPage() {
           <p className="text-sm font-medium text-brand-700">Driver Portal / Billing</p>
           <h1 className="text-3xl font-bold tracking-tight text-slate-950">Billing Overview</h1>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-            Review invoice status, payment progress, and the current amount still outstanding.
+            Billing visibility in the driver portal is intentionally lightweight in V1 to avoid
+            showing hardcoded financial totals or unsupported invoice and payment state.
           </p>
         </div>
 
-        <section className="grid gap-4 md:grid-cols-4">
-          {summary.map((item) => (
+        <section className="grid gap-5 md:grid-cols-2">
+          {billingSections.map((section) => (
             <div
-              key={item.label}
-              className="rounded-2xl border border-slate-200 bg-white p-5 shadow-soft"
+              key={section.title}
+              className="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft"
             >
-              <div className="text-sm text-slate-500">{item.label}</div>
-              <div className="mt-2 text-3xl font-bold text-slate-950">{item.value}</div>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <h2 className="text-lg font-semibold text-slate-950">{section.title}</h2>
+                  <p className="mt-2 text-sm leading-6 text-slate-600">{section.description}</p>
+                </div>
+                <span className="inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+                  {section.status}
+                </span>
+              </div>
+
+              <div className="mt-5">
+                <Link
+                  href={section.href}
+                  className="inline-flex rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
+                >
+                  Open {section.title}
+                </Link>
+              </div>
             </div>
           ))}
         </section>
 
-        <div className="mt-8 grid gap-6 xl:grid-cols-[1.3fr,1fr]">
-          <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-slate-950">Recent Invoices</h2>
-              <Link
-                href="/driver-portal/billing/invoices"
-                className="text-sm font-semibold text-brand-700 hover:text-brand-800"
-              >
-                View all →
-              </Link>
-            </div>
-
-            <div className="space-y-3">
-              {recentInvoices.map((invoice) => (
-                <Link
-                  key={invoice.id}
-                  href="/driver-portal/billing/invoices"
-                  className="flex items-center justify-between rounded-xl border border-slate-200 px-4 py-3 hover:bg-slate-50"
-                >
-                  <div>
-                    <div className="text-sm font-semibold text-slate-900">{invoice.invoiceNumber}</div>
-                    <div className="text-xs text-slate-500">Due: {invoice.dueAt}</div>
-                  </div>
-
-                  <div className="flex items-center gap-3">
-                    <span className="text-sm font-medium text-slate-900">{invoice.totalAmount}</span>
-                    <span
-                      className={`rounded-full px-3 py-1 text-xs font-semibold ${badgeClass(invoice.status)}`}
-                    >
-                      {invoice.status.replace("_", " ")}
-                    </span>
-                  </div>
-                </Link>
-              ))}
-            </div>
-          </section>
-
-          <aside className="space-y-6">
-            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
-              <h2 className="mb-4 text-lg font-semibold text-slate-950">Billing Areas</h2>
-              <div className="space-y-3">
-                <Link
-                  href="/driver-portal/billing/invoices"
-                  className="block rounded-xl border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-100"
-                >
-                  Invoices
-                </Link>
-                <Link
-                  href="/driver-portal/billing/payments"
-                  className="block rounded-xl border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-100"
-                >
-                  Payments
-                </Link>
-              </div>
-            </div>
-
-            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
-              <h2 className="mb-4 text-lg font-semibold text-slate-950">V1 note</h2>
-              <p className="text-sm leading-6 text-slate-600">
-                Driver billing views are intentionally simple in V1 and focus on visibility first.
-                Advanced payout and factoring automation can be layered in after real workflow
-                validation.
-              </p>
-            </div>
-          </aside>
-        </div>
+        <section className="mt-8 rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
+          <h2 className="text-lg font-semibold text-slate-950">V1 note</h2>
+          <p className="mt-2 text-sm leading-6 text-slate-600">
+            Live invoice counts, paid totals, pending payments, total due, and recent billing
+            activity should only be shown after the driver portal is connected to real billing
+            endpoints with proper session-scoped access control and response normalization.
+          </p>
+        </section>
       </div>
     </main>
   );

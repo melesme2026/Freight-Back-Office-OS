@@ -1,132 +1,199 @@
-const onboardingAccounts = [
+import Link from "next/link";
+import type { Route } from "next";
+
+type OnboardingStep = {
+  id: string;
+  title: string;
+  description: string;
+  href: string;
+  ctaLabel: string;
+};
+
+const onboardingSteps: OnboardingStep[] = [
   {
-    id: "cust-1001",
-    accountName: "Demo Customer Account",
-    status: "in_progress",
-    documentsReceived: true,
-    pricingConfirmed: true,
-    paymentMethodAdded: false,
-    driversCreated: true,
-    channelConnected: false,
-    goLiveReady: false,
+    id: "customer-profile",
+    title: "Customer profile",
+    description: "Create and verify the customer account before onboarding work begins.",
+    href: "/dashboard/customers",
+    ctaLabel: "Open Customers",
   },
   {
-    id: "cust-1002",
-    accountName: "North Route Logistics",
-    status: "ready",
-    documentsReceived: true,
-    pricingConfirmed: true,
-    paymentMethodAdded: true,
-    driversCreated: true,
-    channelConnected: true,
-    goLiveReady: true,
+    id: "driver-setup",
+    title: "Driver setup",
+    description: "Add drivers and validate their records before dispatch operations begin.",
+    href: "/dashboard/drivers",
+    ctaLabel: "Open Drivers",
   },
   {
-    id: "cust-1003",
-    accountName: "Metro Freight Group",
-    status: "not_started",
-    documentsReceived: false,
-    pricingConfirmed: false,
-    paymentMethodAdded: false,
-    driversCreated: false,
-    channelConnected: false,
-    goLiveReady: false,
+    id: "billing-setup",
+    title: "Billing setup",
+    description: "Confirm pricing, invoices, subscriptions, and payment readiness.",
+    href: "/dashboard/billing",
+    ctaLabel: "Open Billing",
+  },
+  {
+    id: "document-readiness",
+    title: "Document readiness",
+    description: "Review required documents and resolve missing or invalid items before go-live.",
+    href: "/dashboard/documents",
+    ctaLabel: "Open Documents",
+  },
+  {
+    id: "load-readiness",
+    title: "Operational readiness",
+    description: "Validate load workflows and downstream processing before the account goes live.",
+    href: "/dashboard/loads",
+    ctaLabel: "Open Loads",
+  },
+  {
+    id: "review-queue",
+    title: "Review queue",
+    description: "Resolve extracted field issues and manual review items that can block activation.",
+    href: "/dashboard/review-queue",
+    ctaLabel: "Open Review Queue",
   },
 ];
 
-function badgeClass(status: string) {
-  switch (status) {
-    case "ready":
-      return "bg-emerald-100 text-emerald-800";
-    case "in_progress":
-      return "bg-amber-100 text-amber-800";
-    default:
-      return "bg-slate-100 text-slate-700";
-  }
-}
+const readinessChecks: readonly string[] = [
+  "Customer account created and verified",
+  "Required onboarding documents received",
+  "Pricing confirmed",
+  "Payment method or billing workflow configured",
+  "Drivers created and validated",
+  "Channel and notification path configured",
+  "Open review items resolved",
+  "Initial operational workflow validated",
+];
 
-function checkmark(value: boolean) {
-  return value ? "Yes" : "No";
+function toRoute(href: string): Route {
+  return href as Route;
 }
 
 export default function OnboardingPage() {
   return (
     <main className="min-h-screen bg-slate-50 text-slate-900">
       <div className="mx-auto max-w-7xl px-6 py-10">
-        <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div className="mb-8 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <p className="text-sm font-medium text-brand-700">Dashboard / Onboarding</p>
             <h1 className="text-3xl font-bold tracking-tight text-slate-950">Onboarding</h1>
-            <p className="mt-2 text-sm leading-6 text-slate-600">
-              Track customer readiness, onboarding checklist completion, payment setup, and go-live
-              status.
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+              Manage customer onboarding through the live operational modules. This page provides a
+              production-safe entry point for onboarding tasks without exposing placeholder metrics
+              or demo-only account data in release paths.
             </p>
           </div>
 
-          <button className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700">
-            New Customer
-          </button>
+          <div className="flex flex-wrap gap-3">
+            <Link
+              href={toRoute("/dashboard/customers")}
+              className="inline-flex items-center justify-center rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-700"
+            >
+              Open Customers
+            </Link>
+            <Link
+              href={toRoute("/dashboard/review-queue")}
+              className="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
+            >
+              Open Review Queue
+            </Link>
+          </div>
         </div>
 
-        <section className="grid gap-4 md:grid-cols-4">
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-soft">
-            <div className="text-sm text-slate-500">Accounts in onboarding</div>
-            <div className="mt-2 text-3xl font-bold text-slate-950">9</div>
+        <section className="grid gap-4 lg:grid-cols-[1.25fr_0.75fr]">
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-lg font-semibold text-slate-950">Onboarding workspace</h2>
+                <p className="mt-1 text-sm leading-6 text-slate-600">
+                  Use the linked modules below to complete onboarding work with real system data.
+                  This avoids stale dashboard snapshots and keeps staff in the authoritative
+                  workflows.
+                </p>
+              </div>
+              <span className="inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+                Release-safe
+              </span>
+            </div>
+
+            <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {onboardingSteps.map((step) => (
+                <article
+                  key={step.id}
+                  className="flex h-full flex-col rounded-2xl border border-slate-200 bg-slate-50 p-5"
+                >
+                  <h3 className="text-base font-semibold text-slate-950">{step.title}</h3>
+                  <p className="mt-2 flex-1 text-sm leading-6 text-slate-600">
+                    {step.description}
+                  </p>
+                  <div className="mt-4">
+                    <Link
+                      href={toRoute(step.href)}
+                      className="inline-flex items-center text-sm font-semibold text-brand-700 transition hover:text-brand-800"
+                    >
+                      {step.ctaLabel} →
+                    </Link>
+                  </div>
+                </article>
+              ))}
+            </div>
           </div>
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-soft">
-            <div className="text-sm text-slate-500">Ready to go live</div>
-            <div className="mt-2 text-3xl font-bold text-emerald-700">3</div>
-          </div>
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-soft">
-            <div className="text-sm text-slate-500">Missing payment setup</div>
-            <div className="mt-2 text-3xl font-bold text-amber-700">4</div>
-          </div>
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-soft">
-            <div className="text-sm text-slate-500">Channel not connected</div>
-            <div className="mt-2 text-3xl font-bold text-rose-700">2</div>
-          </div>
+
+          <aside className="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
+            <h2 className="text-lg font-semibold text-slate-950">Go-live checklist</h2>
+            <p className="mt-1 text-sm leading-6 text-slate-600">
+              Use this checklist as the operational standard before marking an account ready.
+            </p>
+
+            <ul className="mt-5 space-y-3">
+              {readinessChecks.map((item) => (
+                <li key={item} className="flex items-start gap-3 rounded-xl bg-slate-50 px-4 py-3">
+                  <span
+                    aria-hidden="true"
+                    className="mt-0.5 inline-flex h-5 w-5 flex-none items-center justify-center rounded-full bg-brand-100 text-xs font-bold text-brand-700"
+                  >
+                    ✓
+                  </span>
+                  <span className="text-sm text-slate-700">{item}</span>
+                </li>
+              ))}
+            </ul>
+          </aside>
         </section>
 
-        <section className="mt-8 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-soft">
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-slate-200 text-sm">
-              <thead className="bg-slate-50">
-                <tr className="text-left text-slate-600">
-                  <th className="px-5 py-4 font-semibold">Customer</th>
-                  <th className="px-5 py-4 font-semibold">Status</th>
-                  <th className="px-5 py-4 font-semibold">Docs</th>
-                  <th className="px-5 py-4 font-semibold">Pricing</th>
-                  <th className="px-5 py-4 font-semibold">Payment</th>
-                  <th className="px-5 py-4 font-semibold">Drivers</th>
-                  <th className="px-5 py-4 font-semibold">Channel</th>
-                  <th className="px-5 py-4 font-semibold">Go Live</th>
-                </tr>
-              </thead>
+        <section className="mt-8 rounded-2xl border border-dashed border-slate-300 bg-white p-6 shadow-soft">
+          <h2 className="text-lg font-semibold text-slate-950">Implementation note</h2>
+          <p className="mt-2 text-sm leading-6 text-slate-600">
+            This route intentionally avoids hardcoded counts and sample customer records. Until a
+            dedicated onboarding API exists, onboarding status should be managed through the live
+            customer, billing, document, driver, load, and review queue modules.
+          </p>
 
-              <tbody className="divide-y divide-slate-100">
-                {onboardingAccounts.map((account) => (
-                  <tr key={account.id} className="hover:bg-slate-50">
-                    <td className="px-5 py-4">
-                      <div className="font-semibold text-slate-900">{account.accountName}</div>
-                      <div className="text-xs text-slate-500">{account.id}</div>
-                    </td>
-                    <td className="px-5 py-4">
-                      <span
-                        className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${badgeClass(account.status)}`}
-                      >
-                        {account.status.replace("_", " ")}
-                      </span>
-                    </td>
-                    <td className="px-5 py-4 text-slate-700">{checkmark(account.documentsReceived)}</td>
-                    <td className="px-5 py-4 text-slate-700">{checkmark(account.pricingConfirmed)}</td>
-                    <td className="px-5 py-4 text-slate-700">{checkmark(account.paymentMethodAdded)}</td>
-                    <td className="px-5 py-4 text-slate-700">{checkmark(account.driversCreated)}</td>
-                    <td className="px-5 py-4 text-slate-700">{checkmark(account.channelConnected)}</td>
-                    <td className="px-5 py-4 text-slate-700">{checkmark(account.goLiveReady)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="mt-5 flex flex-wrap gap-3">
+            <Link
+              href={toRoute("/dashboard/customers")}
+              className="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
+            >
+              Customer accounts
+            </Link>
+            <Link
+              href={toRoute("/dashboard/documents")}
+              className="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
+            >
+              Document review
+            </Link>
+            <Link
+              href={toRoute("/dashboard/billing")}
+              className="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
+            >
+              Billing readiness
+            </Link>
+            <Link
+              href={toRoute("/dashboard/drivers")}
+              className="inline-flex items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
+            >
+              Driver readiness
+            </Link>
           </div>
         </section>
       </div>

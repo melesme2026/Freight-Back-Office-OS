@@ -4,7 +4,8 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, String
+from sqlalchemy import DateTime, Enum as SqlEnum
+from sqlalchemy import Float, ForeignKey, Index, Integer, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -59,14 +60,28 @@ class LoadDocument(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
 
     source_channel: Mapped[Channel] = mapped_column(
-        String(50),
+        SqlEnum(
+            Channel,
+            name="channel",
+            native_enum=False,
+            validate_strings=True,
+            values_callable=lambda enum_cls: [member.value for member in enum_cls],
+        ),
         nullable=False,
         default=Channel.MANUAL,
+        server_default=Channel.MANUAL.value,
     )
     document_type: Mapped[DocumentType] = mapped_column(
-        String(50),
+        SqlEnum(
+            DocumentType,
+            name="document_type",
+            native_enum=False,
+            validate_strings=True,
+            values_callable=lambda enum_cls: [member.value for member in enum_cls],
+        ),
         nullable=False,
         default=DocumentType.UNKNOWN,
+        server_default=DocumentType.UNKNOWN.value,
     )
     original_filename: Mapped[str | None] = mapped_column(String(255), nullable=True)
     mime_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
@@ -77,11 +92,21 @@ class LoadDocument(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     page_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     processing_status: Mapped[ProcessingStatus] = mapped_column(
-        String(50),
+        SqlEnum(
+            ProcessingStatus,
+            name="processing_status",
+            native_enum=False,
+            validate_strings=True,
+            values_callable=lambda enum_cls: [member.value for member in enum_cls],
+        ),
         nullable=False,
         default=ProcessingStatus.PENDING,
+        server_default=ProcessingStatus.PENDING.value,
     )
-    classification_confidence: Mapped[float | None] = mapped_column(nullable=True)
+    classification_confidence: Mapped[float | None] = mapped_column(
+        Float,
+        nullable=True,
+    )
     ocr_completed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,

@@ -1,11 +1,12 @@
-const ACCESS_TOKEN_KEY = "fbo_access_token";
+const ACCESS_TOKEN_KEY = "access_token";
 
 export function getAccessToken(): string | null {
   if (typeof window === "undefined") {
     return null;
   }
 
-  return window.localStorage.getItem(ACCESS_TOKEN_KEY);
+  const value = window.localStorage.getItem(ACCESS_TOKEN_KEY);
+  return value && value.trim().length > 0 ? value : null;
 }
 
 export function setAccessToken(token: string): void {
@@ -13,7 +14,14 @@ export function setAccessToken(token: string): void {
     return;
   }
 
-  window.localStorage.setItem(ACCESS_TOKEN_KEY, token);
+  const normalized = token.trim();
+
+  if (normalized.length === 0) {
+    window.localStorage.removeItem(ACCESS_TOKEN_KEY);
+    return;
+  }
+
+  window.localStorage.setItem(ACCESS_TOKEN_KEY, normalized);
 }
 
 export function clearAccessToken(): void {

@@ -3,7 +3,8 @@ from __future__ import annotations
 import uuid
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, ForeignKey, Index, Integer, String, UniqueConstraint
+from sqlalchemy import Boolean, Enum as SqlEnum
+from sqlalchemy import ForeignKey, Index, Integer, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -45,17 +46,31 @@ class PaymentMethod(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
 
     provider: Mapped[PaymentProvider] = mapped_column(
-        String(50),
+        SqlEnum(
+            PaymentProvider,
+            name="payment_provider",
+            native_enum=False,
+            validate_strings=True,
+            values_callable=lambda enum_cls: [member.value for member in enum_cls],
+        ),
         nullable=False,
         default=PaymentProvider.MANUAL,
+        server_default=PaymentProvider.MANUAL.value,
     )
     provider_customer_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     provider_payment_method_id: Mapped[str] = mapped_column(String(255), nullable=False)
 
     method_type: Mapped[PaymentMethodType] = mapped_column(
-        String(50),
+        SqlEnum(
+            PaymentMethodType,
+            name="payment_method_type",
+            native_enum=False,
+            validate_strings=True,
+            values_callable=lambda enum_cls: [member.value for member in enum_cls],
+        ),
         nullable=False,
         default=PaymentMethodType.MANUAL,
+        server_default=PaymentMethodType.MANUAL.value,
     )
     brand: Mapped[str | None] = mapped_column(String(50), nullable=True)
     last4: Mapped[str | None] = mapped_column(String(4), nullable=True)

@@ -9,6 +9,10 @@ from app.domain.models.extracted_field import ExtractedField
 
 
 class ExtractedFieldRepository:
+    DEFAULT_PAGE = 1
+    DEFAULT_PAGE_SIZE = 100
+    MAX_PAGE_SIZE = 500
+
     def __init__(self, db: Session) -> None:
         self.db = db
 
@@ -42,9 +46,12 @@ class ExtractedFieldRepository:
         document_id: uuid.UUID | None = None,
         load_id: uuid.UUID | None = None,
         field_name: str | None = None,
-        page: int = 1,
-        page_size: int = 100,
+        page: int = DEFAULT_PAGE,
+        page_size: int = DEFAULT_PAGE_SIZE,
     ) -> tuple[list[ExtractedField], int]:
+        normalized_page = max(page, 1)
+        normalized_page_size = min(max(page_size, 1), self.MAX_PAGE_SIZE)
+
         stmt = select(ExtractedField)
         count_stmt: Select[tuple[int]] = select(func.count()).select_from(ExtractedField)
 
@@ -66,11 +73,11 @@ class ExtractedFieldRepository:
 
         total = self.db.scalar(count_stmt) or 0
 
-        offset = max(page - 1, 0) * page_size
+        offset = (normalized_page - 1) * normalized_page_size
         stmt = (
             stmt.order_by(ExtractedField.created_at.desc())
             .offset(offset)
-            .limit(page_size)
+            .limit(normalized_page_size)
         )
 
         items = list(self.db.scalars(stmt).all())

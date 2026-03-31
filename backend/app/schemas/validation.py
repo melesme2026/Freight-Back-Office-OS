@@ -46,7 +46,7 @@ class ValidationIssueListResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     data: list[ValidationIssueRead]
-    meta: dict[str, Any] = {}
+    meta: dict[str, Any] = Field(default_factory=dict)
     error: ApiError | None = None
 
 
@@ -54,7 +54,7 @@ class ValidationIssueResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     data: ValidationIssueRead
-    meta: dict[str, Any] = {}
+    meta: dict[str, Any] = Field(default_factory=dict)
     error: ApiError | None = None
 
 

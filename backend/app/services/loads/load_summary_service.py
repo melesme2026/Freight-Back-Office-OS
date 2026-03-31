@@ -38,6 +38,8 @@ class LoadSummaryService:
             if str(issue.severity) in {"warning", "ValidationSeverity.WARNING"}
         )
 
+        normalized_status = self._normalize_load_status(load.status)
+
         return {
             "load_id": str(load.id),
             "exists": True,
@@ -56,7 +58,7 @@ class LoadSummaryService:
             "warning_issue_count": warning_issue_count,
             "unresolved_issue_count": unresolved_issue_count,
             "is_ready_for_submission": (
-                load.status in {LoadStatus.VALIDATED, LoadStatus.READY_TO_SUBMIT}
+                normalized_status in {LoadStatus.VALIDATED, LoadStatus.READY_TO_SUBMIT}
                 and blocking_issue_count == 0
             ),
         }
@@ -65,4 +67,25 @@ class LoadSummaryService:
     def _decimal_to_str(value: Decimal | None) -> str | None:
         if value is None:
             return None
-        return format(value, "f")
+        return format(Decimal(str(value)), "f")
+
+    @staticmethod
+    def _normalize_load_status(value: Any) -> LoadStatus | None:
+        if isinstance(value, LoadStatus):
+            return value
+
+        normalized = str(value or "").strip().lower()
+
+        aliases: dict[str, LoadStatus] = {
+            "new": LoadStatus.NEW,
+            "docs_received": LoadStatus.DOCS_RECEIVED,
+            "needs_review": LoadStatus.NEEDS_REVIEW,
+            "validated": LoadStatus.VALIDATED,
+            "ready_to_submit": LoadStatus.READY_TO_SUBMIT,
+            "submitted": LoadStatus.SUBMITTED,
+            "funded": LoadStatus.FUNDED,
+            "paid": LoadStatus.PAID,
+            "cancelled": LoadStatus.CANCELLED,
+        }
+
+        return aliases.get(normalized)

@@ -3,77 +3,100 @@ from __future__ import annotations
 import uuid
 
 from fastapi import APIRouter, Depends
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
+from sqlalchemy.sql import Select
 
 from app.core.dependencies import get_db_session
-from app.core.exceptions import ValidationError
-from app.repositories.document_repo import DocumentRepository
-from app.repositories.load_repo import LoadRepository
-from app.repositories.validation_repo import ValidationRepository
+from app.domain.models.load import Load
+from app.domain.models.load_document import LoadDocument
+from app.domain.models.validation_issue import ValidationIssue
 from app.schemas.common import ApiResponse
 
 
 router = APIRouter()
 
 
+def _scalar_count(db: Session, stmt: Select[tuple[int]]) -> int:
+    return int(db.execute(stmt).scalar_one())
+
+
+def _apply_optional_org_filter(
+    stmt: Select,
+    *,
+    organization_id: uuid.UUID | None,
+    model: type,
+) -> Select:
+    if organization_id is None:
+        return stmt
+    return stmt.where(model.organization_id == organization_id)
+
+
 @router.get("/dashboard", response_model=ApiResponse)
 def get_dashboard(
     *,
-    organization_id: str | None = None,
+    organization_id: uuid.UUID | None = None,
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
-    parsed_organization_id = None
-    if organization_id:
-        try:
-            parsed_organization_id = uuid.UUID(organization_id)
-        except ValueError as exc:
-            raise ValidationError(
-                "Invalid organization_id",
-                details={"organization_id": organization_id},
-            ) from exc
-
-    load_repo = LoadRepository(db)
-    document_repo = DocumentRepository(db)
-    validation_repo = ValidationRepository(db)
-
-    loads, _ = load_repo.list(
-        organization_id=parsed_organization_id,
-        page=1,
-        page_size=10000,
-    )
-    documents, _ = document_repo.list(
-        organization_id=parsed_organization_id,
-        page=1,
-        page_size=10000,
-    )
-    validation_issues, _ = validation_repo.list(
-        organization_id=parsed_organization_id,
-        page=1,
-        page_size=10000,
+    loads_total_stmt = _apply_optional_org_filter(
+        select(func.count()).select_from(Load),
+        organization_id=organization_id,
+        model=Load,
     )
 
-    loads_total = len(loads)
-    loads_needing_review = sum(1 for item in loads if str(item.status) == "needs_review")
-    loads_validated = sum(1 for item in loads if str(item.status) == "validated")
-    loads_paid = sum(1 for item in loads if str(item.status) == "paid")
-    documents_pending_processing = sum(
-        1 for item in documents if str(item.processing_status) != "completed"
+    loads_needing_review_stmt = _apply_optional_org_filter(
+        select(func.count())
+        .select_from(Load)
+        .where(Load.status == "needs_review"),
+        organization_id=organization_id,
+        model=Load,
     )
-    critical_validation_issues = sum(
-        1
-        for item in validation_issues
-        if str(item.severity) in {"critical", "ValidationSeverity.CRITICAL"}
-        and not item.is_resolved
+
+    loads_validated_stmt = _apply_optional_org_filter(
+        select(func.count())
+        .select_from(Load)
+        .where(Load.status == "validated"),
+        organization_id=organization_id,
+        model=Load,
+    )
+
+    loads_paid_stmt = _apply_optional_org_filter(
+        select(func.count())
+        .select_from(Load)
+        .where(Load.status == "paid"),
+        organization_id=organization_id,
+        model=Load,
+    )
+
+    documents_pending_processing_stmt = _apply_optional_org_filter(
+        select(func.count())
+        .select_from(LoadDocument)
+        .where(LoadDocument.processing_status != "completed"),
+        organization_id=organization_id,
+        model=LoadDocument,
+    )
+
+    critical_validation_issues_stmt = _apply_optional_org_filter(
+        select(func.count())
+        .select_from(ValidationIssue)
+        .where(ValidationIssue.is_resolved.is_(False))
+        .where(ValidationIssue.severity == "critical"),
+        organization_id=organization_id,
+        model=ValidationIssue,
     )
 
     return ApiResponse(
         data={
-            "loads_total": loads_total,
-            "loads_needing_review": loads_needing_review,
-            "loads_validated": loads_validated,
-            "loads_paid": loads_paid,
-            "documents_pending_processing": documents_pending_processing,
-            "critical_validation_issues": critical_validation_issues,
+            "loads_total": _scalar_count(db, loads_total_stmt),
+            "loads_needing_review": _scalar_count(db, loads_needing_review_stmt),
+            "loads_validated": _scalar_count(db, loads_validated_stmt),
+            "loads_paid": _scalar_count(db, loads_paid_stmt),
+            "documents_pending_processing": _scalar_count(
+                db, documents_pending_processing_stmt
+            ),
+            "critical_validation_issues": _scalar_count(
+                db, critical_validation_issues_stmt
+            ),
         },
         meta={},
         error=None,

@@ -1,42 +1,23 @@
-const driverLoads = [
+const loadSections = [
   {
-    id: "load-1001",
-    loadNumber: "LOAD-1001",
-    broker: "Alpha Logistics",
-    route: "Detroit, MI → Columbus, OH",
-    status: "needs_review",
-    amount: "$1,250.00",
+    title: "Active Loads",
+    description:
+      "Driver-facing active and recent load visibility will appear here once the driver portal is wired to live load assignment data.",
+    status: "Planned after V1",
   },
   {
-    id: "load-1002",
-    loadNumber: "LOAD-1002",
-    broker: "North Peak Freight",
-    route: "Toledo, OH → Louisville, KY",
-    status: "validated",
-    amount: "$980.00",
+    title: "Document Progress",
+    description:
+      "Drivers will be able to see paperwork readiness, missing documents, and review blockers after release-safe portal integration is complete.",
+    status: "Planned after V1",
   },
   {
-    id: "load-1003",
-    loadNumber: "LOAD-1003",
-    broker: "Metro Carrier Group",
-    route: "Chicago, IL → Indianapolis, IN",
-    status: "submitted",
-    amount: "$1,540.00",
+    title: "Load Status and Earnings",
+    description:
+      "Load lifecycle status and payout-related amounts should only be shown after the driver portal is connected to real scoped load and billing data.",
+    status: "Planned after V1",
   },
-];
-
-function statusBadge(status: string) {
-  switch (status) {
-    case "needs_review":
-      return "bg-amber-100 text-amber-800";
-    case "validated":
-      return "bg-emerald-100 text-emerald-800";
-    case "submitted":
-      return "bg-blue-100 text-blue-800";
-    default:
-      return "bg-slate-100 text-slate-700";
-  }
-}
+] as const;
 
 export default function DriverLoadsPage() {
   return (
@@ -46,46 +27,36 @@ export default function DriverLoadsPage() {
           <p className="text-sm font-medium text-brand-700">Driver Portal / Loads</p>
           <h1 className="text-3xl font-bold tracking-tight text-slate-950">My Loads</h1>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-            See your recent and active loads, track document progress, and understand what still
-            needs attention before billing or payout can move forward.
+            Load visibility in the driver portal is intentionally lightweight in V1 to avoid
+            showing hardcoded operational records or unsupported live status and payout data.
           </p>
         </div>
 
-        <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-soft">
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-slate-200 text-sm">
-              <thead className="bg-slate-50">
-                <tr className="text-left text-slate-600">
-                  <th className="px-5 py-4 font-semibold">Load</th>
-                  <th className="px-5 py-4 font-semibold">Broker</th>
-                  <th className="px-5 py-4 font-semibold">Route</th>
-                  <th className="px-5 py-4 font-semibold">Status</th>
-                  <th className="px-5 py-4 font-semibold">Amount</th>
-                </tr>
-              </thead>
+        <section className="grid gap-5 md:grid-cols-3">
+          {loadSections.map((section) => (
+            <div
+              key={section.title}
+              className="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft"
+            >
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <h2 className="text-lg font-semibold text-slate-950">{section.title}</h2>
+                <span className="inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+                  {section.status}
+                </span>
+              </div>
 
-              <tbody className="divide-y divide-slate-100">
-                {driverLoads.map((load) => (
-                  <tr key={load.id} className="hover:bg-slate-50">
-                    <td className="px-5 py-4">
-                      <div className="font-semibold text-slate-900">{load.loadNumber}</div>
-                      <div className="text-xs text-slate-500">{load.id}</div>
-                    </td>
-                    <td className="px-5 py-4 text-slate-700">{load.broker}</td>
-                    <td className="px-5 py-4 text-slate-700">{load.route}</td>
-                    <td className="px-5 py-4">
-                      <span
-                        className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${statusBadge(load.status)}`}
-                      >
-                        {load.status.replace("_", " ")}
-                      </span>
-                    </td>
-                    <td className="px-5 py-4 font-medium text-slate-900">{load.amount}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+              <p className="mt-2 text-sm leading-6 text-slate-600">{section.description}</p>
+            </div>
+          ))}
+        </section>
+
+        <section className="mt-8 rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
+          <h2 className="text-lg font-semibold text-slate-950">V1 note</h2>
+          <p className="mt-2 text-sm leading-6 text-slate-600">
+            Live load numbers, brokers, routes, review state, validation state, submitted status,
+            and payout-related amounts should only be shown after the driver portal is connected to
+            real session-scoped load endpoints with proper response normalization and access control.
+          </p>
         </section>
       </div>
     </main>

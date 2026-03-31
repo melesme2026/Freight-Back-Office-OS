@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
 
-from app.core.exceptions import NotFoundError
+from app.core.exceptions import NotFoundError, ValidationError
 from app.domain.enums.onboarding_status import OnboardingStatus
 from app.domain.models.onboarding_checklist import OnboardingChecklist
 from app.repositories.customer_account_repo import CustomerAccountRepository
@@ -62,7 +62,7 @@ class OnboardingService:
         *,
         organization_id: str,
         customer_account_id: str,
-        status: str,
+        status: str | OnboardingStatus,
         documents_received: bool,
         pricing_confirmed: bool,
         payment_method_added: bool,
@@ -71,13 +71,27 @@ class OnboardingService:
         go_live_ready: bool,
         completed_at=None,
     ) -> OnboardingChecklist:
+        customer_account = self.customer_account_repo.get_by_id(customer_account_id)
+        if customer_account is None:
+            raise NotFoundError(
+                "Customer account not found",
+                details={"customer_account_id": customer_account_id},
+            )
+
+        normalized_status = self._normalize_status(status)
         checklist = self.onboarding_repo.get_by_customer_account_id(customer_account_id)
+
+        if go_live_ready and completed_at is None:
+            completed_at = datetime.now(timezone.utc)
+
+        if go_live_ready and normalized_status != OnboardingStatus.COMPLETED:
+            normalized_status = OnboardingStatus.COMPLETED
 
         if checklist is None:
             checklist = OnboardingChecklist(
                 organization_id=organization_id,
                 customer_account_id=customer_account_id,
-                status=status,
+                status=normalized_status,
                 documents_received=documents_received,
                 pricing_confirmed=pricing_confirmed,
                 payment_method_added=payment_method_added,
@@ -88,7 +102,7 @@ class OnboardingService:
             )
             return self.onboarding_repo.create(checklist)
 
-        checklist.status = status
+        checklist.status = normalized_status
         checklist.documents_received = documents_received
         checklist.pricing_confirmed = pricing_confirmed
         checklist.payment_method_added = payment_method_added
@@ -97,10 +111,27 @@ class OnboardingService:
         checklist.go_live_ready = go_live_ready
         checklist.completed_at = completed_at
 
-        if go_live_ready and completed_at is None:
-            checklist.completed_at = datetime.now(timezone.utc)
-
-        if go_live_ready and str(checklist.status) != str(OnboardingStatus.COMPLETED):
-            checklist.status = OnboardingStatus.COMPLETED
-
         return self.onboarding_repo.update(checklist)
+
+    def _normalize_status(self, value: str | OnboardingStatus) -> OnboardingStatus:
+        if isinstance(value, OnboardingStatus):
+            return value
+
+        normalized = str(value).strip().lower()
+
+        aliases: dict[str, OnboardingStatus] = {
+            "not_started": OnboardingStatus.NOT_STARTED,
+            "not started": OnboardingStatus.NOT_STARTED,
+            "in_progress": OnboardingStatus.IN_PROGRESS,
+            "in progress": OnboardingStatus.IN_PROGRESS,
+            "completed": OnboardingStatus.COMPLETED,
+            "blocked": OnboardingStatus.BLOCKED,
+        }
+
+        if normalized in aliases:
+            return aliases[normalized]
+
+        raise ValidationError(
+            "Invalid onboarding status",
+            details={"status": value},
+        )

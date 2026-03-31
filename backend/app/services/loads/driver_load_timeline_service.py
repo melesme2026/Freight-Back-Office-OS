@@ -38,10 +38,12 @@ class DriverLoadTimelineService:
                     "pickup_location": load.pickup_location,
                     "delivery_location": load.delivery_location,
                     "invoice_number": load.invoice_number,
-                    "gross_amount": format(load.gross_amount, "f") if load.gross_amount is not None else None,
+                    "gross_amount": (
+                        format(load.gross_amount, "f") if load.gross_amount is not None else None
+                    ),
                     "currency_code": load.currency_code,
-                    "created_at": load.created_at.isoformat(),
-                    "updated_at": load.updated_at.isoformat(),
+                    "created_at": load.created_at.isoformat() if load.created_at else None,
+                    "updated_at": load.updated_at.isoformat() if load.updated_at else None,
                 }
             )
 

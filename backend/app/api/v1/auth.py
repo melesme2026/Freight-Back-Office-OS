@@ -21,13 +21,10 @@ from app.services.auth.token_service import TokenService
 
 router = APIRouter()
 
+ACCESS_TOKEN_EXPIRES_IN_SECONDS = 60 * 60
 
-@router.post("/auth/login", response_model=LoginResponse)
-def login(
-    payload: LoginRequest,
-    db: Session = Depends(get_db_session),
-    x_organization_id: str | None = Header(default=None, alias="X-Organization-Id"),
-) -> LoginResponse:
+
+def _parse_organization_header(x_organization_id: str | None) -> uuid.UUID:
     if not x_organization_id:
         raise ValidationError(
             "Missing required X-Organization-Id header",
@@ -35,12 +32,32 @@ def login(
         )
 
     try:
-        organization_id = uuid.UUID(x_organization_id)
+        return uuid.UUID(x_organization_id)
     except ValueError as exc:
         raise ValidationError(
             "Invalid X-Organization-Id header",
             details={"header": "X-Organization-Id", "value": x_organization_id},
         ) from exc
+
+
+def _serialize_staff_user(user) -> StaffUserAuthView:
+    return StaffUserAuthView(
+        id=str(user.id),
+        organization_id=str(user.organization_id),
+        email=user.email,
+        full_name=user.full_name,
+        role=user.role,
+        is_active=user.is_active,
+    )
+
+
+@router.post("/auth/login", response_model=LoginResponse)
+def login(
+    payload: LoginRequest,
+    db: Session = Depends(get_db_session),
+    x_organization_id: str | None = Header(default=None, alias="X-Organization-Id"),
+) -> LoginResponse:
+    organization_id = _parse_organization_header(x_organization_id)
 
     auth_service = AuthService(db)
     user = auth_service.authenticate_staff_user(
@@ -53,15 +70,8 @@ def login(
     data = LoginResponseData(
         access_token=access_token,
         token_type="bearer",
-        expires_in=60 * 60,
-        user=StaffUserAuthView(
-            id=str(user.id),
-            organization_id=str(user.organization_id),
-            email=user.email,
-            full_name=user.full_name,
-            role=user.role,
-            is_active=user.is_active,
-        ),
+        expires_in=ACCESS_TOKEN_EXPIRES_IN_SECONDS,
+        user=_serialize_staff_user(user),
     )
     return LoginResponse(data=data, meta={}, error=None)
 
@@ -78,14 +88,7 @@ def get_current_user(
         raise UnauthorizedError("Unable to resolve current user")
 
     return CurrentUserResponse(
-        data=StaffUserAuthView(
-            id=str(user.id),
-            organization_id=str(user.organization_id),
-            email=user.email,
-            full_name=user.full_name,
-            role=user.role,
-            is_active=user.is_active,
-        ),
+        data=_serialize_staff_user(user),
         meta={},
         error=None,
     )

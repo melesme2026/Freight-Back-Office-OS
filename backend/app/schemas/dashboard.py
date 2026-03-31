@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ApiError(BaseModel):
@@ -28,5 +28,5 @@ class DashboardResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     data: DashboardSummaryData
-    meta: dict[str, Any] = {}
+    meta: dict[str, Any] = Field(default_factory=dict)
     error: ApiError | None = None

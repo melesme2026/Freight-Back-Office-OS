@@ -1,7 +1,3 @@
-Paste this into:
-
-docs/api/webhook-contracts.md
-
 # Webhook Contracts
 
 ## Purpose
@@ -10,9 +6,9 @@ This document defines the structure and expectations for webhook-based ingestion
 
 It ensures:
 
-- consistent payload handling
-- predictable ingestion behavior
-- safe processing of external events
+* consistent payload handling
+* predictable ingestion behavior
+* safe processing of external events
 
 ---
 
@@ -20,26 +16,26 @@ It ensures:
 
 The system currently supports:
 
-- WhatsApp (driver messages / documents)
-- Email (future)
-- Payment providers (Stripe, etc.)
+* WhatsApp (driver messages and documents)
+* email (future)
+* payment providers (Stripe, etc.)
 
 ---
 
 ## General webhook contract
 
-All webhook endpoints follow:
+All webhook endpoints should follow these principles:
 
-- POST request
-- JSON payload
-- idempotent processing
-- fast acknowledgment (no long processing inline)
+* `POST` request
+* JSON payload unless the provider requires otherwise
+* idempotent processing
+* fast acknowledgment with no long-running inline work
 
 ---
 
 ## Standard response
 
-All webhook endpoints should return:
+All webhook endpoints should return a lightweight acknowledgment:
 
 ```json
 {
@@ -47,32 +43,33 @@ All webhook endpoints should return:
   "channel": "<channel>",
   "received_at": "<timestamp>"
 }
+```
 
+---
 
-⸻
-
-Idempotency
+## Idempotency
 
 Webhooks must be safe to retry.
 
 Guidelines:
-	•	use unique event ID if provided
-	•	avoid duplicate processing
-	•	log processed events
 
-⸻
+* use a unique event ID if the provider supplies one
+* avoid duplicate processing
+* log or persist processed event identifiers
 
-1. WhatsApp webhook
+---
 
-Endpoint
+## 1. WhatsApp webhook
 
+### Endpoint
+
+```text
 POST /api/v1/webhooks/whatsapp
+```
 
+### Sample payload (simplified)
 
-⸻
-
-Sample payload (simplified)
-
+```json
 {
   "object": "whatsapp_business_account",
   "entry": [
@@ -97,30 +94,29 @@ Sample payload (simplified)
     }
   ]
 }
+```
 
+### Expected behavior
 
-⸻
+* accept the payload
+* extract the sender or driver identifier
+* extract message content and attachments if present
+* route the event to the ingestion service
+* store the raw payload for traceability
 
-Expected behavior
-	•	accept payload
-	•	extract sender (driver)
-	•	extract message content
-	•	route to ingestion service
-	•	store raw payload
+---
 
-⸻
+## 2. Email webhook (future)
 
-2. Email webhook (future)
+### Endpoint
 
-Endpoint
-
+```text
 POST /api/v1/webhooks/email
+```
 
+### Expected payload (example)
 
-⸻
-
-Expected payload (example)
-
+```json
 {
   "from": "driver@example.com",
   "subject": "Invoice attached",
@@ -131,29 +127,28 @@ Expected payload (example)
     }
   ]
 }
+```
 
+### Expected behavior
 
-⸻
+* extract sender information
+* download or fetch attachments through the approved ingestion flow
+* create document records
+* trigger the processing pipeline
 
-Expected behavior
-	•	extract sender
-	•	download attachments
-	•	create document records
-	•	trigger processing pipeline
+---
 
-⸻
+## 3. Payment webhook
 
-3. Payment webhook
+### Endpoint
 
-Endpoint
-
+```text
 POST /api/v1/webhooks/payment
+```
 
+### Sample payload (Stripe-like)
 
-⸻
-
-Sample payload (Stripe-like)
-
+```json
 {
   "provider": "stripe",
   "event": {
@@ -169,94 +164,95 @@ Sample payload (Stripe-like)
     }
   }
 }
+```
 
+### Expected behavior
 
-⸻
+* verify the provider context
+* support future signature validation
+* map the payment to the correct invoice or account
+* update payment status
+* update invoice balance if applicable
+* record the inbound event
 
-Expected behavior
-	•	verify provider (future: signature validation)
-	•	map payment to invoice
-	•	update payment status
-	•	update invoice balance
-	•	record event
+---
 
-⸻
+## Security considerations
 
-Security considerations
+### Validation (future)
 
-Validation (future)
-	•	verify webhook signatures
-	•	whitelist source IPs
-	•	validate payload schema
+* verify webhook signatures
+* allowlist source IPs where supported and appropriate
+* validate payload schemas before processing
 
-⸻
+---
 
-Processing strategy
+## Processing strategy
 
 Webhook endpoints should:
-	1.	receive payload
-	2.	validate structure
-	3.	store raw payload
-	4.	enqueue background task
-	5.	return response quickly
+
+1. receive the payload
+2. validate the structure
+3. store the raw payload
+4. enqueue a background task
+5. return a response quickly
 
 Avoid:
-	•	long synchronous processing
-	•	blocking operations
 
-⸻
+* long synchronous processing
+* blocking operations in the request path
 
-Error handling
+---
 
-If payload is invalid:
+## Error handling
 
+If the payload is invalid, return a structured failure response.
+
+```json
 {
   "accepted": false,
   "error": "Invalid payload"
 }
-
-
-⸻
-
-Logging
-
-For each webhook:
-	•	store raw payload
-	•	log timestamp
-	•	log processing result
-
-⸻
-
-Retry handling
-
-External systems may retry:
-	•	ensure idempotency
-	•	avoid duplicate records
-	•	track processed event IDs
-
-⸻
-
-Future improvements
-	•	signature verification
-	•	retry queue management
-	•	webhook replay tools
-	•	monitoring dashboard
-
-⸻
-
-Summary
-
-Webhook contracts ensure:
-	•	safe ingestion of external events
-	•	consistent processing
-	•	reliability under retries
-	•	foundation for integrations
-
-They are critical for connecting the system to real-world inputs.
+```
 
 ---
 
-## Next file (aligned with your structure)
+## Logging
 
-```text
-docs/product/roadmap.md
+For each webhook event:
+
+* store the raw payload
+* log the timestamp
+* log the processing result
+
+---
+
+## Retry handling
+
+External systems may retry delivery. The system should:
+
+* ensure idempotency
+* avoid duplicate records
+* track processed event IDs where available
+
+---
+
+## Future improvements
+
+* signature verification
+* retry queue management
+* webhook replay tools
+* monitoring dashboard
+
+---
+
+## Summary
+
+Webhook contracts help ensure:
+
+* safe ingestion of external events
+* consistent processing
+* reliability under retries
+* a stable foundation for integrations
+
+They are critical for connecting the system to real-world inputs.

@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
         - name: web
-          image: freight-back-office-os/web:latest
+          image: freight-back-office-os/web:0.1.0
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 3000

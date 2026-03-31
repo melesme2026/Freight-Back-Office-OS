@@ -6,6 +6,11 @@ echo "Bootstrapping Freight Back Office OS local environment..."
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT_DIR"
 
+if ! command -v python3 >/dev/null 2>&1; then
+  echo "Error: python3 is not installed or not available on PATH." >&2
+  exit 1
+fi
+
 if [ ! -d ".venv" ]; then
   echo "Creating Python virtual environment..."
   python3 -m venv .venv
@@ -22,10 +27,19 @@ echo "Installing Python dependencies..."
 pip install -e .[dev]
 
 if [ -f "frontend/package.json" ]; then
+  if ! command -v npm >/dev/null 2>&1; then
+    echo "Error: npm is not installed or not available on PATH." >&2
+    exit 1
+  fi
+
   echo "Installing frontend dependencies..."
   (
     cd frontend
-    npm install
+    if [ -f "package-lock.json" ]; then
+      npm ci
+    else
+      npm install
+    fi
   )
 fi
 
@@ -44,4 +58,4 @@ echo "Bootstrap complete."
 echo "Next recommended steps:"
 echo "1. Review .env"
 echo "2. Run docker compose up -d"
-echo "3. Or run backend locally with: uvicorn app.main:app --reload"
+echo "3. Or run backend locally with: cd backend && uvicorn app.main:app --reload"

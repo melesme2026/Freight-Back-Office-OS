@@ -34,9 +34,9 @@ class EventPublisher:
         event = WorkflowEvent(
             organization_id=organization_id,
             load_id=load_id,
-            event_type=event_type,
-            old_status=old_status,
-            new_status=new_status,
+            event_type=self._clean_text(event_type),
+            old_status=self._clean_text(old_status),
+            new_status=self._clean_text(new_status),
             event_payload=event_payload,
             actor_staff_user_id=actor_staff_user_id,
             actor_type=normalized_actor_type,
@@ -61,3 +61,11 @@ class EventPublisher:
             "Invalid actor_type",
             details={"actor_type": value},
         )
+
+    @staticmethod
+    def _clean_text(value: str | None) -> str | None:
+        if value is None:
+            return None
+
+        cleaned = str(value).strip()
+        return cleaned or None

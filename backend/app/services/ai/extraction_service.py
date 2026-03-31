@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import NotFoundError
+from app.domain.enums.processing_status import ProcessingStatus
 from app.domain.models.extracted_field import ExtractedField
 from app.repositories.document_repo import DocumentRepository
 from app.repositories.extracted_field_repo import ExtractedFieldRepository
@@ -17,6 +18,8 @@ from app.services.documents.document_classifier import DocumentClassifier
 
 
 class ExtractionService:
+    DEFAULT_FIELD_CONFIDENCE = Decimal("0.50")
+
     def __init__(self, db: Session) -> None:
         self.db = db
         self.document_repo = DocumentRepository(db)
@@ -25,6 +28,16 @@ class ExtractionService:
         self.llm_service = LLMService()
         self.confidence_service = ConfidenceService()
         self.document_classifier = DocumentClassifier()
+
+    @staticmethod
+    def _to_decimal(value: Any, *, default: Decimal | None = None) -> Decimal | None:
+        if value is None:
+            return default
+
+        try:
+            return Decimal(str(value))
+        except (InvalidOperation, ValueError, TypeError):
+            return default
 
     def extract_document(
         self,
@@ -60,7 +73,17 @@ class ExtractionService:
         confidence_values: list[Decimal] = []
 
         for item in llm_fields:
-            confidence = Decimal(str(item.get("confidence_score", "0.50")))
+            field_name = item.get("field_name")
+            if not field_name:
+                continue
+
+            confidence = self._to_decimal(
+                item.get("confidence_score"),
+                default=self.DEFAULT_FIELD_CONFIDENCE,
+            )
+            if confidence is None:
+                confidence = self.DEFAULT_FIELD_CONFIDENCE
+
             confidence_values.append(confidence)
 
             extracted_models.append(
@@ -68,7 +91,7 @@ class ExtractionService:
                     organization_id=document.organization_id,
                     document_id=document.id,
                     load_id=document.load_id,
-                    field_name=item["field_name"],
+                    field_name=field_name,
                     field_value_text=item.get("field_value_text"),
                     field_value_number=item.get("field_value_number"),
                     field_value_date=item.get("field_value_date"),
@@ -85,18 +108,19 @@ class ExtractionService:
         created_fields = self.extracted_field_repo.create_many(extracted_models)
 
         avg_confidence = self.confidence_service.average_decimal(confidence_values)
+        classification_confidence_decimal = self._to_decimal(classification_confidence)
 
         document.document_type = detected_type
-        document.classification_confidence = classification_confidence
+        document.classification_confidence = classification_confidence_decimal
         document.ocr_completed_at = datetime.now(timezone.utc)
-        document.processing_status = "completed"
+        document.processing_status = ProcessingStatus.COMPLETED
         self.document_repo.update(document)
 
         return {
             "document_id": str(document.id),
             "load_id": str(document.load_id) if document.load_id else None,
             "document_type": str(detected_type),
-            "classification_confidence": Decimal(str(classification_confidence)),
+            "classification_confidence": classification_confidence_decimal,
             "extracted_fields": [
                 {
                     "field_name": f.field_name,

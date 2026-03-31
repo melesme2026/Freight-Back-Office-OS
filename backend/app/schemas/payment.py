@@ -136,7 +136,7 @@ class PaymentMethodResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     data: PaymentMethodRead
-    meta: dict[str, Any] = {}
+    meta: dict[str, Any] = Field(default_factory=dict)
     error: ApiError | None = None
 
 
@@ -152,7 +152,7 @@ class PaymentResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     data: PaymentRead
-    meta: dict[str, Any] = {}
+    meta: dict[str, Any] = Field(default_factory=dict)
     error: ApiError | None = None
 
 

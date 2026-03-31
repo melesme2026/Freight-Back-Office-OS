@@ -30,10 +30,10 @@ class SupportService:
             driver_id=driver_id,
             load_id=load_id,
             assigned_to_staff_user_id=assigned_to_staff_user_id,
-            subject=subject,
-            description=description,
+            subject=self._clean_text(subject),
+            description=self._clean_text(description),
             status="open",
-            priority=priority,
+            priority=self._clean_text(priority) or "normal",
             resolved_at=None,
         )
         return self.support_ticket_repo.create(ticket)
@@ -64,9 +64,9 @@ class SupportService:
             driver_id=driver_id,
             load_id=load_id,
             assigned_to_staff_user_id=assigned_to_staff_user_id,
-            status=status,
-            priority=priority,
-            search=search,
+            status=self._clean_text(status),
+            priority=self._clean_text(priority),
+            search=self._clean_text(search),
             page=page,
             page_size=page_size,
         )
@@ -80,7 +80,23 @@ class SupportService:
         ticket = self.get_ticket(ticket_id)
 
         for field, value in updates.items():
-            if hasattr(ticket, field) and value is not None:
+            if not hasattr(ticket, field) or value is None:
+                continue
+
+            if field in {"subject", "description", "status", "priority"}:
+                setattr(ticket, field, self._clean_text(value))
+            else:
                 setattr(ticket, field, value)
 
+        if getattr(ticket, "status", None) != "resolved":
+            ticket.resolved_at = None
+
         return self.support_ticket_repo.update(ticket)
+
+    @staticmethod
+    def _clean_text(value: str | None) -> str | None:
+        if value is None:
+            return None
+
+        cleaned = str(value).strip()
+        return cleaned or None

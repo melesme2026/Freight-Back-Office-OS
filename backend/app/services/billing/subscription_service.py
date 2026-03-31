@@ -41,6 +41,8 @@ class SubscriptionService:
             billing_cycle=str(service_plan.billing_cycle),
         )
 
+        normalized_billing_email = billing_email.strip().lower() if billing_email else None
+
         subscription = Subscription(
             organization_id=organization_id,
             customer_account_id=customer_account_id,
@@ -52,7 +54,7 @@ class SubscriptionService:
             current_period_end=period_end,
             cancel_at_period_end=False,
             cancelled_at=None,
-            billing_email=billing_email,
+            billing_email=normalized_billing_email,
             notes=notes,
         )
         return self.subscription_repo.create(subscription)
@@ -94,8 +96,13 @@ class SubscriptionService:
         subscription = self.get_subscription(subscription_id)
 
         for field, value in updates.items():
-            if hasattr(subscription, field) and value is not None:
-                setattr(subscription, field, value)
+            if not hasattr(subscription, field) or value is None:
+                continue
+
+            if field == "billing_email" and isinstance(value, str):
+                value = value.strip().lower()
+
+            setattr(subscription, field, value)
 
         return self.subscription_repo.update(subscription)
 
@@ -108,10 +115,12 @@ class SubscriptionService:
         subscription = self.get_subscription(subscription_id)
         subscription.cancel_at_period_end = cancel_at_period_end
 
-        if not cancel_at_period_end:
-            subscription.status = SubscriptionStatus.CANCELLED
-            subscription.cancelled_at = subscription.current_period_end
-            subscription.ends_at = subscription.current_period_end
+        if cancel_at_period_end:
+            return self.subscription_repo.update(subscription)
+
+        subscription.status = SubscriptionStatus.CANCELLED
+        subscription.cancelled_at = subscription.current_period_start
+        subscription.ends_at = subscription.current_period_start
 
         return self.subscription_repo.update(subscription)
 

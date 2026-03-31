@@ -110,7 +110,7 @@ class DocumentResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     data: DocumentRead
-    meta: dict[str, Any] = {}
+    meta: dict[str, Any] = Field(default_factory=dict)
     error: ApiError | None = None
 
 
@@ -126,7 +126,7 @@ class ExtractedFieldListResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     data: list[ExtractedFieldRead]
-    meta: dict[str, Any] = {}
+    meta: dict[str, Any] = Field(default_factory=dict)
     error: ApiError | None = None
 
 
@@ -134,5 +134,5 @@ class ExtractedFieldResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     data: ExtractedFieldRead
-    meta: dict[str, Any] = {}
+    meta: dict[str, Any] = Field(default_factory=dict)
     error: ApiError | None = None

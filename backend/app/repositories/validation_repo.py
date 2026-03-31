@@ -10,6 +10,10 @@ from app.domain.models.validation_issue import ValidationIssue
 
 
 class ValidationRepository:
+    DEFAULT_PAGE = 1
+    DEFAULT_PAGE_SIZE = 100
+    MAX_PAGE_SIZE = 500
+
     def __init__(self, db: Session) -> None:
         self.db = db
 
@@ -20,10 +24,15 @@ class ValidationRepository:
         return validation_issue
 
     def create_many(self, validation_issues: list[ValidationIssue]) -> list[ValidationIssue]:
+        if not validation_issues:
+            return []
+
         self.db.add_all(validation_issues)
         self.db.flush()
+
         for item in validation_issues:
             self.db.refresh(item)
+
         return validation_issues
 
     def get_by_id(self, issue_id: uuid.UUID) -> ValidationIssue | None:
@@ -38,9 +47,12 @@ class ValidationRepository:
         document_id: uuid.UUID | None = None,
         severity: ValidationSeverity | None = None,
         is_resolved: bool | None = None,
-        page: int = 1,
-        page_size: int = 100,
+        page: int = DEFAULT_PAGE,
+        page_size: int = DEFAULT_PAGE_SIZE,
     ) -> tuple[list[ValidationIssue], int]:
+        normalized_page = max(page, 1)
+        normalized_page_size = min(max(page_size, 1), self.MAX_PAGE_SIZE)
+
         stmt = select(ValidationIssue)
         count_stmt: Select[tuple[int]] = select(func.count()).select_from(ValidationIssue)
 
@@ -66,11 +78,11 @@ class ValidationRepository:
 
         total = self.db.scalar(count_stmt) or 0
 
-        offset = max(page - 1, 0) * page_size
+        offset = (normalized_page - 1) * normalized_page_size
         stmt = (
             stmt.order_by(ValidationIssue.created_at.desc())
             .offset(offset)
-            .limit(page_size)
+            .limit(normalized_page_size)
         )
 
         items = list(self.db.scalars(stmt).all())

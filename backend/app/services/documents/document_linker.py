@@ -34,18 +34,11 @@ class DocumentLinker:
         document.load_id = load.id
         self.document_repo.update(document)
 
-        refreshed_load = self.load_repo.get_by_id(load.id)
-        if refreshed_load is None:
-            raise NotFoundError(
-                "Load not found after linking",
-                details={"load_id": str(load.id)},
-            )
-
-        self._update_load_document_flags(refreshed_load)
+        self._update_load_document_flags(load)
 
         return {
             "document_id": str(document.id),
-            "load_id": str(refreshed_load.id),
+            "load_id": str(load.id),
             "linked": True,
             "reason": "manually_linked",
         }
@@ -101,18 +94,11 @@ class DocumentLinker:
         document.load_id = load.id
         self.document_repo.update(document)
 
-        refreshed_load = self.load_repo.get_by_id(load.id)
-        if refreshed_load is None:
-            raise NotFoundError(
-                "Load not found after auto-linking",
-                details={"load_id": str(load.id)},
-            )
-
-        self._update_load_document_flags(refreshed_load)
+        self._update_load_document_flags(load)
 
         return {
             "document_id": str(document.id),
-            "load_id": str(refreshed_load.id),
+            "load_id": str(load.id),
             "linked": True,
             "reason": reason,
         }
@@ -125,16 +111,18 @@ class DocumentLinker:
         )
 
         has_ratecon = any(
-            self._normalize_document_type(document.document_type) == DocumentType.RATE_CONFIRMATION
+            self._normalize_document_type(getattr(document, "document_type", None))
+            == DocumentType.RATE_CONFIRMATION
             for document in documents
         )
         has_bol = any(
-            self._normalize_document_type(document.document_type)
+            self._normalize_document_type(getattr(document, "document_type", None))
             in {DocumentType.BILL_OF_LADING, DocumentType.PROOF_OF_DELIVERY}
             for document in documents
         )
         has_invoice = any(
-            self._normalize_document_type(document.document_type) == DocumentType.INVOICE
+            self._normalize_document_type(getattr(document, "document_type", None))
+            == DocumentType.INVOICE
             for document in documents
         )
 

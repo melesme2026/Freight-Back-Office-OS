@@ -60,7 +60,7 @@ class LoadService:
             pickup_location=self._clean_text(pickup_location),
             delivery_location=self._clean_text(delivery_location),
             gross_amount=gross_amount,
-            currency_code=(currency_code or "USD").strip().upper(),
+            currency_code=self._normalize_currency(currency_code),
             documents_complete=False,
             has_ratecon=False,
             has_bol=False,
@@ -76,7 +76,10 @@ class LoadService:
         return self.load_repo.create(load)
 
     def get_load(self, load_id: str) -> Load:
-        load = self.load_repo.get_by_id(load_id)
+        load = self.load_repo.get_by_id(
+            load_id,
+            include_related=True,
+        )
         if load is None:
             raise NotFoundError("Load not found", details={"load_id": load_id})
         return load
@@ -109,6 +112,7 @@ class LoadService:
             search=self._clean_text(search),
             page=page,
             page_size=page_size,
+            include_related=False,
         )
 
     def update_load(
@@ -170,7 +174,7 @@ class LoadService:
             }:
                 setattr(load, field, self._clean_text(value))
             elif field == "currency_code":
-                setattr(load, field, str(value).strip().upper())
+                setattr(load, field, self._normalize_currency(value))
             else:
                 setattr(load, field, value)
 
@@ -182,40 +186,16 @@ class LoadService:
 
         return self.load_repo.update(load)
 
-    def attach_document_flags(
-        self,
-        *,
-        load_id: str,
-        has_ratecon: bool | None = None,
-        has_bol: bool | None = None,
-        has_invoice: bool | None = None,
-    ) -> Load:
-        load = self.get_load(load_id)
+    def _normalize_currency(self, value: Any) -> str:
+        normalized = str(value or "USD").strip().upper()
 
-        if has_ratecon is not None:
-            load.has_ratecon = has_ratecon
-        if has_bol is not None:
-            load.has_bol = has_bol
-        if has_invoice is not None:
-            load.has_invoice = has_invoice
+        if len(normalized) != 3:
+            raise ValidationError(
+                "Invalid currency_code",
+                details={"currency_code": value},
+            )
 
-        load.documents_complete = bool(load.has_ratecon and load.has_bol and load.has_invoice)
-
-        if load.documents_complete and load.status == LoadStatus.NEW:
-            load.status = LoadStatus.DOCS_RECEIVED
-
-        return self.load_repo.update(load)
-
-    def update_extraction_confidence(
-        self,
-        *,
-        load_id: str,
-        extraction_confidence_avg: Decimal | None,
-    ) -> Load:
-        load = self.get_load(load_id)
-        load.extraction_confidence_avg = extraction_confidence_avg
-        load.last_reviewed_at = datetime.now(timezone.utc)
-        return self.load_repo.update(load)
+        return normalized
 
     def _normalize_channel(
         self,
@@ -317,7 +297,9 @@ class LoadService:
         allow_none: bool = False,
     ) -> date | None:
         if value is None or value == "":
-            return None if allow_none else None
+            if allow_none:
+                return None
+            return None
 
         if isinstance(value, date) and not isinstance(value, datetime):
             return value

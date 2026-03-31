@@ -17,7 +17,7 @@ class AmountMismatchRule:
         reference_amount = ratecon_amount
         if reference_amount is None and gross_amount is not None:
             try:
-                reference_amount = Decimal(str(gross_amount))
+                reference_amount = self._normalize_currency_decimal(Decimal(str(gross_amount)))
             except (InvalidOperation, ValueError):
                 reference_amount = None
 
@@ -40,8 +40,9 @@ class AmountMismatchRule:
             }
         ]
 
-    @staticmethod
+    @classmethod
     def _get_decimal_field(
+        cls,
         extracted_fields: list[dict[str, Any]],
         field_name: str,
     ) -> Decimal | None:
@@ -54,15 +55,19 @@ class AmountMismatchRule:
 
             if raw_number is not None:
                 try:
-                    return Decimal(str(raw_number))
+                    return cls._normalize_currency_decimal(Decimal(str(raw_number)))
                 except (InvalidOperation, ValueError):
                     return None
 
             if raw_text:
                 try:
                     cleaned = str(raw_text).replace("$", "").replace(",", "").strip()
-                    return Decimal(cleaned)
+                    return cls._normalize_currency_decimal(Decimal(cleaned))
                 except (InvalidOperation, ValueError):
                     return None
 
         return None
+
+    @staticmethod
+    def _normalize_currency_decimal(value: Decimal) -> Decimal:
+        return value.quantize(Decimal("0.01"))

@@ -46,7 +46,7 @@ class LoginResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     data: LoginResponseData
-    meta: dict[str, Any] = {}
+    meta: dict[str, Any] = Field(default_factory=dict)
     error: ApiError | None = None
 
 
@@ -54,5 +54,5 @@ class CurrentUserResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     data: StaffUserAuthView
-    meta: dict[str, Any] = {}
+    meta: dict[str, Any] = Field(default_factory=dict)
     error: ApiError | None = None

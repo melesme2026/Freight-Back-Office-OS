@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, ForeignKey, Index, String, Text, UniqueConstraint, func
+from sqlalchemy import Enum as SqlEnum
+from sqlalchemy import ForeignKey, Index, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -15,7 +15,6 @@ from app.domain.models.organization import TimestampMixin, UUIDPrimaryKeyMixin
 
 if TYPE_CHECKING:
     from app.domain.models.billing_invoice import BillingInvoice
-    from app.domain.models.customer_account import CustomerAccount
     from app.domain.models.driver import Driver
     from app.domain.models.ledger_entry import LedgerEntry
     from app.domain.models.notification import Notification
@@ -24,7 +23,6 @@ if TYPE_CHECKING:
     from app.domain.models.payment import Payment
     from app.domain.models.payment_method import PaymentMethod
     from app.domain.models.referral import Referral
-    from app.domain.models.service_plan import ServicePlan
     from app.domain.models.subscription import Subscription
     from app.domain.models.support_ticket import SupportTicket
     from app.domain.models.usage_record import UsageRecord
@@ -55,9 +53,16 @@ class CustomerAccount(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         unique=True,
     )
     status: Mapped[CustomerAccountStatus] = mapped_column(
-        String(50),
+        SqlEnum(
+            CustomerAccountStatus,
+            name="customer_account_status",
+            native_enum=False,
+            validate_strings=True,
+            values_callable=lambda enum_cls: [member.value for member in enum_cls],
+        ),
         nullable=False,
         default=CustomerAccountStatus.PROSPECT,
+        server_default=CustomerAccountStatus.PROSPECT.value,
     )
     primary_contact_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     primary_contact_email: Mapped[str | None] = mapped_column(String(255), nullable=True)

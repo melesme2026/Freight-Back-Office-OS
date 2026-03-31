@@ -25,24 +25,26 @@ class CustomerAccountService:
         billing_email: str | None = None,
         notes: str | None = None,
     ) -> CustomerAccount:
-        if account_code:
-            existing = self.customer_account_repo.get_by_account_code(account_code)
+        normalized_account_code = self._clean_text(account_code)
+
+        if normalized_account_code:
+            existing = self.customer_account_repo.get_by_account_code(normalized_account_code)
             if existing is not None:
                 raise DuplicateRecordError(
                     "Customer account code already exists",
-                    details={"account_code": account_code},
+                    details={"account_code": normalized_account_code},
                 )
 
         customer_account = CustomerAccount(
             organization_id=organization_id,
-            account_name=account_name,
-            account_code=account_code,
+            account_name=self._clean_text(account_name),
+            account_code=normalized_account_code,
             status=CustomerAccountStatus.PROSPECT,
-            primary_contact_name=primary_contact_name,
-            primary_contact_email=primary_contact_email,
-            primary_contact_phone=primary_contact_phone,
-            billing_email=billing_email,
-            notes=notes,
+            primary_contact_name=self._clean_text(primary_contact_name),
+            primary_contact_email=self._normalize_email(primary_contact_email),
+            primary_contact_phone=self._clean_text(primary_contact_phone),
+            billing_email=self._normalize_email(billing_email),
+            notes=self._clean_text(notes),
         )
         return self.customer_account_repo.create(customer_account)
 
@@ -67,7 +69,7 @@ class CustomerAccountService:
         return self.customer_account_repo.list(
             organization_id=organization_id,
             status=status,
-            search=search,
+            search=self._clean_text(search),
             page=page,
             page_size=page_size,
         )
@@ -80,17 +82,40 @@ class CustomerAccountService:
     ) -> CustomerAccount:
         customer_account = self.get_customer_account(customer_account_id)
 
-        new_account_code = updates.get("account_code")
-        if new_account_code and new_account_code != customer_account.account_code:
-            existing = self.customer_account_repo.get_by_account_code(new_account_code)
-            if existing is not None and str(existing.id) != str(customer_account.id):
-                raise DuplicateRecordError(
-                    "Customer account code already exists",
-                    details={"account_code": new_account_code},
-                )
+        if "account_code" in updates:
+            new_account_code = self._clean_text(updates.get("account_code"))
+            if new_account_code and new_account_code != customer_account.account_code:
+                existing = self.customer_account_repo.get_by_account_code(new_account_code)
+                if existing is not None and str(existing.id) != str(customer_account.id):
+                    raise DuplicateRecordError(
+                        "Customer account code already exists",
+                        details={"account_code": new_account_code},
+                    )
+                updates["account_code"] = new_account_code
 
         for field, value in updates.items():
-            if hasattr(customer_account, field) and value is not None:
+            if not hasattr(customer_account, field) or value is None:
+                continue
+
+            if field in {"account_name", "primary_contact_name", "primary_contact_phone", "notes"}:
+                setattr(customer_account, field, self._clean_text(value))
+            elif field in {"primary_contact_email", "billing_email"}:
+                setattr(customer_account, field, self._normalize_email(value))
+            else:
                 setattr(customer_account, field, value)
 
         return self.customer_account_repo.update(customer_account)
+
+    @staticmethod
+    def _clean_text(value: str | None) -> str | None:
+        if value is None:
+            return None
+        cleaned = str(value).strip()
+        return cleaned or None
+
+    @staticmethod
+    def _normalize_email(value: str | None) -> str | None:
+        if value is None:
+            return None
+        cleaned = str(value).strip().lower()
+        return cleaned or None

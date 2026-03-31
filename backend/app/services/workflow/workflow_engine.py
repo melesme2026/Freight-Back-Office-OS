@@ -45,6 +45,7 @@ class WorkflowEngine:
         current_status = self._normalize_load_status(load.status)
         target_status = self._normalize_load_status(new_status)
         normalized_actor_type = self._normalize_actor_type(actor_type)
+        normalized_notes = self._clean_text(notes)
         changed_at = datetime.now(timezone.utc)
 
         self.state_machine.assert_transition_allowed(
@@ -89,16 +90,16 @@ class WorkflowEngine:
             event_type="status_changed",
             old_status=str(old_status),
             new_status=str(target_status),
-            event_payload={"notes": notes} if notes else None,
+            event_payload={"notes": normalized_notes} if normalized_notes else None,
             actor_staff_user_id=actor_staff_user_id,
             actor_type=str(normalized_actor_type),
         )
 
         return {
             "id": str(updated_load.id),
-            "old_status": old_status,
-            "new_status": target_status,
-            "changed_at": changed_at,
+            "old_status": str(old_status),
+            "new_status": str(target_status),
+            "changed_at": changed_at.isoformat(),
         }
 
     def _normalize_load_status(self, value: LoadStatus | str) -> LoadStatus:
@@ -134,3 +135,11 @@ class WorkflowEngine:
             "Invalid actor_type",
             details={"actor_type": value},
         )
+
+    @staticmethod
+    def _clean_text(value: str | None) -> str | None:
+        if value is None:
+            return None
+
+        cleaned = str(value).strip()
+        return cleaned or None

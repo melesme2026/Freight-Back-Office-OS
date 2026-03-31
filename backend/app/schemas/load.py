@@ -151,7 +151,7 @@ class LoadResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     data: LoadRead
-    meta: dict[str, Any] = {}
+    meta: dict[str, Any] = Field(default_factory=dict)
     error: ApiError | None = None
 
 
@@ -167,7 +167,7 @@ class LoadTimelineResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     data: list[WorkflowEventRead]
-    meta: dict[str, Any] = {}
+    meta: dict[str, Any] = Field(default_factory=dict)
     error: ApiError | None = None
 
 
@@ -175,5 +175,5 @@ class LoadStatusUpdateResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     data: dict[str, Any]
-    meta: dict[str, Any] = {}
+    meta: dict[str, Any] = Field(default_factory=dict)
     error: ApiError | None = None

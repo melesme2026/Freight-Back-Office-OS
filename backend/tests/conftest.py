@@ -12,11 +12,13 @@ os.environ.setdefault("DATABASE_URL", "sqlite+pysqlite:///:memory:")
 os.environ.setdefault("CELERY_BROKER_URL", "memory://")
 os.environ.setdefault("CELERY_RESULT_BACKEND", "cache+memory://")
 
-from app.core.database import Base  # noqa: E402
+from app.core.database import Base, init_db  # noqa: E402
 
 
 @pytest.fixture(scope="session")
 def engine():
+    init_db(import_models=True)
+
     engine = create_engine(
         "sqlite+pysqlite:///:memory:",
         future=True,
@@ -31,10 +33,13 @@ def engine():
 
 @pytest.fixture()
 def db_session(engine) -> Generator[Session, None, None]:
+    connection = engine.connect()
+    transaction = connection.begin()
+
     TestingSessionLocal = sessionmaker(
         autocommit=False,
         autoflush=False,
-        bind=engine,
+        bind=connection,
         future=True,
     )
     session = TestingSessionLocal()
@@ -42,3 +47,5 @@ def db_session(engine) -> Generator[Session, None, None]:
         yield session
     finally:
         session.close()
+        transaction.rollback()
+        connection.close()

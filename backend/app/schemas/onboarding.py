@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.domain.enums.onboarding_status import OnboardingStatus
 
@@ -56,5 +56,5 @@ class OnboardingChecklistResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     data: OnboardingChecklistRead
-    meta: dict[str, Any] = {}
+    meta: dict[str, Any] = Field(default_factory=dict)
     error: ApiError | None = None

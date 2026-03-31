@@ -4,7 +4,8 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, ForeignKey, Index, String, Text
+from sqlalchemy import DateTime, Enum as SqlEnum
+from sqlalchemy import ForeignKey, Index, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -61,7 +62,13 @@ class Notification(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
 
     channel: Mapped[Channel] = mapped_column(
-        String(50),
+        SqlEnum(
+            Channel,
+            name="channel",
+            native_enum=False,
+            validate_strings=True,
+            values_callable=lambda enum_cls: [member.value for member in enum_cls],
+        ),
         nullable=False,
     )
     direction: Mapped[str] = mapped_column(String(20), nullable=False)
@@ -70,9 +77,16 @@ class Notification(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     body_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     provider_message_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     status: Mapped[NotificationStatus] = mapped_column(
-        String(50),
+        SqlEnum(
+            NotificationStatus,
+            name="notification_status",
+            native_enum=False,
+            validate_strings=True,
+            values_callable=lambda enum_cls: [member.value for member in enum_cls],
+        ),
         nullable=False,
         default=NotificationStatus.QUEUED,
+        server_default=NotificationStatus.QUEUED.value,
     )
     sent_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),

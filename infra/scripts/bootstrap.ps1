@@ -5,6 +5,10 @@ Write-Host "Bootstrapping Freight Back Office OS local environment..." -Foregrou
 $root = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 Set-Location $root
 
+if (-not (Get-Command python -ErrorAction SilentlyContinue)) {
+    throw "Python is not installed or not available on PATH."
+}
+
 if (-not (Test-Path ".venv")) {
     Write-Host "Creating Python virtual environment..." -ForegroundColor Yellow
     python -m venv .venv
@@ -20,10 +24,23 @@ Write-Host "Installing Python dependencies..." -ForegroundColor Yellow
 pip install -e .[dev]
 
 if (Test-Path "frontend\package.json") {
+    if (-not (Get-Command npm -ErrorAction SilentlyContinue)) {
+        throw "npm is not installed or not available on PATH."
+    }
+
     Write-Host "Installing frontend dependencies..." -ForegroundColor Yellow
     Push-Location frontend
-    npm install
-    Pop-Location
+    try {
+        if (Test-Path "package-lock.json") {
+            npm ci
+        }
+        else {
+            npm install
+        }
+    }
+    finally {
+        Pop-Location
+    }
 }
 
 if (-not (Test-Path ".env")) {
@@ -50,4 +67,4 @@ Write-Host "Bootstrap complete." -ForegroundColor Green
 Write-Host "Next recommended steps:" -ForegroundColor Cyan
 Write-Host "1. Review .env"
 Write-Host "2. Run docker compose up -d"
-Write-Host "3. Or run backend locally with: uvicorn app.main:app --reload" -ForegroundColor White
+Write-Host "3. Or run backend locally with: cd backend; uvicorn app.main:app --reload" -ForegroundColor White

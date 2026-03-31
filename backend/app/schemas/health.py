@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class HealthStatusData(BaseModel):
@@ -43,7 +43,7 @@ class ApiEnvelope(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     data: Any
-    meta: dict[str, Any] = {}
+    meta: dict[str, Any] = Field(default_factory=dict)
     error: ApiError | None = None
 
 
@@ -51,7 +51,7 @@ class HealthResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     data: HealthStatusData
-    meta: dict[str, Any] = {}
+    meta: dict[str, Any] = Field(default_factory=dict)
     error: ApiError | None = None
 
 
@@ -59,5 +59,5 @@ class ReadinessResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     data: ReadinessStatusData
-    meta: dict[str, Any] = {}
+    meta: dict[str, Any] = Field(default_factory=dict)
     error: ApiError | None = None

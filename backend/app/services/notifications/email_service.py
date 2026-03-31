@@ -13,13 +13,16 @@ class EmailService:
         body_text: str,
         metadata: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        sent_at = datetime.now(timezone.utc)
+        normalized_to_email = to_email.strip().lower()
+
         return {
             "channel": "email",
-            "to_email": to_email,
+            "to_email": normalized_to_email,
             "subject": subject,
             "body_text": body_text,
-            "provider_message_id": f"em-{int(datetime.now(timezone.utc).timestamp())}",
+            "provider_message_id": f"em-{int(sent_at.timestamp())}",
             "status": "sent",
             "metadata": metadata or {},
-            "sent_at": datetime.now(timezone.utc).isoformat(),
+            "sent_at": sent_at.isoformat(),
         }

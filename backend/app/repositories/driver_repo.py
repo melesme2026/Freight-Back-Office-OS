@@ -9,6 +9,10 @@ from app.domain.models.driver import Driver
 
 
 class DriverRepository:
+    DEFAULT_PAGE = 1
+    DEFAULT_PAGE_SIZE = 25
+    MAX_PAGE_SIZE = 500
+
     def __init__(self, db: Session) -> None:
         self.db = db
 
@@ -29,9 +33,12 @@ class DriverRepository:
         customer_account_id: uuid.UUID | None = None,
         is_active: bool | None = None,
         search: str | None = None,
-        page: int = 1,
-        page_size: int = 25,
+        page: int = DEFAULT_PAGE,
+        page_size: int = DEFAULT_PAGE_SIZE,
     ) -> tuple[list[Driver], int]:
+        normalized_page = max(page, 1)
+        normalized_page_size = min(max(page_size, 1), self.MAX_PAGE_SIZE)
+
         stmt = select(Driver)
         count_stmt: Select[tuple[int]] = select(func.count()).select_from(Driver)
 
@@ -59,8 +66,8 @@ class DriverRepository:
 
         total = self.db.scalar(count_stmt) or 0
 
-        offset = max(page - 1, 0) * page_size
-        stmt = stmt.order_by(Driver.created_at.desc()).offset(offset).limit(page_size)
+        offset = (normalized_page - 1) * normalized_page_size
+        stmt = stmt.order_by(Driver.created_at.desc()).offset(offset).limit(normalized_page_size)
 
         items = list(self.db.scalars(stmt).all())
         return items, total

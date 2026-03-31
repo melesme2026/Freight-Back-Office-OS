@@ -2,16 +2,14 @@ from __future__ import annotations
 
 from collections.abc import Generator
 from contextlib import contextmanager
+from functools import lru_cache
 from typing import Any
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from app.core.config import get_settings
-
-
-settings = get_settings()
 
 
 class Base(DeclarativeBase):
@@ -19,6 +17,8 @@ class Base(DeclarativeBase):
 
 
 def _build_engine() -> Engine:
+    settings = get_settings()
+
     return create_engine(
         settings.database_url,
         echo=settings.sqlalchemy_echo,
@@ -29,19 +29,25 @@ def _build_engine() -> Engine:
     )
 
 
-engine: Engine = _build_engine()
+@lru_cache(maxsize=1)
+def get_engine() -> Engine:
+    return _build_engine()
 
-SessionLocal = sessionmaker(
-    bind=engine,
-    autoflush=False,
-    autocommit=False,
-    expire_on_commit=False,
-    class_=Session,
-)
+
+@lru_cache(maxsize=1)
+def get_session_factory() -> sessionmaker[Session]:
+    return sessionmaker(
+        bind=get_engine(),
+        autoflush=False,
+        autocommit=False,
+        expire_on_commit=False,
+        class_=Session,
+    )
 
 
 def get_db() -> Generator[Session, None, None]:
-    db = SessionLocal()
+    session_factory = get_session_factory()
+    db = session_factory()
     try:
         yield db
     finally:
@@ -50,7 +56,8 @@ def get_db() -> Generator[Session, None, None]:
 
 @contextmanager
 def db_session() -> Generator[Session, None, None]:
-    session = SessionLocal()
+    session_factory = get_session_factory()
+    session = session_factory()
     try:
         yield session
         session.commit()
@@ -63,25 +70,17 @@ def db_session() -> Generator[Session, None, None]:
 
 def check_database_connection() -> tuple[bool, str]:
     try:
-        with engine.connect() as connection:
-            connection.execute("SELECT 1")  # type: ignore[arg-type]
+        with get_engine().connect() as connection:
+            connection.execute(text("SELECT 1"))
         return True, "ok"
     except Exception as exc:
         return False, str(exc)
 
 
-def get_engine() -> Engine:
-    return engine
-
-
-def get_session_factory() -> sessionmaker[Session]:
-    return SessionLocal
-
-
 def init_db(import_models: bool = False) -> None:
     if import_models:
         _import_all_models()
-    Base.metadata.create_all(bind=engine)
+    Base.metadata.create_all(bind=get_engine())
 
 
 def _import_all_models() -> None:
@@ -115,4 +114,3 @@ def metadata_dict() -> dict[str, Any]:
     return {
         "tables": sorted(Base.metadata.tables.keys()),
     }
-    

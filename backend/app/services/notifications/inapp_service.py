@@ -13,13 +13,17 @@ class InAppService:
         body_text: str,
         metadata: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
+        sent_at = datetime.now(timezone.utc)
+        normalized_recipient_id = recipient_id.strip()
+        normalized_title = title.strip() if title is not None else None
+
         return {
             "channel": "in_app",
-            "recipient_id": recipient_id,
-            "title": title,
+            "recipient_id": normalized_recipient_id,
+            "title": normalized_title,
             "body_text": body_text,
-            "provider_message_id": f"inapp-{int(datetime.now(timezone.utc).timestamp())}",
+            "provider_message_id": f"inapp-{int(sent_at.timestamp())}",
             "status": "sent",
             "metadata": metadata or {},
-            "sent_at": datetime.now(timezone.utc).isoformat(),
+            "sent_at": sent_at.isoformat(),
         }

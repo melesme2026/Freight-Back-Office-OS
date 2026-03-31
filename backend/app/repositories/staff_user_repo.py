@@ -10,6 +10,10 @@ from app.domain.models.staff_user import StaffUser
 
 
 class StaffUserRepository:
+    DEFAULT_PAGE = 1
+    DEFAULT_PAGE_SIZE = 25
+    MAX_PAGE_SIZE = 500
+
     def __init__(self, db: Session) -> None:
         self.db = db
 
@@ -42,9 +46,12 @@ class StaffUserRepository:
         role: Role | None = None,
         is_active: bool | None = None,
         search: str | None = None,
-        page: int = 1,
-        page_size: int = 25,
+        page: int = DEFAULT_PAGE,
+        page_size: int = DEFAULT_PAGE_SIZE,
     ) -> tuple[list[StaffUser], int]:
+        normalized_page = max(page, 1)
+        normalized_page_size = min(max(page_size, 1), self.MAX_PAGE_SIZE)
+
         stmt = select(StaffUser)
         count_stmt: Select[tuple[int]] = select(func.count()).select_from(StaffUser)
 
@@ -71,8 +78,12 @@ class StaffUserRepository:
 
         total = self.db.scalar(count_stmt) or 0
 
-        offset = max(page - 1, 0) * page_size
-        stmt = stmt.order_by(StaffUser.created_at.desc()).offset(offset).limit(page_size)
+        offset = (normalized_page - 1) * normalized_page_size
+        stmt = (
+            stmt.order_by(StaffUser.created_at.desc())
+            .offset(offset)
+            .limit(normalized_page_size)
+        )
 
         items = list(self.db.scalars(stmt).all())
         return items, total

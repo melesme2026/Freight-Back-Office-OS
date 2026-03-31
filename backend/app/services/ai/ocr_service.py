@@ -80,7 +80,7 @@ class OCRService:
                 text = file_path.read_text(encoding=encoding)
                 cleaned = text.strip()
                 return cleaned or None
-            except Exception:
+            except (OSError, UnicodeDecodeError, ValueError):
                 continue
 
         return None

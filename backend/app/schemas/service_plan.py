@@ -80,7 +80,7 @@ class ServicePlanResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     data: ServicePlanRead
-    meta: dict[str, Any] = {}
+    meta: dict[str, Any] = Field(default_factory=dict)
     error: ApiError | None = None
 
 

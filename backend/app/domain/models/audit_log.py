@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import uuid
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
+from sqlalchemy import Enum as SqlEnum
 from sqlalchemy import ForeignKey, Index, String
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -31,9 +32,16 @@ class AuditLog(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         nullable=False,
     )
     actor_type: Mapped[AuditActorType] = mapped_column(
-        String(50),
+        SqlEnum(
+            AuditActorType,
+            name="audit_actor_type",
+            native_enum=False,
+            validate_strings=True,
+            values_callable=lambda enum_cls: [member.value for member in enum_cls],
+        ),
         nullable=False,
         default=AuditActorType.SYSTEM,
+        server_default=AuditActorType.SYSTEM.value,
     )
     actor_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),

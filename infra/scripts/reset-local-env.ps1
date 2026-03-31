@@ -18,12 +18,13 @@ $pathsToRemove = @(
 )
 
 foreach ($path in $pathsToRemove) {
-    if (Test-Path $path) {
+    $parent = Split-Path -Parent $path
+    if ([string]::IsNullOrWhiteSpace($parent) -or (Test-Path $parent) -or (Test-Path $path)) {
         Remove-Item -Path $path -Recurse -Force -ErrorAction SilentlyContinue
     }
 }
 
-if (Test-Path "docker-compose.yml") {
+if ((Test-Path "docker-compose.yml") -and (Get-Command docker -ErrorAction SilentlyContinue)) {
     Write-Host "Stopping Docker services..." -ForegroundColor Cyan
     docker compose down --remove-orphans
 }

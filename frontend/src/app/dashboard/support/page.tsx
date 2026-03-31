@@ -1,140 +1,69 @@
-const tickets = [
+const supportSections = [
   {
-    id: "ticket-1001",
-    subject: "Missing invoice for LOAD-1001",
-    priority: "high",
-    status: "open",
-    assignedTo: "Ops Review",
-    relatedEntity: "LOAD-1001",
-    createdAt: "2026-03-23 09:20 AM",
+    title: "Operational Tickets",
+    description:
+      "Track load exceptions, document follow-up, and workflow blockers once support queue APIs are wired.",
+    status: "Planned after V1",
   },
   {
-    id: "ticket-1002",
-    subject: "Customer billing email update needed",
-    priority: "medium",
-    status: "in_progress",
-    assignedTo: "Billing Team",
-    relatedEntity: "cust-1001",
-    createdAt: "2026-03-23 10:05 AM",
+    title: "Billing Escalations",
+    description:
+      "Centralize invoice disputes, payment retry follow-up, and customer billing support workflows.",
+    status: "Planned after V1",
   },
   {
-    id: "ticket-1003",
-    subject: "Failed payment retry follow-up",
-    priority: "high",
-    status: "escalated",
-    assignedTo: "Finance Ops",
-    relatedEntity: "INV-1003",
-    createdAt: "2026-03-23 11:35 AM",
+    title: "Customer Support",
+    description:
+      "Review customer account issues, contact corrections, and organization-level support actions.",
+    status: "Planned after V1",
   },
-];
-
-function priorityBadge(priority: string) {
-  switch (priority) {
-    case "high":
-      return "bg-rose-100 text-rose-800";
-    case "medium":
-      return "bg-amber-100 text-amber-800";
-    default:
-      return "bg-slate-100 text-slate-700";
-  }
-}
-
-function statusBadge(status: string) {
-  switch (status) {
-    case "open":
-      return "bg-blue-100 text-blue-800";
-    case "in_progress":
-      return "bg-amber-100 text-amber-800";
-    case "resolved":
-      return "bg-emerald-100 text-emerald-800";
-    case "escalated":
-      return "bg-rose-100 text-rose-800";
-    default:
-      return "bg-slate-100 text-slate-700";
-  }
-}
+  {
+    title: "Escalation Management",
+    description:
+      "Coordinate escalations across operations, finance, and back-office review teams.",
+    status: "Planned after V1",
+  },
+] as const;
 
 export default function SupportPage() {
   return (
     <main className="min-h-screen bg-slate-50 text-slate-900">
       <div className="mx-auto max-w-7xl px-6 py-10">
-        <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <p className="text-sm font-medium text-brand-700">Dashboard / Support</p>
-            <h1 className="text-3xl font-bold tracking-tight text-slate-950">Support</h1>
-            <p className="mt-2 text-sm leading-6 text-slate-600">
-              Track operational tickets, escalations, billing issues, and load-related support
-              follow-up in one place.
-            </p>
-          </div>
-
-          <button className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700">
-            New Ticket
-          </button>
+        <div className="mb-8">
+          <p className="text-sm font-medium text-brand-700">Dashboard / Support</p>
+          <h1 className="text-3xl font-bold tracking-tight text-slate-950">Support</h1>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+            Support workflows are intentionally kept lightweight in V1 to avoid shipping fake
+            operational data or unsupported ticket actions before backend support modules are live.
+          </p>
         </div>
 
-        <section className="grid gap-4 md:grid-cols-4">
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-soft">
-            <div className="text-sm text-slate-500">Open Tickets</div>
-            <div className="mt-2 text-3xl font-bold text-slate-950">8</div>
-          </div>
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-soft">
-            <div className="text-sm text-slate-500">In Progress</div>
-            <div className="mt-2 text-3xl font-bold text-amber-700">3</div>
-          </div>
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-soft">
-            <div className="text-sm text-slate-500">Escalated</div>
-            <div className="mt-2 text-3xl font-bold text-rose-700">2</div>
-          </div>
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-soft">
-            <div className="text-sm text-slate-500">Resolved Today</div>
-            <div className="mt-2 text-3xl font-bold text-emerald-700">5</div>
-          </div>
+        <section className="grid gap-5 md:grid-cols-2">
+          {supportSections.map((section) => (
+            <div
+              key={section.title}
+              className="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft"
+            >
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <h2 className="text-lg font-semibold text-slate-950">{section.title}</h2>
+                <span className="inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+                  {section.status}
+                </span>
+              </div>
+
+              <p className="mt-2 text-sm leading-6 text-slate-600">{section.description}</p>
+            </div>
+          ))}
         </section>
 
-        <section className="mt-8 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-soft">
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-slate-200 text-sm">
-              <thead className="bg-slate-50">
-                <tr className="text-left text-slate-600">
-                  <th className="px-5 py-4 font-semibold">Ticket</th>
-                  <th className="px-5 py-4 font-semibold">Priority</th>
-                  <th className="px-5 py-4 font-semibold">Status</th>
-                  <th className="px-5 py-4 font-semibold">Assigned To</th>
-                  <th className="px-5 py-4 font-semibold">Related Entity</th>
-                  <th className="px-5 py-4 font-semibold">Created</th>
-                </tr>
-              </thead>
-
-              <tbody className="divide-y divide-slate-100">
-                {tickets.map((ticket) => (
-                  <tr key={ticket.id} className="hover:bg-slate-50">
-                    <td className="px-5 py-4">
-                      <div className="font-semibold text-slate-900">{ticket.subject}</div>
-                      <div className="text-xs text-slate-500">{ticket.id}</div>
-                    </td>
-                    <td className="px-5 py-4">
-                      <span
-                        className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${priorityBadge(ticket.priority)}`}
-                      >
-                        {ticket.priority}
-                      </span>
-                    </td>
-                    <td className="px-5 py-4">
-                      <span
-                        className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${statusBadge(ticket.status)}`}
-                      >
-                        {ticket.status.replace("_", " ")}
-                      </span>
-                    </td>
-                    <td className="px-5 py-4 text-slate-700">{ticket.assignedTo}</td>
-                    <td className="px-5 py-4 text-slate-700">{ticket.relatedEntity}</td>
-                    <td className="px-5 py-4 text-slate-700">{ticket.createdAt}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+        <section className="mt-8 rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
+          <h2 className="text-lg font-semibold text-slate-950">V1 note</h2>
+          <p className="mt-2 text-sm leading-6 text-slate-600">
+            Core operational work for V1 should continue through the live dashboard modules already
+            backed by the backend, including Loads, Review Queue, Billing, Customers, Drivers, and
+            Documents. Dedicated support ticketing can be introduced after the underlying API,
+            persistence, and assignment flows are release-ready.
+          </p>
         </section>
       </div>
     </main>

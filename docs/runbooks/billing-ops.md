@@ -1,5 +1,3 @@
-Paste this into:
-
 docs/runbooks/billing-ops.md
 
 # Billing Operations Runbook
@@ -268,10 +266,3 @@ Billing operations are healthy when:
 	•	no mismatches exist
 
 This runbook ensures consistent financial handling and supports scaling into a real SaaS billing system.
-
----
-
-## Next file (aligned with your structure)
-
-```text
-docs/runbooks/support-ops.md

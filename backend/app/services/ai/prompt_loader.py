@@ -1,21 +1,23 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict
 
 
 class PromptLoader:
     def __init__(self) -> None:
-        self.base_path = Path(__file__).parent / "prompt_templates"
-        self._cache: Dict[str, str] = {}
+        self.base_path = Path(__file__).resolve().parent / "prompt_templates"
+        self._cache: dict[str, str] = {}
 
     def _load_file(self, filename: str) -> str:
         path = self.base_path / filename
 
-        if not path.exists():
+        if not path.exists() or not path.is_file():
             raise FileNotFoundError(f"Prompt file not found: {filename}")
 
-        return path.read_text(encoding="utf-8")
+        try:
+            return path.read_text(encoding="utf-8")
+        except OSError as exc:
+            raise OSError(f"Unable to read prompt file: {filename}") from exc
 
     def get_prompt(self, name: str) -> str:
         """
@@ -28,8 +30,9 @@ class PromptLoader:
 
         filename = f"{name}.txt"
 
-        if filename in self._cache:
-            return self._cache[filename]
+        cached = self._cache.get(filename)
+        if cached is not None:
+            return cached
 
         content = self._load_file(filename)
         self._cache[filename] = content

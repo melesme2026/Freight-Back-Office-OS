@@ -1,33 +1,28 @@
 [
   {
     "id": "40000000-0000-0000-0000-000000000001",
+    "organization_id": "00000000-0000-0000-0000-000000000001",
     "name": "Starter Plan",
+    "code": "starter",
     "description": "Basic document processing and load tracking",
-    "price_monthly": 49.99,
     "billing_cycle": "monthly",
-    "max_documents_per_month": 200,
-    "features": [
-      "Document Upload",
-      "Basic OCR Extraction",
-      "Load Tracking",
-      "Email Notifications"
-    ],
+    "base_price": 49.99,
+    "currency_code": "USD",
+    "per_load_price": null,
+    "per_driver_price": null,
     "is_active": true
   },
   {
     "id": "40000000-0000-0000-0000-000000000002",
+    "organization_id": "00000000-0000-0000-0000-000000000001",
     "name": "Pro Plan",
+    "code": "pro",
     "description": "Advanced automation, AI extraction, and billing",
-    "price_monthly": 149.99,
     "billing_cycle": "monthly",
-    "max_documents_per_month": 1000,
-    "features": [
-      "Advanced OCR + AI Extraction",
-      "Validation Engine",
-      "Automated Billing & Invoicing",
-      "WhatsApp + Email Notifications",
-      "Priority Support"
-    ],
+    "base_price": 149.99,
+    "currency_code": "USD",
+    "per_load_price": null,
+    "per_driver_price": null,
     "is_active": true
   }
 ]

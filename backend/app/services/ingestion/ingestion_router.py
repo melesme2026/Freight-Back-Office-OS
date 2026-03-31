@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.core.exceptions import ValidationError
 from app.domain.enums.channel import Channel
 from app.services.ingestion.api_ingestion_service import ApiIngestionService
 from app.services.ingestion.email_ingestion_service import EmailIngestionService
@@ -38,4 +39,10 @@ class IngestionRouter:
         if channel == Channel.API:
             return self.api_ingestion_service.ingest(payload)
 
-        return self.upload_service.ingest(payload)
+        if channel == Channel.UPLOAD:
+            return self.upload_service.ingest(payload)
+
+        raise ValidationError(
+            "Unsupported ingestion channel",
+            details={"channel": str(channel)},
+        )

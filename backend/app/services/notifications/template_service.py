@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import defaultdict
 from typing import Any
 
 
@@ -10,6 +11,7 @@ class TemplateService:
         template_name: str,
         context: dict[str, Any] | None = None,
     ) -> str:
+        normalized_template_name = str(template_name).strip().lower()
         context = context or {}
 
         templates = {
@@ -30,13 +32,16 @@ class TemplateService:
             ),
         }
 
-        template = templates.get(template_name, "{message}")
-        safe_context = {
-            "load_number": context.get("load_number", "N/A"),
-            "invoice_number": context.get("invoice_number", "N/A"),
-            "amount": context.get("amount", "N/A"),
-            "status": context.get("status", "N/A"),
-            "message": context.get("message", ""),
-        }
+        template = templates.get(normalized_template_name, "{message}")
+        safe_context = defaultdict(
+            str,
+            {
+                "load_number": context.get("load_number", "N/A"),
+                "invoice_number": context.get("invoice_number", "N/A"),
+                "amount": context.get("amount", "N/A"),
+                "status": context.get("status", "N/A"),
+                "message": context.get("message", ""),
+            },
+        )
 
-        return template.format(**safe_context)
+        return template.format_map(safe_context)
