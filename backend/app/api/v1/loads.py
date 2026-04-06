@@ -30,8 +30,14 @@ def _normalize_optional_text(value: str | None) -> str | None:
     return normalized or None
 
 
-def _normalize_required_text(value: str) -> str:
-    return value.strip()
+def _normalize_required_text(value: str, field_name: str = "value") -> str:
+    normalized = value.strip()
+    if not normalized:
+        raise ValidationError(
+            f"{field_name} is required",
+            details={field_name: value},
+        )
+    return normalized
 
 
 def _normalize_email(value: str | None) -> str | None:
@@ -47,8 +53,13 @@ def _normalize_currency_code(value: str | None) -> str | None:
 def _parse_decimal(value: str | None, field_name: str) -> Decimal | None:
     if value is None:
         return None
+
+    normalized = value.strip()
+    if not normalized:
+        return None
+
     try:
-        return Decimal(value.strip())
+        return Decimal(normalized)
     except (InvalidOperation, ValueError, AttributeError) as exc:
         raise ValidationError(
             f"Invalid {field_name}",
@@ -78,6 +89,17 @@ def _to_decimal_string(value: object | None) -> str | None:
         return str(value)
 
 
+def _enum_to_string(value: object | None) -> str | None:
+    if value is None:
+        return None
+
+    enum_value = getattr(value, "value", None)
+    if isinstance(enum_value, str):
+        return enum_value
+
+    return str(value)
+
+
 def _serialize_load(item: Any, *, detailed: bool = False) -> dict[str, Any]:
     payload = {
         "id": str(item.id),
@@ -85,9 +107,9 @@ def _serialize_load(item: Any, *, detailed: bool = False) -> dict[str, Any]:
         "customer_account_id": str(item.customer_account_id),
         "driver_id": str(item.driver_id),
         "broker_id": str(item.broker_id) if item.broker_id else None,
-        "source_channel": str(item.source_channel),
-        "status": str(item.status),
-        "processing_status": str(item.processing_status),
+        "source_channel": _enum_to_string(item.source_channel),
+        "status": _enum_to_string(item.status),
+        "processing_status": _enum_to_string(item.processing_status),
         "load_number": item.load_number,
         "rate_confirmation_number": item.rate_confirmation_number,
         "bol_number": item.bol_number,
@@ -161,7 +183,7 @@ def create_load(
         customer_account_id=str(customer_account_id),
         driver_id=str(driver_id),
         broker_id=_uuid_to_str(broker_id),
-        source_channel=_normalize_required_text(source_channel),
+        source_channel=_normalize_required_text(source_channel, "source_channel"),
         load_number=_normalize_optional_text(load_number),
         rate_confirmation_number=_normalize_optional_text(rate_confirmation_number),
         bol_number=_normalize_optional_text(bol_number),
@@ -174,7 +196,7 @@ def create_load(
         delivery_location=_normalize_optional_text(delivery_location),
         gross_amount=_parse_decimal(gross_amount, "gross_amount"),
         currency_code=_normalize_currency_code(currency_code) or "USD",
-        notes=notes,
+        notes=_normalize_optional_text(notes),
     )
 
     return ApiResponse(
@@ -289,7 +311,7 @@ def update_load(
         has_ratecon=has_ratecon,
         has_bol=has_bol,
         has_invoice=has_invoice,
-        notes=notes,
+        notes=_normalize_optional_text(notes),
     )
 
     return ApiResponse(
@@ -309,7 +331,7 @@ def transition_load_status(
     notes: str | None = None,
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
-    normalized_status = _normalize_required_text(new_status)
+    normalized_status = _normalize_required_text(new_status, "new_status")
 
     try:
         parsed_status = LoadStatus(normalized_status)
@@ -324,17 +346,19 @@ def transition_load_status(
         load_id=str(load_id),
         new_status=parsed_status,
         actor_staff_user_id=_uuid_to_str(actor_staff_user_id),
-        actor_type=_normalize_required_text(actor_type),
-        notes=notes,
+        actor_type=_normalize_required_text(actor_type, "actor_type"),
+        notes=_normalize_optional_text(notes),
     )
 
     return ApiResponse(
         data={
             "id": result["id"],
             "old_status": (
-                str(result["old_status"]) if result["old_status"] is not None else None
+                _enum_to_string(result["old_status"])
+                if result["old_status"] is not None
+                else None
             ),
-            "new_status": str(result["new_status"]),
+            "new_status": _enum_to_string(result["new_status"]),
             "changed_at": result["changed_at"].isoformat(),
         },
         meta={},
