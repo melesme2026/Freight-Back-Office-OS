@@ -76,10 +76,8 @@ function normalizeDriver(item: unknown): Driver | null {
     return null;
   }
 
-  const firstName =
-    asString(record.first_name) ?? asString(record.firstName);
-  const lastName =
-    asString(record.last_name) ?? asString(record.lastName);
+  const firstName = asString(record.first_name) ?? asString(record.firstName);
+  const lastName = asString(record.last_name) ?? asString(record.lastName);
 
   const combinedName = [firstName, lastName]
     .filter((part): part is string => Boolean(part))
@@ -96,7 +94,10 @@ function normalizeDriver(item: unknown): Driver | null {
   return {
     id,
     full_name: fullName,
-    phone: asString(record.phone) ?? asString(record.phone_number),
+    phone:
+      asString(record.phone) ??
+      asString(record.phone_number) ??
+      asString(record.phoneNumber),
     email: asString(record.email),
     is_active:
       asBoolean(record.is_active) ??
@@ -124,6 +125,8 @@ function normalizeDriversResponse(payload: unknown): Driver[] {
       candidates.push(...root.drivers);
     } else if (Array.isArray(root.items)) {
       candidates.push(...root.items);
+    } else if (Array.isArray(root.results)) {
+      candidates.push(...root.results);
     }
   }
 
