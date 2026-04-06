@@ -16,6 +16,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 10s
 
   redis:
     image: redis:7
@@ -31,6 +32,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 5s
 
   api:
     build:
@@ -43,9 +45,9 @@ services:
     environment:
       ENVIRONMENT: local
       DATABASE_URL_OVERRIDE: postgresql+psycopg://postgres:postgres@postgres:5432/freight_back_office_os
+      REDIS_URL_OVERRIDE: redis://redis:6379/0
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/1
-      REDIS_URL_OVERRIDE: redis://redis:6379/0
     depends_on:
       postgres:
         condition: service_healthy
@@ -56,6 +58,12 @@ services:
     volumes:
       - ./backend:/app/backend
       - ./data:/app/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8000/api/v1/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
     command: >
       sh -c "cd /app/backend && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
 
@@ -70,13 +78,15 @@ services:
     environment:
       ENVIRONMENT: local
       DATABASE_URL_OVERRIDE: postgresql+psycopg://postgres:postgres@postgres:5432/freight_back_office_os
+      REDIS_URL_OVERRIDE: redis://redis:6379/0
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/1
-      REDIS_URL_OVERRIDE: redis://redis:6379/0
     depends_on:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      api:
         condition: service_healthy
     volumes:
       - ./backend:/app/backend
@@ -95,13 +105,15 @@ services:
     environment:
       ENVIRONMENT: local
       DATABASE_URL_OVERRIDE: postgresql+psycopg://postgres:postgres@postgres:5432/freight_back_office_os
+      REDIS_URL_OVERRIDE: redis://redis:6379/0
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/1
-      REDIS_URL_OVERRIDE: redis://redis:6379/0
     depends_on:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      api:
         condition: service_healthy
     volumes:
       - ./backend:/app/backend
@@ -119,12 +131,18 @@ services:
       - .env
     environment:
       NODE_ENV: production
-      NEXT_PUBLIC_API_BASE_URL: http://api:8000/api/v1
+      NEXT_PUBLIC_API_BASE_URL: /api/v1
     depends_on:
       api:
-        condition: service_started
+        condition: service_healthy
     ports:
       - "3000:3000"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:3000 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
   nginx:
     build:
@@ -134,9 +152,9 @@ services:
     restart: unless-stopped
     depends_on:
       api:
-        condition: service_started
+        condition: service_healthy
       web:
-        condition: service_started
+        condition: service_healthy
     ports:
       - "80:80"
 

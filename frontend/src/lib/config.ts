@@ -9,11 +9,13 @@ function trimLeadingAndTrailingSlashes(value: string): string {
 const rawApiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
 const rawApiVersionPrefix = process.env.NEXT_PUBLIC_API_VERSION_PREFIX?.trim();
 
-const normalizedApiBaseUrl = trimTrailingSlashes(
-  rawApiBaseUrl && rawApiBaseUrl.length > 0
-    ? rawApiBaseUrl
-    : "http://127.0.0.1:8000"
-);
+const normalizedApiBaseUrl = (() => {
+  if (!rawApiBaseUrl || rawApiBaseUrl.length === 0) {
+    return "";
+  }
+
+  return trimTrailingSlashes(rawApiBaseUrl);
+})();
 
 const normalizedApiVersionPrefix = (() => {
   const source =
@@ -38,7 +40,9 @@ export function buildApiUrl(path: string): string {
   const trimmedPath = path.trim();
 
   if (trimmedPath.length === 0) {
-    return `${appConfig.apiBaseUrl}${appConfig.apiVersionPrefix}`;
+    return appConfig.apiBaseUrl
+      ? `${appConfig.apiBaseUrl}${appConfig.apiVersionPrefix}`
+      : `${appConfig.apiVersionPrefix}`;
   }
 
   if (/^https?:\/\//i.test(trimmedPath)) {
@@ -48,8 +52,12 @@ export function buildApiUrl(path: string): string {
   const normalizedPath = trimmedPath.startsWith("/") ? trimmedPath : `/${trimmedPath}`;
 
   if (normalizedPath.startsWith("/api/")) {
-    return `${appConfig.apiBaseUrl}${normalizedPath}`;
+    return appConfig.apiBaseUrl
+      ? `${appConfig.apiBaseUrl}${normalizedPath}`
+      : normalizedPath;
   }
 
-  return `${appConfig.apiBaseUrl}${appConfig.apiVersionPrefix}${normalizedPath}`;
+  return appConfig.apiBaseUrl
+    ? `${appConfig.apiBaseUrl}${appConfig.apiVersionPrefix}${normalizedPath}`
+    : `${appConfig.apiVersionPrefix}${normalizedPath}`;
 }

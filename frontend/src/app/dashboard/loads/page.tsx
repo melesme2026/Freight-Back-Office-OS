@@ -1,10 +1,49 @@
 "use client";
 
 import Link from "next/link";
+import { useMemo, useState } from "react";
 
 import { useLoads } from "@/hooks/useLoads";
 
-function statusBadge(status?: string) {
+type NullableString = string | null | undefined;
+type NullableNumberLike = number | string | null | undefined;
+
+type LoadListItem = {
+  id: string;
+  load_number?: NullableString;
+  status?: NullableString;
+  gross_amount?: NullableNumberLike;
+  currency_code?: NullableString;
+  broker_name_raw?: NullableString;
+  broker_email_raw?: NullableString;
+  customer_account_id?: NullableString;
+  driver_id?: NullableString;
+  pickup_location?: NullableString;
+  delivery_location?: NullableString;
+  has_ratecon?: boolean | null | undefined;
+  has_bol?: boolean | null | undefined;
+  has_invoice?: boolean | null | undefined;
+};
+
+type StatusFilter =
+  | "all"
+  | "new"
+  | "docs_received"
+  | "extracting"
+  | "needs_review"
+  | "validated"
+  | "ready_to_submit"
+  | "submitted"
+  | "funded"
+  | "paid"
+  | "exception"
+  | "archived";
+
+function normalizeText(value: NullableString): string {
+  return typeof value === "string" ? value.trim().toLowerCase() : "";
+}
+
+function statusBadge(status?: string | null) {
   switch ((status ?? "").toLowerCase()) {
     case "needs_review":
       return "bg-amber-100 text-amber-800";
@@ -31,14 +70,17 @@ function statusBadge(status?: string) {
   }
 }
 
-function statusLabel(status?: string) {
+function statusLabel(status?: string | null) {
   const normalized = status?.trim();
   return normalized && normalized.length > 0
     ? normalized.replaceAll("_", " ")
     : "unknown";
 }
 
-function formatCurrency(value?: number | string | null) {
+function formatCurrency(
+  value?: number | string | null,
+  currencyCode?: string | null
+) {
   if (value === undefined || value === null || value === "") {
     return "—";
   }
@@ -50,14 +92,121 @@ function formatCurrency(value?: number | string | null) {
     return String(value);
   }
 
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-  }).format(numericValue);
+  try {
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: currencyCode?.trim() || "USD",
+    }).format(numericValue);
+  } catch {
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
+    }).format(numericValue);
+  }
 }
+
+function docCount(load: LoadListItem): number {
+  return [
+    load.has_ratecon === true,
+    load.has_bol === true,
+    load.has_invoice === true,
+  ].filter(Boolean).length;
+}
+
+function docBadgeClass(load: LoadListItem): string {
+  const count = docCount(load);
+
+  if (count === 3) {
+    return "bg-emerald-100 text-emerald-800";
+  }
+
+  if (count >= 1) {
+    return "bg-amber-100 text-amber-800";
+  }
+
+  return "bg-rose-100 text-rose-800";
+}
+
+function docLabel(load: LoadListItem): string {
+  return `${docCount(load)}/3 docs`;
+}
+
+function routeLabel(load: LoadListItem): string {
+  const pickup = load.pickup_location?.trim() || "—";
+  const delivery = load.delivery_location?.trim() || "—";
+  return `${pickup} → ${delivery}`;
+}
+
+function matchesSearch(load: LoadListItem, query: string): boolean {
+  const normalizedQuery = query.trim().toLowerCase();
+
+  if (!normalizedQuery) {
+    return true;
+  }
+
+  const haystacks: Array<NullableString> = [
+    load.load_number,
+    load.id,
+    load.status,
+    load.broker_name_raw,
+    load.broker_email_raw,
+    load.customer_account_id,
+    load.driver_id,
+    load.pickup_location,
+    load.delivery_location,
+  ];
+
+  return haystacks.some((value) => normalizeText(value).includes(normalizedQuery));
+}
+
+const STATUS_OPTIONS: Array<{ value: StatusFilter; label: string }> = [
+  { value: "all", label: "All statuses" },
+  { value: "new", label: "New" },
+  { value: "docs_received", label: "Docs Received" },
+  { value: "extracting", label: "Extracting" },
+  { value: "needs_review", label: "Needs Review" },
+  { value: "validated", label: "Validated" },
+  { value: "ready_to_submit", label: "Ready to Submit" },
+  { value: "submitted", label: "Submitted" },
+  { value: "funded", label: "Funded" },
+  { value: "paid", label: "Paid" },
+  { value: "exception", label: "Exception" },
+  { value: "archived", label: "Archived" },
+];
 
 export default function LoadsPage() {
   const { loads, isLoading, error } = useLoads();
+  const typedLoads = (loads ?? []) as LoadListItem[];
+
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+
+  const filteredLoads = useMemo(() => {
+    return typedLoads.filter((load) => {
+      const matchesStatus =
+        statusFilter === "all"
+          ? true
+          : normalizeText(load.status) === statusFilter;
+
+      return matchesStatus && matchesSearch(load, search);
+    });
+  }, [typedLoads, search, statusFilter]);
+
+  const metrics = useMemo(() => {
+    const total = typedLoads.length;
+    const active = typedLoads.filter(
+      (load) => normalizeText(load.status) !== "archived"
+    ).length;
+    const needsReview = typedLoads.filter(
+      (load) => normalizeText(load.status) === "needs_review"
+    ).length;
+    const paid = typedLoads.filter(
+      (load) => normalizeText(load.status) === "paid"
+    ).length;
+    const missingDocs = typedLoads.filter((load) => docCount(load) < 3).length;
+
+    return { total, active, needsReview, paid, missingDocs };
+  }, [typedLoads]);
 
   return (
     <main className="min-h-screen bg-slate-50 text-slate-900">
@@ -77,24 +226,103 @@ export default function LoadsPage() {
           </div>
 
           <div className="flex gap-3">
-            <button
-              type="button"
-              disabled
-              aria-disabled="true"
-              title="Filtering is not yet wired in V1."
-              className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 opacity-60"
-            >
-              Filter
-            </button>
-            <button
-              type="button"
-              disabled
-              aria-disabled="true"
-              title="Load creation is not yet wired in V1."
-              className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white opacity-60"
+            <Link
+              href="/dashboard/loads/new"
+              className="inline-flex items-center rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-700 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2"
             >
               New Load
-            </button>
+            </Link>
+          </div>
+        </div>
+
+        <div className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-soft">
+            <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Total Loads
+            </div>
+            <div className="mt-2 text-2xl font-bold text-slate-950">
+              {metrics.total}
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-soft">
+            <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Active
+            </div>
+            <div className="mt-2 text-2xl font-bold text-slate-950">
+              {metrics.active}
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-soft">
+            <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Needs Review
+            </div>
+            <div className="mt-2 text-2xl font-bold text-amber-700">
+              {metrics.needsReview}
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-soft">
+            <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Paid
+            </div>
+            <div className="mt-2 text-2xl font-bold text-purple-700">
+              {metrics.paid}
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-soft">
+            <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Missing Docs
+            </div>
+            <div className="mt-2 text-2xl font-bold text-rose-700">
+              {metrics.missingDocs}
+            </div>
+          </div>
+        </div>
+
+        <div className="mb-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-soft">
+          <div className="grid gap-4 md:grid-cols-[1fr,220px]">
+            <div>
+              <label
+                htmlFor="loadSearch"
+                className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-500"
+              >
+                Search
+              </label>
+              <input
+                id="loadSearch"
+                type="text"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Search by load, broker, route, customer, driver, or ID"
+                className="w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
+              />
+            </div>
+
+            <div>
+              <label
+                htmlFor="statusFilter"
+                className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-500"
+              >
+                Status
+              </label>
+              <select
+                id="statusFilter"
+                value={statusFilter}
+                onChange={(event) =>
+                  setStatusFilter(event.target.value as StatusFilter)
+                }
+                className="w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-900 outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
+              >
+                {STATUS_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
         </div>
 
@@ -110,7 +338,9 @@ export default function LoadsPage() {
               <thead className="bg-slate-50">
                 <tr className="text-left text-slate-600">
                   <th className="px-5 py-4 font-semibold">Load</th>
+                  <th className="px-5 py-4 font-semibold">Route / Parties</th>
                   <th className="px-5 py-4 font-semibold">Status</th>
+                  <th className="px-5 py-4 font-semibold">Docs</th>
                   <th className="px-5 py-4 font-semibold">Amount</th>
                   <th className="px-5 py-4 font-semibold">Action</th>
                 </tr>
@@ -120,32 +350,50 @@ export default function LoadsPage() {
                 {isLoading ? (
                   <tr>
                     <td
-                      colSpan={4}
+                      colSpan={6}
                       className="px-5 py-8 text-center text-sm text-slate-500"
                     >
                       Loading loads...
                     </td>
                   </tr>
-                ) : loads.length === 0 ? (
+                ) : filteredLoads.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={4}
+                      colSpan={6}
                       className="px-5 py-8 text-center text-sm text-slate-500"
                     >
-                      No loads found.
+                      {typedLoads.length === 0
+                        ? "No loads found."
+                        : "No loads match the current search or filter."}
                     </td>
                   </tr>
                 ) : (
-                  loads.map((load) => (
+                  filteredLoads.map((load) => (
                     <tr key={load.id} className="hover:bg-slate-50">
-                      <td className="px-5 py-4">
+                      <td className="px-5 py-4 align-top">
                         <div className="font-semibold text-slate-900">
                           {load.load_number?.trim() || load.id}
                         </div>
-                        <div className="text-xs text-slate-500">{load.id}</div>
+                        <div className="mt-1 text-xs text-slate-500">
+                          {load.id}
+                        </div>
                       </td>
 
-                      <td className="px-5 py-4">
+                      <td className="px-5 py-4 align-top">
+                        <div className="space-y-1">
+                          <div className="text-sm font-medium text-slate-900">
+                            {routeLabel(load)}
+                          </div>
+                          <div className="text-xs text-slate-500">
+                            Broker: {load.broker_name_raw?.trim() || "—"}
+                          </div>
+                          <div className="text-xs text-slate-500">
+                            Driver: {load.driver_id?.trim() || "—"}
+                          </div>
+                        </div>
+                      </td>
+
+                      <td className="px-5 py-4 align-top">
                         <span
                           className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${statusBadge(
                             load.status
@@ -155,14 +403,24 @@ export default function LoadsPage() {
                         </span>
                       </td>
 
-                      <td className="px-5 py-4 font-medium text-slate-900">
-                        {formatCurrency(load.gross_amount)}
+                      <td className="px-5 py-4 align-top">
+                        <span
+                          className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${docBadgeClass(
+                            load
+                          )}`}
+                        >
+                          {docLabel(load)}
+                        </span>
                       </td>
 
-                      <td className="px-5 py-4">
+                      <td className="px-5 py-4 align-top font-medium text-slate-900">
+                        {formatCurrency(load.gross_amount, load.currency_code)}
+                      </td>
+
+                      <td className="px-5 py-4 align-top">
                         <Link
                           href={`/dashboard/loads/${load.id}`}
-                          className="text-sm font-semibold text-brand-700 hover:text-brand-800"
+                          className="text-sm font-semibold text-brand-700 transition hover:text-brand-800"
                         >
                           View →
                         </Link>
@@ -174,6 +432,12 @@ export default function LoadsPage() {
             </table>
           </div>
         </section>
+
+        {!isLoading && typedLoads.length > 0 ? (
+          <div className="mt-4 text-sm text-slate-500">
+            Showing {filteredLoads.length} of {typedLoads.length} loads.
+          </div>
+        ) : null}
       </div>
     </main>
   );

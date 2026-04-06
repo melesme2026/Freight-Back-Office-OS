@@ -1,0 +1,470 @@
+Freight-Back-Office-OS/
+│
+├── README.md
+├── RUN.md
+├── .gitignore
+├── .editorconfig
+├── .env
+├── .env.example
+├── docker-compose.yml
+├── Makefile
+├── pyproject.toml
+├── package.json
+├── package-lock.json
+├── create_project_structure.ps1
+├── project_structure_new.txt
+│
+├── docs/
+│   ├── architecture/
+│   │   ├── system-overview.md
+│   │   ├── domain-model.md
+│   │   ├── workflow-engine.md
+│   │   ├── ai-integration.md
+│   │   ├── channel-ingestion.md
+│   │   ├── billing-architecture.md
+│   │   ├── onboarding-architecture.md
+│   │   ├── audit-and-observability.md
+│   │   └── security-model.md
+│   ├── api/
+│   │   ├── openapi-notes.md
+│   │   ├── endpoint-contracts.md
+│   │   └── webhook-contracts.md
+│   ├── product/
+│   │   ├── roadmap.md
+│   │   ├── v1-scope.md
+│   │   ├── pricing-model.md
+│   │   ├── billing-flows.md
+│   │   ├── onboarding-flows.md
+│   │   └── backlog.md
+│   └── runbooks/
+│       ├── local-dev.md
+│       ├── deployment.md
+│       ├── billing-ops.md
+│       ├── support-ops.md
+│       └── incident-response.md
+│
+├── infra/
+│   ├── docker/
+│   │   ├── api.Dockerfile
+│   │   ├── web.Dockerfile
+│   │   ├── worker.Dockerfile
+│   │   └── nginx.Dockerfile
+│   ├── nginx/
+│   │   └── nginx.conf
+│   ├── github/
+│   │   └── workflows/
+│   │       ├── api-ci.yml
+│   │       ├── web-ci.yml
+│   │       ├── worker-ci.yml
+│   │       └── deploy.yml
+│   ├── scripts/
+│   │   ├── bootstrap.ps1
+│   │   ├── bootstrap.sh
+│   │   ├── run-api.ps1
+│   │   ├── run-worker.ps1
+│   │   ├── run-web.ps1
+│   │   ├── seed-dev-data.ps1
+│   │   └── reset-local-env.ps1
+│   └── k8s/
+│       ├── api-deployment.yaml
+│       ├── worker-deployment.yaml
+│       ├── web-deployment.yaml
+│       ├── redis.yaml
+│       ├── postgres.yaml
+│       └── minio.yaml
+│
+├── backend/
+│   ├── alembic.ini
+│   ├── pytest.ini
+│   ├── alembic/
+│   │   ├── env.py
+│   │   ├── script.py.mako
+│   │   └── versions/
+│   ├── app/
+│   │   ├── main.py
+│   │   ├── lifespan.py
+│   │   ├── core/
+│   │   │   ├── config.py
+│   │   │   ├── constants.py
+│   │   │   ├── database.py
+│   │   │   ├── security.py
+│   │   │   ├── logging.py
+│   │   │   ├── middleware.py
+│   │   │   ├── dependencies.py
+│   │   │   ├── exceptions.py
+│   │   │   ├── idempotency.py
+│   │   │   ├── feature_flags.py
+│   │   │   └── healthchecks.py
+│   │   ├── domain/
+│   │   │   ├── enums/
+│   │   │   │   ├── channel.py
+│   │   │   │   ├── document_type.py
+│   │   │   │   ├── load_status.py
+│   │   │   │   ├── processing_status.py
+│   │   │   │   ├── notification_status.py
+│   │   │   │   ├── role.py
+│   │   │   │   ├── onboarding_status.py
+│   │   │   │   ├── customer_account_status.py
+│   │   │   │   ├── subscription_status.py
+│   │   │   │   ├── billing_cycle.py
+│   │   │   │   ├── invoice_status.py
+│   │   │   │   ├── payment_status.py
+│   │   │   │   ├── payment_provider.py
+│   │   │   │   ├── payment_method_type.py
+│   │   │   │   ├── validation_severity.py
+│   │   │   │   └── audit_actor_type.py
+│   │   │   ├── models/
+│   │   │   │   ├── organization.py
+│   │   │   │   ├── customer_account.py
+│   │   │   │   ├── onboarding_checklist.py
+│   │   │   │   ├── referral.py
+│   │   │   │   ├── staff_user.py
+│   │   │   │   ├── driver.py
+│   │   │   │   ├── broker.py
+│   │   │   │   ├── load.py
+│   │   │   │   ├── load_document.py
+│   │   │   │   ├── extracted_field.py
+│   │   │   │   ├── validation_issue.py
+│   │   │   │   ├── workflow_event.py
+│   │   │   │   ├── notification.py
+│   │   │   │   ├── audit_log.py
+│   │   │   │   ├── service_plan.py
+│   │   │   │   ├── subscription.py
+│   │   │   │   ├── usage_record.py
+│   │   │   │   ├── billing_invoice.py
+│   │   │   │   ├── billing_invoice_line.py
+│   │   │   │   ├── payment_method.py
+│   │   │   │   ├── payment.py
+│   │   │   │   ├── ledger_entry.py
+│   │   │   │   ├── support_ticket.py
+│   │   │   │   └── api_client.py
+│   │   │   └── value_objects/
+│   │   │       ├── money.py
+│   │   │       ├── phone_number.py
+│   │   │       ├── confidence_score.py
+│   │   │       └── date_range.py
+│   │   ├── schemas/
+│   │   │   ├── auth.py
+│   │   │   ├── organization.py
+│   │   │   ├── customer_account.py
+│   │   │   ├── onboarding.py
+│   │   │   ├── referral.py
+│   │   │   ├── staff_user.py
+│   │   │   ├── driver.py
+│   │   │   ├── broker.py
+│   │   │   ├── load.py
+│   │   │   ├── document.py
+│   │   │   ├── extraction.py
+│   │   │   ├── validation.py
+│   │   │   ├── workflow.py
+│   │   │   ├── notification.py
+│   │   │   ├── dashboard.py
+│   │   │   ├── billing.py
+│   │   │   ├── service_plan.py
+│   │   │   ├── subscription.py
+│   │   │   ├── invoice.py
+│   │   │   ├── payment.py
+│   │   │   ├── support.py
+│   │   │   ├── webhook_whatsapp.py
+│   │   │   ├── webhook_email.py
+│   │   │   ├── webhook_payment.py
+│   │   │   └── health.py
+│   │   ├── repositories/
+│   │   │   ├── organization_repo.py
+│   │   │   ├── customer_account_repo.py
+│   │   │   ├── onboarding_repo.py
+│   │   │   ├── referral_repo.py
+│   │   │   ├── staff_user_repo.py
+│   │   │   ├── driver_repo.py
+│   │   │   ├── broker_repo.py
+│   │   │   ├── load_repo.py
+│   │   │   ├── document_repo.py
+│   │   │   ├── extracted_field_repo.py
+│   │   │   ├── validation_repo.py
+│   │   │   ├── workflow_event_repo.py
+│   │   │   ├── notification_repo.py
+│   │   │   ├── audit_repo.py
+│   │   │   ├── service_plan_repo.py
+│   │   │   ├── subscription_repo.py
+│   │   │   ├── usage_record_repo.py
+│   │   │   ├── billing_invoice_repo.py
+│   │   │   ├── payment_method_repo.py
+│   │   │   ├── payment_repo.py
+│   │   │   ├── ledger_repo.py
+│   │   │   └── support_ticket_repo.py
+│   │   ├── services/
+│   │   │   ├── auth/
+│   │   │   │   ├── auth_service.py
+│   │   │   │   └── token_service.py
+│   │   │   ├── ingestion/
+│   │   │   │   ├── ingestion_router.py
+│   │   │   │   ├── channel_dispatcher.py
+│   │   │   │   ├── upload_service.py
+│   │   │   │   ├── whatsapp_ingestion_service.py
+│   │   │   │   ├── email_ingestion_service.py
+│   │   │   │   └── api_ingestion_service.py
+│   │   │   ├── documents/
+│   │   │   │   ├── document_service.py
+│   │   │   │   ├── document_classifier.py
+│   │   │   │   ├── document_linker.py
+│   │   │   │   ├── file_fingerprint_service.py
+│   │   │   │   └── storage_service.py
+│   │   │   ├── ai/
+│   │   │   │   ├── extraction_service.py
+│   │   │   │   ├── ocr_service.py
+│   │   │   │   ├── llm_service.py
+│   │   │   │   ├── confidence_service.py
+│   │   │   │   ├── anomaly_detection_service.py
+│   │   │   │   └── prompt_templates/
+│   │   │   ├── validation/
+│   │   │   │   ├── validation_engine.py
+│   │   │   │   ├── validation_orchestrator.py
+│   │   │   │   └── rules/
+│   │   │   ├── workflow/
+│   │   │   │   ├── workflow_engine.py
+│   │   │   │   ├── state_machine.py
+│   │   │   │   ├── transitions.py
+│   │   │   │   └── event_publisher.py
+│   │   │   ├── notifications/
+│   │   │   │   ├── notification_service.py
+│   │   │   │   ├── whatsapp_service.py
+│   │   │   │   ├── email_service.py
+│   │   │   │   ├── inapp_service.py
+│   │   │   │   └── template_service.py
+│   │   │   ├── loads/
+│   │   │   │   ├── load_service.py
+│   │   │   │   ├── load_matching_service.py
+│   │   │   │   ├── load_summary_service.py
+│   │   │   │   └── driver_load_timeline_service.py
+│   │   │   ├── review/
+│   │   │   │   ├── review_queue_service.py
+│   │   │   │   └── human_review_service.py
+│   │   │   ├── billing/
+│   │   │   │   ├── billing_service.py
+│   │   │   │   ├── pricing_service.py
+│   │   │   │   ├── subscription_service.py
+│   │   │   │   ├── invoice_service.py
+│   │   │   │   ├── payment_service.py
+│   │   │   │   ├── usage_billing_service.py
+│   │   │   │   ├── ledger_service.py
+│   │   │   │   └── dunning_service.py
+│   │   │   ├── onboarding/
+│   │   │   │   ├── onboarding_service.py
+│   │   │   │   ├── customer_account_service.py
+│   │   │   │   └── referral_service.py
+│   │   │   ├── support/
+│   │   │   │   ├── support_service.py
+│   │   │   │   └── ticket_routing_service.py
+│   │   │   └── audit/
+│   │   │       └── audit_service.py
+│   │   ├── workers/
+│   │   │   ├── celery_app.py
+│   │   │   ├── queues.py
+│   │   │   ├── tasks/
+│   │   │   │   ├── process_document.py
+│   │   │   │   ├── classify_document.py
+│   │   │   │   ├── extract_fields.py
+│   │   │   │   ├── run_validation.py
+│   │   │   │   ├── send_notification.py
+│   │   │   │   ├── reconcile_status.py
+│   │   │   │   ├── generate_recurring_invoices.py
+│   │   │   │   ├── collect_payment.py
+│   │   │   │   ├── mark_overdue_invoices.py
+│   │   │   │   ├── send_billing_reminders.py
+│   │   │   │   └── sync_payment_webhooks.py
+│   │   │   └── schedulers/
+│   │   │       └── periodic_jobs.py
+│   │   ├── api/
+│   │   │   ├── router.py
+│   │   │   └── v1/
+│   │   │       ├── auth.py
+│   │   │       ├── organizations.py
+│   │   │       ├── customer_accounts.py
+│   │   │       ├── onboarding.py
+│   │   │       ├── referrals.py
+│   │   │       ├── staff_users.py
+│   │   │       ├── drivers.py
+│   │   │       ├── brokers.py
+│   │   │       ├── loads.py
+│   │   │       ├── documents.py
+│   │   │       ├── review_queue.py
+│   │   │       ├── dashboard.py
+│   │   │       ├── notifications.py
+│   │   │       ├── service_plans.py
+│   │   │       ├── subscriptions.py
+│   │   │       ├── billing_invoices.py
+│   │   │       ├── payments.py
+│   │   │       ├── billing_dashboard.py
+│   │   │       ├── support.py
+│   │   │       ├── webhooks_whatsapp.py
+│   │   │       ├── webhooks_email.py
+│   │   │       ├── webhooks_payment.py
+│   │   │       └── health.py
+│   │   └── utils/
+│   │       ├── datetime_utils.py
+│   │       ├── file_utils.py
+│   │       ├── phone_utils.py
+│   │       ├── text_utils.py
+│   │       └── money_utils.py
+│   └── tests/
+│       ├── conftest.py
+│       ├── unit/
+│       │   ├── test_validation_rules.py
+│       │   ├── test_workflow_engine.py
+│       │   ├── test_extraction_service.py
+│       │   ├── test_load_service.py
+│       │   ├── test_subscription_service.py
+│       │   ├── test_invoice_service.py
+│       │   └── test_payment_service.py
+│       ├── integration/
+│       │   ├── test_document_upload.py
+│       │   ├── test_whatsapp_webhook.py
+│       │   ├── test_review_queue.py
+│       │   ├── test_load_lifecycle.py
+│       │   ├── test_subscription_flow.py
+│       │   ├── test_invoice_generation.py
+│       │   └── test_payment_webhook.py
+│       └── fixtures/
+│           ├── sample_docs/
+│           │   ├── ratecons/
+│           │   ├── bols/
+│           │   └── invoices/
+│           └── payloads/
+│
+├── frontend/
+│   ├── next.config.ts
+│   ├── tsconfig.json
+│   ├── postcss.config.js
+│   ├── tailwind.config.ts
+│   ├── public/
+│   │   ├── logo.svg
+│   │   └── favicon.ico
+│   └── src/
+│       ├── app/
+│       │   ├── (auth)/
+│       │   │   ├── login/
+│       │   │   │   └── page.tsx
+│       │   │   └── layout.tsx
+│       │   ├── dashboard/
+│       │   │   ├── page.tsx
+│       │   │   ├── loads/
+│       │   │   │   ├── page.tsx
+│       │   │   │   └── [loadId]/
+│       │   │   │       └── page.tsx
+│       │   │   ├── drivers/
+│       │   │   │   ├── page.tsx
+│       │   │   │   └── [driverId]/
+│       │   │   │       └── page.tsx
+│       │   │   ├── review-queue/
+│       │   │   │   └── page.tsx
+│       │   │   ├── documents/
+│       │   │   │   └── [documentId]/
+│       │   │   │       └── page.tsx
+│       │   │   ├── notifications/
+│       │   │   │   └── page.tsx
+│       │   │   ├── onboarding/
+│       │   │   │   └── page.tsx
+│       │   │   ├── customers/
+│       │   │   │   ├── page.tsx
+│       │   │   │   └── [customerId]/
+│       │   │   │       └── page.tsx
+│       │   │   ├── billing/
+│       │   │   │   ├── page.tsx
+│       │   │   │   ├── plans/
+│       │   │   │   │   └── page.tsx
+│       │   │   │   ├── subscriptions/
+│       │   │   │   │   └── page.tsx
+│       │   │   │   ├── invoices/
+│       │   │   │   │   ├── page.tsx
+│       │   │   │   │   └── [invoiceId]/
+│       │   │   │   │       └── page.tsx
+│       │   │   │   └── payments/
+│       │   │   │       └── page.tsx
+│       │   │   ├── support/
+│       │   │   │   └── page.tsx
+│       │   │   └── settings/
+│       │   │       └── page.tsx
+│       │   ├── driver-portal/
+│       │   │   ├── page.tsx
+│       │   │   ├── uploads/
+│       │   │   │   └── page.tsx
+│       │   │   ├── loads/
+│       │   │   │   └── page.tsx
+│       │   │   ├── billing/
+│       │   │   │   ├── page.tsx
+│       │   │   │   ├── invoices/
+│       │   │   │   │   └── page.tsx
+│       │   │   │   └── payments/
+│       │   │   │       └── page.tsx
+│       │   │   └── support/
+│       │   │       └── page.tsx
+│       │   ├── api/
+│       │   │   └── health/
+│       │   │       └── route.ts
+│       │   ├── layout.tsx
+│       │   └── page.tsx
+│       ├── components/
+│       │   ├── layout/
+│       │   ├── dashboard/
+│       │   ├── loads/
+│       │   ├── drivers/
+│       │   ├── review/
+│       │   ├── documents/
+│       │   ├── onboarding/
+│       │   ├── customers/
+│       │   ├── billing/
+│       │   ├── support/
+│       │   ├── forms/
+│       │   └── ui/
+│       ├── lib/
+│       │   ├── api-client.ts
+│       │   ├── auth.ts
+│       │   ├── config.ts
+│       │   ├── formatters.ts
+│       │   ├── validators.ts
+│       │   └── billing.ts
+│       ├── hooks/
+│       │   ├── useLoads.ts
+│       │   ├── useDrivers.ts
+│       │   ├── useReviewQueue.ts
+│       │   ├── useNotifications.ts
+│       │   ├── useBilling.ts
+│       │   └── useCustomerAccounts.ts
+│       ├── types/
+│       │   ├── auth.ts
+│       │   ├── load.ts
+│       │   ├── driver.ts
+│       │   ├── document.ts
+│       │   ├── dashboard.ts
+│       │   ├── billing.ts
+│       │   ├── invoice.ts
+│       │   ├── payment.ts
+│       │   └── customer.ts
+│       └── styles/
+│           └── globals.css
+│
+├── shared/
+│   ├── contracts/
+│   │   ├── load-status.ts
+│   │   ├── document-types.ts
+│   │   ├── channel-types.ts
+│   │   ├── billing-types.ts
+│   │   └── api-schemas/
+│   └── samples/
+│       ├── ratecon-sample.json
+│       ├── bol-sample.json
+│       ├── invoice-sample.json
+│       └── webhook-payloads.json
+│
+└── data/
+    ├── seeds/
+    │   ├── organizations.json
+    │   ├── customer_accounts.json
+    │   ├── drivers.json
+    │   ├── brokers.json
+│   │   ├── service_plans.json
+│   │   └── staff_users.json
+│   └── sandbox/
+│       ├── uploaded-docs/
+│       ├── extracted-results/
+│       └── test-results/

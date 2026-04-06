@@ -1,10 +1,10 @@
 "use client";
 
 import { useRouter, useParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { apiClient } from "@/lib/api-client";
-import { getAccessToken } from "@/lib/auth";
+import { getAccessToken, getOrganizationId } from "@/lib/auth";
 
 type LoadStatus =
   | "new"
@@ -76,6 +76,33 @@ type MarkReviewedResponse = {
   updated_at?: string | null;
 };
 
+type LoadDocument = {
+  id: string;
+  organization_id: string;
+  customer_account_id: string;
+  driver_id?: string | null;
+  load_id?: string | null;
+  source_channel?: string | null;
+  document_type?: string | null;
+  original_filename?: string | null;
+  mime_type?: string | null;
+  file_size_bytes?: number | null;
+  storage_bucket?: string | null;
+  storage_key?: string | null;
+  processing_status?: string | null;
+  page_count?: number | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+type UploadDocumentType =
+  | ""
+  | "ratecon"
+  | "bol"
+  | "invoice"
+  | "pod"
+  | "unknown";
+
 const NEXT_STATUS_MAP: Partial<Record<LoadStatus, LoadStatus>> = {
   new: "docs_received",
   docs_received: "extracting",
@@ -86,6 +113,18 @@ const NEXT_STATUS_MAP: Partial<Record<LoadStatus, LoadStatus>> = {
   submitted: "funded",
   funded: "paid",
 };
+
+const UPLOAD_DOCUMENT_TYPE_OPTIONS: Array<{
+  value: UploadDocumentType;
+  label: string;
+}> = [
+  { value: "", label: "Auto / Unknown" },
+  { value: "ratecon", label: "Rate Confirmation" },
+  { value: "bol", label: "Bill of Lading" },
+  { value: "invoice", label: "Invoice" },
+  { value: "pod", label: "Proof of Delivery" },
+  { value: "unknown", label: "Other / Unknown" },
+];
 
 function statusBadge(status: string) {
   switch (status) {
@@ -127,6 +166,23 @@ function issueBadge(severity?: string) {
   }
 }
 
+function processingStatusBadge(status?: string | null) {
+  switch ((status ?? "").trim().toLowerCase()) {
+    case "completed":
+      return "bg-emerald-100 text-emerald-800";
+    case "processing":
+    case "in_progress":
+    case "in-progress":
+      return "bg-indigo-100 text-indigo-800";
+    case "failed":
+      return "bg-rose-100 text-rose-800";
+    case "pending":
+      return "bg-amber-100 text-amber-800";
+    default:
+      return "bg-slate-100 text-slate-700";
+  }
+}
+
 function formatCurrency(value?: number | string | null, currencyCode = "USD") {
   if (value === undefined || value === null || value === "") {
     return "—";
@@ -162,6 +218,26 @@ function formatDateTime(value?: string | null) {
   }
 
   return date.toLocaleString();
+}
+
+function formatFileSize(value?: number | null) {
+  if (value === undefined || value === null || !Number.isFinite(value) || value < 0) {
+    return "—";
+  }
+
+  if (value < 1024) {
+    return `${value} B`;
+  }
+
+  if (value < 1024 * 1024) {
+    return `${(value / 1024).toFixed(1)} KB`;
+  }
+
+  if (value < 1024 * 1024 * 1024) {
+    return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
+  return `${(value / (1024 * 1024 * 1024)).toFixed(1)} GB`;
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -233,6 +309,34 @@ function getOptionalNumericOrStringField(
 
   if (typeof value === "number" || typeof value === "string" || value === null) {
     return value;
+  }
+
+  return null;
+}
+
+function getOptionalNumberField(
+  record: Record<string, unknown> | null,
+  key: string
+): number | null | undefined {
+  if (!record || !(key in record)) {
+    return undefined;
+  }
+
+  const value = record[key];
+
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+
+  if (value === null) {
+    return null;
   }
 
   return null;
@@ -332,6 +436,36 @@ function normalizeReviewQueueItem(payload: unknown): ReviewQueueItem | null {
   };
 }
 
+function normalizeDocument(payload: unknown): LoadDocument | null {
+  const record = asRecord(payload);
+  const id = getStringField(record, "id");
+  const organizationId = getStringField(record, "organization_id");
+  const customerAccountId = getStringField(record, "customer_account_id");
+
+  if (!id || !organizationId || !customerAccountId) {
+    return null;
+  }
+
+  return {
+    id,
+    organization_id: organizationId,
+    customer_account_id: customerAccountId,
+    driver_id: getStringField(record, "driver_id"),
+    load_id: getStringField(record, "load_id"),
+    source_channel: getStringField(record, "source_channel"),
+    document_type: getStringField(record, "document_type"),
+    original_filename: getStringField(record, "original_filename"),
+    mime_type: getStringField(record, "mime_type"),
+    file_size_bytes: getOptionalNumberField(record, "file_size_bytes"),
+    storage_bucket: getStringField(record, "storage_bucket"),
+    storage_key: getStringField(record, "storage_key"),
+    processing_status: getStringField(record, "processing_status"),
+    page_count: getOptionalNumberField(record, "page_count"),
+    created_at: getStringField(record, "created_at"),
+    updated_at: getStringField(record, "updated_at"),
+  };
+}
+
 function extractStaffUserId(payload: unknown): string | null {
   const root = asRecord(payload);
   if (!root) {
@@ -383,16 +517,86 @@ function normalizeLoadIdParam(value: string | string[] | undefined): string | nu
   return null;
 }
 
+function buildApiUrl(path: string) {
+  const baseUrl = (process.env.NEXT_PUBLIC_API_BASE_URL ?? "").trim().replace(/\/+$/, "");
+  const versionPrefix = (
+    process.env.NEXT_PUBLIC_API_VERSION_PREFIX ??
+    "/api/v1"
+  )
+    .trim()
+    .replace(/\/+$/, "");
+
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+
+  if (baseUrl) {
+    return `${baseUrl}${versionPrefix}${normalizedPath}`;
+  }
+
+  return `${versionPrefix}${normalizedPath}`;
+}
+
+function normalizeDocumentTypeLabel(value?: string | null) {
+  const normalized = (value ?? "").trim().toLowerCase();
+
+  switch (normalized) {
+    case "ratecon":
+    case "rate_confirmation":
+    case "rate-confirmation":
+    case "rate confirmation":
+      return "Rate Confirmation";
+    case "bol":
+    case "bill_of_lading":
+    case "bill-of-lading":
+    case "bill of lading":
+      return "Bill of Lading";
+    case "invoice":
+      return "Invoice";
+    case "pod":
+    case "proof_of_delivery":
+    case "proof-of-delivery":
+    case "proof of delivery":
+      return "Proof of Delivery";
+    case "unknown":
+      return "Unknown";
+    default:
+      return value && value.trim().length > 0 ? value : "Unknown";
+  }
+}
+
+function getDocumentDisplayName(document: LoadDocument) {
+  if (document.original_filename && document.original_filename.trim().length > 0) {
+    return document.original_filename.trim();
+  }
+
+  return `${normalizeDocumentTypeLabel(document.document_type)} Document`;
+}
+
+function matchesDocumentType(
+  document: LoadDocument,
+  aliases: string[]
+): boolean {
+  const normalized = (document.document_type ?? "").trim().toLowerCase();
+  return aliases.includes(normalized);
+}
+
 export default function LoadDetailPage() {
   const router = useRouter();
   const params = useParams<{ loadId: string | string[] }>();
   const loadId = normalizeLoadIdParam(params?.loadId);
 
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
   const [load, setLoad] = useState<Load | null>(null);
   const [reviewQueueItem, setReviewQueueItem] = useState<ReviewQueueItem | null>(null);
+  const [loadDocuments, setLoadDocuments] = useState<LoadDocument[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isAdvancing, setIsAdvancing] = useState<boolean>(false);
   const [isMarkingReviewed, setIsMarkingReviewed] = useState<boolean>(false);
+  const [isDocumentsLoading, setIsDocumentsLoading] = useState<boolean>(false);
+  const [isUploadingDocument, setIsUploadingDocument] = useState<boolean>(false);
+  const [downloadingDocumentId, setDownloadingDocumentId] = useState<string | null>(null);
+  const [selectedUploadDocumentType, setSelectedUploadDocumentType] =
+    useState<UploadDocumentType>("");
   const [error, setError] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
 
@@ -404,7 +608,7 @@ export default function LoadDetailPage() {
     const token = getAccessToken();
 
     const response = await apiClient.get<ApiResponse<unknown>>(
-      `/api/v1/loads/${encodeURIComponent(loadId)}`,
+      `/loads/${encodeURIComponent(loadId)}`,
       {
         token: token ?? undefined,
       }
@@ -420,7 +624,7 @@ export default function LoadDetailPage() {
 
     const token = getAccessToken();
 
-    const response = await apiClient.get<ApiResponse<unknown>>("/api/v1/review-queue", {
+    const response = await apiClient.get<ApiResponse<unknown>>("/review-queue", {
       token: token ?? undefined,
     });
 
@@ -436,10 +640,45 @@ export default function LoadDetailPage() {
     return null;
   }, [loadId]);
 
+  const fetchLoadDocuments = useCallback(
+    async (options?: { silent?: boolean }): Promise<LoadDocument[]> => {
+      if (!loadId) {
+        setLoadDocuments([]);
+        return [];
+      }
+
+      try {
+        if (!options?.silent) {
+          setIsDocumentsLoading(true);
+        }
+
+        const token = getAccessToken();
+
+        const response = await apiClient.get<ApiResponse<unknown>>(
+          `/loads/${encodeURIComponent(loadId)}/documents?page=1&page_size=100`,
+          {
+            token: token ?? undefined,
+          }
+        );
+
+        const items = Array.isArray(response.data) ? response.data : [];
+        const normalizedDocuments = items
+          .map((item) => normalizeDocument(item))
+          .filter((item): item is LoadDocument => item !== null);
+
+        setLoadDocuments(normalizedDocuments);
+        return normalizedDocuments;
+      } finally {
+        setIsDocumentsLoading(false);
+      }
+    },
+    [loadId]
+  );
+
   const fetchCurrentStaffUserId = useCallback(async (): Promise<string> => {
     const token = getAccessToken();
 
-    const response = await apiClient.get<ApiResponse<unknown>>("/api/v1/auth/me", {
+    const response = await apiClient.get<ApiResponse<unknown>>("/auth/me", {
       token: token ?? undefined,
     });
 
@@ -456,6 +695,7 @@ export default function LoadDetailPage() {
     if (!loadId) {
       setLoad(null);
       setReviewQueueItem(null);
+      setLoadDocuments([]);
       setError("Invalid load identifier.");
       setIsLoading(false);
       return;
@@ -465,20 +705,23 @@ export default function LoadDetailPage() {
       setIsLoading(true);
       setError(null);
 
-      const [loadData, reviewItem] = await Promise.all([
+      const [loadData, reviewItem, documents] = await Promise.all([
         fetchLoad(),
         fetchReviewQueueItem().catch(() => null),
+        fetchLoadDocuments({ silent: true }).catch(() => []),
       ]);
 
       setLoad(loadData);
       setReviewQueueItem(reviewItem);
+      setLoadDocuments(documents);
     } catch (caught: unknown) {
       const message = caught instanceof Error ? caught.message : "Failed to fetch load.";
       setError(message);
     } finally {
       setIsLoading(false);
+      setIsDocumentsLoading(false);
     }
-  }, [fetchLoad, fetchReviewQueueItem, loadId]);
+  }, [fetchLoad, fetchReviewQueueItem, fetchLoadDocuments, loadId]);
 
   useEffect(() => {
     void fetchPageData();
@@ -492,22 +735,52 @@ export default function LoadDetailPage() {
     return NEXT_STATUS_MAP[load.status] ?? null;
   }, [load]);
 
-  const documents = useMemo(
+  const documentPresence = useMemo(() => {
+    const hasRateConFromDocuments = loadDocuments.some((document) =>
+      matchesDocumentType(document, [
+        "ratecon",
+        "rate_confirmation",
+        "rate-confirmation",
+        "rate confirmation",
+      ])
+    );
+
+    const hasBolFromDocuments = loadDocuments.some((document) =>
+      matchesDocumentType(document, [
+        "bol",
+        "bill_of_lading",
+        "bill-of-lading",
+        "bill of lading",
+      ])
+    );
+
+    const hasInvoiceFromDocuments = loadDocuments.some((document) =>
+      matchesDocumentType(document, ["invoice"])
+    );
+
+    return {
+      hasRateCon: load?.has_ratecon === true || hasRateConFromDocuments,
+      hasBol: load?.has_bol === true || hasBolFromDocuments,
+      hasInvoice: load?.has_invoice === true || hasInvoiceFromDocuments,
+    };
+  }, [load, loadDocuments]);
+
+  const documentChecklist = useMemo(
     () => [
       {
         name: "Rate Confirmation",
-        status: load?.has_ratecon ? "received" : "missing",
+        status: documentPresence.hasRateCon ? "received" : "missing",
       },
       {
         name: "Bill of Lading",
-        status: load?.has_bol ? "received" : "missing",
+        status: documentPresence.hasBol ? "received" : "missing",
       },
       {
         name: "Invoice",
-        status: load?.has_invoice ? "received" : "missing",
+        status: documentPresence.hasInvoice ? "received" : "missing",
       },
     ],
-    [load]
+    [documentPresence]
   );
 
   const validationIssues = useMemo(() => {
@@ -518,20 +791,20 @@ export default function LoadDetailPage() {
       issues.set(value.toLowerCase(), value);
     }
 
-    if (load?.has_invoice === false || load?.has_invoice == null) {
+    if (!documentPresence.hasInvoice) {
       issues.set("invoice missing", "Invoice missing");
     }
 
-    if (load?.has_ratecon === false || load?.has_ratecon == null) {
+    if (!documentPresence.hasRateCon) {
       issues.set("rate confirmation missing", "Rate confirmation missing");
     }
 
-    if (load?.has_bol === false || load?.has_bol == null) {
+    if (!documentPresence.hasBol) {
       issues.set("bill of lading missing", "Bill of lading missing");
     }
 
     return Array.from(issues.values());
-  }, [load, reviewQueueItem]);
+  }, [documentPresence, reviewQueueItem]);
 
   const totalOpenIssues = useMemo(() => {
     if (reviewQueueItem && reviewQueueItem.issue_count > 0) {
@@ -540,6 +813,10 @@ export default function LoadDetailPage() {
 
     return validationIssues.length;
   }, [reviewQueueItem, validationIssues]);
+
+  const canUploadDocuments = useMemo(() => {
+    return Boolean(load?.id && load?.customer_account_id && getOrganizationId());
+  }, [load]);
 
   async function handleMarkReviewed() {
     if (!load || !loadId || isMarkingReviewed) {
@@ -559,7 +836,7 @@ export default function LoadDetailPage() {
       });
 
       const response = await apiClient.post<ApiResponse<MarkReviewedResponse>>(
-        `/api/v1/review-queue/loads/${encodeURIComponent(load.id)}/mark-reviewed?${query.toString()}`,
+        `/review-queue/loads/${encodeURIComponent(load.id)}/mark-reviewed?${query.toString()}`,
         undefined,
         {
           token: token ?? undefined,
@@ -602,7 +879,7 @@ export default function LoadDetailPage() {
       });
 
       const response = await apiClient.post<ApiResponse<StatusTransitionResponse>>(
-        `/api/v1/loads/${encodeURIComponent(load.id)}/status?${query.toString()}`,
+        `/loads/${encodeURIComponent(load.id)}/status?${query.toString()}`,
         undefined,
         {
           token: token ?? undefined,
@@ -622,6 +899,135 @@ export default function LoadDetailPage() {
     }
   }
 
+  async function handleUploadDocument(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0] ?? null;
+
+    if (!file) {
+      return;
+    }
+
+    if (!load?.id) {
+      setError("Load is required before uploading documents.");
+      event.target.value = "";
+      return;
+    }
+
+    const organizationId = getOrganizationId();
+    if (!organizationId) {
+      setError("Organization context is missing. Please sign in again.");
+      event.target.value = "";
+      return;
+    }
+
+    if (!load.customer_account_id) {
+      setError("Customer account is missing for this load. Cannot upload document.");
+      event.target.value = "";
+      return;
+    }
+
+    try {
+      setIsUploadingDocument(true);
+      setError(null);
+      setActionMessage(null);
+
+      const token = getAccessToken();
+
+      const formData = new FormData();
+      formData.append("organization_id", organizationId);
+      formData.append("customer_account_id", load.customer_account_id);
+      formData.append("source_channel", "manual");
+      formData.append("load_id", load.id);
+      formData.append("file", file);
+
+      if (load.driver_id) {
+        formData.append("driver_id", load.driver_id);
+      }
+
+      if (selectedUploadDocumentType) {
+        formData.append("document_type", selectedUploadDocumentType);
+      }
+
+      const uploadResponse = await fetch(buildApiUrl("/documents/upload"), {
+        method: "POST",
+        headers: token
+          ? {
+              Authorization: `Bearer ${token}`,
+            }
+          : undefined,
+        body: formData,
+      });
+
+      if (!uploadResponse.ok) {
+        const responseText = await uploadResponse.text();
+        throw new Error(responseText || "Failed to upload document.");
+      }
+
+      await fetchLoadDocuments({ silent: true });
+      await fetchLoad();
+
+      setSelectedUploadDocumentType("");
+      setActionMessage(`Document "${file.name}" uploaded successfully.`);
+    } catch (caught: unknown) {
+      const message =
+        caught instanceof Error ? caught.message : "Failed to upload document.";
+      setError(message);
+    } finally {
+      setIsUploadingDocument(false);
+      if (event.target) {
+        event.target.value = "";
+      }
+    }
+  }
+
+  async function handleDownloadDocument(document: LoadDocument) {
+    if (!document.id || downloadingDocumentId) {
+      return;
+    }
+
+    try {
+      setDownloadingDocumentId(document.id);
+      setError(null);
+      setActionMessage(null);
+
+      const token = getAccessToken();
+
+      const response = await fetch(
+        buildApiUrl(`/documents/${encodeURIComponent(document.id)}/download`),
+        {
+          method: "GET",
+          headers: token
+            ? {
+                Authorization: `Bearer ${token}`,
+              }
+            : undefined,
+        }
+      );
+
+      if (!response.ok) {
+        const responseText = await response.text();
+        throw new Error(responseText || "Failed to download document.");
+      }
+
+      const blob = await response.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+      const link = window.document.createElement("a");
+      link.href = blobUrl;
+      link.download = getDocumentDisplayName(document);
+      window.document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(blobUrl);
+
+      setActionMessage(`Downloaded ${getDocumentDisplayName(document)}.`);
+    } catch (caught: unknown) {
+      const message =
+        caught instanceof Error ? caught.message : "Failed to download document.";
+      setError(message);
+    } finally {
+      setDownloadingDocumentId(null);
+    }
+  }
+
   function handleBackToLoads() {
     router.push("/dashboard/loads");
   }
@@ -632,6 +1038,23 @@ export default function LoadDetailPage() {
 
   function handleGoBack() {
     router.back();
+  }
+
+  function handleOpenFilePicker() {
+    fileInputRef.current?.click();
+  }
+
+  async function handleRefreshDocuments() {
+    try {
+      setError(null);
+      setActionMessage(null);
+      await fetchLoadDocuments();
+      setActionMessage("Documents refreshed.");
+    } catch (caught: unknown) {
+      const message =
+        caught instanceof Error ? caught.message : "Failed to refresh documents.";
+      setError(message);
+    }
   }
 
   if (isLoading) {
@@ -846,9 +1269,85 @@ export default function LoadDetailPage() {
             </div>
 
             <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
-              <h2 className="mb-4 text-lg font-semibold text-slate-950">Documents</h2>
-              <div className="space-y-3">
-                {documents.map((document) => (
+              <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <h2 className="text-lg font-semibold text-slate-950">Documents</h2>
+                  <p className="mt-1 text-sm text-slate-600">
+                    Upload, review, and download load documents from a single place.
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={handleRefreshDocuments}
+                    disabled={isDocumentsLoading || isUploadingDocument}
+                    className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {isDocumentsLoading ? "Refreshing..." : "Refresh Documents"}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleOpenFilePicker}
+                    disabled={!canUploadDocuments || isUploadingDocument}
+                    className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {isUploadingDocument ? "Uploading..." : "Upload Document"}
+                  </button>
+
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    className="hidden"
+                    accept=".pdf,.png,.jpg,.jpeg,.webp,.heic,.heif,.tif,.tiff"
+                    onChange={handleUploadDocument}
+                  />
+                </div>
+              </div>
+
+              <div className="mb-5 grid gap-4 lg:grid-cols-[240px,1fr]">
+                <div>
+                  <label
+                    htmlFor="documentType"
+                    className="mb-2 block text-xs font-semibold uppercase tracking-wide text-slate-500"
+                  >
+                    Upload Document Type
+                  </label>
+                  <select
+                    id="documentType"
+                    value={selectedUploadDocumentType}
+                    onChange={(event) =>
+                      setSelectedUploadDocumentType(event.target.value as UploadDocumentType)
+                    }
+                    disabled={isUploadingDocument}
+                    className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {UPLOAD_DOCUMENT_TYPE_OPTIONS.map((option) => (
+                      <option key={option.value || "auto"} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                  {!canUploadDocuments ? (
+                    <span>
+                      Upload is unavailable until organization context, customer account, and load
+                      linkage are present.
+                    </span>
+                  ) : (
+                    <span>
+                      Supported uploads: PDF and common image formats. Documents will be attached
+                      directly to this load and available for download below.
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <div className="mb-6 grid gap-3 sm:grid-cols-3">
+                {documentChecklist.map((document) => (
                   <div
                     key={document.name}
                     className="flex items-center justify-between rounded-xl border border-slate-200 px-4 py-3"
@@ -865,6 +1364,76 @@ export default function LoadDetailPage() {
                     </span>
                   </div>
                 ))}
+              </div>
+
+              <div className="rounded-2xl border border-slate-200">
+                <div className="grid grid-cols-12 gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <div className="col-span-12 lg:col-span-4">Document</div>
+                  <div className="col-span-6 lg:col-span-2">Type</div>
+                  <div className="col-span-6 lg:col-span-2">Status</div>
+                  <div className="col-span-6 lg:col-span-2">Uploaded</div>
+                  <div className="col-span-6 lg:col-span-1">Size</div>
+                  <div className="col-span-12 lg:col-span-1 text-right">Action</div>
+                </div>
+
+                {loadDocuments.length > 0 ? (
+                  <div className="divide-y divide-slate-200">
+                    {loadDocuments.map((document) => (
+                      <div
+                        key={document.id}
+                        className="grid grid-cols-12 gap-3 px-4 py-4 text-sm text-slate-700"
+                      >
+                        <div className="col-span-12 lg:col-span-4">
+                          <div className="font-medium text-slate-900">
+                            {getDocumentDisplayName(document)}
+                          </div>
+                          <div className="mt-1 text-xs text-slate-500">
+                            {document.mime_type ?? "Unknown MIME"}
+                          </div>
+                        </div>
+
+                        <div className="col-span-6 lg:col-span-2">
+                          <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+                            {normalizeDocumentTypeLabel(document.document_type)}
+                          </span>
+                        </div>
+
+                        <div className="col-span-6 lg:col-span-2">
+                          <span
+                            className={`rounded-full px-3 py-1 text-xs font-semibold ${processingStatusBadge(
+                              document.processing_status
+                            )}`}
+                          >
+                            {(document.processing_status ?? "unknown").replaceAll("_", " ")}
+                          </span>
+                        </div>
+
+                        <div className="col-span-6 lg:col-span-2">
+                          <div>{formatDateTime(document.created_at)}</div>
+                        </div>
+
+                        <div className="col-span-6 lg:col-span-1">
+                          <div>{formatFileSize(document.file_size_bytes)}</div>
+                        </div>
+
+                        <div className="col-span-12 flex justify-end lg:col-span-1">
+                          <button
+                            type="button"
+                            onClick={() => void handleDownloadDocument(document)}
+                            disabled={downloadingDocumentId === document.id}
+                            className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {downloadingDocumentId === document.id ? "Downloading..." : "Download"}
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="px-4 py-8 text-sm text-slate-500">
+                    No documents are attached to this load yet.
+                  </div>
+                )}
               </div>
             </div>
 
@@ -931,6 +1500,31 @@ export default function LoadDetailPage() {
                 >
                   Back to Loads
                 </button>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
+              <h2 className="mb-4 text-lg font-semibold text-slate-950">Load Metrics</h2>
+              <div className="space-y-3 text-sm text-slate-700">
+                <div className="flex items-center justify-between">
+                  <span>Total Documents</span>
+                  <span className="font-semibold text-slate-900">{loadDocuments.length}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span>Required Docs Received</span>
+                  <span className="font-semibold text-slate-900">
+                    {[documentPresence.hasRateCon, documentPresence.hasBol, documentPresence.hasInvoice]
+                      .filter(Boolean)
+                      .length}
+                    /3
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span>Load Status</span>
+                  <span className="font-semibold text-slate-900">
+                    {load.status.replaceAll("_", " ")}
+                  </span>
+                </div>
               </div>
             </div>
 

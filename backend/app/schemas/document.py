@@ -22,11 +22,32 @@ class ApiError(BaseModel):
 class DocumentUploadRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    organization_id: str
     customer_account_id: str
     driver_id: str | None = None
     load_id: str | None = None
     document_type: DocumentType | None = None
     source_channel: Channel = Channel.MANUAL
+    uploaded_by_staff_user_id: str | None = None
+    page_count: int | None = Field(default=None, ge=0)
+
+
+class DocumentCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    organization_id: str
+    customer_account_id: str
+    storage_key: str
+    source_channel: Channel
+    driver_id: str | None = None
+    load_id: str | None = None
+    document_type: DocumentType | None = None
+    original_filename: str | None = None
+    mime_type: str | None = None
+    file_size_bytes: int | None = Field(default=None, ge=0)
+    storage_bucket: str | None = None
+    page_count: int | None = Field(default=None, ge=0)
+    uploaded_by_staff_user_id: str | None = None
 
 
 class DocumentRead(BaseModel):
@@ -38,13 +59,13 @@ class DocumentRead(BaseModel):
     driver_id: str | None = None
     load_id: str | None = None
     source_channel: Channel
-    document_type: DocumentType
+    document_type: DocumentType | None = None
     original_filename: str | None = None
     mime_type: str | None = None
     file_size_bytes: int | None = None
     storage_bucket: str | None = None
     storage_key: str
-    file_hash_sha256: str
+    file_hash_sha256: str | None = None
     page_count: int | None = None
     processing_status: ProcessingStatus
     classification_confidence: float | None = None
@@ -59,13 +80,49 @@ class DocumentListItem(BaseModel):
     model_config = ConfigDict(from_attributes=True, extra="forbid")
 
     id: str
+    organization_id: str
+    customer_account_id: str
+    driver_id: str | None = None
     load_id: str | None = None
-    document_type: DocumentType
+    source_channel: Channel | None = None
+    document_type: DocumentType | None = None
     original_filename: str | None = None
     mime_type: str | None = None
+    file_size_bytes: int | None = None
+    page_count: int | None = None
     processing_status: ProcessingStatus
     classification_confidence: float | None = None
     received_at: datetime
+    created_at: datetime
+    updated_at: datetime
+
+
+class DocumentDownloadMeta(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    document_id: str
+    filename: str | None = None
+    mime_type: str | None = None
+    storage_key: str
+
+
+class DocumentLinkRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    load_id: str
+
+
+class DocumentReprocessRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    force_reclassification: bool = False
+    force_reextraction: bool = False
+
+
+class DocumentExtractRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    force: bool = False
 
 
 class ExtractedFieldRead(BaseModel):
@@ -99,13 +156,6 @@ class ExtractedFieldCorrectionRequest(BaseModel):
     correction_reason: str | None = Field(default=None, max_length=1000)
 
 
-class DocumentReprocessRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    force_reclassification: bool = False
-    force_reextraction: bool = False
-
-
 class DocumentResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -118,7 +168,39 @@ class DocumentListResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     data: list[DocumentListItem]
-    meta: dict[str, Any]
+    meta: dict[str, Any] = Field(default_factory=dict)
+    error: ApiError | None = None
+
+
+class DocumentUploadResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    data: DocumentRead
+    meta: dict[str, Any] = Field(default_factory=dict)
+    error: ApiError | None = None
+
+
+class DocumentLinkResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    data: dict[str, Any]
+    meta: dict[str, Any] = Field(default_factory=dict)
+    error: ApiError | None = None
+
+
+class DocumentExtractResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    data: dict[str, Any]
+    meta: dict[str, Any] = Field(default_factory=dict)
+    error: ApiError | None = None
+
+
+class DocumentReprocessResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    data: dict[str, Any]
+    meta: dict[str, Any] = Field(default_factory=dict)
     error: ApiError | None = None
 
 

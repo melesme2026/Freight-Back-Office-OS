@@ -18,6 +18,10 @@ class DocumentService:
         self.db = db
         self.document_repo = DocumentRepository(db)
 
+    # ---------------------------
+    # CORE CREATE
+    # ---------------------------
+
     def create_document(
         self,
         *,
@@ -27,7 +31,7 @@ class DocumentService:
         source_channel: str,
         driver_id: str | None = None,
         load_id: str | None = None,
-        document_type: str | None = None,
+        document_type: str | DocumentType | None = None,
         original_filename: str | None = None,
         mime_type: str | None = None,
         file_size_bytes: int | None = None,
@@ -36,6 +40,28 @@ class DocumentService:
         uploaded_by_staff_user_id: str | None = None,
         file_bytes: bytes | None = None,
     ) -> LoadDocument:
+        normalized_organization_id = self._normalize_required_text(
+            "organization_id",
+            organization_id,
+        )
+        normalized_customer_account_id = self._normalize_required_text(
+            "customer_account_id",
+            customer_account_id,
+        )
+        normalized_storage_key = self._normalize_required_text("storage_key", storage_key)
+        normalized_source_channel = self._normalize_required_text(
+            "source_channel",
+            source_channel,
+        )
+        normalized_driver_id = self._normalize_optional_text(driver_id)
+        normalized_load_id = self._normalize_optional_text(load_id)
+        normalized_original_filename = self._normalize_optional_text(original_filename)
+        normalized_mime_type = self._normalize_optional_text(mime_type)
+        normalized_storage_bucket = self._normalize_optional_text(storage_bucket)
+        normalized_uploaded_by_staff_user_id = self._normalize_optional_text(
+            uploaded_by_staff_user_id
+        )
+
         normalized_document_type = self._normalize_document_type(document_type)
         validated_file_size_bytes = self._validate_non_negative_int(
             "file_size_bytes",
@@ -44,16 +70,16 @@ class DocumentService:
         validated_page_count = self._validate_non_negative_int("page_count", page_count)
 
         file_hash_sha256 = self._build_file_hash(
-            storage_key=storage_key,
+            storage_key=normalized_storage_key,
             file_bytes=file_bytes,
-            original_filename=original_filename,
+            original_filename=normalized_original_filename,
             file_size_bytes=validated_file_size_bytes,
         )
 
         existing = self.document_repo.get_by_file_hash(file_hash_sha256=file_hash_sha256)
         if existing is not None:
             raise DuplicateRecordError(
-                "Document with the same file hash already exists",
+                "Document with the same file already exists",
                 details={
                     "document_id": str(existing.id),
                     "file_hash_sha256": file_hash_sha256,
@@ -61,31 +87,40 @@ class DocumentService:
             )
 
         model = LoadDocument(
-            organization_id=organization_id,
-            customer_account_id=customer_account_id,
-            driver_id=driver_id,
-            load_id=load_id,
-            source_channel=source_channel,
+            organization_id=normalized_organization_id,
+            customer_account_id=normalized_customer_account_id,
+            driver_id=normalized_driver_id,
+            load_id=normalized_load_id,
+            source_channel=normalized_source_channel,
             document_type=normalized_document_type,
-            original_filename=original_filename,
-            mime_type=mime_type,
+            original_filename=normalized_original_filename,
+            mime_type=normalized_mime_type,
             file_size_bytes=validated_file_size_bytes,
-            storage_bucket=storage_bucket,
-            storage_key=storage_key,
+            storage_bucket=normalized_storage_bucket,
+            storage_key=normalized_storage_key,
             file_hash_sha256=file_hash_sha256,
             page_count=validated_page_count,
             processing_status=ProcessingStatus.PENDING,
             classification_confidence=None,
             ocr_completed_at=None,
             received_at=datetime.now(timezone.utc),
-            uploaded_by_staff_user_id=uploaded_by_staff_user_id,
+            uploaded_by_staff_user_id=normalized_uploaded_by_staff_user_id,
         )
+
         return self.document_repo.create(model)
 
+    # ---------------------------
+    # READ
+    # ---------------------------
+
     def get_document(self, document_id: str) -> LoadDocument:
-        document = self.document_repo.get_by_id(document_id)
+        normalized_document_id = self._normalize_required_text("document_id", document_id)
+        document = self.document_repo.get_by_id(normalized_document_id)
         if document is None:
-            raise NotFoundError("Document not found", details={"document_id": document_id})
+            raise NotFoundError(
+                "Document not found",
+                details={"document_id": normalized_document_id},
+            )
         return document
 
     def list_documents(
@@ -95,11 +130,14 @@ class DocumentService:
         customer_account_id: str | None = None,
         driver_id: str | None = None,
         load_id: str | None = None,
-        document_type: str | None = None,
-        processing_status: str | None = None,
+        document_type: str | DocumentType | None = None,
+        processing_status: str | ProcessingStatus | None = None,
         page: int = 1,
         page_size: int = 25,
     ) -> tuple[list[LoadDocument], int]:
+        validated_page = self._validate_positive_int("page", page)
+        validated_page_size = self._validate_positive_int("page_size", page_size)
+
         normalized_document_type = self._normalize_document_type(document_type, allow_none=True)
         normalized_processing_status = self._normalize_processing_status(
             processing_status,
@@ -107,21 +145,25 @@ class DocumentService:
         )
 
         return self.document_repo.list(
-            organization_id=organization_id,
-            customer_account_id=customer_account_id,
-            driver_id=driver_id,
-            load_id=load_id,
+            organization_id=self._normalize_optional_text(organization_id),
+            customer_account_id=self._normalize_optional_text(customer_account_id),
+            driver_id=self._normalize_optional_text(driver_id),
+            load_id=self._normalize_optional_text(load_id),
             document_type=normalized_document_type,
             processing_status=normalized_processing_status,
-            page=page,
-            page_size=page_size,
+            page=validated_page,
+            page_size=validated_page_size,
         )
+
+    # ---------------------------
+    # UPDATE / PROCESSING
+    # ---------------------------
 
     def mark_processing(
         self,
         *,
         document_id: str,
-        processing_status: str,
+        processing_status: str | ProcessingStatus,
         classification_confidence: float | None = None,
         page_count: int | None = None,
     ) -> LoadDocument:
@@ -147,7 +189,7 @@ class DocumentService:
         self,
         *,
         document_id: str,
-        document_type: str,
+        document_type: str | DocumentType,
         classification_confidence: float | None = None,
     ) -> LoadDocument:
         document = self.get_document(document_id)
@@ -168,9 +210,22 @@ class DocumentService:
         document_id: str,
         load_id: str,
     ) -> LoadDocument:
+        normalized_load_id = self._normalize_required_text("load_id", load_id)
         document = self.get_document(document_id)
-        document.load_id = load_id
+        document.load_id = normalized_load_id
         return self.document_repo.update(document)
+
+    # ---------------------------
+    # DOWNLOAD HELPER
+    # ---------------------------
+
+    def get_document_storage_key(self, document_id: str) -> str:
+        document = self.get_document(document_id)
+        return self._normalize_required_text("storage_key", document.storage_key)
+
+    # ---------------------------
+    # REPROCESS
+    # ---------------------------
 
     def reprocess_document(
         self,
@@ -199,6 +254,10 @@ class DocumentService:
             "force_reextraction": force_reextraction,
         }
 
+    # ---------------------------
+    # INTERNAL HELPERS
+    # ---------------------------
+
     def _normalize_document_type(
         self,
         value: str | DocumentType | None,
@@ -214,17 +273,25 @@ class DocumentService:
             return value
 
         normalized = str(value).strip().lower()
+        if not normalized:
+            if allow_none:
+                return None
+            return DocumentType.UNKNOWN
 
         aliases: dict[str, DocumentType] = {
             "unknown": DocumentType.UNKNOWN,
+            "rate confirmation": DocumentType.RATE_CONFIRMATION,
             "rate_confirmation": DocumentType.RATE_CONFIRMATION,
-            "rateconfirmation": DocumentType.RATE_CONFIRMATION,
+            "rate-confirmation": DocumentType.RATE_CONFIRMATION,
             "ratecon": DocumentType.RATE_CONFIRMATION,
+            "rc": DocumentType.RATE_CONFIRMATION,
+            "bill of lading": DocumentType.BILL_OF_LADING,
             "bill_of_lading": DocumentType.BILL_OF_LADING,
-            "billoflading": DocumentType.BILL_OF_LADING,
+            "bill-of-lading": DocumentType.BILL_OF_LADING,
             "bol": DocumentType.BILL_OF_LADING,
+            "proof of delivery": DocumentType.PROOF_OF_DELIVERY,
             "proof_of_delivery": DocumentType.PROOF_OF_DELIVERY,
-            "proofofdelivery": DocumentType.PROOF_OF_DELIVERY,
+            "proof-of-delivery": DocumentType.PROOF_OF_DELIVERY,
             "pod": DocumentType.PROOF_OF_DELIVERY,
             "invoice": DocumentType.INVOICE,
         }
@@ -232,10 +299,7 @@ class DocumentService:
         if normalized in aliases:
             return aliases[normalized]
 
-        raise ValidationError(
-            "Invalid document_type",
-            details={"document_type": value},
-        )
+        raise ValidationError("Invalid document_type", details={"document_type": value})
 
     def _normalize_processing_status(
         self,
@@ -246,26 +310,24 @@ class DocumentService:
         if value is None:
             if allow_none:
                 return None
-            raise ValidationError(
-                "processing_status is required",
-                details={"processing_status": value},
-            )
+            raise ValidationError("processing_status is required")
 
         if isinstance(value, ProcessingStatus):
             return value
 
         normalized = str(value).strip().lower()
+        if not normalized:
+            if allow_none:
+                return None
+            raise ValidationError("processing_status is required")
 
         aliases: dict[str, ProcessingStatus] = {
             "pending": ProcessingStatus.PENDING,
-            "not_started": ProcessingStatus.PENDING,
             "processing": ProcessingStatus.IN_PROGRESS,
             "in_progress": ProcessingStatus.IN_PROGRESS,
-            "inprogress": ProcessingStatus.IN_PROGRESS,
+            "in-progress": ProcessingStatus.IN_PROGRESS,
             "completed": ProcessingStatus.COMPLETED,
-            "complete": ProcessingStatus.COMPLETED,
             "failed": ProcessingStatus.FAILED,
-            "error": ProcessingStatus.FAILED,
         }
 
         if normalized in aliases:
@@ -289,32 +351,42 @@ class DocumentService:
         if file_bytes is not None:
             hasher.update(file_bytes)
         else:
-            fingerprint = f"{storage_key}|{original_filename or ''}|{file_size_bytes or 0}"
-            hasher.update(fingerprint.encode("utf-8"))
+            fallback = f"{storage_key}|{original_filename}|{file_size_bytes}"
+            hasher.update(fallback.encode("utf-8"))
 
         return hasher.hexdigest()
+
+    @staticmethod
+    def _normalize_optional_text(value: str | None) -> str | None:
+        if value is None:
+            return None
+
+        normalized = str(value).strip()
+        return normalized or None
+
+    @classmethod
+    def _normalize_required_text(cls, field_name: str, value: str | None) -> str:
+        normalized = cls._normalize_optional_text(value)
+        if normalized is None:
+            raise ValidationError(f"{field_name} is required")
+        return normalized
 
     @staticmethod
     def _validate_non_negative_int(field_name: str, value: int | None) -> int | None:
         if value is None:
             return None
-
         if value < 0:
-            raise ValidationError(
-                f"{field_name} cannot be negative",
-                details={field_name: value},
-            )
+            raise ValidationError(f"{field_name} cannot be negative")
+        return value
 
+    @staticmethod
+    def _validate_positive_int(field_name: str, value: int) -> int:
+        if value < 1:
+            raise ValidationError(f"{field_name} must be greater than 0")
         return value
 
     @staticmethod
     def _validate_classification_confidence(value: float) -> float:
-        confidence = float(value)
-
-        if confidence < 0.0 or confidence > 1.0:
-            raise ValidationError(
-                "classification_confidence must be between 0.0 and 1.0",
-                details={"classification_confidence": value},
-            )
-
-        return confidence
+        if value < 0.0 or value > 1.0:
+            raise ValidationError("classification_confidence must be between 0 and 1")
+        return float(value)

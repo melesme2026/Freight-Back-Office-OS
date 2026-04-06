@@ -15,7 +15,12 @@ const DEFAULT_ORGANIZATION_ID = "00000000-0000-0000-0000-000000000001";
 
 function getApiBaseUrl(): string {
   const value = process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
-  return value && value.length > 0 ? value.replace(/\/+$/, "") : "http://127.0.0.1:8000";
+
+  if (value && value.length > 0) {
+    return value.replace(/\/+$/, "");
+  }
+
+  return "/api/v1";
 }
 
 export default function LoginPage() {
@@ -55,7 +60,7 @@ export default function LoginPage() {
     setErrorMessage(null);
 
     try {
-      const response = await fetch(`${apiBaseUrl}/api/v1/auth/login`, {
+      const response = await fetch(`${apiBaseUrl}/auth/login`, {
         method: "POST",
         headers: {
           Accept: "application/json",
@@ -69,6 +74,7 @@ export default function LoginPage() {
       });
 
       let payload: LoginResponse | null = null;
+
       try {
         payload = (await response.json()) as LoginResponse;
       } catch {
@@ -110,9 +116,7 @@ export default function LoginPage() {
   return (
     <section className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-8 shadow-soft">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold tracking-tight text-slate-950">
-          Sign in
-        </h1>
+        <h1 className="text-2xl font-bold tracking-tight text-slate-950">Sign in</h1>
         <p className="mt-2 text-sm text-slate-600">
           Access the Freight Back Office OS operator dashboard.
         </p>
