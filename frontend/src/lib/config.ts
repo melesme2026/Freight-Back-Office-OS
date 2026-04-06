@@ -6,11 +6,21 @@ function trimLeadingAndTrailingSlashes(value: string): string {
   return value.replace(/^\/+/, "").replace(/\/+$/, "");
 }
 
-const rawApiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
-const rawApiVersionPrefix = process.env.NEXT_PUBLIC_API_VERSION_PREFIX?.trim();
+function normalizeOptionalText(value: string | undefined): string {
+  return value?.trim() ?? "";
+}
+
+function isAbsoluteUrl(value: string): boolean {
+  return /^https?:\/\//i.test(value);
+}
+
+const rawApiBaseUrl = normalizeOptionalText(process.env.NEXT_PUBLIC_API_BASE_URL);
+const rawApiVersionPrefix = normalizeOptionalText(
+  process.env.NEXT_PUBLIC_API_VERSION_PREFIX
+);
 
 const normalizedApiBaseUrl = (() => {
-  if (!rawApiBaseUrl || rawApiBaseUrl.length === 0) {
+  if (rawApiBaseUrl.length === 0) {
     return "";
   }
 
@@ -18,11 +28,7 @@ const normalizedApiBaseUrl = (() => {
 })();
 
 const normalizedApiVersionPrefix = (() => {
-  const source =
-    rawApiVersionPrefix && rawApiVersionPrefix.length > 0
-      ? rawApiVersionPrefix
-      : "/api/v1";
-
+  const source = rawApiVersionPrefix.length > 0 ? rawApiVersionPrefix : "/api/v1";
   const trimmed = trimLeadingAndTrailingSlashes(source);
   return trimmed.length > 0 ? `/${trimmed}` : "";
 })();
@@ -32,7 +38,7 @@ export const appConfig = {
   apiBaseUrl: normalizedApiBaseUrl,
   apiVersionPrefix: normalizedApiVersionPrefix,
   defaultOrganizationId:
-    process.env.NEXT_PUBLIC_ORGANIZATION_ID ||
+    normalizeOptionalText(process.env.NEXT_PUBLIC_ORGANIZATION_ID) ||
     "00000000-0000-0000-0000-000000000001",
 };
 
@@ -45,11 +51,13 @@ export function buildApiUrl(path: string): string {
       : `${appConfig.apiVersionPrefix}`;
   }
 
-  if (/^https?:\/\//i.test(trimmedPath)) {
+  if (isAbsoluteUrl(trimmedPath)) {
     return trimmedPath;
   }
 
-  const normalizedPath = trimmedPath.startsWith("/") ? trimmedPath : `/${trimmedPath}`;
+  const normalizedPath = trimmedPath.startsWith("/")
+    ? trimmedPath
+    : `/${trimmedPath}`;
 
   if (normalizedPath.startsWith("/api/")) {
     return appConfig.apiBaseUrl
