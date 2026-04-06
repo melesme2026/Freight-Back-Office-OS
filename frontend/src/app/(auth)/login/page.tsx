@@ -3,24 +3,40 @@
 import { FormEvent, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
+import { apiClient } from "@/lib/api-client";
+import { clearAuth, setAuthSession } from "@/lib/auth";
+
 type LoginResponse = {
   data?: {
     access_token?: string;
     token_type?: string;
   };
   message?: string;
+  error?: {
+    code?: string;
+    message?: string;
+    details?: Record<string, unknown>;
+  } | null;
 };
 
 const DEFAULT_ORGANIZATION_ID = "00000000-0000-0000-0000-000000000001";
 
-function getApiBaseUrl(): string {
-  const value = process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
+function normalizeText(value: string): string {
+  return value.trim();
+}
 
-  if (value && value.length > 0) {
-    return value.replace(/\/+$/, "");
+function normalizeEmail(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function isValidEmail(value: string): boolean {
+  const normalized = normalizeEmail(value);
+
+  if (!normalized) {
+    return false;
   }
 
-  return "/api/v1";
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized);
 }
 
 export default function LoginPage() {
@@ -32,14 +48,15 @@ export default function LoginPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const apiBaseUrl = useMemo(() => getApiBaseUrl(), []);
+  const normalizedOrganizationId = useMemo(
+    () => normalizeText(organizationId),
+    [organizationId]
+  );
 
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+  const normalizedEmail = useMemo(() => normalizeEmail(email), [email]);
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-
-    const normalizedEmail = email.trim().toLowerCase();
-    const normalizedOrganizationId = organizationId.trim();
-    const normalizedPassword = password;
 
     if (!normalizedOrganizationId) {
       setErrorMessage("Organization ID is required.");
@@ -51,7 +68,12 @@ export default function LoginPage() {
       return;
     }
 
-    if (!normalizedPassword) {
+    if (!isValidEmail(normalizedEmail)) {
+      setErrorMessage("Please enter a valid email address.");
+      return;
+    }
+
+    if (!password) {
       setErrorMessage("Password is required.");
       return;
     }
@@ -60,33 +82,18 @@ export default function LoginPage() {
     setErrorMessage(null);
 
     try {
-      const response = await fetch(`${apiBaseUrl}/auth/login`, {
-        method: "POST",
-        headers: {
-          Accept: "application/json",
-          "Content-Type": "application/json",
-          "X-Organization-Id": normalizedOrganizationId,
-        },
-        body: JSON.stringify({
+      clearAuth();
+
+      const payload = await apiClient.post<LoginResponse>(
+        "/auth/login",
+        {
           email: normalizedEmail,
-          password: normalizedPassword,
-        }),
-      });
-
-      let payload: LoginResponse | null = null;
-
-      try {
-        payload = (await response.json()) as LoginResponse;
-      } catch {
-        payload = null;
-      }
-
-      if (!response.ok) {
-        const message =
-          payload?.message?.trim() ||
-          "Unable to sign in. Please verify your credentials and try again.";
-        throw new Error(message);
-      }
+          password,
+        },
+        {
+          organizationId: normalizedOrganizationId,
+        }
+      );
 
       const accessToken = payload?.data?.access_token?.trim();
       const tokenType = payload?.data?.token_type?.trim() || "Bearer";
@@ -95,23 +102,26 @@ export default function LoginPage() {
         throw new Error("Login succeeded but no access token was returned.");
       }
 
-      window.localStorage.setItem("fbos_access_token", accessToken);
-      window.localStorage.setItem("fbos_token_type", tokenType);
-      window.localStorage.setItem("fbos_organization_id", normalizedOrganizationId);
-      window.localStorage.setItem("fbos_user_email", normalizedEmail);
+      setAuthSession({
+        accessToken,
+        tokenType,
+        organizationId: normalizedOrganizationId,
+        userEmail: normalizedEmail,
+      });
 
       router.push("/dashboard");
       router.refresh();
-    } catch (error) {
+    } catch (error: unknown) {
       const message =
         error instanceof Error && error.message
           ? error.message
-          : "An unexpected error occurred while signing in.";
+          : "Unable to sign in. Please verify your credentials and try again.";
+
       setErrorMessage(message);
     } finally {
       setIsSubmitting(false);
     }
-  };
+  }
 
   return (
     <section className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-8 shadow-soft">
