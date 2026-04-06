@@ -1,13 +1,13 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { FormEvent, useMemo, useState } from "react";
 
-import { apiClient } from "@/lib/api-client";
-import { getAccessToken, getOrganizationId } from "@/lib/auth";
 import { useCustomerAccounts } from "@/hooks/useCustomerAccounts";
 import { useDrivers } from "@/hooks/useDrivers";
+import { apiClient } from "@/lib/api-client";
+import { getAccessToken, getOrganizationId } from "@/lib/auth";
 
 type ApiError = {
   code?: string;
@@ -66,11 +66,18 @@ function normalizeCurrencyCode(value: string): string {
 }
 
 function isValidEmail(value: string): boolean {
-  if (!value.trim()) {
+  const normalized = value.trim();
+
+  if (!normalized) {
     return true;
   }
 
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized);
+}
+
+function getStatusLabel(value: string | null | undefined): string {
+  const normalized = value?.trim();
+  return normalized && normalized.length > 0 ? normalized : "Unknown";
 }
 
 export default function NewLoadPage() {
@@ -126,7 +133,9 @@ export default function NewLoadPage() {
     activeDrivers.length > 0 ? activeDrivers : typedDrivers;
 
   const selectedCustomerAccount = useMemo(() => {
-    return effectiveCustomerAccounts.find((account) => account.id === customerAccountId) ?? null;
+    return (
+      effectiveCustomerAccounts.find((account) => account.id === customerAccountId) ?? null
+    );
   }, [effectiveCustomerAccounts, customerAccountId]);
 
   const selectedDriver = useMemo(() => {
@@ -285,7 +294,7 @@ export default function NewLoadPage() {
             </h1>
             <p className="mt-2 text-sm leading-6 text-slate-600">
               Add a freight load after booking so operations can track workflow,
-              documents, and billing from one place.
+              documents, payment progress, and follow-up from one place.
             </p>
           </div>
 
@@ -486,9 +495,7 @@ export default function NewLoadPage() {
                   type="text"
                   maxLength={3}
                   value={currencyCode}
-                  onChange={(event) =>
-                    setCurrencyCode(event.target.value.toUpperCase())
-                  }
+                  onChange={(event) => setCurrencyCode(event.target.value.toUpperCase())}
                   placeholder="USD"
                   className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm uppercase text-slate-900 outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-200"
                 />
@@ -546,18 +553,30 @@ export default function NewLoadPage() {
                 <div className="font-semibold text-slate-800">Selected Customer</div>
                 <div className="mt-1">
                   {selectedCustomerAccount
-                    ? selectedCustomerAccount.account_name
+                    ? `${selectedCustomerAccount.account_name}${
+                        selectedCustomerAccount.account_code
+                          ? ` (${selectedCustomerAccount.account_code})`
+                          : ""
+                      }`
                     : "No customer selected yet."}
                 </div>
+                {selectedCustomerAccount ? (
+                  <div className="mt-1 text-xs text-slate-500">
+                    Status: {getStatusLabel(selectedCustomerAccount.status)}
+                  </div>
+                ) : null}
               </div>
 
               <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
                 <div className="font-semibold text-slate-800">Selected Driver</div>
                 <div className="mt-1">
-                  {selectedDriver
-                    ? selectedDriver.full_name
-                    : "No driver selected yet."}
+                  {selectedDriver ? selectedDriver.full_name : "No driver selected yet."}
                 </div>
+                {selectedDriver?.phone ? (
+                  <div className="mt-1 text-xs text-slate-500">
+                    Phone: {selectedDriver.phone}
+                  </div>
+                ) : null}
               </div>
             </div>
 
