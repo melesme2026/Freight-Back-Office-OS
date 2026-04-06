@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-import { getAccessToken } from "@/lib/auth";
 import { apiClient } from "@/lib/api-client";
+import { getAccessToken } from "@/lib/auth";
 
 export type CustomerAccount = {
   id: string;
@@ -93,6 +93,8 @@ function normalizeCustomerAccountsResponse(payload: unknown): CustomerAccount[] 
       candidates.push(...root.customer_accounts);
     } else if (Array.isArray(root.items)) {
       candidates.push(...root.items);
+    } else if (Array.isArray(root.results)) {
+      candidates.push(...root.results);
     }
   }
 
