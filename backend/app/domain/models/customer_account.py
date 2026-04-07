@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from app.domain.models.billing_invoice import BillingInvoice
     from app.domain.models.driver import Driver
     from app.domain.models.ledger_entry import LedgerEntry
+    from app.domain.models.load import Load
     from app.domain.models.notification import Notification
     from app.domain.models.onboarding_checklist import OnboardingChecklist
     from app.domain.models.organization import Organization
@@ -87,6 +88,10 @@ class CustomerAccount(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     drivers: Mapped[list["Driver"]] = relationship(
         back_populates="customer_account",
         cascade="all, delete-orphan",
+        lazy="selectin",
+    )
+    loads: Mapped[list["Load"]] = relationship(
+        back_populates="customer_account",
         lazy="selectin",
     )
     subscriptions: Mapped[list["Subscription"]] = relationship(
