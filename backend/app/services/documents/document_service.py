@@ -7,16 +7,19 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import DuplicateRecordError, NotFoundError, ValidationError
+from app.domain.enums.channel import Channel
 from app.domain.enums.document_type import DocumentType
 from app.domain.enums.processing_status import ProcessingStatus
 from app.domain.models.load_document import LoadDocument
 from app.repositories.document_repo import DocumentRepository
+from app.repositories.load_repo import LoadRepository
 
 
 class DocumentService:
     def __init__(self, db: Session) -> None:
         self.db = db
         self.document_repo = DocumentRepository(db)
+        self.load_repo = LoadRepository(db)
 
     # ---------------------------
     # CORE CREATE
@@ -28,7 +31,7 @@ class DocumentService:
         organization_id: str,
         customer_account_id: str,
         storage_key: str,
-        source_channel: str,
+        source_channel: str | Channel,
         driver_id: str | None = None,
         load_id: str | None = None,
         document_type: str | DocumentType | None = None,
@@ -49,10 +52,7 @@ class DocumentService:
             customer_account_id,
         )
         normalized_storage_key = self._normalize_required_text("storage_key", storage_key)
-        normalized_source_channel = self._normalize_required_text(
-            "source_channel",
-            source_channel,
-        )
+        normalized_source_channel = self._normalize_channel(source_channel)
         normalized_driver_id = self._normalize_optional_text(driver_id)
         normalized_load_id = self._normalize_optional_text(load_id)
         normalized_original_filename = self._normalize_optional_text(original_filename)
@@ -107,7 +107,12 @@ class DocumentService:
             uploaded_by_staff_user_id=normalized_uploaded_by_staff_user_id,
         )
 
-        return self.document_repo.create(model)
+        created = self.document_repo.create(model)
+
+        if normalized_load_id:
+            self._sync_load_document_flags(normalized_load_id)
+
+        return self.document_repo.get_by_id(created.id, include_related=True) or created
 
     # ---------------------------
     # READ
@@ -115,7 +120,10 @@ class DocumentService:
 
     def get_document(self, document_id: str) -> LoadDocument:
         normalized_document_id = self._normalize_required_text("document_id", document_id)
-        document = self.document_repo.get_by_id(normalized_document_id)
+        document = self.document_repo.get_by_id(
+            normalized_document_id,
+            include_related=True,
+        )
         if document is None:
             raise NotFoundError(
                 "Document not found",
@@ -153,6 +161,7 @@ class DocumentService:
             processing_status=normalized_processing_status,
             page=validated_page,
             page_size=validated_page_size,
+            include_related=True,
         )
 
     # ---------------------------
@@ -183,7 +192,12 @@ class DocumentService:
         if normalized_processing_status == ProcessingStatus.COMPLETED:
             document.ocr_completed_at = datetime.now(timezone.utc)
 
-        return self.document_repo.update(document)
+        updated = self.document_repo.update(document)
+
+        if updated.load_id:
+            self._sync_load_document_flags(str(updated.load_id))
+
+        return self.document_repo.get_by_id(updated.id, include_related=True) or updated
 
     def update_document_type(
         self,
@@ -202,7 +216,12 @@ class DocumentService:
                 classification_confidence
             )
 
-        return self.document_repo.update(document)
+        updated = self.document_repo.update(document)
+
+        if updated.load_id:
+            self._sync_load_document_flags(str(updated.load_id))
+
+        return self.document_repo.get_by_id(updated.id, include_related=True) or updated
 
     def attach_to_load(
         self,
@@ -213,7 +232,9 @@ class DocumentService:
         normalized_load_id = self._normalize_required_text("load_id", load_id)
         document = self.get_document(document_id)
         document.load_id = normalized_load_id
-        return self.document_repo.update(document)
+        updated = self.document_repo.update(document)
+        self._sync_load_document_flags(normalized_load_id)
+        return self.document_repo.get_by_id(updated.id, include_related=True) or updated
 
     # ---------------------------
     # DOWNLOAD HELPER
@@ -247,6 +268,9 @@ class DocumentService:
 
         self.document_repo.update(document)
 
+        if document.load_id:
+            self._sync_load_document_flags(str(document.load_id))
+
         return {
             "document_id": str(document.id),
             "queued": True,
@@ -257,6 +281,33 @@ class DocumentService:
     # ---------------------------
     # INTERNAL HELPERS
     # ---------------------------
+
+    def _sync_load_document_flags(self, load_id: str) -> None:
+        load = self.load_repo.get_by_id(load_id)
+        if load is None:
+            return
+
+        documents, _ = self.document_repo.list(
+            load_id=load_id,
+            page=1,
+            page_size=500,
+            include_related=False,
+        )
+
+        has_ratecon = any(
+            document.document_type == DocumentType.RATE_CONFIRMATION for document in documents
+        )
+        has_bol = any(
+            document.document_type == DocumentType.BILL_OF_LADING for document in documents
+        )
+        has_invoice = any(document.document_type == DocumentType.INVOICE for document in documents)
+
+        load.has_ratecon = has_ratecon
+        load.has_bol = has_bol
+        load.has_invoice = has_invoice
+        load.documents_complete = bool(has_ratecon and has_bol and has_invoice)
+
+        self.load_repo.update(load)
 
     def _normalize_document_type(
         self,
@@ -336,6 +387,27 @@ class DocumentService:
         raise ValidationError(
             "Invalid processing_status",
             details={"processing_status": value},
+        )
+
+    def _normalize_channel(self, value: str | Channel) -> Channel:
+        if isinstance(value, Channel):
+            return value
+
+        normalized = str(value).strip().lower()
+        aliases: dict[str, Channel] = {
+            "manual": Channel.MANUAL,
+            "web": Channel.WEB,
+            "email": Channel.EMAIL,
+            "whatsapp": Channel.WHATSAPP,
+            "api": Channel.API,
+        }
+
+        if normalized in aliases:
+            return aliases[normalized]
+
+        raise ValidationError(
+            "Invalid source_channel",
+            details={"source_channel": value},
         )
 
     @staticmethod
