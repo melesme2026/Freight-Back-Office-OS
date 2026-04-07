@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from sqlalchemy.orm import Session
 
-from app.core.exceptions import DuplicateRecordError, NotFoundError
+from app.core.exceptions import DuplicateRecordError, NotFoundError, ValidationError
 from app.domain.enums.customer_account_status import CustomerAccountStatus
 from app.domain.models.customer_account import CustomerAccount
 from app.repositories.customer_account_repo import CustomerAccountRepository
@@ -25,6 +25,7 @@ class CustomerAccountService:
         billing_email: str | None = None,
         notes: str | None = None,
     ) -> CustomerAccount:
+        normalized_account_name = self._require_text(account_name, field_name="account_name")
         normalized_account_code = self._clean_text(account_code)
 
         if normalized_account_code:
@@ -37,7 +38,7 @@ class CustomerAccountService:
 
         customer_account = CustomerAccount(
             organization_id=organization_id,
-            account_name=self._clean_text(account_name),
+            account_name=normalized_account_name,
             account_code=normalized_account_code,
             status=CustomerAccountStatus.PROSPECT,
             primary_contact_name=self._clean_text(primary_contact_name),
@@ -49,7 +50,10 @@ class CustomerAccountService:
         return self.customer_account_repo.create(customer_account)
 
     def get_customer_account(self, customer_account_id: str) -> CustomerAccount:
-        customer_account = self.customer_account_repo.get_by_id(customer_account_id)
+        customer_account = self.customer_account_repo.get_by_id(
+            customer_account_id,
+            include_related=True,
+        )
         if customer_account is None:
             raise NotFoundError(
                 "Customer account not found",
@@ -66,12 +70,15 @@ class CustomerAccountService:
         page: int = 1,
         page_size: int = 25,
     ) -> tuple[list[CustomerAccount], int]:
+        normalized_status = self._normalize_status(status)
+
         return self.customer_account_repo.list(
             organization_id=organization_id,
-            status=status,
+            status=normalized_status,
             search=self._clean_text(search),
             page=page,
             page_size=page_size,
+            include_related=True,
         )
 
     def update_customer_account(
@@ -91,18 +98,37 @@ class CustomerAccountService:
                         "Customer account code already exists",
                         details={"account_code": new_account_code},
                     )
-                updates["account_code"] = new_account_code
+            updates["account_code"] = new_account_code
+
+        if "status" in updates:
+            updates["status"] = self._normalize_status(updates.get("status"))
+
+        text_fields = {"primary_contact_name", "primary_contact_phone", "notes"}
+        email_fields = {"primary_contact_email", "billing_email"}
 
         for field, value in updates.items():
-            if not hasattr(customer_account, field) or value is None:
+            if not hasattr(customer_account, field):
                 continue
 
-            if field in {"account_name", "primary_contact_name", "primary_contact_phone", "notes"}:
+            if field == "account_name":
+                if value is None:
+                    continue
+                setattr(
+                    customer_account,
+                    field,
+                    self._require_text(value, field_name="account_name"),
+                )
+                continue
+
+            if field in text_fields:
                 setattr(customer_account, field, self._clean_text(value))
-            elif field in {"primary_contact_email", "billing_email"}:
+                continue
+
+            if field in email_fields:
                 setattr(customer_account, field, self._normalize_email(value))
-            else:
-                setattr(customer_account, field, value)
+                continue
+
+            setattr(customer_account, field, value)
 
         return self.customer_account_repo.update(customer_account)
 
@@ -114,8 +140,37 @@ class CustomerAccountService:
         return cleaned or None
 
     @staticmethod
+    def _require_text(value: str | None, *, field_name: str) -> str:
+        cleaned = CustomerAccountService._clean_text(value)
+        if not cleaned:
+            raise ValidationError(
+                f"{field_name.replace('_', ' ').capitalize()} is required.",
+                details={field_name: "This field cannot be blank."},
+            )
+        return cleaned
+
+    @staticmethod
     def _normalize_email(value: str | None) -> str | None:
+        cleaned = CustomerAccountService._clean_text(value)
+        return cleaned.lower() if cleaned else None
+
+    @staticmethod
+    def _normalize_status(value: str | CustomerAccountStatus | None) -> CustomerAccountStatus | None:
         if value is None:
             return None
-        cleaned = str(value).strip().lower()
-        return cleaned or None
+
+        if isinstance(value, CustomerAccountStatus):
+            return value
+
+        normalized = str(value).strip().lower()
+        if not normalized:
+            return None
+
+        for member in CustomerAccountStatus:
+            if member.value == normalized:
+                return member
+
+        raise ValidationError(
+            "Invalid customer account status.",
+            details={"status": normalized},
+        )
