@@ -18,14 +18,23 @@ class LoadTransitionApplier:
 
         load.status = new_status
 
-        if new_status == LoadStatus.SUBMITTED and load.submitted_at is None:
-            load.submitted_at = now
+        if new_status == LoadStatus.SUBMITTED:
+            if load.submitted_at is None:
+                load.submitted_at = now
 
-        if new_status == LoadStatus.FUNDED and load.funded_at is None:
-            load.funded_at = now
+        elif new_status == LoadStatus.FUNDED:
+            if load.submitted_at is None:
+                load.submitted_at = now
+            if load.funded_at is None:
+                load.funded_at = now
 
-        if new_status == LoadStatus.PAID and load.paid_at is None:
-            load.paid_at = now
+        elif new_status == LoadStatus.PAID:
+            if load.submitted_at is None:
+                load.submitted_at = now
+            if load.funded_at is None:
+                load.funded_at = now
+            if load.paid_at is None:
+                load.paid_at = now
 
         if new_status in {LoadStatus.NEW, LoadStatus.DOCS_RECEIVED}:
             load.processing_status = ProcessingStatus.PENDING
@@ -37,6 +46,7 @@ class LoadTransitionApplier:
             LoadStatus.SUBMITTED,
             LoadStatus.FUNDED,
             LoadStatus.PAID,
+            LoadStatus.ARCHIVED,
         }:
             load.processing_status = ProcessingStatus.COMPLETED
         elif new_status == LoadStatus.EXCEPTION:
