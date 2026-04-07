@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import uuid
 from datetime import datetime, timezone
 from typing import Any
 
@@ -26,7 +27,7 @@ class WorkflowEngine:
         self.event_publisher = EventPublisher(db)
 
     def get_load(self, load_id: str) -> Load:
-        load = self.load_repo.get_by_id(load_id)
+        load = self.load_repo.get_by_id(load_id, include_related=True)
         if load is None:
             raise NotFoundError("Load not found", details={"load_id": load_id})
         return load
@@ -45,6 +46,7 @@ class WorkflowEngine:
         current_status = self._normalize_load_status(load.status)
         target_status = self._normalize_load_status(new_status)
         normalized_actor_type = self._normalize_actor_type(actor_type)
+        normalized_actor_staff_user_id = self._normalize_optional_uuid(actor_staff_user_id)
         normalized_notes = self._clean_text(notes)
         changed_at = datetime.now(timezone.utc)
 
@@ -79,8 +81,8 @@ class WorkflowEngine:
         )
 
         updated_load.last_reviewed_at = changed_at
-        if actor_staff_user_id:
-            updated_load.last_reviewed_by = actor_staff_user_id
+        if normalized_actor_staff_user_id is not None:
+            updated_load.last_reviewed_by = normalized_actor_staff_user_id
 
         self.load_repo.update(updated_load)
 
@@ -91,15 +93,17 @@ class WorkflowEngine:
             old_status=str(old_status),
             new_status=str(target_status),
             event_payload={"notes": normalized_notes} if normalized_notes else None,
-            actor_staff_user_id=actor_staff_user_id,
+            actor_staff_user_id=str(normalized_actor_staff_user_id)
+            if normalized_actor_staff_user_id is not None
+            else None,
             actor_type=str(normalized_actor_type),
         )
 
         return {
             "id": str(updated_load.id),
-            "old_status": str(old_status),
-            "new_status": str(target_status),
-            "changed_at": changed_at.isoformat(),
+            "old_status": old_status,
+            "new_status": target_status,
+            "changed_at": changed_at,
         }
 
     def _normalize_load_status(self, value: LoadStatus | str) -> LoadStatus:
@@ -135,6 +139,19 @@ class WorkflowEngine:
             "Invalid actor_type",
             details={"actor_type": value},
         )
+
+    def _normalize_optional_uuid(self, value: str | None) -> uuid.UUID | None:
+        cleaned = self._clean_text(value)
+        if cleaned is None:
+            return None
+
+        try:
+            return uuid.UUID(cleaned)
+        except ValueError as exc:
+            raise ValidationError(
+                "Invalid actor_staff_user_id",
+                details={"actor_staff_user_id": value},
+            ) from exc
 
     @staticmethod
     def _clean_text(value: str | None) -> str | None:
