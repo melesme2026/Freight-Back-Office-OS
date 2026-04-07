@@ -14,6 +14,7 @@ from fastapi import (
     UploadFile,
     status,
 )
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_db_session
@@ -38,6 +39,43 @@ ALLOWED_UPLOAD_MIME_TYPES = {
 }
 
 DEFAULT_LOAD_DOCUMENT_PAGE_SIZE = 100
+
+
+class DocumentCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    organization_id: uuid.UUID
+    customer_account_id: uuid.UUID
+    storage_key: str
+    source_channel: str
+    driver_id: uuid.UUID | None = None
+    load_id: uuid.UUID | None = None
+    document_type: str | None = None
+    original_filename: str | None = None
+    mime_type: str | None = None
+    file_size_bytes: int | None = None
+    storage_bucket: str | None = None
+    page_count: int | None = None
+    uploaded_by_staff_user_id: uuid.UUID | None = None
+
+
+class ExtractDocumentRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    force: bool = False
+
+
+class ReprocessDocumentRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    force_reclassification: bool = False
+    force_reextraction: bool = False
+
+
+class LinkDocumentToLoadRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    load_id: uuid.UUID
 
 
 # ---------------------------
@@ -92,12 +130,20 @@ def _enum_to_string(value: object | None) -> str | None:
 
 
 def _serialize_document(item: Any) -> dict[str, Any]:
+    load = getattr(item, "load", None)
+    driver = getattr(item, "driver", None)
+    uploaded_by_staff_user = getattr(item, "uploaded_by_staff_user", None)
+    validation_issues = getattr(item, "validation_issues", None)
+    extracted_fields = getattr(item, "extracted_fields", None)
+
     return {
         "id": str(item.id),
         "organization_id": str(item.organization_id),
         "customer_account_id": str(item.customer_account_id),
         "driver_id": str(item.driver_id) if getattr(item, "driver_id", None) else None,
+        "driver_name": getattr(driver, "full_name", None) if driver else None,
         "load_id": str(item.load_id) if getattr(item, "load_id", None) else None,
+        "load_number": getattr(load, "load_number", None) if load else None,
         "source_channel": _enum_to_string(getattr(item, "source_channel", None)),
         "document_type": _enum_to_string(getattr(item, "document_type", None)),
         "original_filename": getattr(item, "original_filename", None),
@@ -107,6 +153,25 @@ def _serialize_document(item: Any) -> dict[str, Any]:
         "storage_key": getattr(item, "storage_key", None),
         "processing_status": _enum_to_string(getattr(item, "processing_status", None)),
         "page_count": getattr(item, "page_count", None),
+        "classification_confidence": getattr(item, "classification_confidence", None),
+        "ocr_completed_at": _to_iso_or_none(getattr(item, "ocr_completed_at", None)),
+        "received_at": _to_iso_or_none(getattr(item, "received_at", None)),
+        "uploaded_by_staff_user_id": (
+            str(getattr(item, "uploaded_by_staff_user_id", None))
+            if getattr(item, "uploaded_by_staff_user_id", None)
+            else None
+        ),
+        "uploaded_by_staff_user_name": (
+            getattr(uploaded_by_staff_user, "full_name", None)
+            if uploaded_by_staff_user
+            else None
+        ),
+        "validation_issue_count": (
+            len(validation_issues) if isinstance(validation_issues, list) else None
+        ),
+        "extracted_field_count": (
+            len(extracted_fields) if isinstance(extracted_fields, list) else None
+        ),
         "created_at": _to_iso_or_none(getattr(item, "created_at", None)),
         "updated_at": _to_iso_or_none(getattr(item, "updated_at", None)),
     }
@@ -189,7 +254,11 @@ async def upload_document(
             organization_id=str(organization_id),
             customer_account_id=str(customer_account_id),
             storage_key=str(storage_key).strip(),
-            storage_bucket=_normalize_optional_text(str(storage_bucket)) if storage_bucket is not None else None,
+            storage_bucket=(
+                _normalize_optional_text(str(storage_bucket))
+                if storage_bucket is not None
+                else None
+            ),
             source_channel=normalized_source_channel,
             driver_id=_uuid_to_str(driver_id),
             load_id=_uuid_to_str(load_id),
@@ -216,45 +285,35 @@ async def upload_document(
 
 
 # ---------------------------
-# EXISTING METADATA CREATE ENDPOINT
+# METADATA CREATE ENDPOINT
 # ---------------------------
 
 @router.post("/documents", response_model=ApiResponse)
 def create_document(
-    *,
-    organization_id: uuid.UUID,
-    customer_account_id: uuid.UUID,
-    storage_key: str,
-    source_channel: str,
-    driver_id: uuid.UUID | None = None,
-    load_id: uuid.UUID | None = None,
-    document_type: str | None = None,
-    original_filename: str | None = None,
-    mime_type: str | None = None,
-    file_size_bytes: int | None = None,
-    storage_bucket: str | None = None,
-    page_count: int | None = None,
-    uploaded_by_staff_user_id: uuid.UUID | None = None,
+    payload: DocumentCreateRequest,
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
-    normalized_storage_key = _normalize_required_text(storage_key, "storage_key")
-    normalized_source_channel = _normalize_required_text(source_channel, "source_channel")
+    normalized_storage_key = _normalize_required_text(payload.storage_key, "storage_key")
+    normalized_source_channel = _normalize_required_text(
+        payload.source_channel,
+        "source_channel",
+    )
 
     service = DocumentService(db)
     item = service.create_document(
-        organization_id=str(organization_id),
-        customer_account_id=str(customer_account_id),
+        organization_id=str(payload.organization_id),
+        customer_account_id=str(payload.customer_account_id),
         storage_key=normalized_storage_key,
         source_channel=normalized_source_channel,
-        driver_id=_uuid_to_str(driver_id),
-        load_id=_uuid_to_str(load_id),
-        document_type=_normalize_optional_text(document_type),
-        original_filename=_normalize_optional_text(original_filename),
-        mime_type=_normalize_optional_text(mime_type),
-        file_size_bytes=file_size_bytes,
-        storage_bucket=_normalize_optional_text(storage_bucket),
-        page_count=page_count,
-        uploaded_by_staff_user_id=_uuid_to_str(uploaded_by_staff_user_id),
+        driver_id=_uuid_to_str(payload.driver_id),
+        load_id=_uuid_to_str(payload.load_id),
+        document_type=_normalize_optional_text(payload.document_type),
+        original_filename=_normalize_optional_text(payload.original_filename),
+        mime_type=_normalize_optional_text(payload.mime_type),
+        file_size_bytes=payload.file_size_bytes,
+        storage_bucket=_normalize_optional_text(payload.storage_bucket),
+        page_count=payload.page_count,
+        uploaded_by_staff_user_id=_uuid_to_str(payload.uploaded_by_staff_user_id),
     )
 
     return ApiResponse(
@@ -319,7 +378,7 @@ def download_document(
 
 
 # ---------------------------
-# EXISTING ADVANCED FEATURES
+# ADVANCED FEATURES
 # ---------------------------
 
 @router.get("/documents/{document_id}", response_model=ApiResponse)
@@ -336,12 +395,11 @@ def get_document(
 @router.post("/documents/{document_id}/extract", response_model=ApiResponse)
 def extract_document(
     document_id: uuid.UUID,
-    *,
-    force: bool = False,
+    payload: ExtractDocumentRequest,
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
     service = ExtractionService(db)
-    result = service.extract_document(document_id=str(document_id), force=force)
+    result = service.extract_document(document_id=str(document_id), force=payload.force)
 
     return ApiResponse(data=result, meta={}, error=None)
 
@@ -349,16 +407,14 @@ def extract_document(
 @router.post("/documents/{document_id}/reprocess", response_model=ApiResponse)
 def reprocess_document(
     document_id: uuid.UUID,
-    *,
-    force_reclassification: bool = False,
-    force_reextraction: bool = False,
+    payload: ReprocessDocumentRequest,
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
     service = DocumentService(db)
     result = service.reprocess_document(
         document_id=str(document_id),
-        force_reclassification=force_reclassification,
-        force_reextraction=force_reextraction,
+        force_reclassification=payload.force_reclassification,
+        force_reextraction=payload.force_reextraction,
     )
 
     return ApiResponse(data=result, meta={}, error=None)
@@ -367,14 +423,13 @@ def reprocess_document(
 @router.post("/documents/{document_id}/link", response_model=ApiResponse)
 def link_document_to_load(
     document_id: uuid.UUID,
-    *,
-    load_id: uuid.UUID,
+    payload: LinkDocumentToLoadRequest,
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
     linker = DocumentLinker(db)
     result = linker.link_document_to_load(
         document_id=str(document_id),
-        load_id=str(load_id),
+        load_id=str(payload.load_id),
     )
 
     return ApiResponse(data=result, meta={}, error=None)
