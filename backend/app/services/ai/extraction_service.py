@@ -11,10 +11,12 @@ from app.domain.enums.processing_status import ProcessingStatus
 from app.domain.models.extracted_field import ExtractedField
 from app.repositories.document_repo import DocumentRepository
 from app.repositories.extracted_field_repo import ExtractedFieldRepository
+from app.repositories.load_repo import LoadRepository
 from app.services.ai.confidence_service import ConfidenceService
 from app.services.ai.llm_service import LLMService
 from app.services.ai.ocr_service import OCRService
 from app.services.documents.document_classifier import DocumentClassifier
+from app.services.documents.document_service import DocumentService
 
 
 class ExtractionService:
@@ -24,6 +26,8 @@ class ExtractionService:
         self.db = db
         self.document_repo = DocumentRepository(db)
         self.extracted_field_repo = ExtractedFieldRepository(db)
+        self.load_repo = LoadRepository(db)
+        self.document_service = DocumentService(db)
         self.ocr_service = OCRService()
         self.llm_service = LLMService()
         self.confidence_service = ConfidenceService()
@@ -45,7 +49,7 @@ class ExtractionService:
         document_id: str,
         force: bool = False,
     ) -> dict[str, Any]:
-        document = self.document_repo.get_by_id(document_id)
+        document = self.document_repo.get_by_id(document_id, include_related=True)
         if document is None:
             raise NotFoundError("Document not found", details={"document_id": document_id})
 
@@ -110,16 +114,39 @@ class ExtractionService:
         avg_confidence = self.confidence_service.average_decimal(confidence_values)
         classification_confidence_decimal = self._to_decimal(classification_confidence)
 
-        document.document_type = detected_type
-        document.classification_confidence = classification_confidence_decimal
-        document.ocr_completed_at = datetime.now(timezone.utc)
-        document.processing_status = ProcessingStatus.COMPLETED
-        self.document_repo.update(document)
+        updated_document = self.document_service.update_document_type(
+            document_id=str(document.id),
+            document_type=detected_type,
+            classification_confidence=(
+                float(classification_confidence_decimal)
+                if classification_confidence_decimal is not None
+                else None
+            ),
+        )
+
+        updated_document = self.document_service.mark_processing(
+            document_id=str(updated_document.id),
+            processing_status=ProcessingStatus.COMPLETED,
+            classification_confidence=(
+                float(classification_confidence_decimal)
+                if classification_confidence_decimal is not None
+                else None
+            ),
+            page_count=ocr_result.get("page_count"),
+        )
+
+        if updated_document.load_id:
+            load = self.load_repo.get_by_id(updated_document.load_id)
+            if load is not None:
+                load.extraction_confidence_avg = avg_confidence
+                self.load_repo.update(load)
+
+        extracted_at = datetime.now(timezone.utc)
 
         return {
-            "document_id": str(document.id),
-            "load_id": str(document.load_id) if document.load_id else None,
-            "document_type": str(detected_type),
+            "document_id": str(updated_document.id),
+            "load_id": str(updated_document.load_id) if updated_document.load_id else None,
+            "document_type": getattr(detected_type, "value", str(detected_type)),
             "classification_confidence": classification_confidence_decimal,
             "extracted_fields": [
                 {
@@ -135,5 +162,5 @@ class ExtractionService:
                 for f in created_fields
             ],
             "extraction_confidence_avg": avg_confidence,
-            "extracted_at": datetime.now(timezone.utc),
+            "extracted_at": extracted_at,
         }
