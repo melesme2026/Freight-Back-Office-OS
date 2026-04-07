@@ -30,27 +30,32 @@ class LoadStateMachine:
             LoadStatus.ARCHIVED,
         },
         LoadStatus.VALIDATED: {
+            LoadStatus.NEEDS_REVIEW,
             LoadStatus.READY_TO_SUBMIT,
             LoadStatus.EXCEPTION,
             LoadStatus.ARCHIVED,
         },
         LoadStatus.READY_TO_SUBMIT: {
+            LoadStatus.VALIDATED,
             LoadStatus.SUBMITTED,
             LoadStatus.EXCEPTION,
             LoadStatus.ARCHIVED,
         },
         LoadStatus.SUBMITTED: {
+            LoadStatus.READY_TO_SUBMIT,
             LoadStatus.FUNDED,
             LoadStatus.PAID,
             LoadStatus.EXCEPTION,
             LoadStatus.ARCHIVED,
         },
         LoadStatus.FUNDED: {
+            LoadStatus.SUBMITTED,
             LoadStatus.PAID,
             LoadStatus.EXCEPTION,
             LoadStatus.ARCHIVED,
         },
         LoadStatus.PAID: {
+            LoadStatus.FUNDED,
             LoadStatus.ARCHIVED,
         },
         LoadStatus.EXCEPTION: {
@@ -58,6 +63,7 @@ class LoadStateMachine:
             LoadStatus.EXTRACTING,
             LoadStatus.NEEDS_REVIEW,
             LoadStatus.VALIDATED,
+            LoadStatus.READY_TO_SUBMIT,
             LoadStatus.ARCHIVED,
         },
         LoadStatus.ARCHIVED: set(),
