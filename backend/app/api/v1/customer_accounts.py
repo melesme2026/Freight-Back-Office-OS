@@ -5,14 +5,42 @@ from datetime import date, datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_db_session
+from app.core.exceptions import ValidationError
 from app.schemas.common import ApiResponse
 from app.services.onboarding.customer_account_service import CustomerAccountService
 
 
 router = APIRouter()
+
+
+class CustomerAccountCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    organization_id: uuid.UUID
+    account_name: str
+    account_code: str | None = None
+    primary_contact_name: str | None = None
+    primary_contact_email: str | None = None
+    primary_contact_phone: str | None = None
+    billing_email: str | None = None
+    notes: str | None = None
+
+
+class CustomerAccountUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    account_name: str | None = None
+    account_code: str | None = None
+    status: str | None = None
+    primary_contact_name: str | None = None
+    primary_contact_email: str | None = None
+    primary_contact_phone: str | None = None
+    billing_email: str | None = None
+    notes: str | None = None
 
 
 def _to_iso_or_none(value: object | None) -> str | None:
@@ -24,6 +52,16 @@ def _to_iso_or_none(value: object | None) -> str | None:
     if callable(isoformat):
         return isoformat()
     return str(value)
+
+
+def _normalize_required_text(value: str, *, field_name: str) -> str:
+    normalized = value.strip()
+    if not normalized:
+        raise ValidationError(
+            f"{field_name.replace('_', ' ').capitalize()} is required.",
+            details={field_name: "This field cannot be blank."},
+        )
+    return normalized
 
 
 def _normalize_optional_text(value: str | None) -> str | None:
@@ -39,6 +77,9 @@ def _normalize_email(value: str | None) -> str | None:
 
 
 def _serialize_customer_account(item: Any) -> dict[str, Any]:
+    drivers = getattr(item, "drivers", None)
+    loads = getattr(item, "loads", None)
+
     return {
         "id": str(item.id),
         "organization_id": str(item.organization_id),
@@ -50,6 +91,8 @@ def _serialize_customer_account(item: Any) -> dict[str, Any]:
         "primary_contact_phone": item.primary_contact_phone,
         "billing_email": item.billing_email,
         "notes": item.notes,
+        "driver_count": len(drivers) if isinstance(drivers, list) else None,
+        "load_count": len(loads) if isinstance(loads, list) else None,
         "created_at": _to_iso_or_none(item.created_at),
         "updated_at": _to_iso_or_none(item.updated_at),
     }
@@ -57,27 +100,19 @@ def _serialize_customer_account(item: Any) -> dict[str, Any]:
 
 @router.post("/customer-accounts", response_model=ApiResponse)
 def create_customer_account(
-    *,
-    organization_id: uuid.UUID,
-    account_name: str,
-    account_code: str | None = None,
-    primary_contact_name: str | None = None,
-    primary_contact_email: str | None = None,
-    primary_contact_phone: str | None = None,
-    billing_email: str | None = None,
-    notes: str | None = None,
+    payload: CustomerAccountCreateRequest,
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
     service = CustomerAccountService(db)
     item = service.create_customer_account(
-        organization_id=str(organization_id),
-        account_name=account_name.strip(),
-        account_code=_normalize_optional_text(account_code),
-        primary_contact_name=_normalize_optional_text(primary_contact_name),
-        primary_contact_email=_normalize_email(primary_contact_email),
-        primary_contact_phone=_normalize_optional_text(primary_contact_phone),
-        billing_email=_normalize_email(billing_email),
-        notes=notes,
+        organization_id=str(payload.organization_id),
+        account_name=_normalize_required_text(payload.account_name, field_name="account_name"),
+        account_code=_normalize_optional_text(payload.account_code),
+        primary_contact_name=_normalize_optional_text(payload.primary_contact_name),
+        primary_contact_email=_normalize_email(payload.primary_contact_email),
+        primary_contact_phone=_normalize_optional_text(payload.primary_contact_phone),
+        billing_email=_normalize_email(payload.billing_email),
+        notes=payload.notes,
     )
 
     return ApiResponse(
@@ -135,28 +170,24 @@ def get_customer_account(
 @router.patch("/customer-accounts/{customer_account_id}", response_model=ApiResponse)
 def update_customer_account(
     customer_account_id: uuid.UUID,
-    *,
-    account_name: str | None = None,
-    account_code: str | None = None,
-    status: str | None = None,
-    primary_contact_name: str | None = None,
-    primary_contact_email: str | None = None,
-    primary_contact_phone: str | None = None,
-    billing_email: str | None = None,
-    notes: str | None = None,
+    payload: CustomerAccountUpdateRequest,
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
     service = CustomerAccountService(db)
     item = service.update_customer_account(
         customer_account_id=str(customer_account_id),
-        account_name=account_name.strip() if account_name is not None else None,
-        account_code=_normalize_optional_text(account_code),
-        status=_normalize_optional_text(status),
-        primary_contact_name=_normalize_optional_text(primary_contact_name),
-        primary_contact_email=_normalize_email(primary_contact_email),
-        primary_contact_phone=_normalize_optional_text(primary_contact_phone),
-        billing_email=_normalize_email(billing_email),
-        notes=notes,
+        account_name=(
+            _normalize_required_text(payload.account_name, field_name="account_name")
+            if payload.account_name is not None
+            else None
+        ),
+        account_code=_normalize_optional_text(payload.account_code),
+        status=_normalize_optional_text(payload.status),
+        primary_contact_name=_normalize_optional_text(payload.primary_contact_name),
+        primary_contact_email=_normalize_email(payload.primary_contact_email),
+        primary_contact_phone=_normalize_optional_text(payload.primary_contact_phone),
+        billing_email=_normalize_email(payload.billing_email),
+        notes=payload.notes,
     )
 
     return ApiResponse(
