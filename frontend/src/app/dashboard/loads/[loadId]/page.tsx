@@ -24,10 +24,12 @@ type Load = {
   load_number: string | null;
   status: LoadStatus;
   driver_id?: string | null;
+  driver_name?: string | null;
   broker_id?: string | null;
   broker_name_raw?: string | null;
   broker_email_raw?: string | null;
   customer_account_id?: string | null;
+  customer_account_name?: string | null;
   pickup_location?: string | null;
   delivery_location?: string | null;
   gross_amount?: number | string | null;
@@ -38,6 +40,16 @@ type Load = {
   notes?: string | null;
   last_reviewed_by?: string | null;
   last_reviewed_at?: string | null;
+  submitted_at?: string | null;
+  funded_at?: string | null;
+  paid_at?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+  factoring_notes?: string | null;
+  paid_amount?: number | string | null;
+  amount_received?: number | string | null;
+  factoring_provider?: string | null;
+  is_factored?: boolean | null;
 };
 
 type ReviewQueueItem = {
@@ -113,6 +125,18 @@ const NEXT_STATUS_MAP: Partial<Record<LoadStatus, LoadStatus>> = {
   submitted: "funded",
   funded: "paid",
 };
+
+const WORKFLOW_ORDER: LoadStatus[] = [
+  "new",
+  "docs_received",
+  "extracting",
+  "needs_review",
+  "validated",
+  "ready_to_submit",
+  "submitted",
+  "funded",
+  "paid",
+];
 
 const UPLOAD_DOCUMENT_TYPE_OPTIONS: Array<{
   value: UploadDocumentType;
@@ -257,6 +281,20 @@ function getStringField(record: Record<string, unknown> | null, key: string): st
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
 }
 
+function getFirstStringField(
+  record: Record<string, unknown> | null,
+  keys: string[]
+): string | null {
+  for (const key of keys) {
+    const value = getStringField(record, key);
+    if (value) {
+      return value;
+    }
+  }
+
+  return null;
+}
+
 function getOptionalBooleanField(
   record: Record<string, unknown> | null,
   key: string
@@ -297,6 +335,24 @@ function getOptionalBooleanField(
   return null;
 }
 
+function getFirstOptionalBooleanField(
+  record: Record<string, unknown> | null,
+  keys: string[]
+): boolean | null | undefined {
+  if (!record) {
+    return undefined;
+  }
+
+  for (const key of keys) {
+    const value = getOptionalBooleanField(record, key);
+    if (value !== undefined) {
+      return value;
+    }
+  }
+
+  return undefined;
+}
+
 function getOptionalNumericOrStringField(
   record: Record<string, unknown> | null,
   key: string
@@ -312,6 +368,24 @@ function getOptionalNumericOrStringField(
   }
 
   return null;
+}
+
+function getFirstOptionalNumericOrStringField(
+  record: Record<string, unknown> | null,
+  keys: string[]
+): number | string | null | undefined {
+  if (!record) {
+    return undefined;
+  }
+
+  for (const key of keys) {
+    const value = getOptionalNumericOrStringField(record, key);
+    if (value !== undefined) {
+      return value;
+    }
+  }
+
+  return undefined;
 }
 
 function getOptionalNumberField(
@@ -400,10 +474,15 @@ function normalizeLoad(payload: unknown): Load | null {
     load_number: getStringField(record, "load_number"),
     status: normalizeLoadStatus(record?.status),
     driver_id: getStringField(record, "driver_id"),
+    driver_name: getFirstStringField(record, ["driver_name", "driver_display_name"]),
     broker_id: getStringField(record, "broker_id"),
-    broker_name_raw: getStringField(record, "broker_name_raw"),
+    broker_name_raw: getFirstStringField(record, ["broker_name_raw", "broker_name"]),
     broker_email_raw: getStringField(record, "broker_email_raw"),
     customer_account_id: getStringField(record, "customer_account_id"),
+    customer_account_name: getFirstStringField(record, [
+      "customer_account_name",
+      "customer_name",
+    ]),
     pickup_location: getStringField(record, "pickup_location"),
     delivery_location: getStringField(record, "delivery_location"),
     gross_amount: getOptionalNumericOrStringField(record, "gross_amount"),
@@ -414,6 +493,23 @@ function normalizeLoad(payload: unknown): Load | null {
     notes: getStringField(record, "notes"),
     last_reviewed_by: getStringField(record, "last_reviewed_by"),
     last_reviewed_at: getStringField(record, "last_reviewed_at"),
+    submitted_at: getStringField(record, "submitted_at"),
+    funded_at: getStringField(record, "funded_at"),
+    paid_at: getStringField(record, "paid_at"),
+    created_at: getStringField(record, "created_at"),
+    updated_at: getStringField(record, "updated_at"),
+    factoring_notes: getFirstStringField(record, ["factoring_notes", "payment_notes"]),
+    paid_amount: getFirstOptionalNumericOrStringField(record, ["paid_amount"]),
+    amount_received: getFirstOptionalNumericOrStringField(record, [
+      "amount_received",
+      "received_amount",
+    ]),
+    factoring_provider: getFirstStringField(record, [
+      "factoring_provider",
+      "factor_name",
+      "factoring_company_name",
+    ]),
+    is_factored: getFirstOptionalBooleanField(record, ["is_factored", "factored"]),
   };
 }
 
@@ -571,12 +667,33 @@ function getDocumentDisplayName(document: LoadDocument) {
   return `${normalizeDocumentTypeLabel(document.document_type)} Document`;
 }
 
-function matchesDocumentType(
-  document: LoadDocument,
-  aliases: string[]
-): boolean {
+function matchesDocumentType(document: LoadDocument, aliases: string[]): boolean {
   const normalized = (document.document_type ?? "").trim().toLowerCase();
   return aliases.includes(normalized);
+}
+
+function getLoadDisplayTitle(load: Load) {
+  return load.load_number ?? load.id;
+}
+
+function getOperationalDisplayValue(primary?: string | null, fallback?: string | null) {
+  return primary && primary.trim().length > 0 ? primary : fallback && fallback.trim().length > 0 ? fallback : "—";
+}
+
+function getPaymentStageLabel(load: Load) {
+  if (load.status === "paid" || load.paid_at) {
+    return "Paid";
+  }
+
+  if (load.status === "funded" || load.funded_at) {
+    return load.is_factored ? "Factored / Funded" : "Funded";
+  }
+
+  if (load.status === "submitted" || load.submitted_at) {
+    return "Submitted";
+  }
+
+  return "Not yet submitted";
 }
 
 export default function LoadDetailPage() {
@@ -765,6 +882,12 @@ export default function LoadDetailPage() {
     };
   }, [load, loadDocuments]);
 
+  const requiredDocsReceivedCount = useMemo(() => {
+    return [documentPresence.hasRateCon, documentPresence.hasBol, documentPresence.hasInvoice].filter(
+      Boolean
+    ).length;
+  }, [documentPresence]);
+
   const documentChecklist = useMemo(
     () => [
       {
@@ -814,8 +937,55 @@ export default function LoadDetailPage() {
     return validationIssues.length;
   }, [reviewQueueItem, validationIssues]);
 
+  const workflowBlockedReason = useMemo(() => {
+    if (!load || !nextStatus) {
+      return null;
+    }
+
+    if (
+      (nextStatus === "validated" ||
+        nextStatus === "ready_to_submit" ||
+        nextStatus === "submitted") &&
+      totalOpenIssues > 0
+    ) {
+      return "Resolve open validation issues before advancing this load.";
+    }
+
+    if ((nextStatus === "ready_to_submit" || nextStatus === "submitted") && requiredDocsReceivedCount < 3) {
+      return "All required documents must be present before submission readiness.";
+    }
+
+    return null;
+  }, [load, nextStatus, totalOpenIssues, requiredDocsReceivedCount]);
+
+  const canAdvanceStatus = Boolean(nextStatus) && !workflowBlockedReason && !isAdvancing;
+
   const canUploadDocuments = useMemo(() => {
     return Boolean(load?.id && load?.customer_account_id && getOrganizationId());
+  }, [load]);
+
+  const workflowSteps = useMemo(() => {
+    if (!load) {
+      return [];
+    }
+
+    const currentIndex = WORKFLOW_ORDER.indexOf(load.status);
+
+    return WORKFLOW_ORDER.map((status, index) => {
+      const state =
+        currentIndex === -1
+          ? "upcoming"
+          : index < currentIndex
+            ? "completed"
+            : index === currentIndex
+              ? "current"
+              : "upcoming";
+
+      return {
+        status,
+        state,
+      };
+    });
   }, [load]);
 
   async function handleMarkReviewed() {
@@ -861,7 +1031,7 @@ export default function LoadDetailPage() {
   }
 
   async function handleAdvanceStatus() {
-    if (!load || !nextStatus || isAdvancing) {
+    if (!load || !nextStatus || !canAdvanceStatus) {
       return;
     }
 
@@ -962,9 +1132,13 @@ export default function LoadDetailPage() {
         throw new Error(responseText || "Failed to upload document.");
       }
 
-      await fetchLoadDocuments({ silent: true });
-      await fetchLoad();
+      const [updatedLoad, updatedDocuments] = await Promise.all([
+        fetchLoad(),
+        fetchLoadDocuments({ silent: true }),
+      ]);
 
+      setLoad(updatedLoad);
+      setLoadDocuments(updatedDocuments);
       setSelectedUploadDocumentType("");
       setActionMessage(`Document "${file.name}" uploaded successfully.`);
     } catch (caught: unknown) {
@@ -1048,7 +1222,12 @@ export default function LoadDetailPage() {
     try {
       setError(null);
       setActionMessage(null);
-      await fetchLoadDocuments();
+      const [updatedLoad, updatedDocuments] = await Promise.all([
+        fetchLoad(),
+        fetchLoadDocuments(),
+      ]);
+      setLoad(updatedLoad);
+      setLoadDocuments(updatedDocuments);
       setActionMessage("Documents refreshed.");
     } catch (caught: unknown) {
       const message =
@@ -1065,7 +1244,7 @@ export default function LoadDetailPage() {
             <p className="text-sm font-medium text-brand-700">Dashboard / Loads / Detail</p>
             <h1 className="mt-2 text-2xl font-bold text-slate-950">Loading load...</h1>
             <p className="mt-3 text-sm text-slate-600">
-              Fetching load summary, review queue status, and document completeness.
+              Fetching load summary, review queue status, document completeness, and payment state.
             </p>
           </div>
         </div>
@@ -1142,11 +1321,11 @@ export default function LoadDetailPage() {
           <div>
             <p className="text-sm font-medium text-brand-700">Dashboard / Loads / Detail</p>
             <h1 className="text-3xl font-bold tracking-tight text-slate-950">
-              {load.load_number ?? load.id}
+              {getLoadDisplayTitle(load)}
             </h1>
             <p className="mt-2 text-sm leading-6 text-slate-600">
-              Full operational view of a load, including documents, validation issues, and
-              workflow progress.
+              Full operational view of a load, including documents, validation issues, workflow
+              progress, and payment visibility.
             </p>
           </div>
 
@@ -1163,7 +1342,7 @@ export default function LoadDetailPage() {
             <button
               type="button"
               onClick={handleAdvanceStatus}
-              disabled={!nextStatus || isAdvancing}
+              disabled={!canAdvanceStatus}
               className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {isAdvancing
@@ -1187,6 +1366,12 @@ export default function LoadDetailPage() {
           </div>
         ) : null}
 
+        {workflowBlockedReason ? (
+          <div className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            {workflowBlockedReason}
+          </div>
+        ) : null}
+
         <div className="grid gap-6 xl:grid-cols-[2fr,1fr]">
           <section className="space-y-6">
             <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
@@ -1205,21 +1390,24 @@ export default function LoadDetailPage() {
                 <div>
                   <div className="text-xs uppercase tracking-wide text-slate-500">Driver</div>
                   <div className="mt-1 text-sm font-medium text-slate-900">
-                    {load.driver_id ?? "—"}
+                    {getOperationalDisplayValue(load.driver_name, load.driver_id)}
                   </div>
                 </div>
 
                 <div>
                   <div className="text-xs uppercase tracking-wide text-slate-500">Broker</div>
                   <div className="mt-1 text-sm font-medium text-slate-900">
-                    {load.broker_name_raw ?? load.broker_id ?? "—"}
+                    {getOperationalDisplayValue(load.broker_name_raw, load.broker_id)}
                   </div>
+                  {load.broker_email_raw ? (
+                    <div className="mt-1 text-xs text-slate-500">{load.broker_email_raw}</div>
+                  ) : null}
                 </div>
 
                 <div>
                   <div className="text-xs uppercase tracking-wide text-slate-500">Customer</div>
                   <div className="mt-1 text-sm font-medium text-slate-900">
-                    {load.customer_account_id ?? "—"}
+                    {getOperationalDisplayValue(load.customer_account_name, load.customer_account_id)}
                   </div>
                 </div>
 
@@ -1247,7 +1435,7 @@ export default function LoadDetailPage() {
                 </div>
               </div>
 
-              <div className="mt-5 grid gap-4 sm:grid-cols-2">
+              <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 <div>
                   <div className="text-xs uppercase tracking-wide text-slate-500">
                     Last Reviewed By
@@ -1265,6 +1453,85 @@ export default function LoadDetailPage() {
                     {formatDateTime(load.last_reviewed_at)}
                   </div>
                 </div>
+
+                <div>
+                  <div className="text-xs uppercase tracking-wide text-slate-500">Created</div>
+                  <div className="mt-1 text-sm font-medium text-slate-900">
+                    {formatDateTime(load.created_at)}
+                  </div>
+                </div>
+
+                <div>
+                  <div className="text-xs uppercase tracking-wide text-slate-500">Updated</div>
+                  <div className="mt-1 text-sm font-medium text-slate-900">
+                    {formatDateTime(load.updated_at)}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
+              <div className="mb-5 flex items-center justify-between gap-4">
+                <div>
+                  <h2 className="text-lg font-semibold text-slate-950">Workflow Readiness</h2>
+                  <p className="mt-1 text-sm text-slate-600">
+                    Current lane status, readiness blockers, and lifecycle progression.
+                  </p>
+                </div>
+                <span
+                  className={`rounded-full px-3 py-1 text-xs font-semibold ${statusBadge(
+                    load.status
+                  )}`}
+                >
+                  {load.status.replaceAll("_", " ")}
+                </span>
+              </div>
+
+              <div className="mb-6 grid gap-3 sm:grid-cols-3">
+                <div className="rounded-xl border border-slate-200 px-4 py-3">
+                  <div className="text-xs uppercase tracking-wide text-slate-500">Open Issues</div>
+                  <div className="mt-1 text-lg font-semibold text-slate-950">{totalOpenIssues}</div>
+                </div>
+                <div className="rounded-xl border border-slate-200 px-4 py-3">
+                  <div className="text-xs uppercase tracking-wide text-slate-500">
+                    Required Docs Received
+                  </div>
+                  <div className="mt-1 text-lg font-semibold text-slate-950">
+                    {requiredDocsReceivedCount}/3
+                  </div>
+                </div>
+                <div className="rounded-xl border border-slate-200 px-4 py-3">
+                  <div className="text-xs uppercase tracking-wide text-slate-500">
+                    Payment Stage
+                  </div>
+                  <div className="mt-1 text-lg font-semibold text-slate-950">
+                    {getPaymentStageLabel(load)}
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                {workflowSteps.map((step) => (
+                  <div
+                    key={step.status}
+                    className="flex items-center justify-between rounded-xl border border-slate-200 px-4 py-3"
+                  >
+                    <div className="text-sm font-medium text-slate-900">
+                      {step.status.replaceAll("_", " ")}
+                    </div>
+                    <span
+                      className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                        step.state === "completed"
+                          ? "bg-emerald-100 text-emerald-800"
+                          : step.state === "current"
+                            ? "bg-brand-100 text-brand-800"
+                            : "bg-slate-100 text-slate-600"
+                      }`}
+                    >
+                      {step.state}
+                    </span>
+                  </div>
+                ))}
               </div>
             </div>
 
@@ -1512,12 +1779,7 @@ export default function LoadDetailPage() {
                 </div>
                 <div className="flex items-center justify-between">
                   <span>Required Docs Received</span>
-                  <span className="font-semibold text-slate-900">
-                    {[documentPresence.hasRateCon, documentPresence.hasBol, documentPresence.hasInvoice]
-                      .filter(Boolean)
-                      .length}
-                    /3
-                  </span>
+                  <span className="font-semibold text-slate-900">{requiredDocsReceivedCount}/3</span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span>Load Status</span>
@@ -1525,7 +1787,65 @@ export default function LoadDetailPage() {
                     {load.status.replaceAll("_", " ")}
                   </span>
                 </div>
+                <div className="flex items-center justify-between">
+                  <span>Open Issues</span>
+                  <span className="font-semibold text-slate-900">{totalOpenIssues}</span>
+                </div>
               </div>
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
+              <h2 className="mb-4 text-lg font-semibold text-slate-950">Payment / Factoring</h2>
+              <div className="space-y-3 text-sm text-slate-700">
+                <div className="flex items-center justify-between gap-4">
+                  <span>Stage</span>
+                  <span className="font-semibold text-slate-900">{getPaymentStageLabel(load)}</span>
+                </div>
+                <div className="flex items-center justify-between gap-4">
+                  <span>Submitted At</span>
+                  <span className="font-medium text-slate-900">
+                    {formatDateTime(load.submitted_at)}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-4">
+                  <span>Funded At</span>
+                  <span className="font-medium text-slate-900">{formatDateTime(load.funded_at)}</span>
+                </div>
+                <div className="flex items-center justify-between gap-4">
+                  <span>Paid At</span>
+                  <span className="font-medium text-slate-900">{formatDateTime(load.paid_at)}</span>
+                </div>
+                <div className="flex items-center justify-between gap-4">
+                  <span>Paid Amount</span>
+                  <span className="font-medium text-slate-900">
+                    {formatCurrency(load.paid_amount, load.currency_code ?? "USD")}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-4">
+                  <span>Amount Received</span>
+                  <span className="font-medium text-slate-900">
+                    {formatCurrency(load.amount_received, load.currency_code ?? "USD")}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-4">
+                  <span>Factored</span>
+                  <span className="font-medium text-slate-900">
+                    {load.is_factored === true ? "Yes" : load.is_factored === false ? "No" : "—"}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-4">
+                  <span>Factor</span>
+                  <span className="font-medium text-slate-900">
+                    {load.factoring_provider ?? "—"}
+                  </span>
+                </div>
+              </div>
+
+              {load.factoring_notes ? (
+                <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+                  {load.factoring_notes}
+                </div>
+              ) : null}
             </div>
 
             <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
