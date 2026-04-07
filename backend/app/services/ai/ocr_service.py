@@ -3,12 +3,15 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from app.services.documents.storage_service import StorageService
+
 
 class OCRService:
     """
     Phase-1 OCR/text extraction service.
 
     Current behavior:
+    - Resolves files through the configured storage root
     - Reads plain text-like files directly when possible
     - Provides safe fallback placeholder output for binary files
     - Keeps the extraction pipeline runnable before full OCR integration
@@ -34,6 +37,9 @@ class OCRService:
         ".md",
     }
 
+    def __init__(self) -> None:
+        self.storage_service = StorageService()
+
     def extract_text(
         self,
         *,
@@ -42,7 +48,7 @@ class OCRService:
         mime_type: str | None = None,
     ) -> dict[str, Any]:
         filename = original_filename or Path(storage_key).name
-        file_path = Path(storage_key)
+        file_path = self.storage_service.absolute_path(relative_path=storage_key)
 
         if self._is_direct_text_candidate(file_path=file_path, mime_type=mime_type):
             text = self._read_text_file(file_path)
@@ -50,8 +56,10 @@ class OCRService:
                 return {
                     "text": text,
                     "pages": 1,
+                    "page_count": 1,
                     "mime_type": mime_type,
                     "storage_key": storage_key,
+                    "resolved_path": str(file_path),
                     "extraction_method": "direct_text_read",
                     "ocr_status": "completed",
                 }
@@ -59,8 +67,10 @@ class OCRService:
         return {
             "text": f"OCR placeholder text extracted from {filename}",
             "pages": 1,
+            "page_count": 1,
             "mime_type": mime_type,
             "storage_key": storage_key,
+            "resolved_path": str(file_path),
             "extraction_method": "placeholder",
             "ocr_status": "completed_placeholder",
         }
