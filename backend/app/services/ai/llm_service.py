@@ -36,8 +36,6 @@ class LLMService:
 
         prompt_template = self._get_prompt_for_document_type(normalized_type)
 
-        # Prompt is intentionally loaded now so architecture is correct even
-        # before a real provider call is implemented.
         _ = self._build_prompt_payload(
             prompt_template=prompt_template,
             text_content=text,
@@ -48,6 +46,9 @@ class LLMService:
 
         if normalized_type == "bill_of_lading":
             return self._extract_bol_fields(text)
+
+        if normalized_type == "proof_of_delivery":
+            return self._extract_pod_fields(text)
 
         if normalized_type == "invoice":
             return self._extract_invoice_fields(text)
@@ -61,6 +62,13 @@ class LLMService:
             return "rate_confirmation"
         if normalized in {"bill_of_lading", "bol", "bill of lading"}:
             return "bill_of_lading"
+        if normalized in {
+            "proof_of_delivery",
+            "proof of delivery",
+            "proof-of-delivery",
+            "pod",
+        }:
+            return "proof_of_delivery"
         if normalized in {"invoice"}:
             return "invoice"
 
@@ -71,6 +79,8 @@ class LLMService:
             return prompt_loader.get_ratecon_prompt()
         if document_type == "bill_of_lading":
             return prompt_loader.get_bol_prompt()
+        if document_type == "proof_of_delivery":
+            return prompt_loader.get_validation_prompt()
         if document_type == "invoice":
             return prompt_loader.get_invoice_prompt()
 
@@ -265,6 +275,73 @@ class LLMService:
                     ],
                 ),
                 "0.66",
+            ),
+        ]
+
+        return self._drop_empty_low_value_fields(fields)
+
+    def _extract_pod_fields(self, text: str) -> list[dict[str, Any]]:
+        fields: list[dict[str, Any]] = [
+            self._text_field("document_type", "proof_of_delivery", "0.97"),
+            self._text_field("raw_text_excerpt", text[:500] or None, "0.79"),
+            self._text_field(
+                "load_number",
+                self._find_first(
+                    text,
+                    [
+                        r"\bload\s*(?:#|number|no\.?)?\s*[:\-]?\s*([A-Z0-9\-]+)\b",
+                    ],
+                ),
+                "0.66",
+            ),
+            self._text_field(
+                "bol_number",
+                self._find_first(
+                    text,
+                    [
+                        r"\bbol\s*(?:#|number|no\.?)?\s*[:\-]?\s*([A-Z0-9\-]+)\b",
+                        r"\bbill\s+of\s+lading\s*(?:#|number|no\.?)?\s*[:\-]?\s*([A-Z0-9\-]+)\b",
+                    ],
+                ),
+                "0.72",
+            ),
+            self._text_field(
+                "received_by",
+                self._find_first(
+                    text,
+                    [
+                        r"\breceived\s+by\s*[:\-]?\s*([^\n\r]+)",
+                        r"\breceiver\s*[:\-]?\s*([^\n\r]+)",
+                    ],
+                ),
+                "0.78",
+            ),
+            self._text_field(
+                "delivery_date",
+                self._find_first(
+                    text,
+                    [
+                        r"\bdelivery\s*date\s*[:\-]?\s*([^\n\r]+)",
+                        r"\bdelivered\s*on\s*[:\-]?\s*([^\n\r]+)",
+                    ],
+                ),
+                "0.74",
+            ),
+            self._text_field(
+                "delivery_location",
+                self._find_first(
+                    text,
+                    [
+                        r"\bdestination\s*[:\-]?\s*([^\n\r]+)",
+                        r"\bdelivery\s*(?:location|address|city)?\s*[:\-]?\s*([^\n\r]+)",
+                    ],
+                ),
+                "0.68",
+            ),
+            self._text_field(
+                "signature_present",
+                "true" if re.search(r"\bsigned\b|\bsignature\b", text, flags=re.IGNORECASE) else None,
+                "0.70",
             ),
         ]
 
