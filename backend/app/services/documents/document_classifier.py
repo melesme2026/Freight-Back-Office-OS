@@ -7,6 +7,10 @@ from app.domain.enums.document_type import DocumentType
 
 
 class DocumentClassifier:
+    UNKNOWN_CONFIDENCE = 0.40
+    MIN_CONFIDENCE_THRESHOLD = 0.45
+    MAX_CONFIDENCE = 0.99
+
     def classify(
         self,
         *,
@@ -31,17 +35,24 @@ class DocumentClassifier:
             DocumentType.UNKNOWN: 0.0,
         }
 
+        # ---------------------------
+        # Content-based signals
+        # ---------------------------
         scores[DocumentType.RATE_CONFIRMATION] += self._score_matches(
             normalized,
             {
                 r"\brate confirmation\b": 0.65,
                 r"\bratecon\b": 0.55,
                 r"\brate cons?\b": 0.45,
-                r"\brate-confirmation\b": 0.55,
+                r"\brate confirmation number\b": 0.20,
+                r"\bload tender\b": 0.22,
+                r"\bcarrier rate\b": 0.20,
                 r"\bbroker\b": 0.10,
                 r"\bcarrier\b": 0.10,
                 r"\bdispatch\b": 0.08,
                 r"\bgross amount\b": 0.10,
+                r"\bpickup date\b": 0.06,
+                r"\bdelivery date\b": 0.06,
             },
         )
 
@@ -54,6 +65,9 @@ class DocumentClassifier:
                 r"\bconsignee\b": 0.12,
                 r"\bcommodity\b": 0.10,
                 r"\bpieces\b": 0.08,
+                r"\bweight\b": 0.06,
+                r"\bfreight charges\b": 0.08,
+                r"\bcarrier signature\b": 0.08,
             },
         )
 
@@ -65,6 +79,9 @@ class DocumentClassifier:
                 r"\bdelivered\b": 0.12,
                 r"\breceived by\b": 0.12,
                 r"\bsigned\b": 0.10,
+                r"\bdelivery receipt\b": 0.15,
+                r"\breceiver\b": 0.08,
+                r"\barrival\b": 0.06,
             },
         )
 
@@ -78,33 +95,52 @@ class DocumentClassifier:
                 r"\bdue date\b": 0.12,
                 r"\bpayment terms\b": 0.10,
                 r"\bremit to\b": 0.12,
+                r"\bbalance due\b": 0.12,
+                r"\bamount due\b": 0.14,
             },
         )
 
+        # ---------------------------
+        # Filename hints
+        # ---------------------------
         scores[DocumentType.RATE_CONFIRMATION] += self._filename_hint_score(
             filename,
-            ["ratecon", "rate_confirmation", "rate-confirmation", "rate conf"],
+            ["ratecon", "rate_confirmation", "rate-confirmation", "rate conf", "rate-confirm"],
             0.20,
         )
         scores[DocumentType.BILL_OF_LADING] += self._filename_hint_score(
             filename,
-            ["bol", "bill_of_lading", "bill-of-lading"],
+            ["bol", "bill_of_lading", "bill-of-lading", "b o l"],
             0.20,
         )
         scores[DocumentType.PROOF_OF_DELIVERY] += self._filename_hint_score(
             filename,
-            ["pod", "proof_of_delivery", "proof-of-delivery", "signed_delivery"],
+            ["pod", "proof_of_delivery", "proof-of-delivery", "signed_delivery", "delivery_receipt"],
             0.20,
         )
         scores[DocumentType.INVOICE] += self._filename_hint_score(
             filename,
-            ["invoice", "inv_", "inv-", "billing"],
+            ["invoice", "inv_", "inv-", "billing", "bill_to"],
             0.20,
         )
+
+        # ---------------------------
+        # MIME / file-form hints
+        # ---------------------------
+        if mime == "application/pdf":
+            scores[DocumentType.RATE_CONFIRMATION] += 0.02
+            scores[DocumentType.BILL_OF_LADING] += 0.02
+            scores[DocumentType.INVOICE] += 0.02
+
+        if filename.endswith((".jpg", ".jpeg", ".png", ".webp", ".heic", ".heif", ".tiff")):
+            scores[DocumentType.PROOF_OF_DELIVERY] += 0.05
 
         if filename.endswith((".jpg", ".jpeg", ".png", ".webp")) and "signed" in normalized:
             scores[DocumentType.PROOF_OF_DELIVERY] += 0.18
 
+        # ---------------------------
+        # Best fit selection
+        # ---------------------------
         best_type = max(
             (
                 DocumentType.RATE_CONFIRMATION,
@@ -115,10 +151,10 @@ class DocumentClassifier:
             key=lambda doc_type: scores[doc_type],
         )
 
-        best_score = min(scores[best_type], 0.99)
+        best_score = min(scores[best_type], self.MAX_CONFIDENCE)
 
-        if best_score < 0.45:
-            return DocumentType.UNKNOWN, 0.40
+        if best_score < self.MIN_CONFIDENCE_THRESHOLD:
+            return DocumentType.UNKNOWN, self.UNKNOWN_CONFIDENCE
 
         return best_type, round(best_score, 2)
 
