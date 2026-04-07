@@ -42,9 +42,9 @@ class ExtractedFieldRepository:
     def list(
         self,
         *,
-        organization_id: uuid.UUID | None = None,
-        document_id: uuid.UUID | None = None,
-        load_id: uuid.UUID | None = None,
+        organization_id: uuid.UUID | str | None = None,
+        document_id: uuid.UUID | str | None = None,
+        load_id: uuid.UUID | str | None = None,
         field_name: str | None = None,
         page: int = DEFAULT_PAGE,
         page_size: int = DEFAULT_PAGE_SIZE,
@@ -52,26 +52,43 @@ class ExtractedFieldRepository:
         normalized_page = max(page, 1)
         normalized_page_size = min(max(page_size, 1), self.MAX_PAGE_SIZE)
 
+        normalized_organization_id = (
+            self._normalize_uuid(organization_id, field_name="organization_id")
+            if organization_id is not None
+            else None
+        )
+        normalized_document_id = (
+            self._normalize_uuid(document_id, field_name="document_id")
+            if document_id is not None
+            else None
+        )
+        normalized_load_id = (
+            self._normalize_uuid(load_id, field_name="load_id")
+            if load_id is not None
+            else None
+        )
+        normalized_field_name = field_name.strip() if field_name else None
+
         stmt = select(ExtractedField)
         count_stmt: Select[tuple[int]] = select(func.count()).select_from(ExtractedField)
 
-        if organization_id is not None:
-            stmt = stmt.where(ExtractedField.organization_id == organization_id)
-            count_stmt = count_stmt.where(ExtractedField.organization_id == organization_id)
+        if normalized_organization_id is not None:
+            stmt = stmt.where(ExtractedField.organization_id == normalized_organization_id)
+            count_stmt = count_stmt.where(ExtractedField.organization_id == normalized_organization_id)
 
-        if document_id is not None:
-            stmt = stmt.where(ExtractedField.document_id == document_id)
-            count_stmt = count_stmt.where(ExtractedField.document_id == document_id)
+        if normalized_document_id is not None:
+            stmt = stmt.where(ExtractedField.document_id == normalized_document_id)
+            count_stmt = count_stmt.where(ExtractedField.document_id == normalized_document_id)
 
-        if load_id is not None:
-            stmt = stmt.where(ExtractedField.load_id == load_id)
-            count_stmt = count_stmt.where(ExtractedField.load_id == load_id)
+        if normalized_load_id is not None:
+            stmt = stmt.where(ExtractedField.load_id == normalized_load_id)
+            count_stmt = count_stmt.where(ExtractedField.load_id == normalized_load_id)
 
-        if field_name:
-            stmt = stmt.where(ExtractedField.field_name == field_name)
-            count_stmt = count_stmt.where(ExtractedField.field_name == field_name)
+        if normalized_field_name:
+            stmt = stmt.where(ExtractedField.field_name == normalized_field_name)
+            count_stmt = count_stmt.where(ExtractedField.field_name == normalized_field_name)
 
-        total = self.db.scalar(count_stmt) or 0
+        total = int(self.db.scalar(count_stmt) or 0)
 
         offset = (normalized_page - 1) * normalized_page_size
         stmt = (
@@ -87,7 +104,7 @@ class ExtractedFieldRepository:
         normalized_id = self._normalize_uuid(document_id, field_name="document_id")
 
         count_stmt = select(func.count()).where(ExtractedField.document_id == normalized_id)
-        count = self.db.scalar(count_stmt) or 0
+        count = int(self.db.scalar(count_stmt) or 0)
 
         if count == 0:
             return 0
