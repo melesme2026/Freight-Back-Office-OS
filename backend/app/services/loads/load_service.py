@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timezone
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from sqlalchemy.orm import Session
@@ -37,15 +37,28 @@ class LoadService:
         delivery_date: Any = None,
         pickup_location: str | None = None,
         delivery_location: str | None = None,
-        gross_amount: Decimal | None = None,
+        gross_amount: Decimal | str | float | int | None = None,
         currency_code: str = "USD",
         notes: str | None = None,
     ) -> Load:
+        normalized_organization_id = self._require_text(
+            organization_id,
+            field_name="organization_id",
+        )
+        normalized_customer_account_id = self._require_text(
+            customer_account_id,
+            field_name="customer_account_id",
+        )
+        normalized_driver_id = self._require_text(
+            driver_id,
+            field_name="driver_id",
+        )
+
         load = Load(
-            organization_id=organization_id,
-            customer_account_id=customer_account_id,
-            driver_id=driver_id,
-            broker_id=broker_id,
+            organization_id=normalized_organization_id,
+            customer_account_id=normalized_customer_account_id,
+            driver_id=normalized_driver_id,
+            broker_id=self._clean_text(broker_id),
             source_channel=self._normalize_channel(source_channel),
             status=LoadStatus.NEW,
             processing_status=ProcessingStatus.PENDING,
@@ -54,12 +67,16 @@ class LoadService:
             bol_number=self._clean_text(bol_number),
             invoice_number=self._clean_text(invoice_number),
             broker_name_raw=self._clean_text(broker_name_raw),
-            broker_email_raw=self._clean_text(broker_email_raw),
-            pickup_date=self._normalize_date(pickup_date, field_name="pickup_date"),
-            delivery_date=self._normalize_date(delivery_date, field_name="delivery_date"),
+            broker_email_raw=self._normalize_email(broker_email_raw),
+            pickup_date=self._normalize_date(pickup_date, field_name="pickup_date", allow_none=True),
+            delivery_date=self._normalize_date(
+                delivery_date,
+                field_name="delivery_date",
+                allow_none=True,
+            ),
             pickup_location=self._clean_text(pickup_location),
             delivery_location=self._clean_text(delivery_location),
-            gross_amount=gross_amount,
+            gross_amount=self._normalize_decimal(gross_amount, field_name="gross_amount"),
             currency_code=self._normalize_currency(currency_code),
             documents_complete=False,
             has_ratecon=False,
@@ -102,9 +119,9 @@ class LoadService:
         normalized_channel = self._normalize_channel(source_channel, allow_none=True)
 
         return self.load_repo.list(
-            organization_id=organization_id,
-            customer_account_id=customer_account_id,
-            driver_id=driver_id,
+            organization_id=self._clean_text(organization_id),
+            customer_account_id=self._clean_text(customer_account_id),
+            driver_id=self._clean_text(driver_id),
             status=normalized_status,
             source_channel=normalized_channel,
             date_from=self._normalize_date(date_from, field_name="date_from", allow_none=True),
@@ -149,42 +166,93 @@ class LoadService:
             "processing_status",
         }
 
+        status_before = load.status
+
         for field, value in updates.items():
-            if field not in allowed_updates or value is None:
+            if field not in allowed_updates:
                 continue
 
             if field == "source_channel":
+                if value is None:
+                    continue
                 setattr(load, field, self._normalize_channel(value))
             elif field == "status":
+                if value is None:
+                    continue
                 setattr(load, field, self._normalize_load_status(value))
             elif field == "processing_status":
+                if value is None:
+                    continue
                 setattr(load, field, self._normalize_processing_status(value))
             elif field in {"pickup_date", "delivery_date"}:
-                setattr(load, field, self._normalize_date(value, field_name=field))
+                setattr(
+                    load,
+                    field,
+                    self._normalize_date(value, field_name=field, allow_none=True),
+                )
             elif field in {
                 "load_number",
                 "rate_confirmation_number",
                 "bol_number",
                 "invoice_number",
                 "broker_name_raw",
-                "broker_email_raw",
                 "pickup_location",
                 "delivery_location",
                 "notes",
             }:
                 setattr(load, field, self._clean_text(value))
+            elif field == "broker_email_raw":
+                setattr(load, field, self._normalize_email(value))
             elif field == "currency_code":
+                if value is None:
+                    continue
                 setattr(load, field, self._normalize_currency(value))
+            elif field == "gross_amount":
+                setattr(load, field, self._normalize_decimal(value, field_name="gross_amount"))
+            elif field in {"customer_account_id", "driver_id"}:
+                if value is None:
+                    continue
+                setattr(load, field, self._require_text(value, field_name=field))
+            elif field == "broker_id":
+                setattr(load, field, self._clean_text(value))
+            elif field in {"documents_complete", "has_ratecon", "has_bol", "has_invoice"}:
+                setattr(load, field, bool(value))
             else:
                 setattr(load, field, value)
 
-        if any(
-            key in updates
-            for key in {"has_ratecon", "has_bol", "has_invoice", "documents_complete"}
-        ):
-            load.documents_complete = bool(load.has_ratecon and load.has_bol and load.has_invoice)
+        load.documents_complete = bool(load.has_ratecon and load.has_bol and load.has_invoice)
+
+        if load.status != status_before:
+            self._sync_status_timestamps(load, old_status=status_before, new_status=load.status)
 
         return self.load_repo.update(load)
+
+    def _sync_status_timestamps(
+        self,
+        load: Load,
+        *,
+        old_status: LoadStatus,
+        new_status: LoadStatus,
+    ) -> None:
+        _ = old_status
+        now = datetime.now(timezone.utc)
+
+        if new_status == LoadStatus.SUBMITTED and load.submitted_at is None:
+            load.submitted_at = now
+
+        if new_status == LoadStatus.FUNDED:
+            if load.submitted_at is None:
+                load.submitted_at = now
+            if load.funded_at is None:
+                load.funded_at = now
+
+        if new_status == LoadStatus.PAID:
+            if load.submitted_at is None:
+                load.submitted_at = now
+            if load.funded_at is None:
+                load.funded_at = now
+            if load.paid_at is None:
+                load.paid_at = now
 
     def _normalize_currency(self, value: Any) -> str:
         normalized = str(value or "USD").strip().upper()
@@ -315,9 +383,37 @@ class LoadService:
                 details={field_name: value},
             ) from exc
 
+    def _normalize_decimal(self, value: Any, *, field_name: str) -> Decimal | None:
+        if value is None or value == "":
+            return None
+
+        if isinstance(value, Decimal):
+            return value
+
+        try:
+            return Decimal(str(value).strip())
+        except (InvalidOperation, ValueError) as exc:
+            raise ValidationError(
+                f"Invalid {field_name}",
+                details={field_name: value},
+            ) from exc
+
+    def _require_text(self, value: Any, *, field_name: str) -> str:
+        cleaned = self._clean_text(value)
+        if not cleaned:
+            raise ValidationError(
+                f"{field_name} is required",
+                details={field_name: value},
+            )
+        return cleaned
+
     def _clean_text(self, value: Any) -> str | None:
         if value is None:
             return None
 
         cleaned = str(value).strip()
         return cleaned or None
+
+    def _normalize_email(self, value: Any) -> str | None:
+        cleaned = self._clean_text(value)
+        return cleaned.lower() if cleaned else None
