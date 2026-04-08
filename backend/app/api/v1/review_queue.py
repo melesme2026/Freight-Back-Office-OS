@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_db_session
+from app.core.exceptions import ValidationError
 from app.schemas.common import ApiResponse
 from app.services.review.human_review_service import HumanReviewService
 from app.services.review.review_queue_service import ReviewQueueService
@@ -27,6 +28,17 @@ def _normalize_optional_text(value: str | None) -> str | None:
         return None
     normalized = value.strip()
     return normalized or None
+
+
+def _enum_to_string(value: object | None) -> str | None:
+    if value is None:
+        return None
+
+    enum_value = getattr(value, "value", None)
+    if isinstance(enum_value, str):
+        return enum_value
+
+    return str(value)
 
 
 def _to_iso_or_none(value: object | None) -> str | None:
@@ -80,7 +92,7 @@ def _serialize_validation_issue(item: Any) -> dict[str, Any]:
         "load_id": str(item.load_id),
         "document_id": str(item.document_id) if item.document_id else None,
         "rule_code": item.rule_code,
-        "severity": str(item.severity),
+        "severity": _enum_to_string(item.severity),
         "title": item.title,
         "description": item.description,
         "is_blocking": item.is_blocking,
@@ -98,9 +110,14 @@ def _serialize_validation_issue(item: Any) -> dict[str, Any]:
 
 
 def _serialize_reviewed_load(item: Any) -> dict[str, Any]:
+    reviewed_by_user = getattr(item, "last_reviewed_by_user", None)
+
     return {
         "id": str(item.id),
         "last_reviewed_by": str(item.last_reviewed_by) if item.last_reviewed_by else None,
+        "last_reviewed_by_name": (
+            getattr(reviewed_by_user, "full_name", None) if reviewed_by_user else None
+        ),
         "last_reviewed_at": _to_iso_or_none(item.last_reviewed_at),
         "updated_at": _to_iso_or_none(item.updated_at),
     }
@@ -201,13 +218,22 @@ def resolve_validation_issue(
 @router.post("/review-queue/loads/{load_id}/mark-reviewed", response_model=ApiResponse)
 def mark_load_reviewed(
     load_id: uuid.UUID,
-    payload: MarkLoadReviewedRequest,
+    payload: MarkLoadReviewedRequest | None = None,
+    staff_user_id: uuid.UUID | None = Query(default=None),
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
+    resolved_staff_user_id = payload.staff_user_id if payload is not None else staff_user_id
+
+    if resolved_staff_user_id is None:
+        raise ValidationError(
+            "staff_user_id is required",
+            details={"staff_user_id": None},
+        )
+
     service = HumanReviewService(db)
     item = service.mark_load_reviewed(
         load_id=str(load_id),
-        staff_user_id=str(payload.staff_user_id),
+        staff_user_id=str(resolved_staff_user_id),
     )
 
     return ApiResponse(
