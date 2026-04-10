@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 from sqlalchemy.orm import Session
 
-from app.core.exceptions import BillingError, NotFoundError
+from app.core.exceptions import BillingError, NotFoundError, ValidationError
 from app.domain.enums.payment_provider import PaymentProvider
 from app.domain.enums.payment_status import PaymentStatus
 from app.domain.models.payment import Payment
@@ -32,17 +32,21 @@ class PaymentService:
         driver_id: str | None = None,
         recorded_by_staff_user_id: str | None = None,
     ) -> Payment:
-        normalized_amount = Decimal(str(amount))
+        normalized_amount = self._normalize_amount(amount)
+        normalized_payment_method_id = self._clean_text(payment_method_id)
+        normalized_driver_id = self._clean_text(driver_id)
+        normalized_recorded_by_staff_user_id = self._clean_text(recorded_by_staff_user_id)
 
         invoice = self.invoice_service.get_invoice(billing_invoice_id)
+        invoice_amount_due = self._normalize_amount(invoice.amount_due)
 
-        if Decimal(str(invoice.amount_due)) <= Decimal("0.00"):
+        if invoice_amount_due <= Decimal("0.00"):
             raise BillingError(
                 "Invoice has no outstanding amount due",
                 details={"billing_invoice_id": billing_invoice_id},
             )
 
-        if normalized_amount > Decimal(str(invoice.amount_due)):
+        if normalized_amount > invoice_amount_due:
             raise BillingError(
                 "Payment amount exceeds outstanding invoice amount",
                 details={
@@ -55,12 +59,12 @@ class PaymentService:
         payment_method = None
         provider = PaymentProvider.MANUAL
 
-        if payment_method_id:
-            payment_method = self.payment_method_repo.get_by_id(payment_method_id)
+        if normalized_payment_method_id:
+            payment_method = self.payment_method_repo.get_by_id(normalized_payment_method_id)
             if payment_method is None:
                 raise NotFoundError(
                     "Payment method not found",
-                    details={"payment_method_id": payment_method_id},
+                    details={"payment_method_id": normalized_payment_method_id},
                 )
             provider = payment_method.provider
 
@@ -70,9 +74,9 @@ class PaymentService:
             organization_id=organization_id,
             customer_account_id=customer_account_id,
             billing_invoice_id=billing_invoice_id,
-            payment_method_id=payment_method_id,
-            driver_id=driver_id,
-            recorded_by_staff_user_id=recorded_by_staff_user_id,
+            payment_method_id=normalized_payment_method_id,
+            driver_id=normalized_driver_id,
+            recorded_by_staff_user_id=normalized_recorded_by_staff_user_id,
             provider=provider,
             provider_payment_id=None,
             status=PaymentStatus.PROCESSING,
@@ -96,7 +100,8 @@ class PaymentService:
             paid_at=now,
         )
 
-        return payment
+        refreshed = self.payment_repo.get_by_id(payment.id)
+        return refreshed or payment
 
     def get_payment(self, payment_id: str) -> Payment:
         payment = self.payment_repo.get_by_id(payment_id)
@@ -116,11 +121,11 @@ class PaymentService:
         page_size: int = 50,
     ) -> tuple[list[Payment], int]:
         return self.payment_repo.list(
-            organization_id=organization_id,
-            customer_account_id=customer_account_id,
-            billing_invoice_id=billing_invoice_id,
-            payment_method_id=payment_method_id,
-            status=status,
+            organization_id=self._clean_text(organization_id),
+            customer_account_id=self._clean_text(customer_account_id),
+            billing_invoice_id=self._clean_text(billing_invoice_id),
+            payment_method_id=self._clean_text(payment_method_id),
+            status=self._clean_text(status),
             page=page,
             page_size=page_size,
         )
@@ -132,7 +137,43 @@ class PaymentService:
         failure_reason: str | None = None,
     ) -> Payment:
         payment = self.get_payment(payment_id)
+
+        if payment.status == PaymentStatus.SUCCEEDED:
+            raise BillingError(
+                "Cannot mark a succeeded payment as failed",
+                details={"payment_id": payment_id, "status": payment.status.value},
+            )
+
         payment.status = PaymentStatus.FAILED
         payment.failed_at = datetime.now(timezone.utc)
-        payment.failure_reason = failure_reason
-        return self.payment_repo.update(payment)
+        payment.failure_reason = self._clean_text(failure_reason)
+
+        updated = self.payment_repo.update(payment)
+        refreshed = self.payment_repo.get_by_id(updated.id)
+        return refreshed or updated
+
+    @staticmethod
+    def _clean_text(value: str | None) -> str | None:
+        if value is None:
+            return None
+
+        cleaned = str(value).strip()
+        return cleaned or None
+
+    @staticmethod
+    def _normalize_amount(value: Decimal | str | int | float) -> Decimal:
+        try:
+            normalized = Decimal(str(value))
+        except (InvalidOperation, ValueError, TypeError) as exc:
+            raise ValidationError(
+                "Invalid payment amount",
+                details={"amount": value},
+            ) from exc
+
+        if normalized <= Decimal("0.00"):
+            raise ValidationError(
+                "Payment amount must be greater than 0",
+                details={"amount": str(normalized)},
+            )
+
+        return normalized
