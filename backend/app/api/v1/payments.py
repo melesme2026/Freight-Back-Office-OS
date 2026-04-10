@@ -6,6 +6,7 @@ from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_db_session
@@ -17,6 +18,53 @@ from app.services.billing.payment_service import PaymentService
 
 
 router = APIRouter()
+
+
+class PaymentMethodCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    organization_id: uuid.UUID
+    customer_account_id: uuid.UUID
+    provider: str
+    provider_payment_method_id: str
+    method_type: str
+    provider_customer_id: str | None = None
+    brand: str | None = None
+    last4: str | None = None
+    exp_month: int | None = None
+    exp_year: int | None = None
+    is_default: bool = False
+    is_active: bool = True
+
+
+class PaymentMethodUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    provider_customer_id: str | None = None
+    brand: str | None = None
+    last4: str | None = None
+    exp_month: int | None = None
+    exp_year: int | None = None
+    is_default: bool | None = None
+    is_active: bool | None = None
+
+
+class CollectPaymentRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    organization_id: uuid.UUID
+    customer_account_id: uuid.UUID
+    billing_invoice_id: uuid.UUID
+    amount: str
+    payment_method_id: uuid.UUID | None = None
+    driver_id: uuid.UUID | None = None
+    recorded_by_staff_user_id: uuid.UUID | None = None
+
+
+class MarkPaymentFailedRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    failure_reason: str | None = None
 
 
 def _uuid_to_str(value: uuid.UUID | None) -> str | None:
@@ -43,6 +91,17 @@ def _normalize_required_text(value: str, field_name: str) -> str:
 def _normalize_lower_optional_text(value: str | None) -> str | None:
     normalized = _normalize_optional_text(value)
     return normalized.lower() if normalized else None
+
+
+def _enum_to_string(value: object | None) -> str | None:
+    if value is None:
+        return None
+
+    enum_value = getattr(value, "value", None)
+    if isinstance(enum_value, str):
+        return enum_value
+
+    return str(value)
 
 
 def _to_iso_or_none(value: object | None) -> str | None:
@@ -83,10 +142,10 @@ def _serialize_payment_method(item: Any) -> dict[str, Any]:
         "id": str(item.id),
         "organization_id": str(item.organization_id),
         "customer_account_id": str(item.customer_account_id),
-        "provider": str(item.provider),
+        "provider": _enum_to_string(item.provider),
         "provider_customer_id": item.provider_customer_id,
         "provider_payment_method_id": item.provider_payment_method_id,
-        "method_type": str(item.method_type),
+        "method_type": _enum_to_string(item.method_type),
         "brand": item.brand,
         "last4": item.last4,
         "exp_month": item.exp_month,
@@ -113,9 +172,9 @@ def _serialize_payment(item: Any) -> dict[str, Any]:
         "recorded_by_staff_user_id": str(item.recorded_by_staff_user_id)
         if item.recorded_by_staff_user_id
         else None,
-        "provider": str(item.provider),
+        "provider": _enum_to_string(item.provider),
         "provider_payment_id": item.provider_payment_id,
-        "status": str(item.status),
+        "status": _enum_to_string(item.status),
         "amount": _to_decimal_string(item.amount),
         "currency_code": item.currency_code,
         "attempted_at": _to_iso_or_none(item.attempted_at),
@@ -143,57 +202,45 @@ def _get_payment_method_or_404(
 
 @router.post("/payment-methods", response_model=ApiResponse)
 def create_payment_method(
-    *,
-    organization_id: uuid.UUID,
-    customer_account_id: uuid.UUID,
-    provider: str,
-    provider_payment_method_id: str,
-    method_type: str,
-    provider_customer_id: str | None = None,
-    brand: str | None = None,
-    last4: str | None = None,
-    exp_month: int | None = None,
-    exp_year: int | None = None,
-    is_default: bool = False,
-    is_active: bool = True,
+    payload: PaymentMethodCreateRequest,
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
     repo = PaymentMethodRepository(db)
 
     normalized_provider_payment_method_id = _normalize_required_text(
-        provider_payment_method_id,
+        payload.provider_payment_method_id,
         "provider_payment_method_id",
     )
 
     existing = repo.get_by_provider_payment_method_id(
-        customer_account_id=customer_account_id,
+        customer_account_id=payload.customer_account_id,
         provider_payment_method_id=normalized_provider_payment_method_id,
     )
     if existing is not None:
         raise ValidationError(
             "Payment method already exists for customer account",
             details={
-                "customer_account_id": str(customer_account_id),
+                "customer_account_id": str(payload.customer_account_id),
                 "provider_payment_method_id": normalized_provider_payment_method_id,
             },
         )
 
-    if is_default:
-        repo.clear_default_for_customer_account(customer_account_id)
+    if payload.is_default:
+        repo.clear_default_for_customer_account(payload.customer_account_id)
 
     item = PaymentMethod(
-        organization_id=organization_id,
-        customer_account_id=customer_account_id,
-        provider=_normalize_required_text(provider, "provider"),
-        provider_customer_id=_normalize_optional_text(provider_customer_id),
+        organization_id=payload.organization_id,
+        customer_account_id=payload.customer_account_id,
+        provider=_normalize_required_text(payload.provider, "provider"),
+        provider_customer_id=_normalize_optional_text(payload.provider_customer_id),
         provider_payment_method_id=normalized_provider_payment_method_id,
-        method_type=_normalize_required_text(method_type, "method_type"),
-        brand=_normalize_optional_text(brand),
-        last4=_normalize_optional_text(last4),
-        exp_month=exp_month,
-        exp_year=exp_year,
-        is_default=is_default,
-        is_active=is_active,
+        method_type=_normalize_required_text(payload.method_type, "method_type"),
+        brand=_normalize_optional_text(payload.brand),
+        last4=_normalize_optional_text(payload.last4),
+        exp_month=payload.exp_month,
+        exp_year=payload.exp_year,
+        is_default=payload.is_default,
+        is_active=payload.is_active,
     )
     created = repo.create(item)
 
@@ -252,36 +299,29 @@ def get_payment_method(
 @router.patch("/payment-methods/{payment_method_id}", response_model=ApiResponse)
 def update_payment_method(
     payment_method_id: uuid.UUID,
-    *,
-    provider_customer_id: str | None = None,
-    brand: str | None = None,
-    last4: str | None = None,
-    exp_month: int | None = None,
-    exp_year: int | None = None,
-    is_default: bool | None = None,
-    is_active: bool | None = None,
+    payload: PaymentMethodUpdateRequest,
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
     repo = PaymentMethodRepository(db)
     item = _get_payment_method_or_404(repo, payment_method_id)
 
-    if is_default is True:
+    if payload.is_default is True:
         repo.clear_default_for_customer_account(item.customer_account_id)
 
-    if provider_customer_id is not None:
-        item.provider_customer_id = _normalize_optional_text(provider_customer_id)
-    if brand is not None:
-        item.brand = _normalize_optional_text(brand)
-    if last4 is not None:
-        item.last4 = _normalize_optional_text(last4)
-    if exp_month is not None:
-        item.exp_month = exp_month
-    if exp_year is not None:
-        item.exp_year = exp_year
-    if is_default is not None:
-        item.is_default = is_default
-    if is_active is not None:
-        item.is_active = is_active
+    if payload.provider_customer_id is not None:
+        item.provider_customer_id = _normalize_optional_text(payload.provider_customer_id)
+    if payload.brand is not None:
+        item.brand = _normalize_optional_text(payload.brand)
+    if payload.last4 is not None:
+        item.last4 = _normalize_optional_text(payload.last4)
+    if payload.exp_month is not None:
+        item.exp_month = payload.exp_month
+    if payload.exp_year is not None:
+        item.exp_year = payload.exp_year
+    if payload.is_default is not None:
+        item.is_default = payload.is_default
+    if payload.is_active is not None:
+        item.is_active = payload.is_active
 
     updated = repo.update(item)
 
@@ -294,25 +334,18 @@ def update_payment_method(
 
 @router.post("/payments/collect", response_model=ApiResponse)
 def collect_payment(
-    *,
-    organization_id: uuid.UUID,
-    customer_account_id: uuid.UUID,
-    billing_invoice_id: uuid.UUID,
-    amount: str,
-    payment_method_id: uuid.UUID | None = None,
-    driver_id: uuid.UUID | None = None,
-    recorded_by_staff_user_id: uuid.UUID | None = None,
+    payload: CollectPaymentRequest,
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
     service = PaymentService(db)
     item = service.collect_payment(
-        organization_id=str(organization_id),
-        customer_account_id=str(customer_account_id),
-        billing_invoice_id=str(billing_invoice_id),
-        amount=_parse_amount(amount),
-        payment_method_id=_uuid_to_str(payment_method_id),
-        driver_id=_uuid_to_str(driver_id),
-        recorded_by_staff_user_id=_uuid_to_str(recorded_by_staff_user_id),
+        organization_id=str(payload.organization_id),
+        customer_account_id=str(payload.customer_account_id),
+        billing_invoice_id=str(payload.billing_invoice_id),
+        amount=_parse_amount(payload.amount),
+        payment_method_id=_uuid_to_str(payload.payment_method_id),
+        driver_id=_uuid_to_str(payload.driver_id),
+        recorded_by_staff_user_id=_uuid_to_str(payload.recorded_by_staff_user_id),
     )
 
     return ApiResponse(
@@ -370,20 +403,19 @@ def get_payment(
 @router.post("/payments/{payment_id}/mark-failed", response_model=ApiResponse)
 def mark_payment_failed(
     payment_id: uuid.UUID,
-    *,
-    failure_reason: str | None = None,
+    payload: MarkPaymentFailedRequest,
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
     service = PaymentService(db)
     item = service.mark_failed(
         payment_id=str(payment_id),
-        failure_reason=_normalize_optional_text(failure_reason),
+        failure_reason=_normalize_optional_text(payload.failure_reason),
     )
 
     return ApiResponse(
         data={
             "id": str(item.id),
-            "status": str(item.status),
+            "status": _enum_to_string(item.status),
             "failed_at": _to_iso_or_none(item.failed_at),
             "failure_reason": item.failure_reason,
             "updated_at": _to_iso_or_none(item.updated_at),
