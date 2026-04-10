@@ -131,7 +131,6 @@ class CustomerAccountRepository:
         return stmt.options(
             selectinload(CustomerAccount.organization),
             selectinload(CustomerAccount.drivers),
-            selectinload(CustomerAccount.loads),
         )
 
     def _normalize_uuid(self, value: uuid.UUID | str, *, field_name: str) -> uuid.UUID:
