@@ -37,7 +37,7 @@ class Settings(BaseSettings):
     environment: Literal["local", "development", "staging", "production"] = Field(
         default="local"
     )
-    debug: bool = Field(default=True)
+    debug: bool = Field(default=False)
     secret_key: str = Field(
         default=_DEFAULT_SECRET_KEY,
         min_length=16,
@@ -387,7 +387,8 @@ class Settings(BaseSettings):
     @computed_field
     @property
     def storage_local_root_path(self) -> Path:
-        return ROOT_DIR / self.storage_local_root
+        root = Path(self.storage_local_root)
+        return root if root.is_absolute() else (ROOT_DIR / root)
 
     @computed_field
     @property
@@ -475,6 +476,9 @@ class Settings(BaseSettings):
 
             if not self.cors_allowed_origins:
                 raise ValueError("cors_allowed_origins must not be empty in production")
+
+        if not self.is_local and self.secret_key == _DEFAULT_SECRET_KEY:
+            raise ValueError("secret_key must be changed outside local environment")
 
 
 @lru_cache(maxsize=1)
