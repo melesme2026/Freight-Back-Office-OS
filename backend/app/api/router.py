@@ -25,9 +25,12 @@ from app.api.v1.support import router as support_router
 from app.api.v1.webhooks_email import router as webhooks_email_router
 from app.api.v1.webhooks_payment import router as webhooks_payment_router
 from app.api.v1.webhooks_whatsapp import router as webhooks_whatsapp_router
+from app.core.config import get_settings
 
 
-api_router = APIRouter(prefix="/api/v1")
+settings = get_settings()
+
+api_router = APIRouter(prefix=settings.api_v1_prefix)
 
 # Core / system
 api_router.include_router(health_router, tags=["health"])
