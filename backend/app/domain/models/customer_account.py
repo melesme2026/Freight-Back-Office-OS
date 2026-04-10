@@ -37,6 +37,11 @@ class CustomerAccount(UUIDPrimaryKeyMixin, TimestampMixin, Base):
             "account_name",
             name="uq_customer_accounts_org_account_name",
         ),
+        UniqueConstraint(
+            "organization_id",
+            "account_code",
+            name="uq_customer_accounts_org_account_code",
+        ),
         Index("ix_customer_accounts_organization_id", "organization_id"),
         Index("ix_customer_accounts_status", "status"),
         Index("ix_customer_accounts_account_code", "account_code"),
@@ -51,7 +56,6 @@ class CustomerAccount(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     account_code: Mapped[str | None] = mapped_column(
         String(50),
         nullable=True,
-        unique=True,
     )
     status: Mapped[CustomerAccountStatus] = mapped_column(
         SqlEnum(
