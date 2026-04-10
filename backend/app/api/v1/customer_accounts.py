@@ -76,6 +76,17 @@ def _normalize_email(value: str | None) -> str | None:
     return normalized.lower() if normalized else None
 
 
+def _enum_to_string(value: object | None) -> str | None:
+    if value is None:
+        return None
+
+    enum_value = getattr(value, "value", None)
+    if isinstance(enum_value, str):
+        return enum_value
+
+    return str(value)
+
+
 def _serialize_customer_account(item: Any) -> dict[str, Any]:
     drivers = getattr(item, "drivers", None)
     loads = getattr(item, "loads", None)
@@ -85,7 +96,7 @@ def _serialize_customer_account(item: Any) -> dict[str, Any]:
         "organization_id": str(item.organization_id),
         "account_name": item.account_name,
         "account_code": item.account_code,
-        "status": str(item.status),
+        "status": _enum_to_string(item.status),
         "primary_contact_name": item.primary_contact_name,
         "primary_contact_email": item.primary_contact_email,
         "primary_contact_phone": item.primary_contact_phone,
@@ -112,7 +123,7 @@ def create_customer_account(
         primary_contact_email=_normalize_email(payload.primary_contact_email),
         primary_contact_phone=_normalize_optional_text(payload.primary_contact_phone),
         billing_email=_normalize_email(payload.billing_email),
-        notes=payload.notes,
+        notes=_normalize_optional_text(payload.notes),
     )
 
     return ApiResponse(
@@ -187,7 +198,7 @@ def update_customer_account(
         primary_contact_email=_normalize_email(payload.primary_contact_email),
         primary_contact_phone=_normalize_optional_text(payload.primary_contact_phone),
         billing_email=_normalize_email(payload.billing_email),
-        notes=payload.notes,
+        notes=_normalize_optional_text(payload.notes),
     )
 
     return ApiResponse(
