@@ -16,14 +16,16 @@ def create_app() -> FastAPI:
 
     configure_logging()
 
+    api_prefix = settings.api_v1_prefix.rstrip("/")
+
     app = FastAPI(
         title=settings.app_name,
         version=settings.app_version,
         debug=settings.debug,
         lifespan=lifespan,
-        openapi_url="/api/v1/openapi.json",
-        docs_url="/api/v1/docs",
-        redoc_url="/api/v1/redoc",
+        openapi_url=f"{api_prefix}/openapi.json",
+        docs_url=f"{api_prefix}/docs",
+        redoc_url=f"{api_prefix}/redoc",
     )
 
     app.add_middleware(RequestContextMiddleware)
@@ -31,14 +33,10 @@ def create_app() -> FastAPI:
 
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=getattr(
-            settings,
-            "cors_allowed_origins",
-            getattr(settings, "cors_allowed_origins_list", ["*"]),
-        ),
-        allow_credentials=getattr(settings, "cors_allow_credentials", True),
-        allow_methods=getattr(settings, "cors_allow_methods", ["*"]),
-        allow_headers=getattr(settings, "cors_allow_headers", ["*"]),
+        allow_origins=settings.cors_allowed_origins,
+        allow_credentials=settings.cors_allow_credentials,
+        allow_methods=settings.cors_allow_methods,
+        allow_headers=settings.cors_allow_headers,
     )
 
     register_exception_handlers(app)
