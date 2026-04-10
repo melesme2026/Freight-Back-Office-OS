@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
 
@@ -22,9 +23,11 @@ class AuthService:
         email: str,
         password: str,
     ) -> StaffUser:
+        normalized_email = email.strip().lower()
+
         user = self.staff_user_repo.get_by_email(
             organization_id=organization_id,
-            email=email.strip().lower(),
+            email=normalized_email,
         )
 
         if user is None:
@@ -36,6 +39,9 @@ class AuthService:
         if not verify_password(password, user.password_hash):
             raise UnauthorizedError("Invalid email or password")
 
+        user.last_login_at = datetime.now(timezone.utc)
+        user = self.staff_user_repo.update(user)
+
         return user
 
     def build_access_token(self, user: StaffUser) -> str:
@@ -44,6 +50,6 @@ class AuthService:
             additional_claims={
                 "organization_id": str(user.organization_id),
                 "email": user.email,
-                "role": str(user.role),
+                "role": getattr(user.role, "value", str(user.role)),
             },
         )
