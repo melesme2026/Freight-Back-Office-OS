@@ -5,16 +5,40 @@ from datetime import date, datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_db_session
-from app.core.exceptions import NotFoundError
+from app.core.exceptions import NotFoundError, ValidationError
 from app.domain.models.broker import Broker
 from app.repositories.broker_repo import BrokerRepository
 from app.schemas.common import ApiResponse
 
 
 router = APIRouter()
+
+
+class BrokerCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    organization_id: uuid.UUID
+    name: str
+    mc_number: str | None = None
+    email: str | None = None
+    phone: str | None = None
+    payment_terms_days: int | None = None
+    notes: str | None = None
+
+
+class BrokerUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str | None = None
+    mc_number: str | None = None
+    email: str | None = None
+    phone: str | None = None
+    payment_terms_days: int | None = None
+    notes: str | None = None
 
 
 def _to_iso_or_none(value: object | None) -> str | None:
@@ -26,6 +50,16 @@ def _to_iso_or_none(value: object | None) -> str | None:
     if callable(isoformat):
         return isoformat()
     return str(value)
+
+
+def _normalize_required_text(value: str, *, field_name: str) -> str:
+    normalized = value.strip()
+    if not normalized:
+        raise ValidationError(
+            f"{field_name.replace('_', ' ').capitalize()} is required.",
+            details={field_name: "This field cannot be blank."},
+        )
+    return normalized
 
 
 def _normalize_optional_text(value: str | None) -> str | None:
@@ -67,26 +101,19 @@ def _get_broker_or_404(repo: BrokerRepository, broker_id: uuid.UUID) -> Broker:
 
 @router.post("/brokers", response_model=ApiResponse)
 def create_broker(
-    *,
-    organization_id: uuid.UUID,
-    name: str,
-    mc_number: str | None = None,
-    email: str | None = None,
-    phone: str | None = None,
-    payment_terms_days: int | None = None,
-    notes: str | None = None,
+    payload: BrokerCreateRequest,
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
     repo = BrokerRepository(db)
 
     item = Broker(
-        organization_id=organization_id,
-        name=name.strip(),
-        mc_number=_normalize_optional_text(mc_number),
-        email=_normalize_email(email),
-        phone=_normalize_optional_text(phone),
-        payment_terms_days=payment_terms_days,
-        notes=notes,
+        organization_id=payload.organization_id,
+        name=_normalize_required_text(payload.name, field_name="name"),
+        mc_number=_normalize_optional_text(payload.mc_number),
+        email=_normalize_email(payload.email),
+        phone=_normalize_optional_text(payload.phone),
+        payment_terms_days=payload.payment_terms_days,
+        notes=_normalize_optional_text(payload.notes),
     )
     created = repo.create(item)
 
@@ -145,30 +172,24 @@ def get_broker(
 @router.patch("/brokers/{broker_id}", response_model=ApiResponse)
 def update_broker(
     broker_id: uuid.UUID,
-    *,
-    name: str | None = None,
-    mc_number: str | None = None,
-    email: str | None = None,
-    phone: str | None = None,
-    payment_terms_days: int | None = None,
-    notes: str | None = None,
+    payload: BrokerUpdateRequest,
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
     repo = BrokerRepository(db)
     item = _get_broker_or_404(repo, broker_id)
 
-    if name is not None:
-        item.name = name.strip()
-    if mc_number is not None:
-        item.mc_number = _normalize_optional_text(mc_number)
-    if email is not None:
-        item.email = _normalize_email(email)
-    if phone is not None:
-        item.phone = _normalize_optional_text(phone)
-    if payment_terms_days is not None:
-        item.payment_terms_days = payment_terms_days
-    if notes is not None:
-        item.notes = notes
+    if payload.name is not None:
+        item.name = _normalize_required_text(payload.name, field_name="name")
+    if payload.mc_number is not None:
+        item.mc_number = _normalize_optional_text(payload.mc_number)
+    if payload.email is not None:
+        item.email = _normalize_email(payload.email)
+    if payload.phone is not None:
+        item.phone = _normalize_optional_text(payload.phone)
+    if payload.payment_terms_days is not None:
+        item.payment_terms_days = payload.payment_terms_days
+    if payload.notes is not None:
+        item.notes = _normalize_optional_text(payload.notes)
 
     updated = repo.update(item)
 
