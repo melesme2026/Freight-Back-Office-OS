@@ -31,11 +31,23 @@ class TokenService:
         except (TypeError, ValueError) as exc:
             raise UnauthorizedError("Invalid token subject") from exc
 
-        user = self.staff_user_repo.get_by_id(user_id)
+        token_organization_id = payload.get("organization_id")
+        if not token_organization_id:
+            raise UnauthorizedError("Token organization_id is missing")
+
+        try:
+            organization_id = uuid.UUID(str(token_organization_id))
+        except (TypeError, ValueError) as exc:
+            raise UnauthorizedError("Invalid token organization_id") from exc
+
+        user = self.staff_user_repo.get_by_id(user_id, include_related=True)
         if user is None:
             raise UnauthorizedError("User not found")
 
         if not user.is_active:
             raise UnauthorizedError("User account is inactive")
+
+        if user.organization_id != organization_id:
+            raise UnauthorizedError("Token organization does not match user organization")
 
         return user
