@@ -6,6 +6,7 @@ from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_db_session
@@ -16,8 +17,42 @@ from app.services.billing.invoice_service import InvoiceService
 router = APIRouter()
 
 
+class BillingInvoiceCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    organization_id: uuid.UUID
+    customer_account_id: uuid.UUID
+    issued_at: str
+    subscription_id: uuid.UUID | None = None
+    due_at: str | None = None
+    billing_period_start: str | None = None
+    billing_period_end: str | None = None
+    currency_code: str = "USD"
+    lines: list[dict[str, Any]] | None = None
+    notes: str | None = None
+
+
+class BillingInvoiceUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    status: str | None = None
+    issued_at: str | None = None
+    due_at: str | None = None
+    paid_at: str | None = None
+    billing_period_start: str | None = None
+    billing_period_end: str | None = None
+    notes: str | None = None
+
+
 def _uuid_to_str(value: uuid.UUID | None) -> str | None:
     return str(value) if value is not None else None
+
+
+def _normalize_optional_text(value: str | None) -> str | None:
+    if value is None:
+        return None
+    normalized = value.strip()
+    return normalized or None
 
 
 def _decimal_to_string(value: object) -> str:
@@ -40,6 +75,17 @@ def _datetime_to_iso(value: object | None) -> str | None:
     isoformat = getattr(value, "isoformat", None)
     if callable(isoformat):
         return isoformat()
+
+    return str(value)
+
+
+def _enum_to_string(value: object | None) -> str | None:
+    if value is None:
+        return None
+
+    enum_value = getattr(value, "value", None)
+    if isinstance(enum_value, str):
+        return enum_value
 
     return str(value)
 
@@ -69,7 +115,7 @@ def _serialize_invoice_base(invoice: Any) -> dict[str, Any]:
             str(invoice.subscription_id) if invoice.subscription_id else None
         ),
         "invoice_number": invoice.invoice_number,
-        "status": str(invoice.status),
+        "status": _enum_to_string(invoice.status),
         "currency_code": invoice.currency_code,
         "subtotal_amount": _decimal_to_string(invoice.subtotal_amount),
         "tax_amount": _decimal_to_string(invoice.tax_amount),
@@ -100,7 +146,7 @@ def _serialize_invoice_detail(invoice: Any) -> dict[str, Any]:
 def _serialize_invoice_update(invoice: Any) -> dict[str, Any]:
     return {
         "id": str(invoice.id),
-        "status": str(invoice.status),
+        "status": _enum_to_string(invoice.status),
         "subtotal_amount": _decimal_to_string(invoice.subtotal_amount),
         "tax_amount": _decimal_to_string(invoice.tax_amount),
         "total_amount": _decimal_to_string(invoice.total_amount),
@@ -115,31 +161,21 @@ def _serialize_invoice_update(invoice: Any) -> dict[str, Any]:
 
 @router.post("/billing-invoices", response_model=ApiResponse)
 def create_billing_invoice(
-    *,
-    organization_id: uuid.UUID,
-    customer_account_id: uuid.UUID,
-    issued_at: str,
-    subscription_id: uuid.UUID | None = None,
-    due_at: str | None = None,
-    billing_period_start: str | None = None,
-    billing_period_end: str | None = None,
-    currency_code: str = "USD",
-    lines: list[dict[str, Any]] | None = None,
-    notes: str | None = None,
+    payload: BillingInvoiceCreateRequest,
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
     service = InvoiceService(db)
     item = service.create_invoice(
-        organization_id=str(organization_id),
-        customer_account_id=str(customer_account_id),
-        issued_at=issued_at,
-        subscription_id=_uuid_to_str(subscription_id),
-        due_at=due_at,
-        billing_period_start=billing_period_start,
-        billing_period_end=billing_period_end,
-        currency_code=currency_code.strip().upper(),
-        lines=lines or [],
-        notes=notes,
+        organization_id=str(payload.organization_id),
+        customer_account_id=str(payload.customer_account_id),
+        issued_at=payload.issued_at,
+        subscription_id=_uuid_to_str(payload.subscription_id),
+        due_at=payload.due_at,
+        billing_period_start=payload.billing_period_start,
+        billing_period_end=payload.billing_period_end,
+        currency_code=payload.currency_code.strip().upper(),
+        lines=payload.lines or [],
+        notes=_normalize_optional_text(payload.notes),
     )
 
     return ApiResponse(
@@ -166,8 +202,8 @@ def list_billing_invoices(
         organization_id=_uuid_to_str(organization_id),
         customer_account_id=_uuid_to_str(customer_account_id),
         subscription_id=_uuid_to_str(subscription_id),
-        status=status.strip() if status else None,
-        due_before=due_before,
+        status=_normalize_optional_text(status),
+        due_before=_normalize_optional_text(due_before),
         page=page,
         page_size=page_size,
     )
@@ -201,26 +237,19 @@ def get_billing_invoice(
 @router.patch("/billing-invoices/{invoice_id}", response_model=ApiResponse)
 def update_billing_invoice(
     invoice_id: uuid.UUID,
-    *,
-    status: str | None = None,
-    issued_at: str | None = None,
-    due_at: str | None = None,
-    paid_at: str | None = None,
-    billing_period_start: str | None = None,
-    billing_period_end: str | None = None,
-    notes: str | None = None,
+    payload: BillingInvoiceUpdateRequest,
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
     service = InvoiceService(db)
     item = service.update_invoice(
         invoice_id=str(invoice_id),
-        status=status.strip() if status else None,
-        issued_at=issued_at,
-        due_at=due_at,
-        paid_at=paid_at,
-        billing_period_start=billing_period_start,
-        billing_period_end=billing_period_end,
-        notes=notes,
+        status=_normalize_optional_text(payload.status),
+        issued_at=_normalize_optional_text(payload.issued_at),
+        due_at=_normalize_optional_text(payload.due_at),
+        paid_at=_normalize_optional_text(payload.paid_at),
+        billing_period_start=_normalize_optional_text(payload.billing_period_start),
+        billing_period_end=_normalize_optional_text(payload.billing_period_end),
+        notes=_normalize_optional_text(payload.notes),
     )
 
     return ApiResponse(
@@ -241,7 +270,7 @@ def mark_billing_invoice_past_due(
     return ApiResponse(
         data={
             "id": str(item.id),
-            "status": str(item.status),
+            "status": _enum_to_string(item.status),
             "amount_due": _decimal_to_string(item.amount_due),
             "updated_at": _datetime_to_iso(item.updated_at),
         },
