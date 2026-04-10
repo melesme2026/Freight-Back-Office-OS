@@ -25,19 +25,29 @@ class CustomerAccountService:
         billing_email: str | None = None,
         notes: str | None = None,
     ) -> CustomerAccount:
+        normalized_organization_id = self._require_text(
+            organization_id,
+            field_name="organization_id",
+        )
         normalized_account_name = self._require_text(account_name, field_name="account_name")
         normalized_account_code = self._clean_text(account_code)
 
         if normalized_account_code:
             existing = self.customer_account_repo.get_by_account_code(normalized_account_code)
-            if existing is not None:
+            if (
+                existing is not None
+                and str(existing.organization_id) == normalized_organization_id
+            ):
                 raise DuplicateRecordError(
                     "Customer account code already exists",
-                    details={"account_code": normalized_account_code},
+                    details={
+                        "organization_id": normalized_organization_id,
+                        "account_code": normalized_account_code,
+                    },
                 )
 
         customer_account = CustomerAccount(
-            organization_id=organization_id,
+            organization_id=normalized_organization_id,
             account_name=normalized_account_name,
             account_code=normalized_account_code,
             status=CustomerAccountStatus.PROSPECT,
@@ -47,7 +57,10 @@ class CustomerAccountService:
             billing_email=self._normalize_email(billing_email),
             notes=self._clean_text(notes),
         )
-        return self.customer_account_repo.create(customer_account)
+        created = self.customer_account_repo.create(customer_account)
+        return (
+            self.customer_account_repo.get_by_id(created.id, include_related=True) or created
+        )
 
     def get_customer_account(self, customer_account_id: str) -> CustomerAccount:
         customer_account = self.customer_account_repo.get_by_id(
@@ -73,7 +86,7 @@ class CustomerAccountService:
         normalized_status = self._normalize_status(status)
 
         return self.customer_account_repo.list(
-            organization_id=organization_id,
+            organization_id=self._clean_text(organization_id),
             status=normalized_status,
             search=self._clean_text(search),
             page=page,
@@ -93,10 +106,17 @@ class CustomerAccountService:
             new_account_code = self._clean_text(updates.get("account_code"))
             if new_account_code and new_account_code != customer_account.account_code:
                 existing = self.customer_account_repo.get_by_account_code(new_account_code)
-                if existing is not None and str(existing.id) != str(customer_account.id):
+                if (
+                    existing is not None
+                    and str(existing.id) != str(customer_account.id)
+                    and str(existing.organization_id) == str(customer_account.organization_id)
+                ):
                     raise DuplicateRecordError(
                         "Customer account code already exists",
-                        details={"account_code": new_account_code},
+                        details={
+                            "organization_id": str(customer_account.organization_id),
+                            "account_code": new_account_code,
+                        },
                     )
             updates["account_code"] = new_account_code
 
@@ -130,7 +150,10 @@ class CustomerAccountService:
 
             setattr(customer_account, field, value)
 
-        return self.customer_account_repo.update(customer_account)
+        updated = self.customer_account_repo.update(customer_account)
+        return (
+            self.customer_account_repo.get_by_id(updated.id, include_related=True) or updated
+        )
 
     @staticmethod
     def _clean_text(value: str | None) -> str | None:
@@ -155,7 +178,9 @@ class CustomerAccountService:
         return cleaned.lower() if cleaned else None
 
     @staticmethod
-    def _normalize_status(value: str | CustomerAccountStatus | None) -> CustomerAccountStatus | None:
+    def _normalize_status(
+        value: str | CustomerAccountStatus | None,
+    ) -> CustomerAccountStatus | None:
         if value is None:
             return None
 
@@ -168,6 +193,8 @@ class CustomerAccountService:
 
         for member in CustomerAccountStatus:
             if member.value == normalized:
+                return member
+            if member.name.lower() == normalized:
                 return member
 
         raise ValidationError(
