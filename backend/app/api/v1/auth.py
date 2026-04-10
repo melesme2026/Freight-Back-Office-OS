@@ -3,6 +3,7 @@ from __future__ import annotations
 import uuid
 
 from fastapi import APIRouter, Depends, Header
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_db_session
@@ -10,7 +11,6 @@ from app.core.exceptions import UnauthorizedError, ValidationError
 from app.core.security import get_bearer_token
 from app.schemas.auth import (
     CurrentUserResponse,
-    LoginRequest,
     LoginResponse,
     LoginResponseData,
     StaffUserAuthView,
@@ -24,11 +24,29 @@ router = APIRouter()
 ACCESS_TOKEN_EXPIRES_IN_SECONDS = 60 * 60
 
 
-def _parse_organization_header(x_organization_id: str | None) -> uuid.UUID:
+class LoginRequestBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    email: str
+    password: str
+    organization_id: uuid.UUID | None = None
+
+
+def _resolve_organization_id(
+    *,
+    payload_organization_id: uuid.UUID | None,
+    x_organization_id: str | None,
+) -> uuid.UUID:
+    if payload_organization_id is not None:
+        return payload_organization_id
+
     if not x_organization_id:
         raise ValidationError(
-            "Missing required X-Organization-Id header",
-            details={"header": "X-Organization-Id"},
+            "Missing organization_id. Provide X-Organization-Id header or organization_id in request body.",
+            details={
+                "header": "X-Organization-Id",
+                "field": "organization_id",
+            },
         )
 
     try:
@@ -53,11 +71,14 @@ def _serialize_staff_user(user) -> StaffUserAuthView:
 
 @router.post("/auth/login", response_model=LoginResponse)
 def login(
-    payload: LoginRequest,
+    payload: LoginRequestBody,
     db: Session = Depends(get_db_session),
     x_organization_id: str | None = Header(default=None, alias="X-Organization-Id"),
 ) -> LoginResponse:
-    organization_id = _parse_organization_header(x_organization_id)
+    organization_id = _resolve_organization_id(
+        payload_organization_id=payload.organization_id,
+        x_organization_id=x_organization_id,
+    )
 
     auth_service = AuthService(db)
     user = auth_service.authenticate_staff_user(
