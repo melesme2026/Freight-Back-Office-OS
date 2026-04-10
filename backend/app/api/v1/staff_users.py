@@ -5,6 +5,7 @@ from datetime import date, datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_db_session
@@ -16,6 +17,26 @@ from app.schemas.common import ApiResponse
 
 
 router = APIRouter()
+
+
+class StaffUserCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    organization_id: uuid.UUID
+    email: str
+    full_name: str
+    password: str
+    role: str = "ops_agent"
+
+
+class StaffUserUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    email: str | None = None
+    full_name: str | None = None
+    password: str | None = None
+    role: str | None = None
+    is_active: bool | None = None
 
 
 def _normalize_required_text(value: str, field_name: str) -> str:
@@ -40,6 +61,17 @@ def _normalize_email(value: str, field_name: str = "email") -> str:
     return normalized
 
 
+def _enum_to_string(value: object | None) -> str | None:
+    if value is None:
+        return None
+
+    enum_value = getattr(value, "value", None)
+    if isinstance(enum_value, str):
+        return enum_value
+
+    return str(value)
+
+
 def _to_iso_or_none(value: object | None) -> str | None:
     if value is None:
         return None
@@ -57,7 +89,7 @@ def _serialize_staff_user(item: Any) -> dict[str, Any]:
         "organization_id": str(item.organization_id),
         "email": item.email,
         "full_name": item.full_name,
-        "role": str(item.role),
+        "role": _enum_to_string(item.role),
         "is_active": item.is_active,
         "last_login_at": _to_iso_or_none(item.last_login_at),
         "created_at": _to_iso_or_none(item.created_at),
@@ -69,7 +101,7 @@ def _get_staff_user_or_404(
     repo: StaffUserRepository,
     staff_user_id: uuid.UUID,
 ) -> StaffUser:
-    item = repo.get_by_id(staff_user_id)
+    item = repo.get_by_id(staff_user_id, include_related=True)
     if item is None:
         raise NotFoundError(
             "Staff user not found",
@@ -80,23 +112,18 @@ def _get_staff_user_or_404(
 
 @router.post("/staff-users", response_model=ApiResponse)
 def create_staff_user(
-    *,
-    organization_id: uuid.UUID,
-    email: str,
-    full_name: str,
-    password: str,
-    role: str = "ops_agent",
+    payload: StaffUserCreateRequest,
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
     repo = StaffUserRepository(db)
 
-    normalized_email = _normalize_email(email)
-    normalized_full_name = _normalize_required_text(full_name, "full_name")
-    normalized_password = _normalize_required_text(password, "password")
-    normalized_role = _normalize_required_text(role, "role")
+    normalized_email = _normalize_email(payload.email)
+    normalized_full_name = _normalize_required_text(payload.full_name, "full_name")
+    normalized_password = _normalize_required_text(payload.password, "password")
+    normalized_role = _normalize_required_text(payload.role, "role")
 
     existing = repo.get_by_email(
-        organization_id=organization_id,
+        organization_id=payload.organization_id,
         email=normalized_email,
     )
     if existing is not None:
@@ -104,12 +131,12 @@ def create_staff_user(
             "Staff user email already exists in organization",
             details={
                 "email": normalized_email,
-                "organization_id": str(organization_id),
+                "organization_id": str(payload.organization_id),
             },
         )
 
     item = StaffUser(
-        organization_id=organization_id,
+        organization_id=payload.organization_id,
         email=normalized_email,
         full_name=normalized_full_name,
         password_hash=hash_password(normalized_password),
@@ -118,6 +145,7 @@ def create_staff_user(
         last_login_at=None,
     )
     created = repo.create(item)
+    created = repo.get_by_id(created.id, include_related=True) or created
 
     return ApiResponse(
         data=_serialize_staff_user(created),
@@ -145,6 +173,7 @@ def list_staff_users(
         search=_normalize_optional_text(search),
         page=page,
         page_size=page_size,
+        include_related=True,
     )
 
     return ApiResponse(
@@ -176,19 +205,14 @@ def get_staff_user(
 @router.patch("/staff-users/{staff_user_id}", response_model=ApiResponse)
 def update_staff_user(
     staff_user_id: uuid.UUID,
-    *,
-    email: str | None = None,
-    full_name: str | None = None,
-    password: str | None = None,
-    role: str | None = None,
-    is_active: bool | None = None,
+    payload: StaffUserUpdateRequest,
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
     repo = StaffUserRepository(db)
     item = _get_staff_user_or_404(repo, staff_user_id)
 
-    if email is not None:
-        normalized_email = _normalize_email(email)
+    if payload.email is not None:
+        normalized_email = _normalize_email(payload.email)
         if normalized_email != item.email:
             existing = repo.get_by_email(
                 organization_id=item.organization_id,
@@ -204,21 +228,22 @@ def update_staff_user(
                 )
             item.email = normalized_email
 
-    if full_name is not None:
-        item.full_name = _normalize_required_text(full_name, "full_name")
+    if payload.full_name is not None:
+        item.full_name = _normalize_required_text(payload.full_name, "full_name")
 
-    if password is not None:
+    if payload.password is not None:
         item.password_hash = hash_password(
-            _normalize_required_text(password, "password")
+            _normalize_required_text(payload.password, "password")
         )
 
-    if role is not None:
-        item.role = _normalize_required_text(role, "role")
+    if payload.role is not None:
+        item.role = _normalize_required_text(payload.role, "role")
 
-    if is_active is not None:
-        item.is_active = is_active
+    if payload.is_active is not None:
+        item.is_active = payload.is_active
 
     updated = repo.update(item)
+    updated = repo.get_by_id(updated.id, include_related=True) or updated
 
     return ApiResponse(
         data=_serialize_staff_user(updated),
