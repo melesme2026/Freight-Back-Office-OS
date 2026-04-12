@@ -1,9 +1,10 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 
-import { useCustomerAccounts } from "@/hooks/useCustomerAccounts";
+import { apiClient } from "@/lib/api-client";
+import { getAccessToken, getOrganizationId } from "@/lib/auth";
 
 function statusBadgeClass(status?: string) {
   switch ((status ?? "").toLowerCase()) {
@@ -33,6 +34,7 @@ type CustomerAccountRecord = {
   primary_contact_email?: string | null;
   primary_contact_phone?: string | null;
   notes?: string | null;
+  created_at?: string | null;
   updated_at?: string | null;
 };
 
@@ -53,42 +55,52 @@ function normalizeRouteParam(value: string | string[] | undefined): string | nul
   return null;
 }
 
-function asCustomerAccountRecord(value: unknown): CustomerAccountRecord | null {
+function asRecord(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return null;
   }
 
-  const record = value as Record<string, unknown>;
-  const id = typeof record.id === "string" ? record.id.trim() : "";
+  return value as Record<string, unknown>;
+}
 
-  if (id.length === 0) {
+function asNullableString(value: unknown): string | null {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+
+  return null;
+}
+
+function asCustomerAccountRecord(value: unknown): CustomerAccountRecord | null {
+  const root = asRecord(value);
+  if (!root) {
+    return null;
+  }
+
+  const record = asRecord(root.data) ?? asRecord(root.customer_account) ?? asRecord(root.item) ?? root;
+  const id = asNullableString(record.id);
+
+  if (!id) {
     return null;
   }
 
   return {
     id,
-    account_name:
-      typeof record.account_name === "string" ? record.account_name.trim() : null,
-    account_code:
-      typeof record.account_code === "string" ? record.account_code.trim() : null,
-    status: typeof record.status === "string" ? record.status.trim() : null,
-    billing_email:
-      typeof record.billing_email === "string" ? record.billing_email.trim() : null,
-    primary_contact_name:
-      typeof record.primary_contact_name === "string"
-        ? record.primary_contact_name.trim()
-        : null,
-    primary_contact_email:
-      typeof record.primary_contact_email === "string"
-        ? record.primary_contact_email.trim()
-        : null,
-    primary_contact_phone:
-      typeof record.primary_contact_phone === "string"
-        ? record.primary_contact_phone.trim()
-        : null,
-    notes: typeof record.notes === "string" ? record.notes.trim() : null,
-    updated_at:
-      typeof record.updated_at === "string" ? record.updated_at.trim() : null,
+    account_name: asNullableString(record.account_name),
+    account_code: asNullableString(record.account_code),
+    status: asNullableString(record.status),
+    billing_email: asNullableString(record.billing_email),
+    primary_contact_name: asNullableString(record.primary_contact_name),
+    primary_contact_email: asNullableString(record.primary_contact_email),
+    primary_contact_phone: asNullableString(record.primary_contact_phone),
+    notes: asNullableString(record.notes),
+    created_at: asNullableString(record.created_at),
+    updated_at: asNullableString(record.updated_at),
   };
 }
 
@@ -110,25 +122,77 @@ export default function CustomerDetailPage() {
   const params = useParams<{ customerId: string | string[] }>();
   const customerId = normalizeRouteParam(params?.customerId);
 
-  const { customerAccounts, isLoading, error, refetch } = useCustomerAccounts();
+  const [customer, setCustomer] = useState<CustomerAccountRecord | null>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const normalizedCustomerAccounts = useMemo<CustomerAccountRecord[]>(() => {
-    if (!Array.isArray(customerAccounts)) {
-      return [];
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadCustomer() {
+      if (!customerId) {
+        if (isMounted) {
+          setError("Invalid customer identifier.");
+          setCustomer(null);
+          setIsLoading(false);
+        }
+        return;
+      }
+
+      const token = getAccessToken();
+      const organizationId = getOrganizationId();
+
+      if (!token || !organizationId) {
+        if (isMounted) {
+          setError("Missing session context. Please sign in again.");
+          setCustomer(null);
+          setIsLoading(false);
+        }
+        return;
+      }
+
+      try {
+        setIsLoading(true);
+        setError(null);
+
+        const payload = await apiClient.get<unknown>(
+          `/customer-accounts/${encodeURIComponent(customerId)}`,
+          {
+            token,
+            organizationId,
+          }
+        );
+
+        const normalized = asCustomerAccountRecord(payload);
+        if (!normalized) {
+          throw new Error("Customer response could not be normalized.");
+        }
+
+        if (isMounted) {
+          setCustomer(normalized);
+        }
+      } catch (caught) {
+        if (isMounted) {
+          const message =
+            caught instanceof Error
+              ? caught.message
+              : "An unexpected error occurred while loading the customer.";
+          setError(message);
+          setCustomer(null);
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      }
     }
 
-    return customerAccounts
-      .map((item) => asCustomerAccountRecord(item))
-      .filter((item): item is CustomerAccountRecord => item !== null);
-  }, [customerAccounts]);
+    void loadCustomer();
 
-  const customer = useMemo(() => {
-    if (!customerId) {
-      return null;
-    }
-
-    return normalizedCustomerAccounts.find((item) => item.id === customerId) ?? null;
-  }, [customerId, normalizedCustomerAccounts]);
+    return () => {
+      isMounted = false;
+    };
+  }, [customerId]);
 
   const readinessItems = useMemo<ReadinessItem[]>(() => {
     if (!customer) {
@@ -186,8 +250,8 @@ export default function CustomerDetailPage() {
 
   if (isLoading) {
     return (
-      <main className="min-h-screen bg-slate-50 text-slate-900">
-        <div className="mx-auto max-w-7xl px-6 py-10">
+      <div className="px-6 py-10 text-slate-900">
+        <div className="mx-auto max-w-7xl">
           <div className="rounded-2xl border border-slate-200 bg-white p-8 shadow-soft">
             <p className="text-sm font-medium text-brand-700">
               Dashboard / Customers / Detail
@@ -200,14 +264,14 @@ export default function CustomerDetailPage() {
             </p>
           </div>
         </div>
-      </main>
+      </div>
     );
   }
 
   if (!customerId) {
     return (
-      <main className="min-h-screen bg-slate-50 text-slate-900">
-        <div className="mx-auto max-w-7xl px-6 py-10">
+      <div className="px-6 py-10 text-slate-900">
+        <div className="mx-auto max-w-7xl">
           <div className="rounded-2xl border border-rose-200 bg-rose-50 p-6 shadow-soft">
             <p className="text-sm font-medium text-brand-700">
               Dashboard / Customers / Detail
@@ -230,14 +294,14 @@ export default function CustomerDetailPage() {
             </div>
           </div>
         </div>
-      </main>
+      </div>
     );
   }
 
   if (error) {
     return (
-      <main className="min-h-screen bg-slate-50 text-slate-900">
-        <div className="mx-auto max-w-7xl px-6 py-10">
+      <div className="px-6 py-10 text-slate-900">
+        <div className="mx-auto max-w-7xl">
           <div className="rounded-2xl border border-rose-200 bg-rose-50 p-6 shadow-soft">
             <p className="text-sm font-medium text-brand-700">
               Dashboard / Customers / Detail
@@ -250,7 +314,7 @@ export default function CustomerDetailPage() {
             <div className="mt-5 flex flex-wrap gap-3">
               <button
                 type="button"
-                onClick={() => void refetch()}
+                onClick={() => router.refresh()}
                 className="rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700"
               >
                 Retry
@@ -266,14 +330,14 @@ export default function CustomerDetailPage() {
             </div>
           </div>
         </div>
-      </main>
+      </div>
     );
   }
 
   if (!customer) {
     return (
-      <main className="min-h-screen bg-slate-50 text-slate-900">
-        <div className="mx-auto max-w-7xl px-6 py-10">
+      <div className="px-6 py-10 text-slate-900">
+        <div className="mx-auto max-w-7xl">
           <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
             <p className="text-sm font-medium text-brand-700">
               Dashboard / Customers / Detail
@@ -299,13 +363,13 @@ export default function CustomerDetailPage() {
             </div>
           </div>
         </div>
-      </main>
+      </div>
     );
   }
 
   return (
-    <main className="min-h-screen bg-slate-50 text-slate-900">
-      <div className="mx-auto max-w-7xl px-6 py-10">
+    <div className="px-6 py-10 text-slate-900">
+      <div className="mx-auto max-w-7xl">
         <div className="mb-8">
           <button
             type="button"
@@ -427,6 +491,15 @@ export default function CustomerDetailPage() {
                   </div>
                   <div className="mt-1 text-sm font-medium text-slate-900">
                     {customer.primary_contact_phone ?? "—"}
+                  </div>
+                </div>
+
+                <div>
+                  <div className="text-xs uppercase tracking-wide text-slate-500">
+                    Created
+                  </div>
+                  <div className="mt-1 text-sm font-medium text-slate-900">
+                    {formatDateTime(customer.created_at)}
                   </div>
                 </div>
 
@@ -561,6 +634,6 @@ export default function CustomerDetailPage() {
           </aside>
         </div>
       </div>
-    </main>
+    </div>
   );
 }
