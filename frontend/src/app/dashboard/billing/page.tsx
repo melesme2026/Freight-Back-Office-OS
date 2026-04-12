@@ -3,6 +3,9 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
+import { apiClient } from "@/lib/api-client";
+import { getAccessToken, getOrganizationId } from "@/lib/auth";
+
 type BillingMetrics = {
   active_subscriptions?: number;
   open_invoices?: number;
@@ -41,18 +44,6 @@ type InvoiceListResponse =
       data?: InvoiceListEnvelope;
       message?: string;
     };
-
-function getApiBaseUrl(): string {
-  const value = process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
-  return value && value.length > 0 ? value.replace(/\/+$/, "") : "http://127.0.0.1:8000";
-}
-
-function readStoredValue(key: string): string {
-  if (typeof window === "undefined") {
-    return "";
-  }
-  return window.localStorage.getItem(key)?.trim() ?? "";
-}
 
 function isWrappedResponse<T extends object>(
   value: unknown
@@ -124,7 +115,6 @@ function formatMoney(value: string | number | null | undefined, currencyCode?: s
 }
 
 export default function BillingPage() {
-  const apiBaseUrl = useMemo(() => getApiBaseUrl(), []);
   const [metrics, setMetrics] = useState<Required<BillingMetrics>>({
     active_subscriptions: 0,
     open_invoices: 0,
@@ -136,131 +126,72 @@ export default function BillingPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  useEffect(() => {
-    let isActive = true;
+  async function loadBillingData(): Promise<void> {
+    const token = getAccessToken();
+    const organizationId = getOrganizationId();
 
-    async function loadBillingData(): Promise<void> {
-      const token = readStoredValue("fbos_access_token");
-      const tokenType = readStoredValue("fbos_token_type") || "Bearer";
-      const organizationId = readStoredValue("fbos_organization_id");
-
-      if (!token || !organizationId) {
-        if (isActive) {
-          setErrorMessage("Missing session context. Please sign in again.");
-          setIsLoading(false);
-        }
-        return;
-      }
-
-      try {
-        setIsLoading(true);
-        setErrorMessage(null);
-
-        const commonHeaders = {
-          Accept: "application/json",
-          Authorization: `${tokenType} ${token}`,
-          "X-Organization-Id": organizationId,
-        };
-
-        const [summaryResponse, invoicesResponse] = await Promise.all([
-          fetch(`${apiBaseUrl}/api/v1/billing/dashboard`, {
-            method: "GET",
-            headers: commonHeaders,
-            cache: "no-store",
-          }),
-          fetch(`${apiBaseUrl}/api/v1/billing-invoices?page=1&page_size=5`, {
-            method: "GET",
-            headers: commonHeaders,
-            cache: "no-store",
-          }),
-        ]);
-
-        let summaryPayload: BillingSummaryResponse | null = null;
-        let invoicesPayload: InvoiceListResponse | null = null;
-
-        try {
-          summaryPayload = (await summaryResponse.json()) as BillingSummaryResponse;
-        } catch {
-          summaryPayload = null;
-        }
-
-        try {
-          invoicesPayload = (await invoicesResponse.json()) as InvoiceListResponse;
-        } catch {
-          invoicesPayload = null;
-        }
-
-        if (!summaryResponse.ok) {
-          const message =
-            summaryPayload &&
-            typeof summaryPayload === "object" &&
-            "message" in summaryPayload &&
-            typeof summaryPayload.message === "string" &&
-            summaryPayload.message.trim()
-              ? summaryPayload.message.trim()
-              : "Unable to load billing summary.";
-          throw new Error(message);
-        }
-
-        if (!invoicesResponse.ok) {
-          const message =
-            invoicesPayload &&
-            typeof invoicesPayload === "object" &&
-            "message" in invoicesPayload &&
-            typeof invoicesPayload.message === "string" &&
-            invoicesPayload.message.trim()
-              ? invoicesPayload.message.trim()
-              : "Unable to load recent invoices.";
-          throw new Error(message);
-        }
-
-        if (isActive) {
-          setMetrics(normalizeBillingMetrics(summaryPayload));
-          setRecentInvoices(normalizeInvoiceList(invoicesPayload));
-        }
-      } catch (error) {
-        if (isActive) {
-          setMetrics({
-            active_subscriptions: 0,
-            open_invoices: 0,
-            past_due_invoices: 0,
-            collected_this_month: 0,
-            currency_code: "USD",
-          });
-          setRecentInvoices([]);
-          setErrorMessage(
-            error instanceof Error && error.message
-              ? error.message
-              : "An unexpected error occurred while loading billing data."
-          );
-        }
-      } finally {
-        if (isActive) {
-          setIsLoading(false);
-        }
-      }
+    if (!token || !organizationId) {
+      setErrorMessage("Missing session context. Please sign in again.");
+      setIsLoading(false);
+      return;
     }
 
+    try {
+      setIsLoading(true);
+      setErrorMessage(null);
+
+      const [summaryResponse, invoicesResponse] = await Promise.all([
+        apiClient.get<BillingSummaryResponse>("/billing/dashboard", {
+          token,
+          organizationId,
+        }),
+        apiClient.get<InvoiceListResponse>("/billing-invoices?page=1&page_size=5", {
+          token,
+          organizationId,
+        }),
+      ]);
+
+      setMetrics(normalizeBillingMetrics(summaryResponse));
+      setRecentInvoices(normalizeInvoiceList(invoicesResponse));
+    } catch (error) {
+      setMetrics({
+        active_subscriptions: 0,
+        open_invoices: 0,
+        past_due_invoices: 0,
+        collected_this_month: 0,
+        currency_code: "USD",
+      });
+      setRecentInvoices([]);
+      setErrorMessage(
+        error instanceof Error && error.message
+          ? error.message
+          : "An unexpected error occurred while loading billing data."
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  useEffect(() => {
     void loadBillingData();
+  }, []);
 
-    return () => {
-      isActive = false;
-    };
-  }, [apiBaseUrl]);
-
-  const billingSummary = [
-    { label: "Active Subscriptions", value: String(metrics.active_subscriptions) },
-    { label: "Open Invoices", value: String(metrics.open_invoices) },
-    { label: "Past Due", value: String(metrics.past_due_invoices) },
-    {
-      label: "Collected This Month",
-      value: formatMoney(metrics.collected_this_month, metrics.currency_code),
-    },
-  ];
+  const billingSummary = useMemo(
+    () => [
+      { label: "Active Subscriptions", value: String(metrics.active_subscriptions) },
+      { label: "Open Invoices", value: String(metrics.open_invoices) },
+      { label: "Past Due", value: String(metrics.past_due_invoices) },
+      {
+        label: "Collected This Month",
+        value: formatMoney(metrics.collected_this_month, metrics.currency_code),
+      },
+    ],
+    [metrics]
+  );
 
   return (
-    <main className="min-h-screen bg-slate-50 text-slate-900">
-      <div className="mx-auto max-w-7xl px-6 py-10">
+    <div className="px-6 py-10 text-slate-900">
+      <div className="mx-auto max-w-7xl">
         <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="text-sm font-medium text-brand-700">Dashboard / Billing</p>
@@ -272,6 +203,14 @@ export default function BillingPage() {
           </div>
 
           <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={() => void loadBillingData()}
+              disabled={isLoading}
+              className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {isLoading ? "Refreshing..." : "Refresh"}
+            </button>
             <Link
               href="/dashboard/billing/plans"
               className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"
@@ -295,7 +234,16 @@ export default function BillingPage() {
 
         {!isLoading && errorMessage ? (
           <div className="mb-8 rounded-2xl border border-red-200 bg-red-50 p-6 shadow-soft">
-            <div className="text-sm text-red-700">{errorMessage}</div>
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div className="text-sm text-red-700">{errorMessage}</div>
+              <button
+                type="button"
+                onClick={() => void loadBillingData()}
+                className="inline-flex items-center rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-red-700"
+              >
+                Retry
+              </button>
+            </div>
           </div>
         ) : null}
 
@@ -402,6 +350,6 @@ export default function BillingPage() {
           </aside>
         </div>
       </div>
-    </main>
+    </div>
   );
 }
