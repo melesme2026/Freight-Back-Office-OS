@@ -27,6 +27,7 @@ class ExtractedField(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         Index("ix_extracted_fields_load_id", "load_id"),
         Index("ix_extracted_fields_field_name", "field_name"),
         Index("ix_extracted_fields_confidence_score", "confidence_score"),
+        Index("ix_extracted_fields_corrected_by_staff_user_id", "corrected_by_staff_user_id"),
     )
 
     organization_id: Mapped[uuid.UUID] = mapped_column(
