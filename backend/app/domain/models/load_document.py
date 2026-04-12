@@ -17,6 +17,7 @@ from app.domain.models.organization import TimestampMixin, UUIDPrimaryKeyMixin
 
 
 if TYPE_CHECKING:
+    from app.domain.models.customer_account import CustomerAccount
     from app.domain.models.driver import Driver
     from app.domain.models.extracted_field import ExtractedField
     from app.domain.models.load import Load
@@ -32,6 +33,7 @@ class LoadDocument(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         Index("ix_load_documents_customer_account_id", "customer_account_id"),
         Index("ix_load_documents_driver_id", "driver_id"),
         Index("ix_load_documents_load_id", "load_id"),
+        Index("ix_load_documents_uploaded_by_staff_user_id", "uploaded_by_staff_user_id"),
         Index("ix_load_documents_document_type", "document_type"),
         Index("ix_load_documents_processing_status", "processing_status"),
         Index("ix_load_documents_received_at", "received_at"),
@@ -126,12 +128,19 @@ class LoadDocument(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         back_populates="load_documents",
         lazy="selectin",
     )
-    driver: Mapped["Driver | None"] = relationship(lazy="selectin")
+    customer_account: Mapped["CustomerAccount"] = relationship(
+        lazy="selectin",
+    )
+    driver: Mapped["Driver | None"] = relationship(
+        lazy="selectin",
+    )
     load: Mapped["Load | None"] = relationship(
         back_populates="documents",
         lazy="selectin",
     )
-    uploaded_by_staff_user: Mapped["StaffUser | None"] = relationship(lazy="selectin")
+    uploaded_by_staff_user: Mapped["StaffUser | None"] = relationship(
+        lazy="selectin",
+    )
 
     extracted_fields: Mapped[list["ExtractedField"]] = relationship(
         back_populates="document",
