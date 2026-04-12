@@ -97,9 +97,13 @@ export default function CustomersPage() {
     router.push(`/dashboard/customers/${customerId}`);
   }
 
+  function openNewCustomer() {
+    router.push("/dashboard/customers/new");
+  }
+
   return (
-    <main className="min-h-screen bg-slate-50 text-slate-900">
-      <div className="mx-auto max-w-7xl px-6 py-10">
+    <div className="px-6 py-10 text-slate-900">
+      <div className="mx-auto max-w-7xl">
         <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
           <div>
             <p className="text-sm font-medium text-brand-700">Dashboard / Customers</p>
@@ -124,10 +128,8 @@ export default function CustomersPage() {
 
             <button
               type="button"
-              disabled
-              aria-disabled="true"
-              title="Customer account creation is not yet available in V1."
-              className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white opacity-60"
+              onClick={openNewCustomer}
+              className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-700"
             >
               New Customer Account
             </button>
@@ -254,6 +256,6 @@ export default function CustomersPage() {
           </div>
         </section>
       </div>
-    </main>
+    </div>
   );
 }
