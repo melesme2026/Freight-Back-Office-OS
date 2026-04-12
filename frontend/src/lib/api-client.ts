@@ -8,7 +8,6 @@ type RequestOptions = Omit<RequestInit, "body"> & {
   responseType?: "json" | "text" | "blob" | "response";
 };
 
-const DEFAULT_ORGANIZATION_ID = "00000000-0000-0000-0000-000000000001";
 const ACCESS_TOKEN_STORAGE_KEY = "fbos_access_token";
 const TOKEN_TYPE_STORAGE_KEY = "fbos_token_type";
 const ORGANIZATION_ID_STORAGE_KEY = "fbos_organization_id";
@@ -68,6 +67,10 @@ function isArrayBuffer(value: unknown): value is ArrayBuffer {
   return typeof ArrayBuffer !== "undefined" && value instanceof ArrayBuffer;
 }
 
+function isUrlSearchParams(value: unknown): value is URLSearchParams {
+  return typeof URLSearchParams !== "undefined" && value instanceof URLSearchParams;
+}
+
 function resolveRequestBody(options: Pick<RequestOptions, "body" | "jsonBody">): {
   body: BodyInit | null | undefined;
   shouldSetJsonContentType: boolean;
@@ -90,6 +93,20 @@ function resolveRequestBody(options: Pick<RequestOptions, "body" | "jsonBody">):
     body: JSON.stringify(options.jsonBody),
     shouldSetJsonContentType: true,
   };
+}
+
+async function parseJsonSafely<T>(response: Response): Promise<T> {
+  const text = await response.text();
+
+  if (!text.trim()) {
+    return undefined as T;
+  }
+
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    return text as T;
+  }
 }
 
 async function parseResponseBody<T>(
@@ -115,7 +132,7 @@ async function parseResponseBody<T>(
   const contentType = response.headers.get("content-type") ?? "";
 
   if (contentType.toLowerCase().includes("application/json")) {
-    return response.json() as Promise<T>;
+    return parseJsonSafely<T>(response);
   }
 
   const text = await response.text();
@@ -123,13 +140,17 @@ async function parseResponseBody<T>(
 }
 
 async function buildErrorMessage(response: Response): Promise<string> {
-  let errorMessage = `API request failed (${response.status})`;
+  const errorMessage = `API request failed (${response.status})`;
 
   try {
     const contentType = response.headers.get("content-type") ?? "";
 
     if (contentType.toLowerCase().includes("application/json")) {
-      const errorBody = (await response.json()) as {
+      const errorBody = (await parseJsonSafely<{
+        error?: { message?: string; details?: unknown };
+        detail?: string | Array<unknown> | Record<string, unknown>;
+        message?: string;
+      }>(response)) as {
         error?: { message?: string; details?: unknown };
         detail?: string | Array<unknown> | Record<string, unknown>;
         message?: string;
@@ -178,13 +199,12 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 
   const resolvedToken = token ?? getStoredAccessToken();
   const resolvedTokenType = getStoredTokenType();
-  const resolvedOrganizationId =
-    organizationId ?? getStoredOrganizationId() ?? DEFAULT_ORGANIZATION_ID;
+  const resolvedOrganizationId = organizationId ?? getStoredOrganizationId();
 
   const normalizedHeaders = normalizeHeaders(headers);
   const resolvedBody = resolveRequestBody({ body, jsonBody });
 
-  const shouldSetAcceptHeader = !normalizedHeaders.Accept;
+  const shouldSetAcceptHeader = !normalizedHeaders.Accept && !normalizedHeaders.accept;
   const shouldSetContentTypeHeader =
     resolvedBody.shouldSetJsonContentType &&
     !normalizedHeaders["Content-Type"] &&
@@ -210,6 +230,27 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   return parseResponseBody<T>(response, responseType);
 }
 
+function resolveMutationBody(body?: unknown):
+  | { body: BodyInit }
+  | { jsonBody: unknown }
+  | {} {
+  if (
+    isFormData(body) ||
+    typeof body === "string" ||
+    isBlob(body) ||
+    isArrayBuffer(body) ||
+    isUrlSearchParams(body)
+  ) {
+    return { body: body as BodyInit };
+  }
+
+  if (body !== undefined) {
+    return { jsonBody: body };
+  }
+
+  return {};
+}
+
 export const apiClient = {
   get: <T>(path: string, options: RequestOptions = {}) =>
     request<T>(path, { ...options, method: "GET" }),
@@ -218,45 +259,21 @@ export const apiClient = {
     request<T>(path, {
       ...options,
       method: "POST",
-      ...(isFormData(body) ||
-      typeof body === "string" ||
-      isBlob(body) ||
-      isArrayBuffer(body) ||
-      body instanceof URLSearchParams
-        ? { body: body as BodyInit }
-        : body !== undefined
-          ? { jsonBody: body }
-          : {}),
+      ...resolveMutationBody(body),
     }),
 
   patch: <T>(path: string, body?: unknown, options: RequestOptions = {}) =>
     request<T>(path, {
       ...options,
       method: "PATCH",
-      ...(isFormData(body) ||
-      typeof body === "string" ||
-      isBlob(body) ||
-      isArrayBuffer(body) ||
-      body instanceof URLSearchParams
-        ? { body: body as BodyInit }
-        : body !== undefined
-          ? { jsonBody: body }
-          : {}),
+      ...resolveMutationBody(body),
     }),
 
   put: <T>(path: string, body?: unknown, options: RequestOptions = {}) =>
     request<T>(path, {
       ...options,
       method: "PUT",
-      ...(isFormData(body) ||
-      typeof body === "string" ||
-      isBlob(body) ||
-      isArrayBuffer(body) ||
-      body instanceof URLSearchParams
-        ? { body: body as BodyInit }
-        : body !== undefined
-          ? { jsonBody: body }
-          : {}),
+      ...resolveMutationBody(body),
     }),
 
   delete: <T>(path: string, options: RequestOptions = {}) =>
