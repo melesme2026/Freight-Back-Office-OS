@@ -35,9 +35,13 @@ export default function DriversPage() {
     router.push(`/dashboard/drivers/${driverId}`);
   };
 
+  const openNewDriver = () => {
+    router.push("/dashboard/drivers/new");
+  };
+
   return (
-    <main className="min-h-screen bg-slate-50 text-slate-900">
-      <div className="mx-auto max-w-7xl px-6 py-10">
+    <div className="px-6 py-10 text-slate-900">
+      <div className="mx-auto max-w-7xl">
         <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="text-sm font-medium text-brand-700">
@@ -63,10 +67,8 @@ export default function DriversPage() {
             </button>
             <button
               type="button"
-              disabled
-              aria-disabled="true"
-              title="Driver creation is not yet wired in V1."
-              className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white opacity-60"
+              onClick={openNewDriver}
+              className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-700"
             >
               Add Driver
             </button>
@@ -194,6 +196,6 @@ export default function DriversPage() {
           </div>
         </section>
       </div>
-    </main>
+    </div>
   );
 }
