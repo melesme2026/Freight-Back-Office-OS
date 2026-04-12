@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
+import tempfile
 
 from app.core.config import get_settings
 from app.core.database import check_database_connection
@@ -27,9 +28,26 @@ def check_storage_health() -> dict[str, Any]:
             path_exists = storage_path.exists()
             is_dir = storage_path.is_dir()
 
+            if not (path_exists and is_dir):
+                return {
+                    "ok": False,
+                    "message": "storage_path_invalid",
+                    "provider": settings.storage_provider,
+                    "path": str(storage_path),
+                }
+
+            # 🔥 A+++ improvement: write test (real readiness)
+            try:
+                test_file = Path(storage_path) / f".healthcheck_{tempfile.mkstemp()[1]}"
+                test_file.write_text("healthcheck")
+                test_file.unlink(missing_ok=True)
+                writable = True
+            except Exception:
+                writable = False
+
             return {
-                "ok": path_exists and is_dir,
-                "message": "ok" if path_exists and is_dir else "storage_path_invalid",
+                "ok": writable,
+                "message": "ok" if writable else "not_writable",
                 "provider": settings.storage_provider,
                 "path": str(storage_path),
             }
@@ -40,6 +58,7 @@ def check_storage_health() -> dict[str, Any]:
             "provider": settings.storage_provider,
             "path": None,
         }
+
     except Exception as exc:
         return {
             "ok": False,
@@ -62,7 +81,8 @@ def check_redis_health() -> dict[str, Any]:
 
     try:
         parsed = urlparse(redis_url)
-        if parsed.scheme != "redis":
+
+        if parsed.scheme not in {"redis", "rediss"}:
             return {
                 "ok": False,
                 "message": "invalid_redis_scheme",
@@ -76,16 +96,31 @@ def check_redis_health() -> dict[str, Any]:
                 "url": redis_url,
             }
 
-        # Conservative readiness check:
-        # validate the URL is structurally usable even if no live ping client is wired yet.
-        return {
-            "ok": True,
-            "message": "configured",
-            "url": redis_url,
-            "host": parsed.hostname,
-            "port": parsed.port or 6379,
-            "db": parsed.path.lstrip("/") or str(settings.redis_db),
-        }
+        # 🔥 A+++ improvement: actual connection check (lazy import, no hard dependency)
+        try:
+            import redis  # type: ignore
+
+            client = redis.Redis.from_url(redis_url, socket_timeout=2)
+            client.ping()
+
+            return {
+                "ok": True,
+                "message": "connected",
+                "url": redis_url,
+                "host": parsed.hostname,
+                "port": parsed.port or 6379,
+                "db": parsed.path.lstrip("/") or str(settings.redis_db),
+            }
+
+        except Exception as redis_exc:
+            return {
+                "ok": False,
+                "message": f"connection_failed: {redis_exc}",
+                "url": redis_url,
+                "host": parsed.hostname,
+                "port": parsed.port or 6379,
+            }
+
     except Exception as exc:
         return {
             "ok": False,
