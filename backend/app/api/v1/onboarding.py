@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_db_session
+from app.core.exceptions import ValidationError
 from app.schemas.common import ApiResponse
 from app.services.onboarding.onboarding_service import OnboardingService
 
@@ -26,8 +27,19 @@ def _to_iso_or_none(value: object | None) -> str | None:
     return str(value)
 
 
-def _normalize_required_text(value: str) -> str:
-    return value.strip()
+def _normalize_required_text(value: str, field_name: str) -> str:
+    normalized = value.strip()
+    if not normalized:
+        raise ValidationError(
+            f"{field_name} is required",
+            details={field_name: "This field cannot be blank"},
+        )
+    return normalized
+
+
+def _normalize_status(value: str) -> str:
+    normalized = _normalize_required_text(value, "status").lower()
+    return normalized
 
 
 def _serialize_onboarding_checklist(item: Any) -> dict[str, Any]:
@@ -56,6 +68,7 @@ def initialize_onboarding(
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
     service = OnboardingService(db)
+
     item = service.create_or_initialize_checklist(
         organization_id=str(organization_id),
         customer_account_id=str(customer_account_id),
@@ -99,10 +112,11 @@ def upsert_onboarding(
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
     service = OnboardingService(db)
+
     item = service.upsert_checklist(
         organization_id=str(organization_id),
         customer_account_id=str(customer_account_id),
-        status=_normalize_required_text(status),
+        status=_normalize_status(status),
         documents_received=documents_received,
         pricing_confirmed=pricing_confirmed,
         payment_method_added=payment_method_added,
