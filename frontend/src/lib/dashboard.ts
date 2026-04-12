@@ -1,4 +1,5 @@
 import { apiClient } from "@/lib/api-client";
+import { getAccessToken, getOrganizationId } from "@/lib/auth";
 
 export type DashboardMetrics = {
   loads_total: number;
@@ -38,7 +39,6 @@ function asNumber(value: unknown): number {
 
 function normalizeDashboardMetrics(payload: unknown): DashboardMetrics | null {
   const root = asRecord(payload);
-
   if (!root) {
     return null;
   }
@@ -57,11 +57,22 @@ function normalizeDashboardMetrics(payload: unknown): DashboardMetrics | null {
 }
 
 export async function getDashboardMetrics(): Promise<DashboardMetrics> {
-  const response = await apiClient.get<unknown>("/dashboard");
+  const token = getAccessToken();
+  const organizationId = getOrganizationId();
+
+  if (!organizationId) {
+    throw new Error("Missing organization context.");
+  }
+
+  const response = await apiClient.get<unknown>("/dashboard", {
+    token: token ?? undefined,
+    organizationId,
+  });
+
   const normalized = normalizeDashboardMetrics(response);
 
   if (!normalized) {
-    throw new Error("Dashboard response did not include usable metrics");
+    throw new Error("Dashboard response did not include usable metrics.");
   }
 
   return normalized;
