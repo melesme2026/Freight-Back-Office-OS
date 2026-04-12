@@ -36,6 +36,10 @@ function normalizeSeverity(severity?: string): string {
   return "unknown";
 }
 
+function severityLabel(severity: string): string {
+  return severity === "unknown" ? "Unknown" : severity;
+}
+
 function normalizeIssueCount(value: unknown): number {
   if (typeof value === "number" && Number.isFinite(value) && value >= 0) {
     return Math.floor(value);
@@ -106,8 +110,8 @@ export default function ReviewQueuePage() {
   }, [normalizedQueue]);
 
   return (
-    <main className="min-h-screen bg-slate-50 text-slate-900">
-      <div className="mx-auto max-w-7xl px-6 py-10">
+    <div className="px-6 py-10 text-slate-900">
+      <div className="mx-auto max-w-7xl">
         <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
           <div>
             <p className="text-sm font-medium text-brand-700">Dashboard / Review Queue</p>
@@ -216,7 +220,7 @@ export default function ReviewQueuePage() {
                             item.severity
                           )}`}
                         >
-                          {item.severity}
+                          {severityLabel(item.severity)}
                         </span>
                       </td>
 
@@ -238,6 +242,6 @@ export default function ReviewQueuePage() {
           </div>
         </section>
       </div>
-    </main>
+    </div>
   );
 }
