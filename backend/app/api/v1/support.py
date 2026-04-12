@@ -5,9 +5,11 @@ from datetime import date, datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_db_session
+from app.core.exceptions import ValidationError
 from app.schemas.common import ApiResponse
 from app.services.support.support_service import SupportService
 from app.services.support.ticket_routing_service import TicketRoutingService
@@ -16,12 +18,45 @@ from app.services.support.ticket_routing_service import TicketRoutingService
 router = APIRouter()
 
 
+class SupportTicketCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    organization_id: uuid.UUID
+    subject: str
+    description: str
+    customer_account_id: uuid.UUID | None = None
+    driver_id: uuid.UUID | None = None
+    load_id: uuid.UUID | None = None
+    priority: str = "normal"
+    assigned_to_staff_user_id: uuid.UUID | None = None
+
+
+class SupportTicketUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    customer_account_id: uuid.UUID | None = None
+    driver_id: uuid.UUID | None = None
+    load_id: uuid.UUID | None = None
+    subject: str | None = None
+    description: str | None = None
+    status: str | None = None
+    priority: str | None = None
+    assigned_to_staff_user_id: uuid.UUID | None = None
+    resolved_at: str | None = None
+
+
 def _uuid_to_str(value: uuid.UUID | None) -> str | None:
     return str(value) if value is not None else None
 
 
-def _normalize_required_text(value: str) -> str:
-    return value.strip()
+def _normalize_required_text(value: str, *, field_name: str) -> str:
+    normalized = value.strip()
+    if not normalized:
+        raise ValidationError(
+            f"{field_name} is required",
+            details={field_name: value},
+        )
+    return normalized
 
 
 def _normalize_optional_text(value: str | None) -> str | None:
@@ -42,6 +77,17 @@ def _to_iso_or_none(value: object | None) -> str | None:
     return str(value)
 
 
+def _enum_to_string(value: object | None) -> str | None:
+    if value is None:
+        return None
+
+    enum_value = getattr(value, "value", None)
+    if isinstance(enum_value, str):
+        return enum_value
+
+    return str(value)
+
+
 def _serialize_support_ticket(item: Any) -> dict[str, Any]:
     return {
         "id": str(item.id),
@@ -56,8 +102,8 @@ def _serialize_support_ticket(item: Any) -> dict[str, Any]:
         else None,
         "subject": item.subject,
         "description": item.description,
-        "status": item.status,
-        "priority": item.priority,
+        "status": _enum_to_string(item.status),
+        "priority": _enum_to_string(item.priority),
         "resolved_at": _to_iso_or_none(item.resolved_at),
         "created_at": _to_iso_or_none(item.created_at),
         "updated_at": _to_iso_or_none(item.updated_at),
@@ -66,44 +112,45 @@ def _serialize_support_ticket(item: Any) -> dict[str, Any]:
 
 @router.post("/support/tickets", response_model=ApiResponse)
 def create_support_ticket(
-    *,
-    organization_id: uuid.UUID,
-    subject: str,
-    description: str,
-    customer_account_id: uuid.UUID | None = None,
-    driver_id: uuid.UUID | None = None,
-    load_id: uuid.UUID | None = None,
-    priority: str = "normal",
-    assigned_to_staff_user_id: uuid.UUID | None = None,
+    payload: SupportTicketCreateRequest,
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
-    normalized_priority = _normalize_required_text(priority)
-    normalized_subject = _normalize_required_text(subject)
-    normalized_description = _normalize_required_text(description)
+    normalized_priority = _normalize_required_text(
+        payload.priority,
+        field_name="priority",
+    )
+    normalized_subject = _normalize_required_text(
+        payload.subject,
+        field_name="subject",
+    )
+    normalized_description = _normalize_required_text(
+        payload.description,
+        field_name="description",
+    )
 
     routing = TicketRoutingService().route(
         priority=normalized_priority,
-        customer_account_id=_uuid_to_str(customer_account_id),
-        load_id=_uuid_to_str(load_id),
+        customer_account_id=_uuid_to_str(payload.customer_account_id),
+        load_id=_uuid_to_str(payload.load_id),
     )
 
     service = SupportService(db)
     item = service.create_ticket(
-        organization_id=str(organization_id),
+        organization_id=str(payload.organization_id),
         subject=normalized_subject,
         description=normalized_description,
-        customer_account_id=_uuid_to_str(customer_account_id),
-        driver_id=_uuid_to_str(driver_id),
-        load_id=_uuid_to_str(load_id),
+        customer_account_id=_uuid_to_str(payload.customer_account_id),
+        driver_id=_uuid_to_str(payload.driver_id),
+        load_id=_uuid_to_str(payload.load_id),
         priority=normalized_priority,
-        assigned_to_staff_user_id=_uuid_to_str(assigned_to_staff_user_id),
+        assigned_to_staff_user_id=_uuid_to_str(payload.assigned_to_staff_user_id),
     )
 
-    payload = _serialize_support_ticket(item)
-    payload["route"] = routing
+    payload_out = _serialize_support_ticket(item)
+    payload_out["route"] = routing
 
     return ApiResponse(
-        data=payload,
+        data=payload_out,
         meta={},
         error=None,
     )
@@ -163,30 +210,21 @@ def get_support_ticket(
 @router.patch("/support/tickets/{ticket_id}", response_model=ApiResponse)
 def update_support_ticket(
     ticket_id: uuid.UUID,
-    *,
-    customer_account_id: uuid.UUID | None = None,
-    driver_id: uuid.UUID | None = None,
-    load_id: uuid.UUID | None = None,
-    subject: str | None = None,
-    description: str | None = None,
-    status: str | None = None,
-    priority: str | None = None,
-    assigned_to_staff_user_id: uuid.UUID | None = None,
-    resolved_at: str | None = None,
+    payload: SupportTicketUpdateRequest,
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
     service = SupportService(db)
     item = service.update_ticket(
         ticket_id=str(ticket_id),
-        customer_account_id=_uuid_to_str(customer_account_id),
-        driver_id=_uuid_to_str(driver_id),
-        load_id=_uuid_to_str(load_id),
-        subject=_normalize_optional_text(subject),
-        description=_normalize_optional_text(description),
-        status=_normalize_optional_text(status),
-        priority=_normalize_optional_text(priority),
-        assigned_to_staff_user_id=_uuid_to_str(assigned_to_staff_user_id),
-        resolved_at=_normalize_optional_text(resolved_at),
+        customer_account_id=_uuid_to_str(payload.customer_account_id),
+        driver_id=_uuid_to_str(payload.driver_id),
+        load_id=_uuid_to_str(payload.load_id),
+        subject=_normalize_optional_text(payload.subject),
+        description=_normalize_optional_text(payload.description),
+        status=_normalize_optional_text(payload.status),
+        priority=_normalize_optional_text(payload.priority),
+        assigned_to_staff_user_id=_uuid_to_str(payload.assigned_to_staff_user_id),
+        resolved_at=_normalize_optional_text(payload.resolved_at),
     )
 
     return ApiResponse(
