@@ -25,6 +25,7 @@ class ServicePlan(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         UniqueConstraint("organization_id", "code", name="uq_service_plans_org_code"),
         Index("ix_service_plans_is_active", "is_active"),
         Index("ix_service_plans_organization_id", "organization_id"),
+        Index("ix_service_plans_billing_cycle", "billing_cycle"),  # added for filtering
     )
 
     organization_id: Mapped[uuid.UUID] = mapped_column(
@@ -32,9 +33,12 @@ class ServicePlan(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         ForeignKey("organizations.id", ondelete="CASCADE"),
         nullable=False,
     )
+
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     code: Mapped[str] = mapped_column(String(50), nullable=False)
+
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     billing_cycle: Mapped[BillingCycle] = mapped_column(
         SqlEnum(
             BillingCycle,
@@ -47,10 +51,33 @@ class ServicePlan(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         default=BillingCycle.MONTHLY,
         server_default=BillingCycle.MONTHLY.value,
     )
-    base_price: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
-    currency_code: Mapped[str] = mapped_column(String(3), nullable=False, default="USD")
-    per_load_price: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
-    per_driver_price: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+
+    base_price: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2),
+        nullable=False,
+        default=Decimal("0.00"),
+        server_default="0",
+    )
+
+    currency_code: Mapped[str] = mapped_column(
+        String(3),
+        nullable=False,
+        default="USD",
+        server_default="USD",
+    )
+
+    per_load_price: Mapped[Decimal | None] = mapped_column(
+        Numeric(12, 2),
+        nullable=True,
+        default=None,
+    )
+
+    per_driver_price: Mapped[Decimal | None] = mapped_column(
+        Numeric(12, 2),
+        nullable=True,
+        default=None,
+    )
+
     is_active: Mapped[bool] = mapped_column(
         Boolean,
         nullable=False,
@@ -62,6 +89,7 @@ class ServicePlan(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         back_populates="service_plans",
         lazy="selectin",
     )
+
     subscriptions: Mapped[list["Subscription"]] = relationship(
         back_populates="service_plan",
         lazy="selectin",
