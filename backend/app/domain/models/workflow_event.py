@@ -26,6 +26,7 @@ class WorkflowEvent(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         Index("ix_workflow_events_organization_id", "organization_id"),
         Index("ix_workflow_events_load_id", "load_id"),
         Index("ix_workflow_events_event_type", "event_type"),
+        Index("ix_workflow_events_actor_staff_user_id", "actor_staff_user_id"),
     )
 
     organization_id: Mapped[uuid.UUID] = mapped_column(
