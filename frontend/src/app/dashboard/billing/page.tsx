@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { apiClient } from "@/lib/api-client";
 import { getAccessToken, getOrganizationId } from "@/lib/auth";
@@ -23,10 +23,10 @@ type BillingSummaryResponse =
 
 type InvoiceListItem = {
   id: string;
-  invoice_number: string;
+  invoice_number?: string | null;
   customer_account_id?: string | null;
   total_amount?: string | number | null;
-  status: string;
+  status?: string | null;
   currency_code?: string | null;
 };
 
@@ -44,6 +44,15 @@ type InvoiceListResponse =
       data?: InvoiceListEnvelope;
       message?: string;
     };
+
+type NormalizedInvoiceListItem = {
+  id: string;
+  invoiceNumber: string;
+  customerAccountId: string;
+  totalAmount: string | number | null;
+  status: string;
+  currencyCode: string;
+};
 
 function isWrappedResponse<T extends object>(
   value: unknown
@@ -69,7 +78,11 @@ function normalizeBillingMetrics(payload: BillingSummaryResponse | null): Requir
   };
 }
 
-function normalizeInvoiceList(payload: InvoiceListResponse | null): InvoiceListItem[] {
+function normalizeInvoiceStatus(status: string | null | undefined): string {
+  return (status ?? "unknown").trim().toLowerCase().replaceAll(" ", "_");
+}
+
+function normalizeInvoiceList(payload: InvoiceListResponse | null): NormalizedInvoiceListItem[] {
   let root: InvoiceListEnvelope | null = null;
 
   if (isWrappedResponse<InvoiceListEnvelope>(payload)) {
@@ -78,7 +91,20 @@ function normalizeInvoiceList(payload: InvoiceListResponse | null): InvoiceListI
     root = payload as InvoiceListEnvelope;
   }
 
-  return Array.isArray(root?.items) ? root.items : [];
+  if (!Array.isArray(root?.items)) {
+    return [];
+  }
+
+  return root.items
+    .filter((item): item is InvoiceListItem & { id: string } => typeof item?.id === "string" && item.id.length > 0)
+    .map((item) => ({
+      id: item.id,
+      invoiceNumber: item.invoice_number?.trim() || "—",
+      customerAccountId: item.customer_account_id?.trim() || "—",
+      totalAmount: item.total_amount ?? 0,
+      status: normalizeInvoiceStatus(item.status),
+      currencyCode: item.currency_code?.trim() || "USD",
+    }));
 }
 
 function invoiceBadge(status: string) {
@@ -96,8 +122,21 @@ function invoiceBadge(status: string) {
   }
 }
 
+function formatStatusLabel(status: string): string {
+  if (!status) {
+    return "Unknown";
+  }
+
+  return status
+    .split("_")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
 function formatMoney(value: string | number | null | undefined, currencyCode?: string | null): string {
   const numeric = Number(value ?? 0);
+
   if (!Number.isFinite(numeric)) {
     return "—";
   }
@@ -122,22 +161,35 @@ export default function BillingPage() {
     collected_this_month: 0,
     currency_code: "USD",
   });
-  const [recentInvoices, setRecentInvoices] = useState<InvoiceListItem[]>([]);
+  const [recentInvoices, setRecentInvoices] = useState<NormalizedInvoiceListItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  async function loadBillingData(): Promise<void> {
+  const isMountedRef = useRef(true);
+
+  const loadBillingData = useCallback(async (mode: "initial" | "refresh" = "initial"): Promise<void> => {
     const token = getAccessToken();
     const organizationId = getOrganizationId();
 
     if (!token || !organizationId) {
+      if (!isMountedRef.current) {
+        return;
+      }
+
       setErrorMessage("Missing session context. Please sign in again.");
       setIsLoading(false);
+      setIsRefreshing(false);
       return;
     }
 
     try {
-      setIsLoading(true);
+      if (mode === "initial") {
+        setIsLoading(true);
+      } else {
+        setIsRefreshing(true);
+      }
+
       setErrorMessage(null);
 
       const [summaryResponse, invoicesResponse] = await Promise.all([
@@ -151,9 +203,17 @@ export default function BillingPage() {
         }),
       ]);
 
+      if (!isMountedRef.current) {
+        return;
+      }
+
       setMetrics(normalizeBillingMetrics(summaryResponse));
       setRecentInvoices(normalizeInvoiceList(invoicesResponse));
     } catch (error) {
+      if (!isMountedRef.current) {
+        return;
+      }
+
       setMetrics({
         active_subscriptions: 0,
         open_invoices: 0,
@@ -168,13 +228,23 @@ export default function BillingPage() {
           : "An unexpected error occurred while loading billing data."
       );
     } finally {
+      if (!isMountedRef.current) {
+        return;
+      }
+
       setIsLoading(false);
+      setIsRefreshing(false);
     }
-  }
+  }, []);
 
   useEffect(() => {
-    void loadBillingData();
-  }, []);
+    isMountedRef.current = true;
+    void loadBillingData("initial");
+
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, [loadBillingData]);
 
   const billingSummary = useMemo(
     () => [
@@ -196,30 +266,29 @@ export default function BillingPage() {
           <div>
             <p className="text-sm font-medium text-brand-700">Dashboard / Billing</p>
             <h1 className="text-3xl font-bold tracking-tight text-slate-950">Billing</h1>
-            <p className="mt-2 text-sm leading-6 text-slate-600">
-              Review subscription performance, invoice status, payment activity, and account
-              revenue signals.
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+              Review subscription performance, invoice status, payment activity, and account revenue signals.
             </p>
           </div>
 
-          <div className="flex gap-3">
+          <div className="flex flex-wrap gap-3">
             <button
               type="button"
-              onClick={() => void loadBillingData()}
-              disabled={isLoading}
-              className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+              onClick={() => void loadBillingData("refresh")}
+              disabled={isLoading || isRefreshing}
+              className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {isLoading ? "Refreshing..." : "Refresh"}
+              {isRefreshing ? "Refreshing..." : "Refresh"}
             </button>
             <Link
               href="/dashboard/billing/plans"
-              className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"
+              className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
             >
               Plans
             </Link>
             <Link
               href="/dashboard/billing/invoices"
-              className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
+              className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-700"
             >
               Invoices
             </Link>
@@ -238,34 +307,35 @@ export default function BillingPage() {
               <div className="text-sm text-red-700">{errorMessage}</div>
               <button
                 type="button"
-                onClick={() => void loadBillingData()}
-                className="inline-flex items-center rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-red-700"
+                onClick={() => void loadBillingData("refresh")}
+                disabled={isRefreshing}
+                className="inline-flex items-center rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                Retry
+                {isRefreshing ? "Retrying..." : "Retry"}
               </button>
             </div>
           </div>
         ) : null}
 
-        <section className="grid gap-4 md:grid-cols-4">
+        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           {billingSummary.map((item) => (
             <div
               key={item.label}
               className="rounded-2xl border border-slate-200 bg-white p-5 shadow-soft"
             >
               <div className="text-sm text-slate-500">{item.label}</div>
-              <div className="mt-2 text-3xl font-bold text-slate-950">{item.value}</div>
+              <div className="mt-2 break-words text-3xl font-bold text-slate-950">{item.value}</div>
             </div>
           ))}
         </section>
 
         <div className="mt-8 grid gap-6 xl:grid-cols-[1.3fr,1fr]">
           <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
-            <div className="mb-4 flex items-center justify-between">
+            <div className="mb-4 flex items-center justify-between gap-3">
               <h2 className="text-lg font-semibold text-slate-950">Recent Invoices</h2>
               <Link
                 href="/dashboard/billing/invoices"
-                className="text-sm font-semibold text-brand-700 hover:text-brand-800"
+                className="text-sm font-semibold text-brand-700 transition hover:text-brand-800"
               >
                 View all →
               </Link>
@@ -281,25 +351,25 @@ export default function BillingPage() {
                   <Link
                     key={invoice.id}
                     href={`/dashboard/billing/invoices/${invoice.id}`}
-                    className="flex items-center justify-between rounded-xl border border-slate-200 px-4 py-3 hover:bg-slate-50"
+                    className="flex flex-col gap-3 rounded-xl border border-slate-200 px-4 py-3 transition hover:bg-slate-50 sm:flex-row sm:items-center sm:justify-between"
                   >
-                    <div>
-                      <div className="text-sm font-semibold text-slate-900">
-                        {invoice.invoice_number || "—"}
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-semibold text-slate-900">
+                        {invoice.invoiceNumber}
                       </div>
-                      <div className="text-xs text-slate-500">
-                        {invoice.customer_account_id || "—"}
+                      <div className="truncate text-xs text-slate-500">
+                        {invoice.customerAccountId}
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-3">
+                    <div className="flex flex-wrap items-center gap-3 sm:justify-end">
                       <span className="text-sm font-medium text-slate-900">
-                        {formatMoney(invoice.total_amount, invoice.currency_code)}
+                        {formatMoney(invoice.totalAmount, invoice.currencyCode)}
                       </span>
                       <span
                         className={`rounded-full px-3 py-1 text-xs font-semibold ${invoiceBadge(invoice.status)}`}
                       >
-                        {(invoice.status || "unknown").replaceAll("_", " ")}
+                        {formatStatusLabel(invoice.status)}
                       </span>
                     </div>
                   </Link>
@@ -314,25 +384,25 @@ export default function BillingPage() {
               <div className="space-y-3">
                 <Link
                   href="/dashboard/billing/plans"
-                  className="block rounded-xl border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-100"
+                  className="block rounded-xl border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
                 >
                   Service Plans
                 </Link>
                 <Link
                   href="/dashboard/billing/subscriptions"
-                  className="block rounded-xl border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-100"
+                  className="block rounded-xl border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
                 >
                   Subscriptions
                 </Link>
                 <Link
                   href="/dashboard/billing/invoices"
-                  className="block rounded-xl border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-100"
+                  className="block rounded-xl border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
                 >
                   Invoices
                 </Link>
                 <Link
                   href="/dashboard/billing/payments"
-                  className="block rounded-xl border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-100"
+                  className="block rounded-xl border border-slate-300 px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
                 >
                   Payments
                 </Link>
@@ -340,11 +410,11 @@ export default function BillingPage() {
             </div>
 
             <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
-              <h2 className="mb-4 text-lg font-semibold text-slate-950">Notes</h2>
+              <h2 className="mb-4 text-lg font-semibold text-slate-950">Release Notes</h2>
               <p className="text-sm leading-6 text-slate-600">
-                V1 billing is focused on subscription structure, invoice generation, payment
-                tracking, and internal financial visibility. Advanced tax, discount, and refund
-                workflows will follow later.
+                Billing V1 is focused on subscription structure, invoice generation, payment tracking,
+                and internal financial visibility. Advanced tax, discount, refund, and reconciliation
+                workflows should only be exposed once backend support is fully implemented.
               </p>
             </div>
           </aside>
