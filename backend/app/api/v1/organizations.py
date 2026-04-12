@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import uuid
+from datetime import date, datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_db_session
@@ -16,6 +18,19 @@ from app.schemas.common import ApiResponse
 router = APIRouter()
 
 
+class OrganizationCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    slug: str
+    legal_name: str | None = None
+    email: str | None = None
+    phone: str | None = None
+    timezone: str | None = None
+    currency_code: str | None = None
+    is_active: bool = True
+
+
 def _normalize_required_text(value: str, field_name: str) -> str:
     normalized = value.strip()
     if not normalized:
@@ -26,9 +41,36 @@ def _normalize_required_text(value: str, field_name: str) -> str:
     return normalized
 
 
+def _normalize_optional_text(value: str | None) -> str | None:
+    if value is None:
+        return None
+    normalized = value.strip()
+    return normalized or None
+
+
 def _normalize_slug(value: str) -> str:
-    normalized = _normalize_required_text(value, "slug").lower()
-    return normalized
+    return _normalize_required_text(value, "slug").lower()
+
+
+def _normalize_email(value: str | None) -> str | None:
+    normalized = _normalize_optional_text(value)
+    return normalized.lower() if normalized else None
+
+
+def _normalize_currency_code(value: str | None) -> str | None:
+    normalized = _normalize_optional_text(value)
+    return normalized.upper() if normalized else None
+
+
+def _to_iso_or_none(value: object | None) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
+    isoformat = getattr(value, "isoformat", None)
+    if callable(isoformat):
+        return isoformat()
+    return str(value)
 
 
 def _serialize_organization(item: Any) -> dict[str, Any]:
@@ -36,12 +78,20 @@ def _serialize_organization(item: Any) -> dict[str, Any]:
         "id": str(item.id),
         "name": item.name,
         "slug": item.slug,
+        "legal_name": item.legal_name,
+        "email": item.email,
+        "phone": item.phone,
+        "timezone": item.timezone,
+        "currency_code": item.currency_code,
         "is_active": item.is_active,
+        "created_at": _to_iso_or_none(item.created_at),
+        "updated_at": _to_iso_or_none(item.updated_at),
     }
 
 
 def _get_organization_or_404(
-    repo: OrganizationRepository, organization_id: uuid.UUID
+    repo: OrganizationRepository,
+    organization_id: uuid.UUID,
 ) -> Organization:
     item = repo.get_by_id(organization_id)
     if item is None:
@@ -54,15 +104,13 @@ def _get_organization_or_404(
 
 @router.post("/organizations", response_model=ApiResponse)
 def create_organization(
-    *,
-    name: str,
-    slug: str,
+    payload: OrganizationCreateRequest,
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
     repo = OrganizationRepository(db)
 
-    normalized_name = _normalize_required_text(name, "name")
-    normalized_slug = _normalize_slug(slug)
+    normalized_name = _normalize_required_text(payload.name, "name")
+    normalized_slug = _normalize_slug(payload.slug)
 
     existing = repo.get_by_slug(normalized_slug)
     if existing is not None:
@@ -74,7 +122,12 @@ def create_organization(
     org = Organization(
         name=normalized_name,
         slug=normalized_slug,
-        is_active=True,
+        legal_name=_normalize_optional_text(payload.legal_name),
+        email=_normalize_email(payload.email),
+        phone=_normalize_optional_text(payload.phone),
+        timezone=_normalize_optional_text(payload.timezone) or "America/Toronto",
+        currency_code=_normalize_currency_code(payload.currency_code) or "USD",
+        is_active=payload.is_active,
     )
     created = repo.create(org)
 
