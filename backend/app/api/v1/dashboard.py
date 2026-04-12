@@ -8,6 +8,9 @@ from sqlalchemy.orm import Session
 from sqlalchemy.sql import Select
 
 from app.core.dependencies import get_db_session
+from app.domain.enums.load_status import LoadStatus
+from app.domain.enums.processing_status import ProcessingStatus
+from app.domain.enums.validation_severity import ValidationSeverity
 from app.domain.models.load import Load
 from app.domain.models.load_document import LoadDocument
 from app.domain.models.validation_issue import ValidationIssue
@@ -22,11 +25,11 @@ def _scalar_count(db: Session, stmt: Select[tuple[int]]) -> int:
 
 
 def _apply_optional_org_filter(
-    stmt: Select,
+    stmt: Select[tuple[int]],
     *,
     organization_id: uuid.UUID | None,
-    model: type,
-) -> Select:
+    model: type[Load] | type[LoadDocument] | type[ValidationIssue],
+) -> Select[tuple[int]]:
     if organization_id is None:
         return stmt
     return stmt.where(model.organization_id == organization_id)
@@ -47,7 +50,7 @@ def get_dashboard(
     loads_needing_review_stmt = _apply_optional_org_filter(
         select(func.count())
         .select_from(Load)
-        .where(Load.status == "needs_review"),
+        .where(Load.status == LoadStatus.NEEDS_REVIEW),
         organization_id=organization_id,
         model=Load,
     )
@@ -55,7 +58,7 @@ def get_dashboard(
     loads_validated_stmt = _apply_optional_org_filter(
         select(func.count())
         .select_from(Load)
-        .where(Load.status == "validated"),
+        .where(Load.status == LoadStatus.VALIDATED),
         organization_id=organization_id,
         model=Load,
     )
@@ -63,7 +66,7 @@ def get_dashboard(
     loads_paid_stmt = _apply_optional_org_filter(
         select(func.count())
         .select_from(Load)
-        .where(Load.status == "paid"),
+        .where(Load.status == LoadStatus.PAID),
         organization_id=organization_id,
         model=Load,
     )
@@ -71,7 +74,7 @@ def get_dashboard(
     documents_pending_processing_stmt = _apply_optional_org_filter(
         select(func.count())
         .select_from(LoadDocument)
-        .where(LoadDocument.processing_status != "completed"),
+        .where(LoadDocument.processing_status != ProcessingStatus.COMPLETED),
         organization_id=organization_id,
         model=LoadDocument,
     )
@@ -80,7 +83,7 @@ def get_dashboard(
         select(func.count())
         .select_from(ValidationIssue)
         .where(ValidationIssue.is_resolved.is_(False))
-        .where(ValidationIssue.severity == "critical"),
+        .where(ValidationIssue.severity == ValidationSeverity.CRITICAL),
         organization_id=organization_id,
         model=ValidationIssue,
     )
@@ -92,10 +95,12 @@ def get_dashboard(
             "loads_validated": _scalar_count(db, loads_validated_stmt),
             "loads_paid": _scalar_count(db, loads_paid_stmt),
             "documents_pending_processing": _scalar_count(
-                db, documents_pending_processing_stmt
+                db,
+                documents_pending_processing_stmt,
             ),
             "critical_validation_issues": _scalar_count(
-                db, critical_validation_issues_stmt
+                db,
+                critical_validation_issues_stmt,
             ),
         },
         meta={},
