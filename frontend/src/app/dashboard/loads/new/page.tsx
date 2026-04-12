@@ -129,8 +129,7 @@ export default function NewLoadPage() {
   const effectiveCustomerAccounts =
     activeCustomerAccounts.length > 0 ? activeCustomerAccounts : typedCustomerAccounts;
 
-  const effectiveDrivers =
-    activeDrivers.length > 0 ? activeDrivers : typedDrivers;
+  const effectiveDrivers = activeDrivers.length > 0 ? activeDrivers : typedDrivers;
 
   const selectedCustomerAccount = useMemo(() => {
     return (
@@ -206,58 +205,27 @@ export default function NewLoadPage() {
       setSubmitError(null);
 
       const token = getAccessToken();
-      const query = new URLSearchParams();
 
-      query.set("organization_id", organizationId.trim());
-      query.set("customer_account_id", customerAccountId.trim());
-      query.set("driver_id", driverId.trim());
-      query.set("source_channel", "manual");
-      query.set("load_number", normalizeText(loadNumber));
+      const payload = {
+        organization_id: organizationId.trim(),
+        customer_account_id: customerAccountId.trim(),
+        driver_id: driverId.trim(),
+        broker_id: normalizeOptionalText(brokerId),
+        source_channel: "manual",
+        load_number: normalizeText(loadNumber),
+        pickup_location: normalizeOptionalText(pickupLocation),
+        delivery_location: normalizeOptionalText(deliveryLocation),
+        gross_amount: parsedAmount,
+        broker_name_raw: normalizeOptionalText(brokerName),
+        broker_email_raw: normalizeOptionalText(brokerEmail),
+        currency_code: normalizeCurrencyCode(currencyCode),
+        notes: normalizeOptionalText(notes),
+      };
 
-      const normalizedBrokerId = normalizeOptionalText(brokerId);
-      if (normalizedBrokerId) {
-        query.set("broker_id", normalizedBrokerId);
-      }
-
-      const normalizedPickupLocation = normalizeOptionalText(pickupLocation);
-      if (normalizedPickupLocation) {
-        query.set("pickup_location", normalizedPickupLocation);
-      }
-
-      const normalizedDeliveryLocation = normalizeOptionalText(deliveryLocation);
-      if (normalizedDeliveryLocation) {
-        query.set("delivery_location", normalizedDeliveryLocation);
-      }
-
-      if (parsedAmount) {
-        query.set("gross_amount", parsedAmount);
-      }
-
-      const normalizedBrokerName = normalizeOptionalText(brokerName);
-      if (normalizedBrokerName) {
-        query.set("broker_name_raw", normalizedBrokerName);
-      }
-
-      const normalizedBrokerEmail = normalizeOptionalText(brokerEmail);
-      if (normalizedBrokerEmail) {
-        query.set("broker_email_raw", normalizedBrokerEmail);
-      }
-
-      query.set("currency_code", normalizeCurrencyCode(currencyCode));
-
-      const normalizedNotes = normalizeOptionalText(notes);
-      if (normalizedNotes) {
-        query.set("notes", normalizedNotes);
-      }
-
-      const response = await apiClient.post<ApiResponse<CreatedLoad>>(
-        `/loads?${query.toString()}`,
-        undefined,
-        {
-          token: token ?? undefined,
-          organizationId: organizationId.trim(),
-        }
-      );
+      const response = await apiClient.post<ApiResponse<CreatedLoad>>("/loads", payload, {
+        token: token ?? undefined,
+        organizationId: organizationId.trim(),
+      });
 
       const createdLoadId = response.data?.id;
 
@@ -274,11 +242,9 @@ export default function NewLoadPage() {
           : "Failed to create load. Please verify the selected records and try again.";
 
       setSubmitError(message);
+    } finally {
       setIsSubmitting(false);
-      return;
     }
-
-    setIsSubmitting(false);
   }
 
   return (
