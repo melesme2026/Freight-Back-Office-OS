@@ -3,6 +3,9 @@
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
+import { apiClient } from "@/lib/api-client";
+import { getAccessToken, getOrganizationId } from "@/lib/auth";
+
 type DriverDetailView = {
   id: string;
   name: string;
@@ -95,6 +98,7 @@ function normalizeDriverDetail(
   const fallbackName = combinedName.length > 0 ? combinedName : null;
 
   const resolvedName =
+    asNullableString(container.full_name) ??
     asNullableString(container.name) ??
     fallbackName ??
     "Unknown driver";
@@ -112,11 +116,12 @@ function normalizeDriverDetail(
     status:
       asNullableString(container.status) ??
       asNullableString(container.driver_status) ??
-      "unknown",
+      (container.is_active === true ? "active" : container.is_active === false ? "inactive" : "unknown"),
     customerName:
       asNullableString(container.customer_name) ??
       asNullableString(container.customer) ??
-      asNullableString(container.account_name),
+      asNullableString(container.account_name) ??
+      asNullableString(container.customer_account_name),
     notes:
       asNullableString(container.notes) ??
       asNullableString(container.operational_notes),
@@ -157,45 +162,30 @@ export default function DriverDetailPage() {
         return;
       }
 
+      const token = getAccessToken();
+      const organizationId = getOrganizationId();
+
+      if (!token || !organizationId) {
+        if (isMounted) {
+          setError("Missing session context. Please sign in again.");
+          setDriver(null);
+          setIsLoading(false);
+        }
+        return;
+      }
+
       setIsLoading(true);
       setError(null);
 
       try {
-        const response = await fetch(
-          `/api/v1/drivers/${encodeURIComponent(driverId)}`,
+        const payload = await apiClient.get<unknown>(
+          `/drivers/${encodeURIComponent(driverId)}`,
           {
-            method: "GET",
-            credentials: "include",
-            headers: {
-              Accept: "application/json",
-            },
-            cache: "no-store",
+            token,
+            organizationId,
           }
         );
 
-        if (!response.ok) {
-          let message = `Failed to load driver (${response.status})`;
-
-          try {
-            const errorPayload = (await response.json()) as unknown;
-            const errorRecord = asRecord(errorPayload);
-            const errorNode = asRecord(errorRecord?.error);
-            const detail =
-              asNullableString(errorRecord?.detail) ??
-              asNullableString(errorRecord?.message) ??
-              asNullableString(errorNode?.message);
-
-            if (detail) {
-              message = detail;
-            }
-          } catch {
-            // Keep default message when payload is not JSON.
-          }
-
-          throw new Error(message);
-        }
-
-        const payload = (await response.json()) as unknown;
         const normalized = normalizeDriverDetail(payload, driverId);
 
         if (!normalized) {
@@ -277,8 +267,8 @@ export default function DriverDetailPage() {
 
   if (isLoading) {
     return (
-      <main className="min-h-screen bg-slate-50 text-slate-900">
-        <div className="mx-auto max-w-7xl px-6 py-10">
+      <div className="px-6 py-10 text-slate-900">
+        <div className="mx-auto max-w-7xl">
           <div className="rounded-2xl border border-slate-200 bg-white p-8 shadow-soft">
             <p className="text-sm font-medium text-brand-700">
               Dashboard / Drivers / Detail
@@ -291,14 +281,14 @@ export default function DriverDetailPage() {
             </p>
           </div>
         </div>
-      </main>
+      </div>
     );
   }
 
   if (error) {
     return (
-      <main className="min-h-screen bg-slate-50 text-slate-900">
-        <div className="mx-auto max-w-7xl px-6 py-10">
+      <div className="px-6 py-10 text-slate-900">
+        <div className="mx-auto max-w-7xl">
           <div className="rounded-2xl border border-rose-200 bg-rose-50 p-6 shadow-soft">
             <p className="text-sm font-medium text-brand-700">
               Dashboard / Drivers / Detail
@@ -326,14 +316,14 @@ export default function DriverDetailPage() {
             </div>
           </div>
         </div>
-      </main>
+      </div>
     );
   }
 
   if (!driver) {
     return (
-      <main className="min-h-screen bg-slate-50 text-slate-900">
-        <div className="mx-auto max-w-7xl px-6 py-10">
+      <div className="px-6 py-10 text-slate-900">
+        <div className="mx-auto max-w-7xl">
           <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
             <p className="text-sm font-medium text-brand-700">
               Dashboard / Drivers / Detail
@@ -366,13 +356,13 @@ export default function DriverDetailPage() {
             </div>
           </div>
         </div>
-      </main>
+      </div>
     );
   }
 
   return (
-    <main className="min-h-screen bg-slate-50 text-slate-900">
-      <div className="mx-auto max-w-7xl px-6 py-10">
+    <div className="px-6 py-10 text-slate-900">
+      <div className="mx-auto max-w-7xl">
         <div className="mb-8">
           <button
             type="button"
@@ -409,12 +399,10 @@ export default function DriverDetailPage() {
             </button>
             <button
               type="button"
-              disabled
-              aria-disabled="true"
-              title="Driver-specific load creation is not yet wired in V1."
-              className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white opacity-60"
+              onClick={openLoads}
+              className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-700"
             >
-              New Load
+              View Loads
             </button>
           </div>
         </div>
@@ -518,6 +506,6 @@ export default function DriverDetailPage() {
           </aside>
         </div>
       </div>
-    </main>
+    </div>
   );
 }
