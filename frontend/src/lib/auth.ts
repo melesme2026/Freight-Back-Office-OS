@@ -16,6 +16,15 @@ function normalizeStoredValue(value: string | null): string | null {
   return normalized.length > 0 ? normalized : null;
 }
 
+function normalizeTokenType(value: string | null | undefined): string {
+  const normalized = value?.trim();
+  if (!normalized) {
+    return "Bearer";
+  }
+
+  return normalized.toLowerCase() === "bearer" ? "Bearer" : normalized;
+}
+
 function getStorageItem(key: string): string | null {
   if (!isBrowser()) {
     return null;
@@ -52,7 +61,7 @@ export function getAccessToken(): string | null {
 }
 
 export function getTokenType(): string {
-  return getStorageItem(TOKEN_TYPE_KEY) ?? "Bearer";
+  return normalizeTokenType(getStorageItem(TOKEN_TYPE_KEY));
 }
 
 export function getOrganizationId(): string | null {
@@ -82,7 +91,7 @@ export function setAccessToken(token: string): void {
 }
 
 export function setTokenType(tokenType: string): void {
-  setStorageItem(TOKEN_TYPE_KEY, tokenType);
+  setStorageItem(TOKEN_TYPE_KEY, normalizeTokenType(tokenType));
 }
 
 export function setOrganizationId(organizationId: string): void {
@@ -111,7 +120,7 @@ export function setAuthSession(params: {
     if (params.tokenType === null) {
       removeStorageItem(TOKEN_TYPE_KEY);
     } else {
-      setStorageItem(TOKEN_TYPE_KEY, params.tokenType);
+      setStorageItem(TOKEN_TYPE_KEY, normalizeTokenType(params.tokenType));
     }
   }
 
@@ -148,5 +157,5 @@ export function clearAccessToken(): void {
 }
 
 export function isAuthenticated(): boolean {
-  return Boolean(getAccessToken());
+  return Boolean(getAccessToken() && getOrganizationId());
 }
