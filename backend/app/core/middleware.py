@@ -44,7 +44,7 @@ class ProcessTimeMiddleware(BaseHTTPMiddleware):
         call_next: Callable[[Request], Response],
     ) -> Response:
         started_at = getattr(request.state, "started_at", None)
-        if started_at is None:
+        if not isinstance(started_at, (int, float)):
             started_at = time.perf_counter()
             request.state.started_at = started_at
 
