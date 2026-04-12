@@ -5,6 +5,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 
+from app.core.config import Settings, get_settings
 from app.core.dependencies import get_db_session
 from app.core.exceptions import ValidationError
 from app.schemas.common import ApiResponse
@@ -23,11 +24,28 @@ def _extract_request_metadata(request: Request) -> dict[str, Any]:
     }
 
 
+def _ensure_payment_webhooks_enabled(settings: Settings) -> None:
+    if not settings.billing_enabled:
+        raise ValidationError(
+            "Billing integration is not enabled",
+            details={"payment_provider": settings.payment_provider},
+        )
+
+    if settings.payment_provider == "none":
+        raise ValidationError(
+            "Payment provider is not configured",
+            details={"payment_provider": settings.payment_provider},
+        )
+
+
 @router.post("/webhooks/payment", response_model=ApiResponse)
 async def payment_webhook(
     request: Request,
     db: Session = Depends(get_db_session),
+    settings: Settings = Depends(get_settings),
 ) -> ApiResponse:
+    _ensure_payment_webhooks_enabled(settings)
+
     try:
         payload = await request.json()
     except Exception as exc:
