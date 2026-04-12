@@ -1,9 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
-import { getAccessToken } from "@/lib/auth";
 import { apiClient } from "@/lib/api-client";
+import { getAccessToken, getOrganizationId } from "@/lib/auth";
 
 export type Driver = {
   id: string;
@@ -132,7 +132,8 @@ function normalizeDriversResponse(payload: unknown): Driver[] {
 
   return candidates
     .map((item) => normalizeDriver(item))
-    .filter((item): item is Driver => item !== null);
+    .filter((item): item is Driver => item !== null)
+    .sort((a, b) => a.full_name.localeCompare(b.full_name));
 }
 
 export function useDrivers() {
@@ -140,30 +141,66 @@ export function useDrivers() {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
+  const abortRef = useRef<AbortController | null>(null);
+  const isMountedRef = useRef<boolean>(true);
+
   const fetchDrivers = useCallback(async (): Promise<void> => {
+    const token = getAccessToken();
+    const organizationId = getOrganizationId();
+
+    if (!organizationId) {
+      setError("Missing organization context.");
+      setData([]);
+      setIsLoading(false);
+      return;
+    }
+
     try {
+      abortRef.current?.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
+
       setIsLoading(true);
       setError(null);
 
-      const token = getAccessToken();
-
-      const response = await apiClient.get<unknown>("/drivers", {
+      const response = await apiClient.get<unknown>("/drivers?page=1&page_size=1000", {
         token: token ?? undefined,
+        organizationId,
+        signal: controller.signal,
       });
+
+      if (!isMountedRef.current) {
+        return;
+      }
 
       setData(normalizeDriversResponse(response));
     } catch (err: unknown) {
+      if ((err as { name?: string })?.name === "AbortError") {
+        return;
+      }
+
       const message =
         err instanceof Error ? err.message : "Failed to fetch drivers";
-      setError(message);
-      setData([]);
+
+      if (isMountedRef.current) {
+        setError(message);
+        setData([]);
+      }
     } finally {
-      setIsLoading(false);
+      if (isMountedRef.current) {
+        setIsLoading(false);
+      }
     }
   }, []);
 
   useEffect(() => {
+    isMountedRef.current = true;
     void fetchDrivers();
+
+    return () => {
+      isMountedRef.current = false;
+      abortRef.current?.abort();
+    };
   }, [fetchDrivers]);
 
   return {
