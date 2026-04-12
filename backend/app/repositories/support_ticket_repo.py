@@ -22,18 +22,19 @@ class SupportTicketRepository:
         self.db.refresh(support_ticket)
         return support_ticket
 
-    def get_by_id(self, ticket_id: uuid.UUID) -> SupportTicket | None:
-        stmt = select(SupportTicket).where(SupportTicket.id == ticket_id)
+    def get_by_id(self, ticket_id: uuid.UUID | str) -> SupportTicket | None:
+        normalized_ticket_id = self._normalize_uuid(ticket_id, field_name="ticket_id")
+        stmt = select(SupportTicket).where(SupportTicket.id == normalized_ticket_id)
         return self.db.scalar(stmt)
 
     def list(
         self,
         *,
-        organization_id: uuid.UUID | None = None,
-        customer_account_id: uuid.UUID | None = None,
-        driver_id: uuid.UUID | None = None,
-        load_id: uuid.UUID | None = None,
-        assigned_to_staff_user_id: uuid.UUID | None = None,
+        organization_id: uuid.UUID | str | None = None,
+        customer_account_id: uuid.UUID | str | None = None,
+        driver_id: uuid.UUID | str | None = None,
+        load_id: uuid.UUID | str | None = None,
+        assigned_to_staff_user_id: uuid.UUID | str | None = None,
         status: str | None = None,
         priority: str | None = None,
         search: str | None = None,
@@ -43,45 +44,77 @@ class SupportTicketRepository:
         normalized_page = max(page, 1)
         normalized_page_size = min(max(page_size, 1), self.MAX_PAGE_SIZE)
 
+        normalized_organization_id = (
+            self._normalize_uuid(organization_id, field_name="organization_id")
+            if organization_id is not None
+            else None
+        )
+        normalized_customer_account_id = (
+            self._normalize_uuid(customer_account_id, field_name="customer_account_id")
+            if customer_account_id is not None
+            else None
+        )
+        normalized_driver_id = (
+            self._normalize_uuid(driver_id, field_name="driver_id")
+            if driver_id is not None
+            else None
+        )
+        normalized_load_id = (
+            self._normalize_uuid(load_id, field_name="load_id")
+            if load_id is not None
+            else None
+        )
+        normalized_assigned_to_staff_user_id = (
+            self._normalize_uuid(
+                assigned_to_staff_user_id,
+                field_name="assigned_to_staff_user_id",
+            )
+            if assigned_to_staff_user_id is not None
+            else None
+        )
+        normalized_status = self._normalize_optional_text(status)
+        normalized_priority = self._normalize_optional_text(priority)
+        normalized_search = self._normalize_optional_text(search)
+
         stmt = select(SupportTicket)
         count_stmt: Select[tuple[int]] = select(func.count()).select_from(SupportTicket)
 
-        if organization_id is not None:
-            stmt = stmt.where(SupportTicket.organization_id == organization_id)
-            count_stmt = count_stmt.where(SupportTicket.organization_id == organization_id)
+        if normalized_organization_id is not None:
+            stmt = stmt.where(SupportTicket.organization_id == normalized_organization_id)
+            count_stmt = count_stmt.where(SupportTicket.organization_id == normalized_organization_id)
 
-        if customer_account_id is not None:
-            stmt = stmt.where(SupportTicket.customer_account_id == customer_account_id)
+        if normalized_customer_account_id is not None:
+            stmt = stmt.where(SupportTicket.customer_account_id == normalized_customer_account_id)
             count_stmt = count_stmt.where(
-                SupportTicket.customer_account_id == customer_account_id
+                SupportTicket.customer_account_id == normalized_customer_account_id
             )
 
-        if driver_id is not None:
-            stmt = stmt.where(SupportTicket.driver_id == driver_id)
-            count_stmt = count_stmt.where(SupportTicket.driver_id == driver_id)
+        if normalized_driver_id is not None:
+            stmt = stmt.where(SupportTicket.driver_id == normalized_driver_id)
+            count_stmt = count_stmt.where(SupportTicket.driver_id == normalized_driver_id)
 
-        if load_id is not None:
-            stmt = stmt.where(SupportTicket.load_id == load_id)
-            count_stmt = count_stmt.where(SupportTicket.load_id == load_id)
+        if normalized_load_id is not None:
+            stmt = stmt.where(SupportTicket.load_id == normalized_load_id)
+            count_stmt = count_stmt.where(SupportTicket.load_id == normalized_load_id)
 
-        if assigned_to_staff_user_id is not None:
+        if normalized_assigned_to_staff_user_id is not None:
             stmt = stmt.where(
-                SupportTicket.assigned_to_staff_user_id == assigned_to_staff_user_id
+                SupportTicket.assigned_to_staff_user_id == normalized_assigned_to_staff_user_id
             )
             count_stmt = count_stmt.where(
-                SupportTicket.assigned_to_staff_user_id == assigned_to_staff_user_id
+                SupportTicket.assigned_to_staff_user_id == normalized_assigned_to_staff_user_id
             )
 
-        if status:
-            stmt = stmt.where(SupportTicket.status == status)
-            count_stmt = count_stmt.where(SupportTicket.status == status)
+        if normalized_status:
+            stmt = stmt.where(SupportTicket.status == normalized_status)
+            count_stmt = count_stmt.where(SupportTicket.status == normalized_status)
 
-        if priority:
-            stmt = stmt.where(SupportTicket.priority == priority)
-            count_stmt = count_stmt.where(SupportTicket.priority == priority)
+        if normalized_priority:
+            stmt = stmt.where(SupportTicket.priority == normalized_priority)
+            count_stmt = count_stmt.where(SupportTicket.priority == normalized_priority)
 
-        if search:
-            pattern = f"%{search.strip()}%"
+        if normalized_search:
+            pattern = f"%{normalized_search}%"
             search_filter = or_(
                 SupportTicket.subject.ilike(pattern),
                 SupportTicket.description.ilike(pattern),
@@ -89,7 +122,7 @@ class SupportTicketRepository:
             stmt = stmt.where(search_filter)
             count_stmt = count_stmt.where(search_filter)
 
-        total = self.db.scalar(count_stmt) or 0
+        total = int(self.db.scalar(count_stmt) or 0)
 
         offset = (normalized_page - 1) * normalized_page_size
         stmt = (
@@ -110,3 +143,20 @@ class SupportTicketRepository:
     def delete(self, support_ticket: SupportTicket) -> None:
         self.db.delete(support_ticket)
         self.db.flush()
+
+    def _normalize_uuid(self, value: uuid.UUID | str, *, field_name: str) -> uuid.UUID:
+        if isinstance(value, uuid.UUID):
+            return value
+
+        try:
+            return uuid.UUID(str(value))
+        except ValueError as exc:
+            raise ValueError(f"Invalid {field_name}: {value}") from exc
+
+    @staticmethod
+    def _normalize_optional_text(value: str | None) -> str | None:
+        if value is None:
+            return None
+
+        normalized = str(value).strip()
+        return normalized or None
