@@ -4,6 +4,21 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 
+import { apiClient } from "@/lib/api-client";
+import { getAccessToken, getOrganizationId } from "@/lib/auth";
+
+type ApiError = {
+  code?: string;
+  message?: string;
+  details?: Record<string, unknown>;
+};
+
+type ApiResponse<T> = {
+  data: T;
+  meta?: Record<string, unknown>;
+  error?: ApiError | null;
+};
+
 type ExtractedField = {
   field: string;
   value: string;
@@ -108,6 +123,8 @@ function statusBadgeClass(status?: string): string {
     case "processing":
     case "queued":
     case "in_progress":
+    case "in-progress":
+    case "pending":
       return "bg-amber-100 text-amber-800";
     case "failed":
     case "rejected":
@@ -132,12 +149,14 @@ function normalizeExtractedFields(
         const field =
           asNullableString(record.field) ??
           asNullableString(record.name) ??
-          asNullableString(record.key);
+          asNullableString(record.key) ??
+          asNullableString(record.field_name);
 
         const fieldValue =
           asNullableString(record.value) ??
           asNullableString(record.extracted_value) ??
-          asNullableString(record.normalized_value);
+          asNullableString(record.normalized_value) ??
+          asNullableString(record.field_value_text);
 
         if (!field || !fieldValue) {
           return null;
@@ -146,7 +165,9 @@ function normalizeExtractedFields(
         return {
           field,
           value: fieldValue,
-          confidence: asNullableString(record.confidence),
+          confidence:
+            asNullableString(record.confidence) ??
+            asNullableString(record.confidence_score),
         };
       })
       .filter((item): item is ExtractedField => item !== null);
@@ -187,14 +208,21 @@ function normalizeDocumentDetail(
     asRecord(root.item) ??
     root;
 
-  const extractedFieldsRecord = asRecord(container.extracted_fields);
+  const extractedFieldsRecord =
+    asRecord(container.extracted_fields) ??
+    asRecord(container.extractedFields);
+
   const previewText =
     asNullableString(container.preview_text) ??
     asNullableString(container.ocr_text) ??
     asNullableString(container.text_content) ??
+    asNullableString(container.previewText) ??
     "";
 
-  const validationIssues = asStringArray(container.validation_issues);
+  const validationIssues =
+    asStringArray(container.validation_issues) ??
+    asStringArray(container.validationIssues);
+
   const fallbackIssues = asStringArray(container.issues);
 
   return {
@@ -225,7 +253,8 @@ function normalizeDocumentDetail(
       asNullableString(container.load_number),
     uploadedBy:
       asNullableString(container.uploaded_by) ??
-      asNullableString(container.created_by),
+      asNullableString(container.created_by) ??
+      asNullableString(container.uploaded_by_staff_user_id),
     uploadedAt:
       asNullableString(container.uploaded_at) ??
       asNullableString(container.created_at),
@@ -233,7 +262,7 @@ function normalizeDocumentDetail(
       asNullableString(container.classification_confidence) ??
       asNullableString(container.confidence),
     extractedFields: normalizeExtractedFields(
-      container.extracted_fields,
+      container.extracted_fields ?? container.extractedFields,
       extractedFieldsRecord
     ),
     validationIssues:
@@ -270,45 +299,30 @@ export default function DocumentDetailPage() {
         return;
       }
 
+      const token = getAccessToken();
+      const organizationId = getOrganizationId();
+
+      if (!token || !organizationId) {
+        if (isMounted) {
+          setDocument(null);
+          setError("Missing session context. Please sign in again.");
+          setIsLoading(false);
+        }
+        return;
+      }
+
       setIsLoading(true);
       setError(null);
 
       try {
-        const response = await fetch(
-          `/api/v1/documents/${encodeURIComponent(documentId)}`,
+        const payload = await apiClient.get<ApiResponse<unknown>>(
+          `/documents/${encodeURIComponent(documentId)}`,
           {
-            method: "GET",
-            credentials: "include",
-            headers: {
-              Accept: "application/json",
-            },
-            cache: "no-store",
+            token,
+            organizationId,
           }
         );
 
-        if (!response.ok) {
-          let message = `Failed to load document (${response.status})`;
-
-          try {
-            const errorPayload = (await response.json()) as unknown;
-            const errorRecord = asRecord(errorPayload);
-            const errorNode = asRecord(errorRecord?.error);
-            const detail =
-              asNullableString(errorRecord?.detail) ??
-              asNullableString(errorRecord?.message) ??
-              asNullableString(errorNode?.message);
-
-            if (detail) {
-              message = detail;
-            }
-          } catch {
-            // Keep default message when error payload is not JSON.
-          }
-
-          throw new Error(message);
-        }
-
-        const payload = (await response.json()) as unknown;
         const normalized = normalizeDocumentDetail(payload, documentId);
 
         if (!normalized) {
@@ -352,8 +366,8 @@ export default function DocumentDetailPage() {
 
   if (isLoading) {
     return (
-      <main className="min-h-screen bg-slate-50 text-slate-900">
-        <div className="mx-auto max-w-7xl px-6 py-10">
+      <div className="px-6 py-10 text-slate-900">
+        <div className="mx-auto max-w-7xl">
           <div className="rounded-2xl border border-slate-200 bg-white p-8 shadow-soft">
             <p className="text-sm font-medium text-brand-700">
               Dashboard / Documents / Detail
@@ -362,19 +376,18 @@ export default function DocumentDetailPage() {
               Loading document...
             </h1>
             <p className="mt-3 text-sm text-slate-600">
-              Fetching document metadata, extracted fields, and validation
-              results.
+              Fetching document metadata, extracted fields, and validation results.
             </p>
           </div>
         </div>
-      </main>
+      </div>
     );
   }
 
   if (error) {
     return (
-      <main className="min-h-screen bg-slate-50 text-slate-900">
-        <div className="mx-auto max-w-7xl px-6 py-10">
+      <div className="px-6 py-10 text-slate-900">
+        <div className="mx-auto max-w-7xl">
           <div className="rounded-2xl border border-rose-200 bg-rose-50 p-6 shadow-soft">
             <p className="text-sm font-medium text-brand-700">
               Dashboard / Documents / Detail
@@ -394,22 +407,22 @@ export default function DocumentDetailPage() {
               </button>
 
               <Link
-                href="/dashboard"
+                href="/dashboard/documents"
                 className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
               >
-                Open Dashboard
+                Open Documents
               </Link>
             </div>
           </div>
         </div>
-      </main>
+      </div>
     );
   }
 
   if (!document) {
     return (
-      <main className="min-h-screen bg-slate-50 text-slate-900">
-        <div className="mx-auto max-w-7xl px-6 py-10">
+      <div className="px-6 py-10 text-slate-900">
+        <div className="mx-auto max-w-7xl">
           <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
             <p className="text-sm font-medium text-brand-700">
               Dashboard / Documents / Detail
@@ -434,21 +447,21 @@ export default function DocumentDetailPage() {
               </button>
 
               <Link
-                href="/dashboard"
+                href="/dashboard/documents"
                 className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
               >
-                Open Dashboard
+                Open Documents
               </Link>
             </div>
           </div>
         </div>
-      </main>
+      </div>
     );
   }
 
   return (
-    <main className="min-h-screen bg-slate-50 text-slate-900">
-      <div className="mx-auto max-w-7xl px-6 py-10">
+    <div className="px-6 py-10 text-slate-900">
+      <div className="mx-auto max-w-7xl">
         <div className="mb-8">
           <button
             type="button"
@@ -676,16 +689,16 @@ export default function DocumentDetailPage() {
                   Download Original File
                 </button>
                 <Link
-                  href="/dashboard"
+                  href="/dashboard/documents"
                   className="block rounded-xl border border-slate-300 px-4 py-3 text-left text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
                 >
-                  Open Dashboard
+                  Open Documents
                 </Link>
               </div>
             </div>
           </aside>
         </div>
       </div>
-    </main>
+    </div>
   );
 }
