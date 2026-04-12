@@ -1,9 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
-import { getAccessToken } from "@/lib/auth";
 import { apiClient } from "@/lib/api-client";
+import { getAccessToken, getOrganizationId } from "@/lib/auth";
 
 export type ReviewQueueItem = {
   load_id: string;
@@ -54,6 +54,11 @@ function asNonNegativeInteger(value: unknown): number {
   return 0;
 }
 
+function normalizeSeverity(value: unknown): string | undefined {
+  const normalized = asString(value)?.toLowerCase();
+  return normalized ?? undefined;
+}
+
 function normalizeReviewQueueItem(item: unknown): ReviewQueueItem | null {
   const record = asRecord(item);
 
@@ -79,7 +84,7 @@ function normalizeReviewQueueItem(item: unknown): ReviewQueueItem | null {
       asString(record.primary_issue) ??
       asString(record.primaryIssue) ??
       undefined,
-    severity: asString(record.severity) ?? undefined,
+    severity: normalizeSeverity(record.severity),
   };
 }
 
@@ -106,7 +111,32 @@ function normalizeReviewQueueResponse(payload: unknown): ReviewQueueItem[] {
 
   return candidates
     .map((item) => normalizeReviewQueueItem(item))
-    .filter((item): item is ReviewQueueItem => item !== null);
+    .filter((item): item is ReviewQueueItem => item !== null)
+    .sort((a, b) => {
+      const severityRank = (value?: string) => {
+        switch ((value ?? "").toLowerCase()) {
+          case "high":
+            return 0;
+          case "medium":
+            return 1;
+          case "low":
+            return 2;
+          default:
+            return 3;
+        }
+      };
+
+      const severityDifference = severityRank(a.severity) - severityRank(b.severity);
+      if (severityDifference !== 0) {
+        return severityDifference;
+      }
+
+      if (b.issue_count !== a.issue_count) {
+        return b.issue_count - a.issue_count;
+      }
+
+      return (a.load_number ?? a.load_id).localeCompare(b.load_number ?? b.load_id);
+    });
 }
 
 export function useReviewQueue() {
@@ -114,30 +144,66 @@ export function useReviewQueue() {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
+  const abortRef = useRef<AbortController | null>(null);
+  const isMountedRef = useRef<boolean>(true);
+
   const fetchReviewQueue = useCallback(async (): Promise<void> => {
+    const token = getAccessToken();
+    const organizationId = getOrganizationId();
+
+    if (!organizationId) {
+      setError("Missing organization context.");
+      setData([]);
+      setIsLoading(false);
+      return;
+    }
+
     try {
+      abortRef.current?.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
+
       setIsLoading(true);
       setError(null);
 
-      const token = getAccessToken();
-
       const response = await apiClient.get<unknown>("/review-queue", {
         token: token ?? undefined,
+        organizationId,
+        signal: controller.signal,
       });
+
+      if (!isMountedRef.current) {
+        return;
+      }
 
       setData(normalizeReviewQueueResponse(response));
     } catch (err: unknown) {
+      if ((err as { name?: string })?.name === "AbortError") {
+        return;
+      }
+
       const message =
         err instanceof Error ? err.message : "Failed to fetch review queue";
-      setError(message);
-      setData([]);
+
+      if (isMountedRef.current) {
+        setError(message);
+        setData([]);
+      }
     } finally {
-      setIsLoading(false);
+      if (isMountedRef.current) {
+        setIsLoading(false);
+      }
     }
   }, []);
 
   useEffect(() => {
+    isMountedRef.current = true;
     void fetchReviewQueue();
+
+    return () => {
+      isMountedRef.current = false;
+      abortRef.current?.abort();
+    };
   }, [fetchReviewQueue]);
 
   return {
