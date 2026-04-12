@@ -1,9 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { apiClient } from "@/lib/api-client";
-import { getAccessToken } from "@/lib/auth";
+import { getAccessToken, getOrganizationId } from "@/lib/auth";
 
 export type CustomerAccount = {
   id: string;
@@ -19,11 +19,14 @@ export type CustomerAccount = {
   updated_at?: string;
 };
 
+/* =========================
+   Normalization Utilities
+========================= */
+
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return null;
   }
-
   return value as Record<string, unknown>;
 }
 
@@ -42,10 +45,7 @@ function asString(value: unknown): string | null {
 
 function normalizeCustomerAccount(item: unknown): CustomerAccount | null {
   const record = asRecord(item);
-
-  if (!record) {
-    return null;
-  }
+  if (!record) return null;
 
   const id = asString(record.id);
   const accountName =
@@ -53,9 +53,7 @@ function normalizeCustomerAccount(item: unknown): CustomerAccount | null {
     asString(record.accountName) ??
     asString(record.name);
 
-  if (!id || !accountName) {
-    return null;
-  }
+  if (!id || !accountName) return null;
 
   return {
     id,
@@ -83,55 +81,85 @@ function normalizeCustomerAccountsResponse(payload: unknown): CustomerAccount[] 
   } else {
     const root = asRecord(payload);
 
-    if (!root) {
-      return [];
-    }
+    if (!root) return [];
 
-    if (Array.isArray(root.data)) {
-      candidates.push(...root.data);
-    } else if (Array.isArray(root.customer_accounts)) {
-      candidates.push(...root.customer_accounts);
-    } else if (Array.isArray(root.items)) {
-      candidates.push(...root.items);
-    } else if (Array.isArray(root.results)) {
-      candidates.push(...root.results);
-    }
+    if (Array.isArray(root.data)) candidates.push(...root.data);
+    else if (Array.isArray(root.customer_accounts)) candidates.push(...root.customer_accounts);
+    else if (Array.isArray(root.items)) candidates.push(...root.items);
+    else if (Array.isArray(root.results)) candidates.push(...root.results);
   }
 
   return candidates
     .map((item) => normalizeCustomerAccount(item))
-    .filter((item): item is CustomerAccount => item !== null);
+    .filter((item): item is CustomerAccount => item !== null)
+    .sort((a, b) => a.account_name.localeCompare(b.account_name));
 }
+
+/* =========================
+   Hook
+========================= */
 
 export function useCustomerAccounts() {
   const [data, setData] = useState<CustomerAccount[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
+  const abortRef = useRef<AbortController | null>(null);
+  const isMountedRef = useRef<boolean>(true);
+
   const fetchCustomerAccounts = useCallback(async (): Promise<void> => {
+    const token = getAccessToken();
+    const organizationId = getOrganizationId();
+
+    if (!organizationId) {
+      setError("Missing organization context.");
+      setData([]);
+      setIsLoading(false);
+      return;
+    }
+
     try {
+      abortRef.current?.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
+
       setIsLoading(true);
       setError(null);
 
-      const token = getAccessToken();
-
-      const response = await apiClient.get<unknown>("/customer-accounts", {
+      const response = await apiClient.get<unknown>("/customer-accounts?page=1&page_size=1000", {
         token: token ?? undefined,
+        organizationId,
+        signal: controller.signal,
       });
+
+      if (!isMountedRef.current) return;
 
       setData(normalizeCustomerAccountsResponse(response));
     } catch (err: unknown) {
+      if ((err as any)?.name === "AbortError") return;
+
       const message =
         err instanceof Error ? err.message : "Failed to fetch customer accounts";
-      setError(message);
-      setData([]);
+
+      if (isMountedRef.current) {
+        setError(message);
+        setData([]);
+      }
     } finally {
-      setIsLoading(false);
+      if (isMountedRef.current) {
+        setIsLoading(false);
+      }
     }
   }, []);
 
   useEffect(() => {
+    isMountedRef.current = true;
     void fetchCustomerAccounts();
+
+    return () => {
+      isMountedRef.current = false;
+      abortRef.current?.abort();
+    };
   }, [fetchCustomerAccounts]);
 
   return {
