@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import Any
 
 from sqlalchemy.orm import Session
 
@@ -23,20 +24,38 @@ class OnboardingService:
         organization_id: str,
         customer_account_id: str,
     ) -> OnboardingChecklist:
-        customer_account = self.customer_account_repo.get_by_id(customer_account_id)
+        normalized_organization_id = self._require_text(
+            organization_id,
+            field_name="organization_id",
+        )
+        normalized_customer_account_id = self._require_text(
+            customer_account_id,
+            field_name="customer_account_id",
+        )
+
+        customer_account = self.customer_account_repo.get_by_id(normalized_customer_account_id)
         if customer_account is None:
             raise NotFoundError(
                 "Customer account not found",
-                details={"customer_account_id": customer_account_id},
+                details={"customer_account_id": normalized_customer_account_id},
             )
 
-        existing = self.onboarding_repo.get_by_customer_account_id(customer_account_id)
+        if str(customer_account.organization_id) != normalized_organization_id:
+            raise ValidationError(
+                "Customer account does not belong to the provided organization",
+                details={
+                    "organization_id": normalized_organization_id,
+                    "customer_account_id": normalized_customer_account_id,
+                },
+            )
+
+        existing = self.onboarding_repo.get_by_customer_account_id(normalized_customer_account_id)
         if existing is not None:
             return existing
 
         checklist = OnboardingChecklist(
-            organization_id=organization_id,
-            customer_account_id=customer_account_id,
+            organization_id=normalized_organization_id,
+            customer_account_id=normalized_customer_account_id,
             status=OnboardingStatus.NOT_STARTED,
             documents_received=False,
             pricing_confirmed=False,
@@ -49,11 +68,16 @@ class OnboardingService:
         return self.onboarding_repo.create(checklist)
 
     def get_checklist(self, customer_account_id: str) -> OnboardingChecklist:
-        checklist = self.onboarding_repo.get_by_customer_account_id(customer_account_id)
+        normalized_customer_account_id = self._require_text(
+            customer_account_id,
+            field_name="customer_account_id",
+        )
+
+        checklist = self.onboarding_repo.get_by_customer_account_id(normalized_customer_account_id)
         if checklist is None:
             raise NotFoundError(
                 "Onboarding checklist not found",
-                details={"customer_account_id": customer_account_id},
+                details={"customer_account_id": normalized_customer_account_id},
             )
         return checklist
 
@@ -69,28 +93,52 @@ class OnboardingService:
         driver_profiles_created: bool,
         channel_connected: bool,
         go_live_ready: bool,
-        completed_at=None,
+        completed_at: Any = None,
     ) -> OnboardingChecklist:
-        customer_account = self.customer_account_repo.get_by_id(customer_account_id)
+        normalized_organization_id = self._require_text(
+            organization_id,
+            field_name="organization_id",
+        )
+        normalized_customer_account_id = self._require_text(
+            customer_account_id,
+            field_name="customer_account_id",
+        )
+
+        customer_account = self.customer_account_repo.get_by_id(normalized_customer_account_id)
         if customer_account is None:
             raise NotFoundError(
                 "Customer account not found",
-                details={"customer_account_id": customer_account_id},
+                details={"customer_account_id": normalized_customer_account_id},
+            )
+
+        if str(customer_account.organization_id) != normalized_organization_id:
+            raise ValidationError(
+                "Customer account does not belong to the provided organization",
+                details={
+                    "organization_id": normalized_organization_id,
+                    "customer_account_id": normalized_customer_account_id,
+                },
             )
 
         normalized_status = self._normalize_status(status)
-        checklist = self.onboarding_repo.get_by_customer_account_id(customer_account_id)
+        normalized_completed_at = self._normalize_datetime(
+            completed_at,
+            field_name="completed_at",
+            allow_none=True,
+        )
 
-        if go_live_ready and completed_at is None:
-            completed_at = datetime.now(timezone.utc)
+        checklist = self.onboarding_repo.get_by_customer_account_id(normalized_customer_account_id)
+
+        if go_live_ready and normalized_completed_at is None:
+            normalized_completed_at = datetime.now(timezone.utc)
 
         if go_live_ready and normalized_status != OnboardingStatus.COMPLETED:
             normalized_status = OnboardingStatus.COMPLETED
 
         if checklist is None:
             checklist = OnboardingChecklist(
-                organization_id=organization_id,
-                customer_account_id=customer_account_id,
+                organization_id=normalized_organization_id,
+                customer_account_id=normalized_customer_account_id,
                 status=normalized_status,
                 documents_received=documents_received,
                 pricing_confirmed=pricing_confirmed,
@@ -98,7 +146,7 @@ class OnboardingService:
                 driver_profiles_created=driver_profiles_created,
                 channel_connected=channel_connected,
                 go_live_ready=go_live_ready,
-                completed_at=completed_at,
+                completed_at=normalized_completed_at,
             )
             return self.onboarding_repo.create(checklist)
 
@@ -109,7 +157,7 @@ class OnboardingService:
         checklist.driver_profiles_created = driver_profiles_created
         checklist.channel_connected = channel_connected
         checklist.go_live_ready = go_live_ready
-        checklist.completed_at = completed_at
+        checklist.completed_at = normalized_completed_at
 
         return self.onboarding_repo.update(checklist)
 
@@ -135,3 +183,39 @@ class OnboardingService:
             "Invalid onboarding status",
             details={"status": value},
         )
+
+    @staticmethod
+    def _normalize_datetime(
+        value: Any,
+        *,
+        field_name: str,
+        allow_none: bool = False,
+    ) -> datetime | None:
+        if value is None or value == "":
+            if allow_none:
+                return None
+            raise ValidationError(
+                f"{field_name} is required",
+                details={field_name: value},
+            )
+
+        if isinstance(value, datetime):
+            return value
+
+        try:
+            return datetime.fromisoformat(str(value).strip())
+        except ValueError as exc:
+            raise ValidationError(
+                f"Invalid {field_name}",
+                details={field_name: value},
+            ) from exc
+
+    @staticmethod
+    def _require_text(value: str | None, *, field_name: str) -> str:
+        normalized = str(value).strip() if value is not None else ""
+        if not normalized:
+            raise ValidationError(
+                f"{field_name} is required",
+                details={field_name: value},
+            )
+        return normalized
