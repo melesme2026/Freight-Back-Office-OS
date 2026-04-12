@@ -12,17 +12,26 @@ type LoadListItem = {
   id: string;
   load_number?: NullableString;
   status?: NullableString;
+  source_channel?: NullableString;
+  processing_status?: NullableString;
   gross_amount?: NullableNumberLike;
   currency_code?: NullableString;
+  broker_id?: NullableString;
+  broker_name?: NullableString;
   broker_name_raw?: NullableString;
   broker_email_raw?: NullableString;
   customer_account_id?: NullableString;
+  customer_account_name?: NullableString;
   driver_id?: NullableString;
+  driver_name?: NullableString;
   pickup_location?: NullableString;
   delivery_location?: NullableString;
+  pickup_date?: NullableString;
+  delivery_date?: NullableString;
   has_ratecon?: boolean | null | undefined;
   has_bol?: boolean | null | undefined;
   has_invoice?: boolean | null | undefined;
+  documents_complete?: boolean | null | undefined;
 };
 
 type StatusFilter =
@@ -137,6 +146,27 @@ function routeLabel(load: LoadListItem): string {
   return `${pickup} → ${delivery}`;
 }
 
+function getBrokerDisplay(load: LoadListItem): string {
+  return (
+    load.broker_name_raw?.trim() ||
+    load.broker_name?.trim() ||
+    load.broker_id?.trim() ||
+    "—"
+  );
+}
+
+function getDriverDisplay(load: LoadListItem): string {
+  return load.driver_name?.trim() || load.driver_id?.trim() || "—";
+}
+
+function getCustomerDisplay(load: LoadListItem): string {
+  return (
+    load.customer_account_name?.trim() ||
+    load.customer_account_id?.trim() ||
+    "—"
+  );
+}
+
 function matchesSearch(load: LoadListItem, query: string): boolean {
   const normalizedQuery = query.trim().toLowerCase();
 
@@ -149,9 +179,12 @@ function matchesSearch(load: LoadListItem, query: string): boolean {
     load.id,
     load.status,
     load.broker_name_raw,
+    load.broker_name,
     load.broker_email_raw,
     load.customer_account_id,
+    load.customer_account_name,
     load.driver_id,
+    load.driver_name,
     load.pickup_location,
     load.delivery_location,
   ];
@@ -385,10 +418,13 @@ export default function LoadsPage() {
                             {routeLabel(load)}
                           </div>
                           <div className="text-xs text-slate-500">
-                            Broker: {load.broker_name_raw?.trim() || "—"}
+                            Broker: {getBrokerDisplay(load)}
                           </div>
                           <div className="text-xs text-slate-500">
-                            Driver: {load.driver_id?.trim() || "—"}
+                            Driver: {getDriverDisplay(load)}
+                          </div>
+                          <div className="text-xs text-slate-500">
+                            Customer: {getCustomerDisplay(load)}
                           </div>
                         </div>
                       </td>
