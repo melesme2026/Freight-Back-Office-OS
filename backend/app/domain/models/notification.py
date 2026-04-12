@@ -30,6 +30,7 @@ class Notification(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         Index("ix_notifications_customer_account_id", "customer_account_id"),
         Index("ix_notifications_driver_id", "driver_id"),
         Index("ix_notifications_load_id", "load_id"),
+        Index("ix_notifications_created_by_staff_user_id", "created_by_staff_user_id"),
         Index("ix_notifications_channel", "channel"),
         Index("ix_notifications_status", "status"),
         Index("ix_notifications_provider_message_id", "provider_message_id"),
