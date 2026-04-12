@@ -26,6 +26,7 @@ type Load = {
   driver_id?: string | null;
   driver_name?: string | null;
   broker_id?: string | null;
+  broker_name?: string | null;
   broker_name_raw?: string | null;
   broker_email_raw?: string | null;
   customer_account_id?: string | null;
@@ -39,6 +40,7 @@ type Load = {
   has_invoice?: boolean | null;
   notes?: string | null;
   last_reviewed_by?: string | null;
+  last_reviewed_by_name?: string | null;
   last_reviewed_at?: string | null;
   submitted_at?: string | null;
   funded_at?: string | null;
@@ -236,12 +238,12 @@ function formatDateTime(value?: string | null) {
     return "—";
   }
 
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
     return value;
   }
 
-  return date.toLocaleString();
+  return parsed.toLocaleString();
 }
 
 function formatFileSize(value?: number | null) {
@@ -252,11 +254,9 @@ function formatFileSize(value?: number | null) {
   if (value < 1024) {
     return `${value} B`;
   }
-
   if (value < 1024 * 1024) {
     return `${(value / 1024).toFixed(1)} KB`;
   }
-
   if (value < 1024 * 1024 * 1024) {
     return `${(value / (1024 * 1024)).toFixed(1)} MB`;
   }
@@ -268,7 +268,6 @@ function asRecord(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return null;
   }
-
   return value as Record<string, unknown>;
 }
 
@@ -291,7 +290,6 @@ function getFirstStringField(
       return value;
     }
   }
-
   return null;
 }
 
@@ -308,11 +306,9 @@ function getOptionalBooleanField(
   if (typeof value === "boolean") {
     return value;
   }
-
   if (value === null) {
     return null;
   }
-
   if (typeof value === "number") {
     if (value === 1) {
       return true;
@@ -321,7 +317,6 @@ function getOptionalBooleanField(
       return false;
     }
   }
-
   if (typeof value === "string") {
     const normalized = value.trim().toLowerCase();
     if (normalized === "true" || normalized === "1" || normalized === "yes") {
@@ -362,7 +357,6 @@ function getOptionalNumericOrStringField(
   }
 
   const value = record[key];
-
   if (typeof value === "number" || typeof value === "string" || value === null) {
     return value;
   }
@@ -397,18 +391,15 @@ function getOptionalNumberField(
   }
 
   const value = record[key];
-
   if (typeof value === "number" && Number.isFinite(value)) {
     return value;
   }
-
   if (typeof value === "string") {
     const parsed = Number(value);
     if (Number.isFinite(parsed)) {
       return parsed;
     }
   }
-
   if (value === null) {
     return null;
   }
@@ -441,7 +432,6 @@ function normalizeSeverity(value: unknown): string | undefined {
   if (typeof value !== "string") {
     return undefined;
   }
-
   const normalized = value.trim().toLowerCase();
   return normalized.length > 0 ? normalized : undefined;
 }
@@ -450,14 +440,12 @@ function normalizeCount(value: unknown): number {
   if (typeof value === "number" && Number.isFinite(value) && value >= 0) {
     return Math.floor(value);
   }
-
   if (typeof value === "string") {
     const parsed = Number(value);
     if (Number.isFinite(parsed) && parsed >= 0) {
       return Math.floor(parsed);
     }
   }
-
   return 0;
 }
 
@@ -476,6 +464,7 @@ function normalizeLoad(payload: unknown): Load | null {
     driver_id: getStringField(record, "driver_id"),
     driver_name: getFirstStringField(record, ["driver_name", "driver_display_name"]),
     broker_id: getStringField(record, "broker_id"),
+    broker_name: getStringField(record, "broker_name"),
     broker_name_raw: getFirstStringField(record, ["broker_name_raw", "broker_name"]),
     broker_email_raw: getStringField(record, "broker_email_raw"),
     customer_account_id: getStringField(record, "customer_account_id"),
@@ -492,6 +481,7 @@ function normalizeLoad(payload: unknown): Load | null {
     has_invoice: getOptionalBooleanField(record, "has_invoice"),
     notes: getStringField(record, "notes"),
     last_reviewed_by: getStringField(record, "last_reviewed_by"),
+    last_reviewed_by_name: getStringField(record, "last_reviewed_by_name"),
     last_reviewed_at: getStringField(record, "last_reviewed_at"),
     submitted_at: getStringField(record, "submitted_at"),
     funded_at: getStringField(record, "funded_at"),
@@ -615,13 +605,9 @@ function normalizeLoadIdParam(value: string | string[] | undefined): string | nu
 
 function buildApiUrl(path: string) {
   const baseUrl = (process.env.NEXT_PUBLIC_API_BASE_URL ?? "").trim().replace(/\/+$/, "");
-  const versionPrefix = (
-    process.env.NEXT_PUBLIC_API_VERSION_PREFIX ??
-    "/api/v1"
-  )
+  const versionPrefix = (process.env.NEXT_PUBLIC_API_VERSION_PREFIX ?? "/api/v1")
     .trim()
     .replace(/\/+$/, "");
-
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
 
   if (baseUrl) {
@@ -663,7 +649,6 @@ function getDocumentDisplayName(document: LoadDocument) {
   if (document.original_filename && document.original_filename.trim().length > 0) {
     return document.original_filename.trim();
   }
-
   return `${normalizeDocumentTypeLabel(document.document_type)} Document`;
 }
 
@@ -677,23 +662,33 @@ function getLoadDisplayTitle(load: Load) {
 }
 
 function getOperationalDisplayValue(primary?: string | null, fallback?: string | null) {
-  return primary && primary.trim().length > 0 ? primary : fallback && fallback.trim().length > 0 ? fallback : "—";
+  if (primary && primary.trim().length > 0) {
+    return primary;
+  }
+  if (fallback && fallback.trim().length > 0) {
+    return fallback;
+  }
+  return "—";
 }
 
 function getPaymentStageLabel(load: Load) {
   if (load.status === "paid" || load.paid_at) {
     return "Paid";
   }
-
   if (load.status === "funded" || load.funded_at) {
     return load.is_factored ? "Factored / Funded" : "Funded";
   }
-
   if (load.status === "submitted" || load.submitted_at) {
     return "Submitted";
   }
-
   return "Not yet submitted";
+}
+
+function extractErrorMessage(caught: unknown, fallback: string) {
+  if (caught instanceof Error && caught.message.trim().length > 0) {
+    return caught.message;
+  }
+  return fallback;
 }
 
 export default function LoadDetailPage() {
@@ -723,7 +718,6 @@ export default function LoadDetailPage() {
     }
 
     const token = getAccessToken();
-
     const response = await apiClient.get<ApiResponse<unknown>>(
       `/loads/${encodeURIComponent(loadId)}`,
       {
@@ -740,13 +734,11 @@ export default function LoadDetailPage() {
     }
 
     const token = getAccessToken();
-
     const response = await apiClient.get<ApiResponse<unknown>>("/review-queue", {
       token: token ?? undefined,
     });
 
     const items = Array.isArray(response.data) ? response.data : [];
-
     for (const item of items) {
       const normalized = normalizeReviewQueueItem(item);
       if (normalized && normalized.load_id === loadId) {
@@ -770,7 +762,6 @@ export default function LoadDetailPage() {
         }
 
         const token = getAccessToken();
-
         const response = await apiClient.get<ApiResponse<unknown>>(
           `/loads/${encodeURIComponent(loadId)}/documents?page=1&page_size=100`,
           {
@@ -794,13 +785,11 @@ export default function LoadDetailPage() {
 
   const fetchCurrentStaffUserId = useCallback(async (): Promise<string> => {
     const token = getAccessToken();
-
     const response = await apiClient.get<ApiResponse<unknown>>("/auth/me", {
       token: token ?? undefined,
     });
 
     const staffUserId = extractStaffUserId(response.data);
-
     if (!staffUserId) {
       throw new Error("Unable to determine current staff user ID.");
     }
@@ -832,8 +821,7 @@ export default function LoadDetailPage() {
       setReviewQueueItem(reviewItem);
       setLoadDocuments(documents);
     } catch (caught: unknown) {
-      const message = caught instanceof Error ? caught.message : "Failed to fetch load.";
-      setError(message);
+      setError(extractErrorMessage(caught, "Failed to fetch load."));
     } finally {
       setIsLoading(false);
       setIsDocumentsLoading(false);
@@ -848,7 +836,6 @@ export default function LoadDetailPage() {
     if (!load) {
       return null;
     }
-
     return NEXT_STATUS_MAP[load.status] ?? null;
   }, [load]);
 
@@ -917,11 +904,9 @@ export default function LoadDetailPage() {
     if (!documentPresence.hasInvoice) {
       issues.set("invoice missing", "Invoice missing");
     }
-
     if (!documentPresence.hasRateCon) {
       issues.set("rate confirmation missing", "Rate confirmation missing");
     }
-
     if (!documentPresence.hasBol) {
       issues.set("bill of lading missing", "Bill of lading missing");
     }
@@ -933,7 +918,6 @@ export default function LoadDetailPage() {
     if (reviewQueueItem && reviewQueueItem.issue_count > 0) {
       return reviewQueueItem.issue_count;
     }
-
     return validationIssues.length;
   }, [reviewQueueItem, validationIssues]);
 
@@ -951,7 +935,10 @@ export default function LoadDetailPage() {
       return "Resolve open validation issues before advancing this load.";
     }
 
-    if ((nextStatus === "ready_to_submit" || nextStatus === "submitted") && requiredDocsReceivedCount < 3) {
+    if (
+      (nextStatus === "ready_to_submit" || nextStatus === "submitted") &&
+      requiredDocsReceivedCount < 3
+    ) {
       return "All required documents must be present before submission readiness.";
     }
 
@@ -981,10 +968,7 @@ export default function LoadDetailPage() {
               ? "current"
               : "upcoming";
 
-      return {
-        status,
-        state,
-      };
+      return { status, state };
     });
   }, [load]);
 
@@ -1001,13 +985,11 @@ export default function LoadDetailPage() {
       const token = getAccessToken();
       const staffUserId = await fetchCurrentStaffUserId();
 
-      const query = new URLSearchParams({
-        staff_user_id: staffUserId,
-      });
-
       const response = await apiClient.post<ApiResponse<MarkReviewedResponse>>(
-        `/review-queue/loads/${encodeURIComponent(load.id)}/mark-reviewed?${query.toString()}`,
-        undefined,
+        `/review-queue/loads/${encodeURIComponent(load.id)}/mark-reviewed`,
+        {
+          staff_user_id: staffUserId,
+        },
         {
           token: token ?? undefined,
         }
@@ -1022,9 +1004,7 @@ export default function LoadDetailPage() {
 
       setActionMessage(message);
     } catch (caught: unknown) {
-      const message =
-        caught instanceof Error ? caught.message : "Failed to mark load reviewed.";
-      setError(message);
+      setError(extractErrorMessage(caught, "Failed to mark load reviewed."));
     } finally {
       setIsMarkingReviewed(false);
     }
@@ -1041,16 +1021,16 @@ export default function LoadDetailPage() {
       setActionMessage(null);
 
       const token = getAccessToken();
-
-      const query = new URLSearchParams({
-        new_status: nextStatus,
-        actor_type: "staff_user",
-        notes: `Advanced from UI to ${nextStatus}`,
-      });
+      const staffUserId = await fetchCurrentStaffUserId();
 
       const response = await apiClient.post<ApiResponse<StatusTransitionResponse>>(
-        `/loads/${encodeURIComponent(load.id)}/status?${query.toString()}`,
-        undefined,
+        `/loads/${encodeURIComponent(load.id)}/status`,
+        {
+          new_status: nextStatus,
+          actor_staff_user_id: staffUserId,
+          actor_type: "staff_user",
+          notes: `Advanced from UI to ${nextStatus}`,
+        },
         {
           token: token ?? undefined,
         }
@@ -1061,9 +1041,7 @@ export default function LoadDetailPage() {
       const resolvedStatus = response.data?.new_status ?? nextStatus;
       setActionMessage(`Status updated to ${resolvedStatus.replaceAll("_", " ")}.`);
     } catch (caught: unknown) {
-      const message =
-        caught instanceof Error ? caught.message : "Failed to advance status.";
-      setError(message);
+      setError(extractErrorMessage(caught, "Failed to advance status."));
     } finally {
       setIsAdvancing(false);
     }
@@ -1142,9 +1120,7 @@ export default function LoadDetailPage() {
       setSelectedUploadDocumentType("");
       setActionMessage(`Document "${file.name}" uploaded successfully.`);
     } catch (caught: unknown) {
-      const message =
-        caught instanceof Error ? caught.message : "Failed to upload document.";
-      setError(message);
+      setError(extractErrorMessage(caught, "Failed to upload document."));
     } finally {
       setIsUploadingDocument(false);
       if (event.target) {
@@ -1194,9 +1170,7 @@ export default function LoadDetailPage() {
 
       setActionMessage(`Downloaded ${getDocumentDisplayName(document)}.`);
     } catch (caught: unknown) {
-      const message =
-        caught instanceof Error ? caught.message : "Failed to download document.";
-      setError(message);
+      setError(extractErrorMessage(caught, "Failed to download document."));
     } finally {
       setDownloadingDocumentId(null);
     }
@@ -1222,17 +1196,17 @@ export default function LoadDetailPage() {
     try {
       setError(null);
       setActionMessage(null);
+
       const [updatedLoad, updatedDocuments] = await Promise.all([
         fetchLoad(),
         fetchLoadDocuments(),
       ]);
+
       setLoad(updatedLoad);
       setLoadDocuments(updatedDocuments);
       setActionMessage("Documents refreshed.");
     } catch (caught: unknown) {
-      const message =
-        caught instanceof Error ? caught.message : "Failed to refresh documents.";
-      setError(message);
+      setError(extractErrorMessage(caught, "Failed to refresh documents."));
     }
   }
 
@@ -1441,7 +1415,7 @@ export default function LoadDetailPage() {
                     Last Reviewed By
                   </div>
                   <div className="mt-1 text-sm font-medium text-slate-900">
-                    {load.last_reviewed_by ?? "—"}
+                    {load.last_reviewed_by_name ?? load.last_reviewed_by ?? "—"}
                   </div>
                 </div>
 
