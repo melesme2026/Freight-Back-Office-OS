@@ -54,7 +54,12 @@ class LedgerEntry(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     entry_type: Mapped[str] = mapped_column(String(50), nullable=False)
     amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
-    currency_code: Mapped[str] = mapped_column(String(3), nullable=False, default="USD")
+    currency_code: Mapped[str] = mapped_column(
+        String(3),
+        nullable=False,
+        default="USD",
+        server_default="USD",
+    )
     description: Mapped[str] = mapped_column(Text, nullable=False)
     entry_date: Mapped[date] = mapped_column(Date, nullable=False)
     metadata_json: Mapped[dict[str, Any] | list[Any] | None] = mapped_column(
@@ -62,7 +67,10 @@ class LedgerEntry(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         nullable=True,
     )
 
-    organization: Mapped["Organization"] = relationship(lazy="selectin")
+    organization: Mapped["Organization"] = relationship(
+        back_populates="ledger_entries",
+        lazy="selectin",
+    )
     customer_account: Mapped["CustomerAccount | None"] = relationship(
         back_populates="ledger_entries",
         lazy="selectin",
