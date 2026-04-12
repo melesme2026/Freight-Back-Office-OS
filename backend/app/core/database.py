@@ -18,14 +18,21 @@ class Base(DeclarativeBase):
 
 def _build_engine() -> Engine:
     settings = get_settings()
+    database_url = settings.database_url
+
+    engine_kwargs: dict[str, Any] = {
+        "echo": settings.sqlalchemy_echo,
+        "pool_pre_ping": settings.sqlalchemy_pool_pre_ping,
+        "future": True,
+    }
+
+    if not database_url.startswith("sqlite"):
+        engine_kwargs["pool_size"] = settings.sqlalchemy_pool_size
+        engine_kwargs["max_overflow"] = settings.sqlalchemy_max_overflow
 
     return create_engine(
-        settings.database_url,
-        echo=settings.sqlalchemy_echo,
-        pool_pre_ping=settings.sqlalchemy_pool_pre_ping,
-        pool_size=settings.sqlalchemy_pool_size,
-        max_overflow=settings.sqlalchemy_max_overflow,
-        future=True,
+        database_url,
+        **engine_kwargs,
     )
 
 
@@ -78,6 +85,12 @@ def check_database_connection() -> tuple[bool, str]:
 
 
 def init_db(import_models: bool = False) -> None:
+    """
+    Optional local/bootstrap helper.
+
+    Do not rely on this in normal staging/production runtime.
+    Schema changes should be applied through Alembic migrations.
+    """
     if import_models:
         _import_all_models()
     Base.metadata.create_all(bind=get_engine())
