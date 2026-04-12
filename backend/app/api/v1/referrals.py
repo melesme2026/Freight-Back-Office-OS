@@ -5,14 +5,37 @@ from datetime import date, datetime
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_db_session
+from app.core.exceptions import ValidationError
 from app.schemas.common import ApiResponse
 from app.services.onboarding.referral_service import ReferralService
 
 
 router = APIRouter()
+
+
+class ReferralCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    organization_id: uuid.UUID
+    referred_by_name: str
+    customer_account_id: uuid.UUID | None = None
+    referred_by_phone: str | None = None
+    referred_by_email: str | None = None
+    notes: str | None = None
+
+
+class ReferralUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    customer_account_id: uuid.UUID | None = None
+    referred_by_name: str | None = None
+    referred_by_phone: str | None = None
+    referred_by_email: str | None = None
+    notes: str | None = None
 
 
 def _uuid_to_str(value: uuid.UUID | None) -> str | None:
@@ -26,8 +49,14 @@ def _normalize_optional_text(value: str | None) -> str | None:
     return normalized or None
 
 
-def _normalize_required_text(value: str) -> str:
-    return value.strip()
+def _normalize_required_text(value: str, *, field_name: str) -> str:
+    normalized = value.strip()
+    if not normalized:
+        raise ValidationError(
+            f"{field_name} is required",
+            details={field_name: value},
+        )
+    return normalized
 
 
 def _normalize_email(value: str | None) -> str | None:
@@ -64,23 +93,20 @@ def _serialize_referral(item: Any) -> dict[str, Any]:
 
 @router.post("/referrals", response_model=ApiResponse)
 def create_referral(
-    *,
-    organization_id: uuid.UUID,
-    referred_by_name: str,
-    customer_account_id: uuid.UUID | None = None,
-    referred_by_phone: str | None = None,
-    referred_by_email: str | None = None,
-    notes: str | None = None,
+    payload: ReferralCreateRequest,
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
     service = ReferralService(db)
     item = service.create_referral(
-        organization_id=str(organization_id),
-        referred_by_name=_normalize_required_text(referred_by_name),
-        customer_account_id=_uuid_to_str(customer_account_id),
-        referred_by_phone=_normalize_optional_text(referred_by_phone),
-        referred_by_email=_normalize_email(referred_by_email),
-        notes=notes,
+        organization_id=str(payload.organization_id),
+        referred_by_name=_normalize_required_text(
+            payload.referred_by_name,
+            field_name="referred_by_name",
+        ),
+        customer_account_id=_uuid_to_str(payload.customer_account_id),
+        referred_by_phone=_normalize_optional_text(payload.referred_by_phone),
+        referred_by_email=_normalize_email(payload.referred_by_email),
+        notes=_normalize_optional_text(payload.notes),
     )
 
     return ApiResponse(
@@ -138,26 +164,24 @@ def get_referral(
 @router.patch("/referrals/{referral_id}", response_model=ApiResponse)
 def update_referral(
     referral_id: uuid.UUID,
-    *,
-    customer_account_id: uuid.UUID | None = None,
-    referred_by_name: str | None = None,
-    referred_by_phone: str | None = None,
-    referred_by_email: str | None = None,
-    notes: str | None = None,
+    payload: ReferralUpdateRequest,
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
     service = ReferralService(db)
     item = service.update_referral(
         referral_id=str(referral_id),
-        customer_account_id=_uuid_to_str(customer_account_id),
+        customer_account_id=_uuid_to_str(payload.customer_account_id),
         referred_by_name=(
-            _normalize_required_text(referred_by_name)
-            if referred_by_name is not None
+            _normalize_required_text(
+                payload.referred_by_name,
+                field_name="referred_by_name",
+            )
+            if payload.referred_by_name is not None
             else None
         ),
-        referred_by_phone=_normalize_optional_text(referred_by_phone),
-        referred_by_email=_normalize_email(referred_by_email),
-        notes=notes,
+        referred_by_phone=_normalize_optional_text(payload.referred_by_phone),
+        referred_by_email=_normalize_email(payload.referred_by_email),
+        notes=_normalize_optional_text(payload.notes),
     )
 
     return ApiResponse(
