@@ -48,6 +48,7 @@ class Load(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         Index("ix_loads_invoice_number", "invoice_number"),
         Index("ix_loads_pickup_date", "pickup_date"),
         Index("ix_loads_delivery_date", "delivery_date"),
+        Index("ix_loads_last_reviewed_by", "last_reviewed_by"),
     )
 
     organization_id: Mapped[uuid.UUID] = mapped_column(
@@ -122,7 +123,12 @@ class Load(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     delivery_location: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     gross_amount: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
-    currency_code: Mapped[str] = mapped_column(String(3), nullable=False, default="USD")
+    currency_code: Mapped[str] = mapped_column(
+        String(3),
+        nullable=False,
+        default="USD",
+        server_default="USD",
+    )
 
     documents_complete: Mapped[bool] = mapped_column(
         Boolean,
@@ -182,7 +188,10 @@ class Load(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         back_populates="loads",
         lazy="selectin",
     )
-    customer_account: Mapped["CustomerAccount"] = relationship(lazy="selectin")
+    customer_account: Mapped["CustomerAccount"] = relationship(
+        back_populates="loads",
+        lazy="selectin",
+    )
     driver: Mapped["Driver"] = relationship(
         back_populates="loads",
         lazy="selectin",
