@@ -27,6 +27,7 @@ class SupportTicket(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         Index("ix_support_tickets_customer_account_id", "customer_account_id"),
         Index("ix_support_tickets_driver_id", "driver_id"),
         Index("ix_support_tickets_load_id", "load_id"),
+        Index("ix_support_tickets_assigned_to_staff_user_id", "assigned_to_staff_user_id"),
         Index("ix_support_tickets_status", "status"),
         Index("ix_support_tickets_priority", "priority"),
     )
@@ -59,8 +60,18 @@ class SupportTicket(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     subject: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False)
-    status: Mapped[str] = mapped_column(String(50), nullable=False, default="open")
-    priority: Mapped[str] = mapped_column(String(50), nullable=False, default="normal")
+    status: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        default="open",
+        server_default="open",
+    )
+    priority: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        default="normal",
+        server_default="normal",
+    )
     resolved_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,
