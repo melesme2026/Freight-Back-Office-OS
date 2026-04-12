@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import uuid
 from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Any
@@ -41,15 +42,15 @@ class LoadService:
         currency_code: str = "USD",
         notes: str | None = None,
     ) -> Load:
-        normalized_organization_id = self._require_text(
+        normalized_organization_id = self._normalize_uuid(
             organization_id,
             field_name="organization_id",
         )
-        normalized_customer_account_id = self._require_text(
+        normalized_customer_account_id = self._normalize_uuid(
             customer_account_id,
             field_name="customer_account_id",
         )
-        normalized_driver_id = self._require_text(
+        normalized_driver_id = self._normalize_uuid(
             driver_id,
             field_name="driver_id",
         )
@@ -58,7 +59,11 @@ class LoadService:
             organization_id=normalized_organization_id,
             customer_account_id=normalized_customer_account_id,
             driver_id=normalized_driver_id,
-            broker_id=self._clean_text(broker_id),
+            broker_id=(
+                self._normalize_uuid(broker_id, field_name="broker_id")
+                if broker_id is not None and self._clean_text(broker_id) is not None
+                else None
+            ),
             source_channel=self._normalize_channel(source_channel),
             status=LoadStatus.NEW,
             processing_status=ProcessingStatus.PENDING,
@@ -68,7 +73,11 @@ class LoadService:
             invoice_number=self._clean_text(invoice_number),
             broker_name_raw=self._clean_text(broker_name_raw),
             broker_email_raw=self._normalize_email(broker_email_raw),
-            pickup_date=self._normalize_date(pickup_date, field_name="pickup_date", allow_none=True),
+            pickup_date=self._normalize_date(
+                pickup_date,
+                field_name="pickup_date",
+                allow_none=True,
+            ),
             delivery_date=self._normalize_date(
                 delivery_date,
                 field_name="delivery_date",
@@ -93,12 +102,13 @@ class LoadService:
         return self.load_repo.create(load)
 
     def get_load(self, load_id: str) -> Load:
+        normalized_load_id = self._require_text(load_id, field_name="load_id")
         load = self.load_repo.get_by_id(
-            load_id,
+            normalized_load_id,
             include_related=True,
         )
         if load is None:
-            raise NotFoundError("Load not found", details={"load_id": load_id})
+            raise NotFoundError("Load not found", details={"load_id": normalized_load_id})
         return load
 
     def list_loads(
@@ -124,8 +134,16 @@ class LoadService:
             driver_id=self._clean_text(driver_id),
             status=normalized_status,
             source_channel=normalized_channel,
-            date_from=self._normalize_date(date_from, field_name="date_from", allow_none=True),
-            date_to=self._normalize_date(date_to, field_name="date_to", allow_none=True),
+            date_from=self._normalize_date(
+                date_from,
+                field_name="date_from",
+                allow_none=True,
+            ),
+            date_to=self._normalize_date(
+                date_to,
+                field_name="date_to",
+                allow_none=True,
+            ),
             search=self._clean_text(search),
             page=page,
             page_size=page_size,
@@ -212,9 +230,12 @@ class LoadService:
             elif field in {"customer_account_id", "driver_id"}:
                 if value is None:
                     continue
-                setattr(load, field, self._require_text(value, field_name=field))
+                setattr(load, field, self._normalize_uuid(value, field_name=field))
             elif field == "broker_id":
-                setattr(load, field, self._clean_text(value))
+                if value is None or self._clean_text(value) is None:
+                    setattr(load, field, None)
+                else:
+                    setattr(load, field, self._normalize_uuid(value, field_name="broker_id"))
             elif field in {"documents_complete", "has_ratecon", "has_bol", "has_invoice"}:
                 setattr(load, field, bool(value))
             else:
@@ -367,7 +388,10 @@ class LoadService:
         if value is None or value == "":
             if allow_none:
                 return None
-            return None
+            raise ValidationError(
+                f"{field_name} is required",
+                details={field_name: value},
+            )
 
         if isinstance(value, date) and not isinstance(value, datetime):
             return value
@@ -393,6 +417,16 @@ class LoadService:
         try:
             return Decimal(str(value).strip())
         except (InvalidOperation, ValueError) as exc:
+            raise ValidationError(
+                f"Invalid {field_name}",
+                details={field_name: value},
+            ) from exc
+
+    def _normalize_uuid(self, value: Any, *, field_name: str) -> uuid.UUID:
+        cleaned = self._require_text(value, field_name=field_name)
+        try:
+            return uuid.UUID(cleaned)
+        except ValueError as exc:
             raise ValidationError(
                 f"Invalid {field_name}",
                 details={field_name: value},
