@@ -14,12 +14,12 @@ from app.domain.models.organization import TimestampMixin, UUIDPrimaryKeyMixin
 
 
 if TYPE_CHECKING:
+    from app.domain.models.billing_invoice_line import BillingInvoiceLine
     from app.domain.models.customer_account import CustomerAccount
     from app.domain.models.driver import Driver
     from app.domain.models.load import Load
     from app.domain.models.organization import Organization
     from app.domain.models.subscription import Subscription
-    from app.domain.models.billing_invoice_line import BillingInvoiceLine
 
 
 class UsageRecord(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -60,15 +60,26 @@ class UsageRecord(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
 
     usage_type: Mapped[str] = mapped_column(String(50), nullable=False)
-    quantity: Mapped[Decimal] = mapped_column(Numeric(12, 4), nullable=False)
-    unit_price: Mapped[Decimal | None] = mapped_column(Numeric(12, 4), nullable=True)
+    quantity: Mapped[Decimal] = mapped_column(
+        Numeric(12, 4),
+        nullable=False,
+        default=Decimal("0.0000"),
+        server_default="0",
+    )
+    unit_price: Mapped[Decimal | None] = mapped_column(
+        Numeric(12, 4),
+        nullable=True,
+    )
     usage_date: Mapped[date] = mapped_column(Date, nullable=False)
     metadata_json: Mapped[dict[str, Any] | list[Any] | None] = mapped_column(
         JSONB,
         nullable=True,
     )
 
-    organization: Mapped["Organization"] = relationship(lazy="selectin")
+    organization: Mapped["Organization"] = relationship(
+        back_populates="usage_records",
+        lazy="selectin",
+    )
     customer_account: Mapped["CustomerAccount"] = relationship(
         back_populates="usage_records",
         lazy="selectin",
