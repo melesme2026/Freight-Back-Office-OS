@@ -159,6 +159,21 @@ def _enum_to_string(value: object | None) -> str | None:
     return str(value)
 
 
+def _parse_load_status(value: str) -> LoadStatus:
+    normalized = _normalize_required_text(value, "new_status").strip().lower()
+
+    for status in LoadStatus:
+        if normalized == status.value.lower():
+            return status
+        if normalized == status.name.lower():
+            return status
+
+    raise ValidationError(
+        "Invalid new_status",
+        details={"new_status": value},
+    )
+
+
 def _serialize_load(item: Any, *, detailed: bool = False) -> dict[str, Any]:
     customer_account = getattr(item, "customer_account", None)
     driver = getattr(item, "driver", None)
@@ -376,15 +391,7 @@ def transition_load_status(
     payload: LoadStatusTransitionRequest,
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
-    normalized_status = _normalize_required_text(payload.new_status, "new_status")
-
-    try:
-        parsed_status = LoadStatus(normalized_status)
-    except ValueError as exc:
-        raise ValidationError(
-            "Invalid new_status",
-            details={"new_status": payload.new_status},
-        ) from exc
+    parsed_status = _parse_load_status(payload.new_status)
 
     engine = WorkflowEngine(db)
     result = engine.transition_load(
@@ -398,13 +405,9 @@ def transition_load_status(
     return ApiResponse(
         data={
             "id": result["id"],
-            "old_status": (
-                _enum_to_string(result["old_status"])
-                if result["old_status"] is not None
-                else None
-            ),
-            "new_status": _enum_to_string(result["new_status"]),
-            "changed_at": result["changed_at"].isoformat(),
+            "old_status": result["old_status"],
+            "new_status": result["new_status"],
+            "changed_at": result["changed_at"],
         },
         meta={},
         error=None,
