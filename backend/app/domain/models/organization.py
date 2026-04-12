@@ -14,16 +14,21 @@ from app.core.database import Base
 if TYPE_CHECKING:
     from app.domain.models.api_client import ApiClient
     from app.domain.models.audit_log import AuditLog
+    from app.domain.models.billing_invoice import BillingInvoice
     from app.domain.models.broker import Broker
     from app.domain.models.customer_account import CustomerAccount
     from app.domain.models.driver import Driver
     from app.domain.models.load import Load
     from app.domain.models.load_document import LoadDocument
     from app.domain.models.notification import Notification
+    from app.domain.models.payment import Payment
+    from app.domain.models.payment_method import PaymentMethod
     from app.domain.models.referral import Referral
     from app.domain.models.service_plan import ServicePlan
     from app.domain.models.staff_user import StaffUser
+    from app.domain.models.subscription import Subscription
     from app.domain.models.support_ticket import SupportTicket
+    from app.domain.models.usage_record import UsageRecord
     from app.domain.models.workflow_event import WorkflowEvent
 
 
@@ -65,11 +70,13 @@ class Organization(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         String(100),
         nullable=False,
         default="America/Toronto",
+        server_default="America/Toronto",
     )
     currency_code: Mapped[str] = mapped_column(
         String(3),
         nullable=False,
         default="USD",
+        server_default="USD",
     )
     is_active: Mapped[bool] = mapped_column(
         Boolean,
@@ -139,6 +146,32 @@ class Organization(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         lazy="selectin",
     )
     api_clients: Mapped[list["ApiClient"]] = relationship(
+        back_populates="organization",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
+
+    subscriptions: Mapped[list["Subscription"]] = relationship(
+        back_populates="organization",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
+    billing_invoices: Mapped[list["BillingInvoice"]] = relationship(
+        back_populates="organization",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
+    payment_methods: Mapped[list["PaymentMethod"]] = relationship(
+        back_populates="organization",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
+    payments: Mapped[list["Payment"]] = relationship(
+        back_populates="organization",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
+    usage_records: Mapped[list["UsageRecord"]] = relationship(
         back_populates="organization",
         cascade="all, delete-orphan",
         lazy="selectin",
