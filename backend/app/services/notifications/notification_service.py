@@ -32,16 +32,16 @@ class NotificationService:
         status: str | NotificationStatus = NotificationStatus.QUEUED,
     ) -> Notification:
         notification = Notification(
-            organization_id=organization_id,
-            customer_account_id=customer_account_id,
-            driver_id=driver_id,
-            load_id=load_id,
-            created_by_staff_user_id=created_by_staff_user_id,
-            channel=self._clean_text(channel),
-            direction=self._clean_text(direction),
-            message_type=self._clean_text(message_type),
+            organization_id=self._require_text(organization_id, field_name="organization_id"),
+            customer_account_id=self._clean_text(customer_account_id),
+            driver_id=self._clean_text(driver_id),
+            load_id=self._clean_text(load_id),
+            created_by_staff_user_id=self._clean_text(created_by_staff_user_id),
+            channel=self._require_text(channel, field_name="channel"),
+            direction=self._require_text(direction, field_name="direction"),
+            message_type=self._require_text(message_type, field_name="message_type"),
             subject=self._clean_text(subject),
-            body_text=body_text,
+            body_text=self._clean_text(body_text),
             provider_message_id=self._clean_text(provider_message_id),
             status=self._normalize_status(status),
             sent_at=None,
@@ -49,14 +49,19 @@ class NotificationService:
             failed_at=None,
             error_message=None,
         )
-        return self.notification_repo.create(notification)
+        created = self.notification_repo.create(notification)
+        return self.notification_repo.get_by_id(created.id) or created
 
     def get_notification(self, notification_id: str) -> Notification:
-        notification = self.notification_repo.get_by_id(notification_id)
+        normalized_notification_id = self._require_text(
+            notification_id,
+            field_name="notification_id",
+        )
+        notification = self.notification_repo.get_by_id(normalized_notification_id)
         if notification is None:
             raise NotFoundError(
                 "Notification not found",
-                details={"notification_id": notification_id},
+                details={"notification_id": normalized_notification_id},
             )
         return notification
 
@@ -73,10 +78,10 @@ class NotificationService:
         page_size: int = 100,
     ) -> tuple[list[Notification], int]:
         return self.notification_repo.list(
-            organization_id=organization_id,
-            customer_account_id=customer_account_id,
-            driver_id=driver_id,
-            load_id=load_id,
+            organization_id=self._clean_text(organization_id),
+            customer_account_id=self._clean_text(customer_account_id),
+            driver_id=self._clean_text(driver_id),
+            load_id=self._clean_text(load_id),
             channel=self._clean_text(channel),
             status=self._normalize_status(status, allow_none=True),
             page=page,
@@ -95,14 +100,16 @@ class NotificationService:
         if provider_message_id:
             notification.provider_message_id = self._clean_text(provider_message_id)
         notification.error_message = None
-        return self.notification_repo.update(notification)
+        updated = self.notification_repo.update(notification)
+        return self.notification_repo.get_by_id(updated.id) or updated
 
     def mark_delivered(self, *, notification_id: str) -> Notification:
         notification = self.get_notification(notification_id)
         notification.status = NotificationStatus.DELIVERED
         notification.delivered_at = datetime.now(timezone.utc)
         notification.error_message = None
-        return self.notification_repo.update(notification)
+        updated = self.notification_repo.update(notification)
+        return self.notification_repo.get_by_id(updated.id) or updated
 
     def mark_failed(
         self,
@@ -114,7 +121,8 @@ class NotificationService:
         notification.status = NotificationStatus.FAILED
         notification.failed_at = datetime.now(timezone.utc)
         notification.error_message = self._clean_text(error_message)
-        return self.notification_repo.update(notification)
+        updated = self.notification_repo.update(notification)
+        return self.notification_repo.get_by_id(updated.id) or updated
 
     def _normalize_status(
         self,
@@ -156,3 +164,12 @@ class NotificationService:
 
         cleaned = str(value).strip()
         return cleaned or None
+
+    def _require_text(self, value: str | None, *, field_name: str) -> str:
+        cleaned = self._clean_text(value)
+        if not cleaned:
+            raise ValidationError(
+                f"{field_name} is required",
+                details={field_name: value},
+            )
+        return cleaned
