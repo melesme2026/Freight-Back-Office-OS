@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 
 import { apiClient } from "@/lib/api-client";
 import { getAccessToken, getOrganizationId } from "@/lib/auth";
@@ -161,6 +162,8 @@ function truncateText(value: string, maxLength = 140): string {
 }
 
 export default function SupportPage() {
+  const router = useRouter();
+
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -223,6 +226,10 @@ export default function SupportPage() {
     };
   }, [tickets]);
 
+  function openNewTicket() {
+    router.push("/dashboard/support/new");
+  }
+
   return (
     <div className="px-6 py-10 text-slate-900">
       <div className="mx-auto max-w-7xl">
@@ -244,6 +251,14 @@ export default function SupportPage() {
               className="inline-flex items-center rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-soft transition hover:border-slate-300 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {isLoading ? "Refreshing..." : "Refresh"}
+            </button>
+
+            <button
+              type="button"
+              onClick={openNewTicket}
+              className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-700"
+            >
+              New Ticket
             </button>
           </div>
         </div>
