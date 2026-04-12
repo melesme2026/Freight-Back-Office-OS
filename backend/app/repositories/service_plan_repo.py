@@ -23,27 +23,37 @@ class ServicePlanRepository:
         self.db.refresh(service_plan)
         return service_plan
 
-    def get_by_id(self, service_plan_id: uuid.UUID) -> ServicePlan | None:
-        stmt = select(ServicePlan).where(ServicePlan.id == service_plan_id)
+    def get_by_id(self, service_plan_id: uuid.UUID | str) -> ServicePlan | None:
+        normalized_service_plan_id = self._normalize_uuid(
+            service_plan_id,
+            field_name="service_plan_id",
+        )
+        stmt = select(ServicePlan).where(ServicePlan.id == normalized_service_plan_id)
         return self.db.scalar(stmt)
 
     def get_by_code(
         self,
         *,
-        organization_id: uuid.UUID,
+        organization_id: uuid.UUID | str,
         code: str,
     ) -> ServicePlan | None:
+        normalized_organization_id = self._normalize_uuid(
+            organization_id,
+            field_name="organization_id",
+        )
+        normalized_code = self._normalize_required_text(code, field_name="code")
+
         stmt = select(ServicePlan).where(
-            ServicePlan.organization_id == organization_id,
-            ServicePlan.code == code,
+            ServicePlan.organization_id == normalized_organization_id,
+            ServicePlan.code == normalized_code,
         )
         return self.db.scalar(stmt)
 
     def list(
         self,
         *,
-        organization_id: uuid.UUID | None = None,
-        billing_cycle: BillingCycle | None = None,
+        organization_id: uuid.UUID | str | None = None,
+        billing_cycle: BillingCycle | str | None = None,
         is_active: bool | None = None,
         search: str | None = None,
         page: int = DEFAULT_PAGE,
@@ -52,23 +62,31 @@ class ServicePlanRepository:
         normalized_page = max(page, 1)
         normalized_page_size = min(max(page_size, 1), self.MAX_PAGE_SIZE)
 
+        normalized_organization_id = (
+            self._normalize_uuid(organization_id, field_name="organization_id")
+            if organization_id is not None
+            else None
+        )
+        normalized_billing_cycle = self._normalize_billing_cycle(billing_cycle)
+        normalized_search = self._normalize_optional_text(search)
+
         stmt = select(ServicePlan)
         count_stmt: Select[tuple[int]] = select(func.count()).select_from(ServicePlan)
 
-        if organization_id is not None:
-            stmt = stmt.where(ServicePlan.organization_id == organization_id)
-            count_stmt = count_stmt.where(ServicePlan.organization_id == organization_id)
+        if normalized_organization_id is not None:
+            stmt = stmt.where(ServicePlan.organization_id == normalized_organization_id)
+            count_stmt = count_stmt.where(ServicePlan.organization_id == normalized_organization_id)
 
-        if billing_cycle is not None:
-            stmt = stmt.where(ServicePlan.billing_cycle == billing_cycle)
-            count_stmt = count_stmt.where(ServicePlan.billing_cycle == billing_cycle)
+        if normalized_billing_cycle is not None:
+            stmt = stmt.where(ServicePlan.billing_cycle == normalized_billing_cycle)
+            count_stmt = count_stmt.where(ServicePlan.billing_cycle == normalized_billing_cycle)
 
         if is_active is not None:
             stmt = stmt.where(ServicePlan.is_active == is_active)
             count_stmt = count_stmt.where(ServicePlan.is_active == is_active)
 
-        if search:
-            pattern = f"%{search.strip()}%"
+        if normalized_search:
+            pattern = f"%{normalized_search}%"
             search_filter = or_(
                 ServicePlan.name.ilike(pattern),
                 ServicePlan.code.ilike(pattern),
@@ -77,7 +95,7 @@ class ServicePlanRepository:
             stmt = stmt.where(search_filter)
             count_stmt = count_stmt.where(search_filter)
 
-        total = self.db.scalar(count_stmt) or 0
+        total = int(self.db.scalar(count_stmt) or 0)
 
         offset = (normalized_page - 1) * normalized_page_size
         stmt = (
@@ -98,3 +116,45 @@ class ServicePlanRepository:
     def delete(self, service_plan: ServicePlan) -> None:
         self.db.delete(service_plan)
         self.db.flush()
+
+    def _normalize_uuid(self, value: uuid.UUID | str, *, field_name: str) -> uuid.UUID:
+        if isinstance(value, uuid.UUID):
+            return value
+
+        try:
+            return uuid.UUID(str(value))
+        except ValueError as exc:
+            raise ValueError(f"Invalid {field_name}: {value}") from exc
+
+    @staticmethod
+    def _normalize_optional_text(value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = str(value).strip()
+        return normalized or None
+
+    def _normalize_required_text(self, value: str, *, field_name: str) -> str:
+        normalized = self._normalize_optional_text(value)
+        if not normalized:
+            raise ValueError(f"{field_name} is required")
+        return normalized
+
+    def _normalize_billing_cycle(
+        self,
+        value: BillingCycle | str | None,
+    ) -> BillingCycle | None:
+        if value is None:
+            return None
+
+        if isinstance(value, BillingCycle):
+            return value
+
+        normalized = str(value).strip().lower()
+
+        for cycle in BillingCycle:
+            if normalized == cycle.value.lower():
+                return cycle
+            if normalized == cycle.name.lower():
+                return cycle
+
+        raise ValueError(f"Invalid billing_cycle: {value}")
