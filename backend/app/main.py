@@ -5,6 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.router import api_router
 from app.core.config import get_settings
+from app.core.database import ensure_model_registry_loaded
 from app.core.exceptions import register_exception_handlers
 from app.core.logging import configure_logging
 from app.core.middleware import ProcessTimeMiddleware, RequestContextMiddleware
@@ -15,6 +16,7 @@ def create_app() -> FastAPI:
     settings = get_settings()
 
     configure_logging()
+    ensure_model_registry_loaded()
 
     api_prefix = settings.api_v1_prefix.rstrip("/")
 

@@ -7,7 +7,7 @@ from typing import Any
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
-from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
+from sqlalchemy.orm import DeclarativeBase, Session, configure_mappers, sessionmaker
 
 from app.core.config import get_settings
 
@@ -94,6 +94,17 @@ def init_db(import_models: bool = False) -> None:
     if import_models:
         _import_all_models()
     Base.metadata.create_all(bind=get_engine())
+
+
+def ensure_model_registry_loaded() -> None:
+    """
+    Import all ORM model modules and force mapper configuration.
+
+    This should be called at application startup to surface relationship wiring
+    issues early (before first request).
+    """
+    _import_all_models()
+    configure_mappers()
 
 
 def _import_all_models() -> None:

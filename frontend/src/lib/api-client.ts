@@ -210,18 +210,27 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     !normalizedHeaders["Content-Type"] &&
     !normalizedHeaders["content-type"];
 
-  const response = await fetch(buildApiUrl(path), {
-    ...rest,
-    body: resolvedBody.body,
-    headers: {
-      ...(shouldSetAcceptHeader ? { Accept: "application/json" } : {}),
-      ...(shouldSetContentTypeHeader ? { "Content-Type": "application/json" } : {}),
-      ...(resolvedToken ? { Authorization: `${resolvedTokenType} ${resolvedToken}` } : {}),
-      ...(resolvedOrganizationId ? { "X-Organization-Id": resolvedOrganizationId } : {}),
-      ...normalizedHeaders,
-    },
-    cache: "no-store",
-  });
+  const requestUrl = buildApiUrl(path);
+  let response: Response;
+  try {
+    response = await fetch(requestUrl, {
+      ...rest,
+      body: resolvedBody.body,
+      headers: {
+        ...(shouldSetAcceptHeader ? { Accept: "application/json" } : {}),
+        ...(shouldSetContentTypeHeader ? { "Content-Type": "application/json" } : {}),
+        ...(resolvedToken ? { Authorization: `${resolvedTokenType} ${resolvedToken}` } : {}),
+        ...(resolvedOrganizationId ? { "X-Organization-Id": resolvedOrganizationId } : {}),
+        ...normalizedHeaders,
+      },
+      cache: "no-store",
+    });
+  } catch (error: unknown) {
+    if (error instanceof Error) {
+      throw new Error(`Network request failed for ${requestUrl}: ${error.message}`);
+    }
+    throw new Error(`Network request failed for ${requestUrl}.`);
+  }
 
   if (!response.ok) {
     throw new Error(await buildErrorMessage(response));
