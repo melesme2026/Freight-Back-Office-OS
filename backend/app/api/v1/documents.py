@@ -323,6 +323,43 @@ def create_document(
     )
 
 
+@router.get("/documents", response_model=ApiResponse)
+def list_documents(
+    *,
+    organization_id: uuid.UUID | None = None,
+    customer_account_id: uuid.UUID | None = None,
+    driver_id: uuid.UUID | None = None,
+    load_id: uuid.UUID | None = None,
+    document_type: str | None = None,
+    processing_status: str | None = None,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=25, ge=1, le=500),
+    db: Session = Depends(get_db_session),
+) -> ApiResponse:
+    service = DocumentService(db)
+    items, total_count = service.list_documents(
+        organization_id=_uuid_to_str(organization_id),
+        customer_account_id=_uuid_to_str(customer_account_id),
+        driver_id=_uuid_to_str(driver_id),
+        load_id=_uuid_to_str(load_id),
+        document_type=_normalize_optional_text(document_type),
+        processing_status=_normalize_optional_text(processing_status),
+        page=page,
+        page_size=page_size,
+    )
+
+    return ApiResponse(
+        data=[_serialize_document(item) for item in items],
+        meta=_build_document_list_meta(
+            total_count=total_count,
+            page=page,
+            page_size=page_size,
+            load_id=_uuid_to_str(load_id),
+        ),
+        error=None,
+    )
+
+
 # ---------------------------
 # LOAD DOCUMENT LIST ENDPOINT
 # ---------------------------
