@@ -2,6 +2,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 
+import { apiClient } from "@/lib/api-client";
+import { getAccessToken, getOrganizationId } from "@/lib/auth";
+
 type NotificationItem = {
   id: string;
   channel: string;
@@ -154,36 +157,17 @@ export default function NotificationsPage() {
       setError(null);
 
       try {
-        const response = await fetch("/api/v1/notifications", {
-          method: "GET",
-          credentials: "include",
-          headers: {
-            Accept: "application/json",
-          },
-          cache: "no-store",
-        });
+        const token = getAccessToken();
+        const organizationId = getOrganizationId();
 
-        if (!response.ok) {
-          let message = `Failed to load notifications (${response.status})`;
-
-          try {
-            const errorPayload = (await response.json()) as unknown;
-            const errorRecord = asRecord(errorPayload);
-            const detail =
-              asNullableString(errorRecord?.detail) ??
-              asNullableString(errorRecord?.message);
-
-            if (detail) {
-              message = detail;
-            }
-          } catch {
-            // Keep default message when payload is not JSON.
-          }
-
-          throw new Error(message);
+        if (!organizationId) {
+          throw new Error("Missing organization context.");
         }
 
-        const payload = (await response.json()) as unknown;
+        const payload = await apiClient.get<unknown>("/notifications?page=1&page_size=100", {
+          token: token ?? undefined,
+          organizationId,
+        });
         const normalized = normalizeNotificationsResponse(payload);
 
         if (isMounted) {

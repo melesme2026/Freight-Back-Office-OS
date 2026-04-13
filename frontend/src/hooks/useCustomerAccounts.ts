@@ -126,7 +126,7 @@ export function useCustomerAccounts() {
       setIsLoading(true);
       setError(null);
 
-      const response = await apiClient.get<unknown>("/customer-accounts?page=1&page_size=1000", {
+      const response = await apiClient.get<unknown>("/customer-accounts?page=1&page_size=200", {
         token: token ?? undefined,
         organizationId,
         signal: controller.signal,
