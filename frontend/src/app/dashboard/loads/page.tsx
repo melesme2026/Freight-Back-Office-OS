@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import { apiClient } from "@/lib/api-client";
+import { getAccessToken, getOrganizationId } from "@/lib/auth";
 
 import { useLoads } from "@/hooks/useLoads";
 
@@ -209,6 +211,29 @@ const STATUS_OPTIONS: Array<{ value: StatusFilter; label: string }> = [
 
 export default function LoadsPage() {
   const { loads, isLoading, error } = useLoads();
+
+  async function handleExportCsv(): Promise<void> {
+    const token = getAccessToken();
+    const organizationId = getOrganizationId();
+
+    if (!token || !organizationId) {
+      return;
+    }
+
+    const blob = await apiClient.getBlob(`/loads/export.csv?organization_id=${encodeURIComponent(organizationId)}`, {
+      token,
+      organizationId,
+    });
+
+    const url = window.URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = "loads-export.csv";
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    window.URL.revokeObjectURL(url);
+  }
   const typedLoads = (loads ?? []) as LoadListItem[];
 
   const [search, setSearch] = useState("");
@@ -259,6 +284,13 @@ export default function LoadsPage() {
           </div>
 
           <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={() => void handleExportCsv()}
+              className="inline-flex items-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-slate-300 focus:ring-offset-2"
+            >
+              Export CSV
+            </button>
             <Link
               href="/dashboard/loads/new"
               className="inline-flex items-center rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-700 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2"

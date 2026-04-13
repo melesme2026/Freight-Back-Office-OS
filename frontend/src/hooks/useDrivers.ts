@@ -107,6 +107,8 @@ function normalizeDriver(item: unknown): Driver | null {
   };
 }
 
+
+
 function normalizeDriversResponse(payload: unknown): Driver[] {
   const candidates: unknown[] = [];
 

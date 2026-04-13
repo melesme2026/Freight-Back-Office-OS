@@ -1,5 +1,106 @@
-import { redirect } from "next/navigation";
+"use client";
+
+import Link from "next/link";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+
+import { getAccessToken, getOrganizationId, getUserRole } from "@/lib/auth";
+import { resolvePostLoginRoute } from "@/lib/rbac";
 
 export default function HomePage() {
-  redirect("/login");
+  const router = useRouter();
+  const [isCheckingSession, setIsCheckingSession] = useState(true);
+
+  useEffect(() => {
+    const accessToken = getAccessToken();
+    const organizationId = getOrganizationId();
+    const role = getUserRole();
+
+    if (accessToken && organizationId) {
+      router.replace(resolvePostLoginRoute(role));
+      return;
+    }
+
+    setIsCheckingSession(false);
+  }, [router]);
+
+  if (isCheckingSession) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-50">
+        <div className="rounded-xl border border-slate-200 bg-white px-6 py-4 text-sm text-slate-600 shadow-soft">
+          Checking session...
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <main className="min-h-screen bg-slate-50 text-slate-900">
+      <div className="mx-auto flex min-h-screen max-w-7xl flex-col justify-center px-6 py-16">
+        <div className="max-w-4xl">
+          <div className="mb-6 inline-flex items-center rounded-full border border-slate-200 bg-white px-3 py-1 text-sm font-medium text-slate-600 shadow-sm">
+            Freight Back Office OS
+          </div>
+
+          <h1 className="text-4xl font-bold tracking-tight text-slate-950 sm:text-5xl">
+            Run freight operations, documents, and settlement workflows in one system.
+          </h1>
+
+          <p className="mt-5 text-lg leading-8 text-slate-600">
+            Freight Back Office OS unifies load lifecycle management, document intake and review,
+            invoicing, support, and operational execution for dispatch and back-office teams.
+          </p>
+
+          <div className="mt-8 flex flex-wrap gap-4">
+            <Link
+              href="/login"
+              className="rounded-xl bg-brand-600 px-5 py-3 text-sm font-semibold text-white shadow-soft transition hover:bg-brand-700"
+            >
+              Staff Login
+            </Link>
+
+            <Link
+              href="/driver-login"
+              className="rounded-xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
+            >
+              Driver Login
+            </Link>
+
+            <a
+              href="mailto:sales@freightbackofficeos.com?subject=Freight%20Back%20Office%20OS%20Demo%20Request"
+              className="rounded-xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
+            >
+              Request Demo
+            </a>
+          </div>
+        </div>
+
+        <div className="mt-14 grid gap-5 md:grid-cols-3">
+          <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
+            <h2 className="text-lg font-semibold text-slate-900">Document ownership at scale</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-600">
+              Keep documents tied to loads with source channel, uploader metadata, and processing
+              status so staff can continue operations regardless of intake channel.
+            </p>
+          </section>
+
+          <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
+            <h2 className="text-lg font-semibold text-slate-900">Role-aware workspaces</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-600">
+              Separate operator and driver entry flows while preserving organization-scoped controls
+              for multi-tenant teams.
+            </p>
+          </section>
+
+          <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
+            <h2 className="text-lg font-semibold text-slate-900">Operational finance readiness</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-600">
+              Support billing, invoicing, broker/factoring handoffs, and audit-ready history as your
+              back-office operation grows.
+            </p>
+          </section>
+        </div>
+      </div>
+    </main>
+  );
 }

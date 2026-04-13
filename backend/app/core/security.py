@@ -25,6 +25,11 @@ def hash_password(password: str) -> str:
             "Password cannot be empty",
             details={"field": "password"},
         )
+    if len(normalized_password) < 8:
+        raise ValidationError(
+            "Password must be at least 8 characters",
+            details={"field": "password"},
+        )
     return password_context.hash(normalized_password)
 
 
@@ -34,9 +39,10 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     return password_context.verify(plain_password, hashed_password)
 
 
-def create_access_token(
+def _create_token(
     subject: str,
     *,
+    token_type: str,
     settings: Settings | None = None,
     additional_claims: dict[str, Any] | None = None,
     expires_delta: timedelta | None = None,
@@ -58,7 +64,7 @@ def create_access_token(
         "sub": normalized_subject,
         "iat": int(now.timestamp()),
         "exp": int(expire.timestamp()),
-        "type": "access",
+        "type": token_type,
     }
 
     if additional_claims:
@@ -83,6 +89,7 @@ def decode_token(
     token: str,
     *,
     settings: Settings | None = None,
+    expected_token_type: str = "access",
 ) -> dict[str, Any]:
     if not token or not token.strip():
         raise UnauthorizedError("Missing authentication token")
@@ -101,7 +108,7 @@ def decode_token(
         raise UnauthorizedError("Invalid authentication token") from exc
 
     token_type = payload.get("type")
-    if token_type != "access":
+    if token_type != expected_token_type:
         raise UnauthorizedError("Invalid token type")
 
     subject = payload.get("sub")
@@ -131,3 +138,39 @@ def get_current_token_payload(
     token: str = Depends(get_bearer_token),
 ) -> dict[str, Any]:
     return decode_token(token)
+
+def create_access_token(
+    subject: str,
+    *,
+    settings: Settings | None = None,
+    additional_claims: dict[str, Any] | None = None,
+    expires_delta: timedelta | None = None,
+) -> str:
+    return _create_token(
+        subject,
+        token_type="access",
+        settings=settings,
+        additional_claims=additional_claims,
+        expires_delta=expires_delta,
+    )
+
+
+def create_action_token(
+    subject: str,
+    *,
+    token_type: str,
+    settings: Settings | None = None,
+    additional_claims: dict[str, Any] | None = None,
+    expires_delta: timedelta | None = None,
+) -> str:
+    normalized_type = token_type.strip().lower()
+    if not normalized_type:
+        raise ValidationError("Token type cannot be empty", details={"field": "token_type"})
+
+    return _create_token(
+        subject,
+        token_type=normalized_type,
+        settings=settings,
+        additional_claims=additional_claims,
+        expires_delta=expires_delta,
+    )

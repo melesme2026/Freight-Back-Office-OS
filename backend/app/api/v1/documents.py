@@ -18,12 +18,13 @@ from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_db_session
+from app.core.exceptions import UnauthorizedError
+from app.core.security import get_current_token_payload
 from app.schemas.common import ApiResponse
 from app.services.ai.extraction_service import ExtractionService
 from app.services.documents.document_linker import DocumentLinker
 from app.services.documents.document_service import DocumentService
 from app.services.documents.storage_service import StorageService
-
 
 router = APIRouter()
 
@@ -77,10 +78,6 @@ class LinkDocumentToLoadRequest(BaseModel):
 
     load_id: uuid.UUID
 
-
-# ---------------------------
-# HELPERS
-# ---------------------------
 
 def _uuid_to_str(value: uuid.UUID | None) -> str | None:
     return str(value) if value is not None else None
@@ -212,14 +209,11 @@ def _build_document_list_meta(
     }
 
 
-# ---------------------------
-# FILE UPLOAD ENDPOINT
-# ---------------------------
-
 @router.post("/documents/upload", response_model=ApiResponse)
 async def upload_document(
     *,
     organization_id: uuid.UUID = Form(...),
+    token_payload: dict[str, Any] = Depends(get_current_token_payload),
     customer_account_id: uuid.UUID = Form(...),
     source_channel: str = Form(...),
     file: UploadFile = File(...),
@@ -231,6 +225,9 @@ async def upload_document(
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
     _validate_upload_file(file)
+    token_org_id = token_payload.get("organization_id")
+    if str(organization_id) != str(token_org_id):
+        raise UnauthorizedError("organization_id does not match authenticated organization")
 
     normalized_source_channel = _normalize_required_text(source_channel, "source_channel")
     normalized_document_type = _normalize_optional_text(document_type)
@@ -284,10 +281,6 @@ async def upload_document(
         ) from exc
 
 
-# ---------------------------
-# METADATA CREATE ENDPOINT
-# ---------------------------
-
 @router.post("/documents", response_model=ApiResponse)
 def create_document(
     payload: DocumentCreateRequest,
@@ -327,6 +320,7 @@ def create_document(
 def list_documents(
     *,
     organization_id: uuid.UUID | None = None,
+    token_payload: dict[str, Any] = Depends(get_current_token_payload),
     customer_account_id: uuid.UUID | None = None,
     driver_id: uuid.UUID | None = None,
     load_id: uuid.UUID | None = None,
@@ -336,9 +330,14 @@ def list_documents(
     page_size: int = Query(default=25, ge=1, le=500),
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
+    token_org_id = token_payload.get("organization_id")
+    effective_org_id = organization_id or uuid.UUID(str(token_org_id))
+    if str(effective_org_id) != str(token_org_id):
+        raise UnauthorizedError("organization_id does not match authenticated organization")
+
     service = DocumentService(db)
     items, total_count = service.list_documents(
-        organization_id=_uuid_to_str(organization_id),
+        organization_id=_uuid_to_str(effective_org_id),
         customer_account_id=_uuid_to_str(customer_account_id),
         driver_id=_uuid_to_str(driver_id),
         load_id=_uuid_to_str(load_id),
@@ -359,10 +358,6 @@ def list_documents(
         error=None,
     )
 
-
-# ---------------------------
-# LOAD DOCUMENT LIST ENDPOINT
-# ---------------------------
 
 @router.get("/loads/{load_id}/documents", response_model=ApiResponse)
 def get_documents_by_load(
@@ -391,10 +386,6 @@ def get_documents_by_load(
     )
 
 
-# ---------------------------
-# DOWNLOAD FILE
-# ---------------------------
-
 @router.get("/documents/{document_id}/download")
 def download_document(
     document_id: uuid.UUID,
@@ -413,10 +404,6 @@ def download_document(
     storage = StorageService()
     return storage.get_file(storage_key)
 
-
-# ---------------------------
-# ADVANCED FEATURES
-# ---------------------------
 
 @router.get("/documents/{document_id}", response_model=ApiResponse)
 def get_document(

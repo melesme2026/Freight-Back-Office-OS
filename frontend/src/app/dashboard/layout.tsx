@@ -56,7 +56,7 @@ export default function DashboardLayout({
 
   useEffect(() => {
     if (!accessToken || !organizationId) {
-      router.replace("/login");
+      router.replace("/");
       return;
     }
 
@@ -72,7 +72,7 @@ export default function DashboardLayout({
 
   function handleLogout() {
     clearAuth();
-    router.replace("/login");
+    router.replace("/");
   }
 
   if (!accessToken || !organizationId || !canAccessDashboard(userRole)) {
@@ -141,11 +141,20 @@ export default function DashboardLayout({
                 <h1 className="mt-1 text-xl font-bold text-slate-950">{pageTitle}</h1>
               </div>
 
-              <div className="hidden text-right md:block">
-                <div className="text-sm font-medium text-slate-900">
-                  {userEmail ?? "Signed-in user"}
+              <div className="flex items-center gap-3">
+                <div className="hidden text-right md:block">
+                  <div className="text-sm font-medium text-slate-900">
+                    {userEmail ?? "Signed-in user"}
+                  </div>
+                  <div className="text-xs text-slate-500">Organization active</div>
                 </div>
-                <div className="text-xs text-slate-500">Organization active</div>
+                <button
+                  type="button"
+                  onClick={handleLogout}
+                  className="xl:hidden rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
+                >
+                  Log Out
+                </button>
               </div>
             </div>
 
