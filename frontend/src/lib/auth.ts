@@ -3,6 +3,7 @@ const TOKEN_TYPE_KEY = "fbos_token_type";
 const ORGANIZATION_ID_KEY = "fbos_organization_id";
 const USER_EMAIL_KEY = "fbos_user_email";
 const USER_ROLE_KEY = "fbos_user_role";
+const JWT_EXPIRY_SKEW_SECONDS = 30;
 
 function isBrowser(): boolean {
   return typeof window !== "undefined";
@@ -57,8 +58,52 @@ function removeStorageItem(key: string): void {
   window.localStorage.removeItem(key);
 }
 
+function decodeJwtPayload(token: string): Record<string, unknown> | null {
+  const parts = token.split(".");
+
+  if (parts.length < 2) {
+    return null;
+  }
+
+  try {
+    const base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const padded = `${base64}${"=".repeat((4 - (base64.length % 4)) % 4)}`;
+    const json = atob(padded);
+    return JSON.parse(json) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+function isTokenExpired(token: string): boolean {
+  const payload = decodeJwtPayload(token);
+  if (!payload) {
+    return true;
+  }
+
+  const expClaim = payload.exp;
+
+  if (typeof expClaim !== "number") {
+    return true;
+  }
+
+  const currentEpochSeconds = Date.now() / 1000;
+  return expClaim <= currentEpochSeconds + JWT_EXPIRY_SKEW_SECONDS;
+}
+
 export function getAccessToken(): string | null {
-  return getStorageItem(ACCESS_TOKEN_KEY);
+  const token = getStorageItem(ACCESS_TOKEN_KEY);
+
+  if (!token) {
+    return null;
+  }
+
+  if (isTokenExpired(token)) {
+    clearAuth();
+    return null;
+  }
+
+  return token;
 }
 
 export function getTokenType(): string {

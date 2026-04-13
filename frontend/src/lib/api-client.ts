@@ -1,4 +1,5 @@
 import { buildApiUrl } from "@/lib/config";
+import { clearAuth } from "@/lib/auth";
 
 type RequestOptions = Omit<RequestInit, "body"> & {
   token?: string;
@@ -224,6 +225,12 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   });
 
   if (!response.ok) {
+    if (response.status === 401 && typeof window !== "undefined") {
+      const isDriverPortalRequest = window.location.pathname.startsWith("/driver-portal");
+      clearAuth();
+      window.location.replace(isDriverPortalRequest ? "/driver-login" : "/login");
+    }
+
     throw new Error(await buildErrorMessage(response));
   }
 
