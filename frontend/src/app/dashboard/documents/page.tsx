@@ -401,7 +401,8 @@ export default function DocumentsPage() {
                 ) : documents.length === 0 ? (
                   <tr>
                     <td colSpan={9} className="px-5 py-10 text-center text-slate-500">
-                      No documents found.
+                      No documents found. Upload from Driver Portal or seed demo records using{" "}
+                      <code className="rounded bg-slate-100 px-1 py-0.5">make seed-dev-data</code>.
                     </td>
                   </tr>
                 ) : (

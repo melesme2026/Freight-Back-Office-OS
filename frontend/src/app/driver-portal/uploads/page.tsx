@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useMemo, useState } from "react";
+import Link from "next/link";
 
 import { useLoads } from "@/hooks/useLoads";
 import { apiClient } from "@/lib/api-client";
@@ -75,6 +76,14 @@ export default function DriverUploadsPage() {
           <p className="mt-2 text-sm text-slate-600">
             Upload a BOL, POD, or other document and optionally link it to one of your loads.
           </p>
+          <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
+            <p className="font-semibold text-slate-900">How uploads work in V1</p>
+            <ol className="mt-2 list-decimal space-y-1 pl-4">
+              <li>Select document type and file (PDF or image).</li>
+              <li>Optionally select a load to attach the file immediately.</li>
+              <li>Submit and monitor processing from the staff Documents screen.</li>
+            </ol>
+          </div>
         </div>
 
         {errorMessage ? (
@@ -129,6 +138,12 @@ export default function DriverUploadsPage() {
                   </option>
                 ))}
               </select>
+              {!isLoadingLoads && loadOptions.length === 0 ? (
+                <p className="mt-2 text-xs text-amber-700">
+                  No driver loads are available yet. You can still upload documents without linking,
+                  then staff can attach them later.
+                </p>
+              ) : null}
             </div>
 
             <div>
@@ -152,6 +167,12 @@ export default function DriverUploadsPage() {
             >
               {isSubmitting ? "Uploading..." : "Upload document"}
             </button>
+            <Link
+              href="/driver-portal/loads"
+              className="inline-flex w-fit rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
+            >
+              View my loads
+            </Link>
           </div>
         </form>
       </div>

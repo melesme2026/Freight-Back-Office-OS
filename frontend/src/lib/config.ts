@@ -49,7 +49,7 @@ export const appConfig = {
       "https://buy.stripe.com/fZu7sL1HI7Q6fRz7dY7Vm01",
     enterpriseContact:
       normalizeOptionalText(process.env.NEXT_PUBLIC_ENTERPRISE_CONTACT) ||
-      "mailto:mermerbrands@gmail.com",
+      "/request-demo",
   },
 };
 

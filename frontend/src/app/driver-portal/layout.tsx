@@ -68,6 +68,12 @@ export default function DriverPortalLayout({
           <div>
             <div className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-700">Driver Portal</div>
             <div className="text-sm text-slate-500">{userEmail ?? "Authenticated user"}</div>
+            <Link
+              href="/"
+              className="mt-1 inline-flex text-xs font-semibold text-brand-700 hover:text-brand-800"
+            >
+              ← Back to landing
+            </Link>
           </div>
           <button
             type="button"

@@ -166,6 +166,9 @@ export default function LoginPage() {
           <p className="mt-2 text-xs text-slate-500">
             Driver account? Use <a href="/driver-login" className="font-semibold text-brand-700 hover:text-brand-800">Driver Login</a>.
           </p>
+          <p className="mt-1 text-xs text-slate-500">
+            Default local organization: <span className="font-medium">00000000-0000-0000-0000-000000000001</span>.
+          </p>
         </div>
 
         <form className="space-y-5" onSubmit={handleSubmit} noValidate>
@@ -222,6 +225,9 @@ export default function LoginPage() {
             {isSubmitting ? "Signing in..." : "Sign in"}
           </button>
         </form>
+        <a href="/" className="mt-4 inline-flex text-xs font-semibold text-brand-700 hover:text-brand-800">
+          ← Back to landing
+        </a>
       </section>
     </main>
   );
