@@ -1,0 +1,26 @@
+"""Ensure all ORM models are imported so SQLAlchemy string-based relationships resolve reliably."""
+
+from app.domain.models.api_client import ApiClient  # noqa: F401
+from app.domain.models.audit_log import AuditLog  # noqa: F401
+from app.domain.models.billing_invoice import BillingInvoice  # noqa: F401
+from app.domain.models.billing_invoice_line import BillingInvoiceLine  # noqa: F401
+from app.domain.models.broker import Broker  # noqa: F401
+from app.domain.models.customer_account import CustomerAccount  # noqa: F401
+from app.domain.models.driver import Driver  # noqa: F401
+from app.domain.models.extracted_field import ExtractedField  # noqa: F401
+from app.domain.models.ledger_entry import LedgerEntry  # noqa: F401
+from app.domain.models.load import Load  # noqa: F401
+from app.domain.models.load_document import LoadDocument  # noqa: F401
+from app.domain.models.notification import Notification  # noqa: F401
+from app.domain.models.onboarding_checklist import OnboardingChecklist  # noqa: F401
+from app.domain.models.organization import Organization  # noqa: F401
+from app.domain.models.payment import Payment  # noqa: F401
+from app.domain.models.payment_method import PaymentMethod  # noqa: F401
+from app.domain.models.referral import Referral  # noqa: F401
+from app.domain.models.service_plan import ServicePlan  # noqa: F401
+from app.domain.models.staff_user import StaffUser  # noqa: F401
+from app.domain.models.subscription import Subscription  # noqa: F401
+from app.domain.models.support_ticket import SupportTicket  # noqa: F401
+from app.domain.models.usage_record import UsageRecord  # noqa: F401
+from app.domain.models.validation_issue import ValidationIssue  # noqa: F401
+from app.domain.models.workflow_event import WorkflowEvent  # noqa: F401

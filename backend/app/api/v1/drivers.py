@@ -9,10 +9,11 @@ from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_db_session
-from app.core.exceptions import NotFoundError, ValidationError
+from app.core.exceptions import NotFoundError, UnauthorizedError, ValidationError
 from app.domain.models.driver import Driver
 from app.repositories.driver_repo import DriverRepository
 from app.schemas.common import ApiResponse
+from app.core.security import get_current_token_payload
 
 
 router = APIRouter()
@@ -106,9 +107,14 @@ def _get_driver_or_404(repo: DriverRepository, driver_id: uuid.UUID) -> Driver:
 @router.post("/drivers", response_model=ApiResponse)
 def create_driver(
     payload: DriverCreateRequest,
+    token_payload: dict[str, Any] = Depends(get_current_token_payload),
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
     repo = DriverRepository(db)
+
+    token_org_id = token_payload.get("organization_id")
+    if str(payload.organization_id) != str(token_org_id):
+        raise UnauthorizedError("organization_id does not match authenticated organization")
 
     item = Driver(
         organization_id=payload.organization_id,
@@ -132,6 +138,7 @@ def create_driver(
 def list_drivers(
     *,
     organization_id: uuid.UUID | None = None,
+    token_payload: dict[str, Any] = Depends(get_current_token_payload),
     customer_account_id: uuid.UUID | None = None,
     is_active: bool | None = None,
     search: str | None = None,
@@ -140,8 +147,13 @@ def list_drivers(
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
     repo = DriverRepository(db)
+    token_org_id = token_payload.get("organization_id")
+    effective_org_id = organization_id or uuid.UUID(str(token_org_id))
+    if str(effective_org_id) != str(token_org_id):
+        raise UnauthorizedError("organization_id does not match authenticated organization")
+
     items, total = repo.list(
-        organization_id=organization_id,
+        organization_id=effective_org_id,
         customer_account_id=customer_account_id,
         is_active=is_active,
         search=_normalize_optional_text(search),
@@ -164,10 +176,14 @@ def list_drivers(
 @router.get("/drivers/{driver_id}", response_model=ApiResponse)
 def get_driver(
     driver_id: uuid.UUID,
+    token_payload: dict[str, Any] = Depends(get_current_token_payload),
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
     repo = DriverRepository(db)
     item = _get_driver_or_404(repo, driver_id)
+    token_org_id = token_payload.get("organization_id")
+    if str(item.organization_id) != str(token_org_id):
+        raise UnauthorizedError("Driver is not in authenticated organization")
 
     return ApiResponse(
         data=_serialize_driver(item),

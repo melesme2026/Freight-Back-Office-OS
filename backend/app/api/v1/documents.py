@@ -18,7 +18,9 @@ from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_db_session
+from app.core.security import get_current_token_payload
 from app.schemas.common import ApiResponse
+from app.core.exceptions import UnauthorizedError
 from app.services.ai.extraction_service import ExtractionService
 from app.services.documents.document_linker import DocumentLinker
 from app.services.documents.document_service import DocumentService
@@ -220,6 +222,7 @@ def _build_document_list_meta(
 async def upload_document(
     *,
     organization_id: uuid.UUID = Form(...),
+    token_payload: dict[str, Any] = Depends(get_current_token_payload),
     customer_account_id: uuid.UUID = Form(...),
     source_channel: str = Form(...),
     file: UploadFile = File(...),
@@ -231,6 +234,9 @@ async def upload_document(
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
     _validate_upload_file(file)
+    token_org_id = token_payload.get("organization_id")
+    if str(organization_id) != str(token_org_id):
+        raise UnauthorizedError("organization_id does not match authenticated organization")
 
     normalized_source_channel = _normalize_required_text(source_channel, "source_channel")
     normalized_document_type = _normalize_optional_text(document_type)
@@ -319,6 +325,49 @@ def create_document(
     return ApiResponse(
         data=_serialize_document(item),
         meta={"created": True},
+        error=None,
+    )
+
+
+@router.get("/documents", response_model=ApiResponse)
+def list_documents(
+    *,
+    organization_id: uuid.UUID | None = None,
+    token_payload: dict[str, Any] = Depends(get_current_token_payload),
+    customer_account_id: uuid.UUID | None = None,
+    driver_id: uuid.UUID | None = None,
+    load_id: uuid.UUID | None = None,
+    document_type: str | None = None,
+    processing_status: str | None = None,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=25, ge=1, le=500),
+    db: Session = Depends(get_db_session),
+) -> ApiResponse:
+    token_org_id = token_payload.get("organization_id")
+    effective_org_id = organization_id or uuid.UUID(str(token_org_id))
+    if str(effective_org_id) != str(token_org_id):
+        raise UnauthorizedError("organization_id does not match authenticated organization")
+
+    service = DocumentService(db)
+    items, total_count = service.list_documents(
+        organization_id=_uuid_to_str(effective_org_id),
+        customer_account_id=_uuid_to_str(customer_account_id),
+        driver_id=_uuid_to_str(driver_id),
+        load_id=_uuid_to_str(load_id),
+        document_type=_normalize_optional_text(document_type),
+        processing_status=_normalize_optional_text(processing_status),
+        page=page,
+        page_size=page_size,
+    )
+
+    return ApiResponse(
+        data=[_serialize_document(item) for item in items],
+        meta=_build_document_list_meta(
+            total_count=total_count,
+            page=page,
+            page_size=page_size,
+            load_id=_uuid_to_str(load_id),
+        ),
         error=None,
     )
 

@@ -5,8 +5,7 @@ import { useRouter } from "next/navigation";
 
 import { apiClient } from "@/lib/api-client";
 import { clearAuth, getAccessToken, getUserRole, setAuthSession } from "@/lib/auth";
-import { isDriverRole } from "@/lib/rbac";
-import { resolvePostLoginRoute } from "@/lib/rbac";
+import { isDriverRole, resolvePostLoginRoute } from "@/lib/rbac";
 
 type LoginResponse = {
   data?: {
@@ -16,12 +15,6 @@ type LoginResponse = {
       role?: string;
     };
   };
-  message?: string;
-  error?: {
-    code?: string;
-    message?: string;
-    details?: Record<string, unknown>;
-  } | null;
 };
 
 const DEFAULT_ORGANIZATION_ID = "00000000-0000-0000-0000-000000000001";
@@ -39,7 +32,7 @@ function isValidEmail(value: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized);
 }
 
-export default function LoginPage() {
+export default function DriverLoginPage() {
   const router = useRouter();
 
   const [email, setEmail] = useState("");
@@ -49,23 +42,20 @@ export default function LoginPage() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isCheckingSession, setIsCheckingSession] = useState(true);
 
-  // 🔥 Auto-redirect if already logged in
   useEffect(() => {
     const token = getAccessToken();
     const userRole = getUserRole();
 
-    if (token) {
+    if (token && isDriverRole(userRole)) {
+      router.replace("/driver-portal");
+    } else if (token) {
       router.replace(resolvePostLoginRoute(userRole));
     } else {
       setIsCheckingSession(false);
     }
   }, [router]);
 
-  const normalizedOrganizationId = useMemo(
-    () => normalizeText(organizationId),
-    [organizationId]
-  );
-
+  const normalizedOrganizationId = useMemo(() => normalizeText(organizationId), [organizationId]);
   const normalizedEmail = useMemo(() => normalizeEmail(email), [email]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -76,12 +66,7 @@ export default function LoginPage() {
       return;
     }
 
-    if (!normalizedEmail) {
-      setErrorMessage("Email is required.");
-      return;
-    }
-
-    if (!isValidEmail(normalizedEmail)) {
+    if (!normalizedEmail || !isValidEmail(normalizedEmail)) {
       setErrorMessage("Please enter a valid email address.");
       return;
     }
@@ -96,16 +81,10 @@ export default function LoginPage() {
 
     try {
       clearAuth();
-
       const payload = await apiClient.post<LoginResponse>(
         "/auth/login",
-        {
-          email: normalizedEmail,
-          password,
-        },
-        {
-          organizationId: normalizedOrganizationId,
-        }
+        { email: normalizedEmail, password },
+        { organizationId: normalizedOrganizationId }
       );
 
       const accessToken = payload?.data?.access_token?.trim();
@@ -116,8 +95,8 @@ export default function LoginPage() {
         throw new Error("Login succeeded but no access token was returned.");
       }
 
-      if (isDriverRole(userRole)) {
-        throw new Error("This account is a driver account. Please use Driver Login.");
+      if (!isDriverRole(userRole)) {
+        throw new Error("This account is not a driver role. Please use Staff Login.");
       }
 
       setAuthSession({
@@ -128,21 +107,17 @@ export default function LoginPage() {
         userRole,
       });
 
-      router.replace(resolvePostLoginRoute(userRole));
+      router.replace("/driver-portal");
       router.refresh();
     } catch (error: unknown) {
-      const message =
-        error instanceof Error && error.message
-          ? error.message
-          : "Unable to sign in. Please verify your credentials and try again.";
-
-      setErrorMessage(message);
+      setErrorMessage(
+        error instanceof Error ? error.message : "Unable to sign in. Please verify your credentials and try again."
+      );
     } finally {
       setIsSubmitting(false);
     }
   }
 
-  // 🔥 Prevent flicker while checking session
   if (isCheckingSession) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50">
@@ -157,68 +132,29 @@ export default function LoginPage() {
     <main className="flex min-h-screen items-center justify-center bg-slate-50 px-6">
       <section className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-8 shadow-soft">
         <div className="mb-6">
-          <h1 className="text-2xl font-bold tracking-tight text-slate-950">
-            Sign in
-          </h1>
-          <p className="mt-2 text-sm text-slate-600">
-            Access the Freight Back Office OS operator dashboard.
-          </p>
-          <p className="mt-2 text-xs text-slate-500">
-            Driver account? Use <a href="/driver-login" className="font-semibold text-brand-700 hover:text-brand-800">Driver Login</a>.
-          </p>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-950">Driver Sign in</h1>
+          <p className="mt-2 text-sm text-slate-600">Access your driver portal workspace.</p>
         </div>
 
         <form className="space-y-5" onSubmit={handleSubmit} noValidate>
           <div>
-            <label className="mb-2 block text-sm font-medium text-slate-700">
-              Organization ID
-            </label>
-            <input
-              type="text"
-              value={organizationId}
-              onChange={(e) => setOrganizationId(e.target.value)}
-              className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm"
-              disabled={isSubmitting}
-            />
+            <label className="mb-2 block text-sm font-medium text-slate-700">Organization ID</label>
+            <input type="text" value={organizationId} onChange={(e) => setOrganizationId(e.target.value)} className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm" disabled={isSubmitting} />
           </div>
 
           <div>
-            <label className="mb-2 block text-sm font-medium text-slate-700">
-              Email
-            </label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm"
-              disabled={isSubmitting}
-            />
+            <label className="mb-2 block text-sm font-medium text-slate-700">Email</label>
+            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm" disabled={isSubmitting} />
           </div>
 
           <div>
-            <label className="mb-2 block text-sm font-medium text-slate-700">
-              Password
-            </label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm"
-              disabled={isSubmitting}
-            />
+            <label className="mb-2 block text-sm font-medium text-slate-700">Password</label>
+            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm" disabled={isSubmitting} />
           </div>
 
-          {errorMessage && (
-            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-              {errorMessage}
-            </div>
-          )}
+          {errorMessage && <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{errorMessage}</div>}
 
-          <button
-            type="submit"
-            disabled={isSubmitting}
-            className="w-full rounded-xl bg-brand-600 px-4 py-3 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60"
-          >
+          <button type="submit" disabled={isSubmitting} className="w-full rounded-xl bg-brand-600 px-4 py-3 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60">
             {isSubmitting ? "Signing in..." : "Sign in"}
           </button>
         </form>

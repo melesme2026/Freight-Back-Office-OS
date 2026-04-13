@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
 from app.api.v1.auth import router as auth_router
 from app.api.v1.billing_dashboard import router as billing_dashboard_router
@@ -26,6 +26,7 @@ from app.api.v1.webhooks_email import router as webhooks_email_router
 from app.api.v1.webhooks_payment import router as webhooks_payment_router
 from app.api.v1.webhooks_whatsapp import router as webhooks_whatsapp_router
 from app.core.config import get_settings
+from app.core.security import get_current_token_payload
 
 
 settings = get_settings()
@@ -36,31 +37,33 @@ api_router = APIRouter(prefix=settings.api_v1_prefix)
 api_router.include_router(health_router, tags=["health"])
 api_router.include_router(auth_router, tags=["auth"])
 
+protected_dependencies = [Depends(get_current_token_payload)]
+
 # Tenant / account setup
-api_router.include_router(organizations_router, tags=["organizations"])
-api_router.include_router(customer_accounts_router, tags=["customer-accounts"])
-api_router.include_router(onboarding_router, tags=["onboarding"])
-api_router.include_router(referrals_router, tags=["referrals"])
-api_router.include_router(staff_users_router, tags=["staff-users"])
+api_router.include_router(organizations_router, tags=["organizations"], dependencies=protected_dependencies)
+api_router.include_router(customer_accounts_router, tags=["customer-accounts"], dependencies=protected_dependencies)
+api_router.include_router(onboarding_router, tags=["onboarding"], dependencies=protected_dependencies)
+api_router.include_router(referrals_router, tags=["referrals"], dependencies=protected_dependencies)
+api_router.include_router(staff_users_router, tags=["staff-users"], dependencies=protected_dependencies)
 
 # Operational entities
-api_router.include_router(drivers_router, tags=["drivers"])
-api_router.include_router(brokers_router, tags=["brokers"])
-api_router.include_router(loads_router, tags=["loads"])
-api_router.include_router(documents_router, tags=["documents"])
-api_router.include_router(review_queue_router, tags=["review-queue"])
-api_router.include_router(notifications_router, tags=["notifications"])
-api_router.include_router(support_router, tags=["support"])
+api_router.include_router(drivers_router, tags=["drivers"], dependencies=protected_dependencies)
+api_router.include_router(brokers_router, tags=["brokers"], dependencies=protected_dependencies)
+api_router.include_router(loads_router, tags=["loads"], dependencies=protected_dependencies)
+api_router.include_router(documents_router, tags=["documents"], dependencies=protected_dependencies)
+api_router.include_router(review_queue_router, tags=["review-queue"], dependencies=protected_dependencies)
+api_router.include_router(notifications_router, tags=["notifications"], dependencies=protected_dependencies)
+api_router.include_router(support_router, tags=["support"], dependencies=protected_dependencies)
 
 # Product / billing
-api_router.include_router(service_plans_router, tags=["service-plans"])
-api_router.include_router(subscriptions_router, tags=["subscriptions"])
-api_router.include_router(billing_invoices_router, tags=["billing-invoices"])
-api_router.include_router(payments_router, tags=["payments"])
-api_router.include_router(billing_dashboard_router, tags=["billing-dashboard"])
+api_router.include_router(service_plans_router, tags=["service-plans"], dependencies=protected_dependencies)
+api_router.include_router(subscriptions_router, tags=["subscriptions"], dependencies=protected_dependencies)
+api_router.include_router(billing_invoices_router, tags=["billing-invoices"], dependencies=protected_dependencies)
+api_router.include_router(payments_router, tags=["payments"], dependencies=protected_dependencies)
+api_router.include_router(billing_dashboard_router, tags=["billing-dashboard"], dependencies=protected_dependencies)
 
 # Dashboards
-api_router.include_router(dashboard_router, tags=["dashboard"])
+api_router.include_router(dashboard_router, tags=["dashboard"], dependencies=protected_dependencies)
 
 # Webhooks
 api_router.include_router(webhooks_whatsapp_router, tags=["webhooks-whatsapp"])

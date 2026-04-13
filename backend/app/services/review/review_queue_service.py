@@ -121,10 +121,8 @@ class ReviewQueueService:
                 getattr(primary_issue, "is_blocking", False)
             ),
             "primary_issue_rule_code": getattr(primary_issue, "rule_code", None),
-            "extraction_confidence_avg": (
-                float(load.extraction_confidence_avg)
-                if load.extraction_confidence_avg is not None
-                else None
+            "extraction_confidence_avg": self._safe_float(
+                getattr(load, "extraction_confidence_avg", None)
             ),
             "last_reviewed_at": (
                 load.last_reviewed_at.isoformat()
@@ -132,6 +130,17 @@ class ReviewQueueService:
                 else None
             ),
         }
+
+
+    @staticmethod
+    def _safe_float(value: object | None) -> float | None:
+        if value is None:
+            return None
+
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
 
     def get_review_queue(
         self,
@@ -152,7 +161,11 @@ class ReviewQueueService:
         queue_items: list[dict[str, Any]] = []
 
         for load in loads:
-            item = self._build_queue_item(load)
+            try:
+                item = self._build_queue_item(load)
+            except (TypeError, ValueError, AttributeError):
+                continue
+
             if item is not None:
                 queue_items.append(item)
 

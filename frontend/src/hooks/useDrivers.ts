@@ -107,6 +107,8 @@ function normalizeDriver(item: unknown): Driver | null {
   };
 }
 
+
+
 function normalizeDriversResponse(payload: unknown): Driver[] {
   const candidates: unknown[] = [];
 
@@ -163,7 +165,7 @@ export function useDrivers() {
       setIsLoading(true);
       setError(null);
 
-      const response = await apiClient.get<unknown>("/drivers?page=1&page_size=1000", {
+      const response = await apiClient.get<unknown>("/drivers?page=1&page_size=200", {
         token: token ?? undefined,
         organizationId,
         signal: controller.signal,

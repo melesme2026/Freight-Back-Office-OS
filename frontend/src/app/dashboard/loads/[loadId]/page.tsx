@@ -811,15 +811,24 @@ export default function LoadDetailPage() {
       setIsLoading(true);
       setError(null);
 
-      const [loadData, reviewItem, documents] = await Promise.all([
-        fetchLoad(),
-        fetchReviewQueueItem().catch(() => null),
-        fetchLoadDocuments({ silent: true }).catch(() => []),
-      ]);
-
+      const loadData = await fetchLoad();
       setLoad(loadData);
-      setReviewQueueItem(reviewItem);
-      setLoadDocuments(documents);
+
+      void fetchReviewQueueItem()
+        .then((reviewItem) => {
+          setReviewQueueItem(reviewItem);
+        })
+        .catch(() => {
+          setReviewQueueItem(null);
+        });
+
+      void fetchLoadDocuments({ silent: true })
+        .then((documents) => {
+          setLoadDocuments(documents);
+        })
+        .catch(() => {
+          setLoadDocuments([]);
+        });
     } catch (caught: unknown) {
       setError(extractErrorMessage(caught, "Failed to fetch load."));
     } finally {

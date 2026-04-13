@@ -9,6 +9,7 @@ from app.core.exceptions import register_exception_handlers
 from app.core.logging import configure_logging
 from app.core.middleware import ProcessTimeMiddleware, RequestContextMiddleware
 from app.lifespan import lifespan
+import app.domain.models  # noqa: F401
 
 
 def create_app() -> FastAPI:

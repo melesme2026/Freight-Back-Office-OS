@@ -1,16 +1,20 @@
 from __future__ import annotations
 
+import csv
+import io
 import uuid
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_db_session
-from app.core.exceptions import ValidationError
+from app.core.security import get_current_token_payload
+from app.core.exceptions import UnauthorizedError, ValidationError
 from app.domain.enums.load_status import LoadStatus
 from app.schemas.common import ApiResponse
 from app.services.loads.load_service import LoadService
@@ -256,8 +260,13 @@ def _serialize_load(item: Any, *, detailed: bool = False) -> dict[str, Any]:
 @router.post("/loads", response_model=ApiResponse)
 def create_load(
     payload: LoadCreateRequest,
+    token_payload: dict[str, Any] = Depends(get_current_token_payload),
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
+    token_org_id = token_payload.get("organization_id")
+    if str(payload.organization_id) != str(token_org_id):
+        raise UnauthorizedError("organization_id does not match authenticated organization")
+
     service = LoadService(db)
     item = service.create_load(
         organization_id=str(payload.organization_id),
@@ -293,6 +302,7 @@ def create_load(
 def list_loads(
     *,
     organization_id: uuid.UUID | None = None,
+    token_payload: dict[str, Any] = Depends(get_current_token_payload),
     customer_account_id: uuid.UUID | None = None,
     driver_id: uuid.UUID | None = None,
     status: str | None = None,
@@ -304,11 +314,27 @@ def list_loads(
     page_size: int = Query(default=25, ge=1, le=200),
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
+    token_org_id = token_payload.get("organization_id")
+    token_role = str(token_payload.get("role") or "").lower()
+    token_driver_id = token_payload.get("driver_id")
+
+    effective_org_id = organization_id or uuid.UUID(str(token_org_id))
+    if str(effective_org_id) != str(token_org_id):
+        raise UnauthorizedError("organization_id does not match authenticated organization")
+
+    effective_driver_id = driver_id
+    if token_role == "driver":
+        if not token_driver_id:
+            raise UnauthorizedError("Driver token is missing driver_id")
+        if driver_id is not None and str(driver_id) != str(token_driver_id):
+            raise UnauthorizedError("Driver may only access own loads")
+        effective_driver_id = uuid.UUID(str(token_driver_id))
+
     service = LoadService(db)
     items, total = service.list_loads(
-        organization_id=_uuid_to_str(organization_id),
+        organization_id=_uuid_to_str(effective_org_id),
         customer_account_id=_uuid_to_str(customer_account_id),
-        driver_id=_uuid_to_str(driver_id),
+        driver_id=_uuid_to_str(effective_driver_id),
         status=_normalize_optional_text(status),
         source_channel=_normalize_optional_text(source_channel),
         date_from=_normalize_optional_text(date_from),
@@ -411,4 +437,74 @@ def transition_load_status(
         },
         meta={},
         error=None,
+    )
+
+@router.get("/loads/export.csv")
+def export_loads_csv(
+    *,
+    organization_id: uuid.UUID | None = None,
+    driver_id: uuid.UUID | None = None,
+    status: str | None = None,
+    token_payload: dict[str, Any] = Depends(get_current_token_payload),
+    db: Session = Depends(get_db_session),
+):
+    token_org_id = token_payload.get("organization_id")
+    if not token_org_id:
+        raise ValidationError("Token organization_id is missing", details={"organization_id": None})
+
+    effective_org_id = str(organization_id) if organization_id else str(token_org_id)
+    if str(token_org_id) != effective_org_id:
+        raise ValidationError(
+            "organization_id does not match authenticated organization",
+            details={"organization_id": effective_org_id},
+        )
+
+    service = LoadService(db)
+    items, _ = service.list_loads(
+        organization_id=effective_org_id,
+        driver_id=_uuid_to_str(driver_id),
+        status=_normalize_optional_text(status),
+        page=1,
+        page_size=500,
+    )
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        "load_id",
+        "load_number",
+        "status",
+        "driver_id",
+        "customer_account_id",
+        "broker_id",
+        "gross_amount",
+        "currency_code",
+        "pickup_date",
+        "delivery_date",
+        "created_at",
+        "updated_at",
+    ])
+
+    for item in items:
+        row = _serialize_load(item, detailed=False)
+        writer.writerow([
+            row.get("id"),
+            row.get("load_number"),
+            row.get("status"),
+            row.get("driver_id"),
+            row.get("customer_account_id"),
+            row.get("broker_id"),
+            row.get("gross_amount"),
+            row.get("currency_code"),
+            row.get("pickup_date"),
+            row.get("delivery_date"),
+            row.get("created_at"),
+            row.get("updated_at"),
+        ])
+
+    output.seek(0)
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": 'attachment; filename="loads-export.csv"'},
     )

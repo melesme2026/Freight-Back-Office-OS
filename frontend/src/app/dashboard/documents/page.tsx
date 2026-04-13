@@ -35,6 +35,8 @@ type LoadDocument = {
   page_count?: number | null;
   created_at?: string | null;
   updated_at?: string | null;
+  uploaded_by_staff_user_name?: string | null;
+  uploaded_by_staff_user_id?: string | null;
 };
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -112,6 +114,8 @@ function normalizeDocument(value: unknown): LoadDocument | null {
     page_count: asOptionalNumber(record.page_count),
     created_at: asString(record.created_at),
     updated_at: asString(record.updated_at),
+    uploaded_by_staff_user_name: asString(record.uploaded_by_staff_user_name),
+    uploaded_by_staff_user_id: asString(record.uploaded_by_staff_user_id),
   };
 }
 
@@ -381,6 +385,8 @@ export default function DocumentsPage() {
                   <th className="px-5 py-4 font-semibold">Linked Load</th>
                   <th className="px-5 py-4 font-semibold">Size</th>
                   <th className="px-5 py-4 font-semibold">Uploaded</th>
+                  <th className="px-5 py-4 font-semibold">Source</th>
+                  <th className="px-5 py-4 font-semibold">Uploaded By</th>
                   <th className="px-5 py-4 font-semibold">Action</th>
                 </tr>
               </thead>
@@ -388,13 +394,13 @@ export default function DocumentsPage() {
               <tbody className="divide-y divide-slate-100">
                 {isLoading ? (
                   <tr>
-                    <td colSpan={7} className="px-5 py-10 text-center text-slate-500">
+                    <td colSpan={9} className="px-5 py-10 text-center text-slate-500">
                       Loading documents...
                     </td>
                   </tr>
                 ) : documents.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-5 py-10 text-center text-slate-500">
+                    <td colSpan={9} className="px-5 py-10 text-center text-slate-500">
                       No documents found.
                     </td>
                   </tr>
@@ -437,6 +443,14 @@ export default function DocumentsPage() {
 
                       <td className="px-5 py-4 align-top text-slate-700">
                         {formatDateTime(document.created_at)}
+                      </td>
+
+                      <td className="px-5 py-4 align-top text-slate-700">
+                        {(document.source_channel ?? "unknown").replaceAll("_", " ")}
+                      </td>
+
+                      <td className="px-5 py-4 align-top text-slate-700">
+                        {document.uploaded_by_staff_user_name ?? document.uploaded_by_staff_user_id ?? "System / Driver"}
                       </td>
 
                       <td className="px-5 py-4 align-top">
