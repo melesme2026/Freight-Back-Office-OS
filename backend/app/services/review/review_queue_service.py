@@ -65,6 +65,16 @@ class ReviewQueueService:
         title = str(getattr(issue, "title", "") or "").strip().lower()
         return (priority, title)
 
+    @staticmethod
+    def _safe_float(value: object | None) -> float | None:
+        if value is None:
+            return None
+
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
     def _build_queue_item(self, load: Any) -> dict[str, Any] | None:
         load_issues = list(getattr(load, "validation_issues", []) or [])
 
@@ -130,17 +140,6 @@ class ReviewQueueService:
                 else None
             ),
         }
-
-
-    @staticmethod
-    def _safe_float(value: object | None) -> float | None:
-        if value is None:
-            return None
-
-        try:
-            return float(value)
-        except (TypeError, ValueError):
-            return None
 
     def get_review_queue(
         self,

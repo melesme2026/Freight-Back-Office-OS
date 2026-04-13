@@ -18,14 +18,13 @@ from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_db_session
+from app.core.exceptions import UnauthorizedError
 from app.core.security import get_current_token_payload
 from app.schemas.common import ApiResponse
-from app.core.exceptions import UnauthorizedError
 from app.services.ai.extraction_service import ExtractionService
 from app.services.documents.document_linker import DocumentLinker
 from app.services.documents.document_service import DocumentService
 from app.services.documents.storage_service import StorageService
-
 
 router = APIRouter()
 
@@ -79,10 +78,6 @@ class LinkDocumentToLoadRequest(BaseModel):
 
     load_id: uuid.UUID
 
-
-# ---------------------------
-# HELPERS
-# ---------------------------
 
 def _uuid_to_str(value: uuid.UUID | None) -> str | None:
     return str(value) if value is not None else None
@@ -214,10 +209,6 @@ def _build_document_list_meta(
     }
 
 
-# ---------------------------
-# FILE UPLOAD ENDPOINT
-# ---------------------------
-
 @router.post("/documents/upload", response_model=ApiResponse)
 async def upload_document(
     *,
@@ -289,10 +280,6 @@ async def upload_document(
             detail=f"Failed to upload document: {exc}",
         ) from exc
 
-
-# ---------------------------
-# METADATA CREATE ENDPOINT
-# ---------------------------
 
 @router.post("/documents", response_model=ApiResponse)
 def create_document(
@@ -372,10 +359,6 @@ def list_documents(
     )
 
 
-# ---------------------------
-# LOAD DOCUMENT LIST ENDPOINT
-# ---------------------------
-
 @router.get("/loads/{load_id}/documents", response_model=ApiResponse)
 def get_documents_by_load(
     load_id: uuid.UUID,
@@ -403,10 +386,6 @@ def get_documents_by_load(
     )
 
 
-# ---------------------------
-# DOWNLOAD FILE
-# ---------------------------
-
 @router.get("/documents/{document_id}/download")
 def download_document(
     document_id: uuid.UUID,
@@ -425,10 +404,6 @@ def download_document(
     storage = StorageService()
     return storage.get_file(storage_key)
 
-
-# ---------------------------
-# ADVANCED FEATURES
-# ---------------------------
 
 @router.get("/documents/{document_id}", response_model=ApiResponse)
 def get_document(
