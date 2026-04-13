@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.domain.enums.invoice_status import InvoiceStatus
 from app.domain.models.billing_invoice import BillingInvoice
+from app.domain.models.payment import Payment
 
 
 class BillingInvoiceRepository:
@@ -67,6 +68,7 @@ class BillingInvoiceRepository:
         organization_id: uuid.UUID | str | None = None,
         customer_account_id: uuid.UUID | str | None = None,
         subscription_id: uuid.UUID | str | None = None,
+        driver_id: uuid.UUID | str | None = None,
         status: InvoiceStatus | str | None = None,
         due_before: datetime | None = None,
         page: int = DEFAULT_PAGE,
@@ -91,6 +93,11 @@ class BillingInvoiceRepository:
             if subscription_id is not None
             else None
         )
+        normalized_driver_id = (
+            self._normalize_uuid(driver_id, field_name="driver_id")
+            if driver_id is not None
+            else None
+        )
         normalized_status = self._normalize_status(status)
 
         stmt = select(BillingInvoice)
@@ -112,6 +119,18 @@ class BillingInvoiceRepository:
         if normalized_subscription_id is not None:
             stmt = stmt.where(BillingInvoice.subscription_id == normalized_subscription_id)
             count_stmt = count_stmt.where(BillingInvoice.subscription_id == normalized_subscription_id)
+
+        if normalized_driver_id is not None:
+            paid_by_driver = (
+                select(Payment.id)
+                .where(
+                    Payment.billing_invoice_id == BillingInvoice.id,
+                    Payment.driver_id == normalized_driver_id,
+                )
+                .exists()
+            )
+            stmt = stmt.where(paid_by_driver)
+            count_stmt = count_stmt.where(paid_by_driver)
 
         if normalized_status is not None:
             stmt = stmt.where(BillingInvoice.status == normalized_status)

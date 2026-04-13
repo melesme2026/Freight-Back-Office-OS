@@ -31,6 +31,19 @@ class OrganizationCreateRequest(BaseModel):
     is_active: bool = True
 
 
+class OrganizationUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str | None = None
+    slug: str | None = None
+    legal_name: str | None = None
+    email: str | None = None
+    phone: str | None = None
+    timezone: str | None = None
+    currency_code: str | None = None
+    is_active: bool | None = None
+
+
 def _normalize_required_text(value: str, field_name: str) -> str:
     normalized = value.strip()
     if not normalized:
@@ -162,6 +175,55 @@ def get_organization(
 
     return ApiResponse(
         data=_serialize_organization(org),
+        meta={},
+        error=None,
+    )
+
+
+@router.patch("/organizations/{organization_id}", response_model=ApiResponse)
+def update_organization(
+    organization_id: uuid.UUID,
+    payload: OrganizationUpdateRequest,
+    db: Session = Depends(get_db_session),
+) -> ApiResponse:
+    repo = OrganizationRepository(db)
+    org = _get_organization_or_404(repo, organization_id)
+
+    if payload.name is not None:
+        org.name = _normalize_required_text(payload.name, "name")
+
+    if payload.slug is not None:
+        normalized_slug = _normalize_slug(payload.slug)
+        existing = repo.get_by_slug(normalized_slug)
+        if existing is not None and existing.id != org.id:
+            raise ValidationError(
+                "Organization slug already exists",
+                details={"slug": normalized_slug},
+            )
+        org.slug = normalized_slug
+
+    if payload.legal_name is not None:
+        org.legal_name = _normalize_optional_text(payload.legal_name)
+
+    if payload.email is not None:
+        org.email = _normalize_email(payload.email)
+
+    if payload.phone is not None:
+        org.phone = _normalize_optional_text(payload.phone)
+
+    if payload.timezone is not None:
+        org.timezone = _normalize_required_text(payload.timezone, "timezone")
+
+    if payload.currency_code is not None:
+        org.currency_code = _normalize_currency_code(payload.currency_code) or org.currency_code
+
+    if payload.is_active is not None:
+        org.is_active = payload.is_active
+
+    updated = repo.update(org)
+
+    return ApiResponse(
+        data=_serialize_organization(updated),
         meta={},
         error=None,
     )

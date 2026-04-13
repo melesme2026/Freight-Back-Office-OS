@@ -41,7 +41,7 @@ class DocumentClassifier:
         scores[DocumentType.RATE_CONFIRMATION] += self._score_matches(
             normalized,
             {
-                r"\brate confirmation\b": 0.65,
+                r"\brate confirmation\b": 0.72,
                 r"\bratecon\b": 0.55,
                 r"\brate cons?\b": 0.45,
                 r"\brate confirmation number\b": 0.20,

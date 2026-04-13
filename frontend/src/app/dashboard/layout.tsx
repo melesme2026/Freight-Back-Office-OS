@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import type { Route } from "next";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo } from "react";
 
@@ -9,10 +10,12 @@ import {
   getAccessToken,
   getOrganizationId,
   getUserEmail,
+  getUserRole,
 } from "@/lib/auth";
+import { canAccessDashboard } from "@/lib/rbac";
 
 type NavItem = {
-  href: string;
+  href: Route;
   label: string;
 };
 
@@ -48,13 +51,19 @@ export default function DashboardLayout({
 
   const accessToken = getAccessToken();
   const organizationId = getOrganizationId();
+  const userRole = getUserRole();
   const userEmail = getUserEmail();
 
   useEffect(() => {
     if (!accessToken || !organizationId) {
       router.replace("/login");
+      return;
     }
-  }, [accessToken, organizationId, router]);
+
+    if (!canAccessDashboard(userRole)) {
+      router.replace("/driver-portal");
+    }
+  }, [accessToken, organizationId, userRole, router]);
 
   const pageTitle = useMemo(() => {
     const activeItem = NAV_ITEMS.find((item) => isActivePath(pathname, item.href));
@@ -66,11 +75,11 @@ export default function DashboardLayout({
     router.replace("/login");
   }
 
-  if (!accessToken || !organizationId) {
+  if (!accessToken || !organizationId || !canAccessDashboard(userRole)) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50 px-6">
         <div className="rounded-2xl border border-slate-200 bg-white px-6 py-5 text-sm text-slate-600 shadow-soft">
-          Redirecting to login...
+          Redirecting...
         </div>
       </div>
     );

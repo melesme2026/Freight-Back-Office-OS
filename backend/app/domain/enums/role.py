@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from enum import StrEnum
+from app.domain.enums.compat import StrEnum
 
 
 class Role(StrEnum):
@@ -8,6 +8,7 @@ class Role(StrEnum):
     ADMIN = "admin"
     OPS_MANAGER = "ops_manager"
     OPS_AGENT = "ops_agent"
+    DRIVER = "driver"
     BILLING_ADMIN = "billing_admin"
     SUPPORT_AGENT = "support_agent"
     VIEWER = "viewer"

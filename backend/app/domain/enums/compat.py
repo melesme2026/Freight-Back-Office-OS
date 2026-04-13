@@ -1,0 +1,15 @@
+from __future__ import annotations
+
+import sys
+from enum import Enum
+
+
+if sys.version_info >= (3, 11):
+    from enum import StrEnum
+else:
+
+    class StrEnum(str, Enum):
+        """Python 3.10-compatible fallback for enum.StrEnum."""
+
+        def __str__(self) -> str:
+            return str(self.value)

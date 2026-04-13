@@ -1,6 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
+
+import { apiClient } from "@/lib/api-client";
+import { getAccessToken, getOrganizationId } from "@/lib/auth";
 
 type SubscriptionListItem = {
   id: string;
@@ -21,27 +24,23 @@ type SubscriptionListEnvelope = {
   pages?: unknown;
 };
 
+type ResponseMeta = {
+  total?: unknown;
+  page?: unknown;
+  page_size?: unknown;
+  pages?: unknown;
+};
+
 type SubscriptionListResponse =
   | SubscriptionListEnvelope
+  | unknown[]
   | {
-      data?: SubscriptionListEnvelope;
+      data?: SubscriptionListEnvelope | unknown[];
+      meta?: ResponseMeta;
       message?: string;
     };
 
 const DEFAULT_PAGE_SIZE = 25;
-
-function getApiBaseUrl(): string {
-  const value = process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
-  return value && value.length > 0 ? value.replace(/\/+$/, "") : "http://127.0.0.1:8000";
-}
-
-function readStoredValue(key: string): string {
-  if (typeof window === "undefined") {
-    return "";
-  }
-
-  return window.localStorage.getItem(key)?.trim() ?? "";
-}
 
 function normalizeText(value: unknown): string | null {
   if (typeof value !== "string") {
@@ -94,15 +93,6 @@ function normalizePositiveInteger(value: unknown, fallback: number): number {
   return Math.floor(numeric);
 }
 
-function extractMessage(payload: unknown): string | null {
-  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
-    return null;
-  }
-
-  const record = payload as Record<string, unknown>;
-  return normalizeText(record.message);
-}
-
 function normalizeSubscriptionListItem(value: unknown): SubscriptionListItem | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return null;
@@ -133,7 +123,7 @@ function isSubscriptionListEnvelope(value: unknown): value is SubscriptionListEn
 
 function isWrappedSubscriptionListResponse(
   value: unknown
-): value is { data?: SubscriptionListEnvelope; message?: string } {
+): value is { data?: SubscriptionListEnvelope | unknown[]; meta?: ResponseMeta; message?: string } {
   return (
     typeof value === "object" &&
     value !== null &&
@@ -149,38 +139,34 @@ function normalizeSubscriptionListResponse(payload: SubscriptionListResponse | n
   pageSize: number;
   pages: number;
 } {
-  let root: SubscriptionListEnvelope | null = null;
+  let rawItems: unknown[] = [];
+  let meta: ResponseMeta | null = null;
 
   if (isWrappedSubscriptionListResponse(payload)) {
-    root = payload.data ?? null;
+    if (Array.isArray(payload.data)) {
+      rawItems = payload.data;
+      meta = payload.meta ?? null;
+    } else if (isSubscriptionListEnvelope(payload.data)) {
+      rawItems = Array.isArray(payload.data.items) ? payload.data.items : [];
+      meta = payload.data;
+    }
+  } else if (Array.isArray(payload)) {
+    rawItems = payload;
   } else if (isSubscriptionListEnvelope(payload)) {
-    root = payload;
+    rawItems = Array.isArray(payload.items) ? payload.items : [];
+    meta = payload;
   }
 
-  if (!root) {
-    return {
-      items: [],
-      total: 0,
-      page: 1,
-      pageSize: DEFAULT_PAGE_SIZE,
-      pages: 1,
-    };
-  }
-
-  const rawItems = Array.isArray(root.items) ? root.items : [];
   const items = rawItems
     .map((item) => normalizeSubscriptionListItem(item))
     .filter((item): item is SubscriptionListItem => item !== null);
 
   const totalFallback = items.length;
-  const total = normalizePositiveInteger(root.total, totalFallback);
-  const page = normalizePositiveInteger(root.page, 1);
-  const pageSize = normalizePositiveInteger(root.page_size, DEFAULT_PAGE_SIZE);
-  const computedPages = Math.max(
-    1,
-    Math.ceil(Math.max(total, items.length) / Math.max(1, pageSize))
-  );
-  const pages = normalizePositiveInteger(root.pages, computedPages);
+  const total = normalizePositiveInteger(meta?.total, totalFallback);
+  const page = normalizePositiveInteger(meta?.page, 1);
+  const pageSize = normalizePositiveInteger(meta?.page_size, DEFAULT_PAGE_SIZE);
+  const computedPages = Math.max(1, Math.ceil(Math.max(total, items.length) / Math.max(1, pageSize)));
+  const pages = normalizePositiveInteger(meta?.pages, computedPages);
 
   return {
     items,
@@ -224,7 +210,6 @@ function formatDate(value: string | null | undefined): string {
 }
 
 export default function BillingSubscriptionsPage() {
-  const apiBaseUrl = useMemo(() => getApiBaseUrl(), []);
   const [items, setItems] = useState<SubscriptionListItem[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -238,9 +223,8 @@ export default function BillingSubscriptionsPage() {
     const controller = new AbortController();
 
     async function loadSubscriptions(): Promise<void> {
-      const token = readStoredValue("fbos_access_token");
-      const tokenType = readStoredValue("fbos_token_type") || "Bearer";
-      const organizationId = readStoredValue("fbos_organization_id");
+      const token = getAccessToken();
+      const organizationId = getOrganizationId();
 
       if (!token || !organizationId) {
         setItems([]);
@@ -258,31 +242,11 @@ export default function BillingSubscriptionsPage() {
         const safePage = Math.max(1, page);
         const safePageSize = Math.max(1, pageSize);
 
-        const url = new URL(`${apiBaseUrl}/api/v1/subscriptions`);
-        url.searchParams.set("page", String(safePage));
-        url.searchParams.set("page_size", String(safePageSize));
-
-        const response = await fetch(url.toString(), {
-          method: "GET",
-          headers: {
-            Accept: "application/json",
-            Authorization: `${tokenType} ${token}`,
-            "X-Organization-Id": organizationId,
-          },
-          cache: "no-store",
+        const payload = await apiClient.get<SubscriptionListResponse | null>(`/subscriptions?page=${safePage}&page_size=${safePageSize}`, {
+          token,
+          organizationId,
           signal: controller.signal,
         });
-
-        let payload: SubscriptionListResponse | null = null;
-        try {
-          payload = (await response.json()) as SubscriptionListResponse;
-        } catch {
-          payload = null;
-        }
-
-        if (!response.ok) {
-          throw new Error(extractMessage(payload) ?? "Unable to load subscriptions.");
-        }
 
         const normalized = normalizeSubscriptionListResponse(payload);
 
@@ -322,7 +286,7 @@ export default function BillingSubscriptionsPage() {
     return () => {
       controller.abort();
     };
-  }, [apiBaseUrl, page, pageSize, reloadKey]);
+  }, [page, pageSize, reloadKey]);
 
   const canGoPrevious = page > 1;
   const canGoNext = page < pages;

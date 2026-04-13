@@ -248,6 +248,48 @@ class LoadService:
 
         return self.load_repo.update(load)
 
+    def attach_document_flags(
+        self,
+        *,
+        load_id: str,
+        has_ratecon: bool | None = None,
+        has_bol: bool | None = None,
+        has_invoice: bool | None = None,
+    ) -> Load:
+        load = self.get_load(load_id)
+
+        if has_ratecon is not None:
+            load.has_ratecon = bool(has_ratecon)
+        if has_bol is not None:
+            load.has_bol = bool(has_bol)
+        if has_invoice is not None:
+            load.has_invoice = bool(has_invoice)
+
+        load.documents_complete = bool(load.has_ratecon and load.has_bol)
+        if load.documents_complete and load.status == LoadStatus.NEW:
+            self._sync_status_timestamps(
+                load,
+                old_status=load.status,
+                new_status=LoadStatus.DOCS_RECEIVED,
+            )
+            load.status = LoadStatus.DOCS_RECEIVED
+
+        return self.load_repo.update(load)
+
+    def update_extraction_confidence(
+        self,
+        *,
+        load_id: str,
+        extraction_confidence_avg: Any,
+    ) -> Load:
+        load = self.get_load(load_id)
+        load.extraction_confidence_avg = self._normalize_decimal(
+            extraction_confidence_avg,
+            field_name="extraction_confidence_avg",
+        )
+        load.last_reviewed_at = datetime.now(timezone.utc)
+        return self.load_repo.update(load)
+
     def _sync_status_timestamps(
         self,
         load: Load,

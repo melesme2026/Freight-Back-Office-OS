@@ -2,6 +2,7 @@ const ACCESS_TOKEN_KEY = "fbos_access_token";
 const TOKEN_TYPE_KEY = "fbos_token_type";
 const ORGANIZATION_ID_KEY = "fbos_organization_id";
 const USER_EMAIL_KEY = "fbos_user_email";
+const USER_ROLE_KEY = "fbos_user_role";
 
 function isBrowser(): boolean {
   return typeof window !== "undefined";
@@ -72,17 +73,23 @@ export function getUserEmail(): string | null {
   return getStorageItem(USER_EMAIL_KEY);
 }
 
+export function getUserRole(): string | null {
+  return getStorageItem(USER_ROLE_KEY);
+}
+
 export function getAuthSession(): {
   accessToken: string | null;
   tokenType: string;
   organizationId: string | null;
   userEmail: string | null;
+  userRole: string | null;
 } {
   return {
     accessToken: getAccessToken(),
     tokenType: getTokenType(),
     organizationId: getOrganizationId(),
     userEmail: getUserEmail(),
+    userRole: getUserRole(),
   };
 }
 
@@ -102,11 +109,16 @@ export function setUserEmail(email: string): void {
   setStorageItem(USER_EMAIL_KEY, email);
 }
 
+export function setUserRole(role: string): void {
+  setStorageItem(USER_ROLE_KEY, role);
+}
+
 export function setAuthSession(params: {
   accessToken?: string | null;
   tokenType?: string | null;
   organizationId?: string | null;
   userEmail?: string | null;
+  userRole?: string | null;
 }): void {
   if (params.accessToken !== undefined) {
     if (params.accessToken === null) {
@@ -139,6 +151,14 @@ export function setAuthSession(params: {
       setStorageItem(USER_EMAIL_KEY, params.userEmail);
     }
   }
+
+  if (params.userRole !== undefined) {
+    if (params.userRole === null) {
+      removeStorageItem(USER_ROLE_KEY);
+    } else {
+      setStorageItem(USER_ROLE_KEY, params.userRole);
+    }
+  }
 }
 
 export function clearAuth(): void {
@@ -150,6 +170,7 @@ export function clearAuth(): void {
   removeStorageItem(TOKEN_TYPE_KEY);
   removeStorageItem(ORGANIZATION_ID_KEY);
   removeStorageItem(USER_EMAIL_KEY);
+  removeStorageItem(USER_ROLE_KEY);
 }
 
 export function clearAccessToken(): void {

@@ -7,7 +7,6 @@ from typing import Any
 class WhatsAppIngestionService:
     def ingest(
         self,
-        *,
         payload: dict[str, Any],
         request_metadata: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
