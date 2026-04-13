@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { getAccessToken, getOrganizationId, getUserRole } from "@/lib/auth";
+import { clearAuth, getAccessToken, getOrganizationId, getUserRole } from "@/lib/auth";
 import { resolvePostLoginRoute } from "@/lib/rbac";
 
 export default function HomePage() {
@@ -19,6 +19,10 @@ export default function HomePage() {
     if (accessToken && organizationId) {
       router.replace(resolvePostLoginRoute(role));
       return;
+    }
+
+    if (accessToken && !organizationId) {
+      clearAuth();
     }
 
     setIsCheckingSession(false);

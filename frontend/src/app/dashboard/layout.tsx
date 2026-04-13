@@ -56,7 +56,7 @@ export default function DashboardLayout({
 
   useEffect(() => {
     if (!accessToken || !organizationId) {
-      router.replace("/");
+      router.replace("/login");
       return;
     }
 
