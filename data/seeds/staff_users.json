@@ -16,5 +16,14 @@
     "password_hash": "__SET_VIA_SEED_RUNTIME__",
     "role": "ops_agent",
     "is_active": true
+  },
+  {
+    "id": "50000000-0000-0000-0000-000000000003",
+    "organization_id": "00000000-0000-0000-0000-000000000001",
+    "full_name": "John Doe",
+    "email": "john.doe@example.com",
+    "password_hash": "__SET_VIA_SEED_RUNTIME__",
+    "role": "driver",
+    "is_active": true
   }
 ]

@@ -104,6 +104,67 @@ EMAIL_ENABLED=false
 BILLING_ENABLED=false
 ```
 
+
+## Local seeded login credentials
+
+After running the seed flow, use these local/dev credentials:
+
+* **Organization ID:** `00000000-0000-0000-0000-000000000001`
+* **Staff admin:** `admin@adwafreight.com` / `Admin123!`
+* **Staff reviewer:** `reviewer@adwafreight.com` / `Reviewer123!`
+* **Driver:** `john.doe@example.com` / `Driver123!`
+
+## V1 intentionally unavailable actions
+
+These visible actions are intentionally disabled in the current V1 release candidate:
+
+* Document detail: **Reprocess**
+* Document detail: **Link to Load**
+* Billing plans: **New Plan**
+
+Treat these as known non-blocking V1 limits, not broken routes.
+
+## Billing-lite configuration (V1)
+
+To enable Stripe-hosted subscribe CTAs on `/pricing`, set frontend env vars:
+
+```env
+NEXT_PUBLIC_STRIPE_STARTER_LINK=https://buy.stripe.com/fZu8wP1HIc6m48R0PA7Vm00
+NEXT_PUBLIC_STRIPE_GROWTH_LINK=https://buy.stripe.com/fZu7sL1HI7Q6fRz7dY7Vm01
+NEXT_PUBLIC_ENTERPRISE_CONTACT=mailto:mermerbrands@gmail.com
+```
+
+These values are the live hosted-link defaults now used by the pricing page. You can override via environment variables if needed.
+
+Manual activation path (staff/admin):
+
+1. Sign in as admin/staff with billing privileges.
+2. Open `/dashboard/billing`.
+3. Use **Manual status override** and save one of: `trial`, `active`, `manual_active`, `inactive`.
+4. Confirm the organization billing state updates in the same page.
+
+## Final manual QA checklist (release gate)
+
+1. Open `/` and verify Staff Login, Driver Login, Request Demo, and View Pricing CTAs.
+2. Open `/pricing` and verify:
+   * Starter/Growth CTAs open Stripe links when configured.
+   * fallback shows setup-required messaging when links are missing.
+3. Sign in as staff admin (`admin@adwafreight.com` / `Admin123!`) and verify:
+   * `/dashboard`, `/dashboard/loads`, `/dashboard/documents`, `/dashboard/notifications`, `/dashboard/billing` load.
+   * manual billing status override saves on `/dashboard/billing`.
+4. Verify staff upload path from load detail:
+   * open a load detail page,
+   * upload a document from the load documents panel,
+   * confirm success message and refreshed document list.
+5. Verify driver flow (`john.doe@example.com` / `Driver123!`):
+   * login at `/driver-login`,
+   * upload doc on `/driver-portal/uploads` with document type and optional load,
+   * confirm success feedback and no staff-only billing controls.
+6. On staff load detail, verify:
+   * status update actions succeed,
+   * Generate Invoice downloads/opens PDF.
+7. Confirm notifications include document-upload and load-status-change records.
+
 ## Important
 
 * `CORS_ALLOWED_ORIGINS` must be a valid JSON array

@@ -1,22 +1,27 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useMemo, useState } from "react";
 
-import { useCustomerAccounts } from "@/hooks/useCustomerAccounts";
-import { useDrivers } from "@/hooks/useDrivers";
+import { useLoads } from "@/hooks/useLoads";
 import { apiClient } from "@/lib/api-client";
 import { getAccessToken, getOrganizationId } from "@/lib/auth";
 
 export default function DriverUploadsPage() {
-  const { customerAccounts, isLoading: isCustomerLoading, error: customerError } = useCustomerAccounts();
-  const { drivers } = useDrivers();
+  const { loads, isLoading: isLoadingLoads } = useLoads();
 
-  const [selectedCustomerId, setSelectedCustomerId] = useState("");
-  const [selectedDriverId, setSelectedDriverId] = useState("");
+  const [selectedLoadId, setSelectedLoadId] = useState("");
+  const [documentType, setDocumentType] = useState("bol");
   const [file, setFile] = useState<File | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  const loadOptions = useMemo(() => {
+    return loads.map((load) => ({
+      id: load.id,
+      label: load.load_number || load.id,
+    }));
+  }, [loads]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -24,18 +29,17 @@ export default function DriverUploadsPage() {
     const token = getAccessToken();
     const organizationId = getOrganizationId();
 
-    if (!organizationId || !selectedCustomerId || !file) {
-      setErrorMessage("Select a customer account and file before uploading.");
+    if (!organizationId || !file || !documentType.trim()) {
+      setErrorMessage("Select a document type and file before uploading.");
       return;
     }
 
     const formData = new FormData();
     formData.append("organization_id", organizationId);
-    formData.append("customer_account_id", selectedCustomerId);
-    formData.append("source_channel", "driver_portal");
+    formData.append("document_type", documentType.trim());
     formData.append("file", file);
-    if (selectedDriverId) {
-      formData.append("driver_id", selectedDriverId);
+    if (selectedLoadId) {
+      formData.append("load_id", selectedLoadId);
     }
 
     try {
@@ -43,13 +47,14 @@ export default function DriverUploadsPage() {
       setErrorMessage(null);
       setSuccessMessage(null);
 
-      await apiClient.post("/documents/upload", formData, {
+      await apiClient.post("/driver/documents/upload", formData, {
         token: token ?? undefined,
         organizationId: organizationId ?? undefined,
       });
 
       setSuccessMessage("Document uploaded successfully.");
       setFile(null);
+      setSelectedLoadId("");
       const uploadInput = event.currentTarget.elements.namedItem("upload-file") as HTMLInputElement | null;
       if (uploadInput) {
         uploadInput.value = "";
@@ -68,15 +73,9 @@ export default function DriverUploadsPage() {
           <p className="text-sm font-medium text-brand-700">Driver Portal / Uploads</p>
           <h1 className="text-3xl font-bold tracking-tight text-slate-950">Upload Documents</h1>
           <p className="mt-2 text-sm text-slate-600">
-            Uploads are wired to the live document upload endpoint.
+            Upload a BOL, POD, or other document and optionally link it to one of your loads.
           </p>
         </div>
-
-        {customerError ? (
-          <div className="mb-6 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-            {customerError}
-          </div>
-        ) : null}
 
         {errorMessage ? (
           <div className="mb-6 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
@@ -93,39 +92,40 @@ export default function DriverUploadsPage() {
         <form onSubmit={(event) => void handleSubmit(event)} className="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
           <div className="grid gap-5">
             <div>
-              <label htmlFor="upload-customer" className="text-sm font-semibold text-slate-700">
-                Customer account
+              <label htmlFor="upload-document-type" className="text-sm font-semibold text-slate-700">
+                Document type
               </label>
               <select
-                id="upload-customer"
-                value={selectedCustomerId}
-                onChange={(event) => setSelectedCustomerId(event.target.value)}
-                disabled={isCustomerLoading || customerAccounts.length === 0}
+                id="upload-document-type"
+                value={documentType}
+                onChange={(event) => setDocumentType(event.target.value)}
                 className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
               >
-                <option value="">Select customer account</option>
-                {customerAccounts.map((account) => (
-                  <option key={account.id} value={account.id}>
-                    {account.account_name}
-                  </option>
-                ))}
+                <option value="bol">BOL</option>
+                <option value="pod">POD</option>
+                <option value="other">Other</option>
               </select>
             </div>
 
+            <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+              Driver is resolved automatically from your signed-in driver account.
+            </div>
+
             <div>
-              <label htmlFor="upload-driver" className="text-sm font-semibold text-slate-700">
-                Driver (optional)
+              <label htmlFor="upload-load" className="text-sm font-semibold text-slate-700">
+                Load (optional)
               </label>
               <select
-                id="upload-driver"
-                value={selectedDriverId}
-                onChange={(event) => setSelectedDriverId(event.target.value)}
+                id="upload-load"
+                value={selectedLoadId}
+                onChange={(event) => setSelectedLoadId(event.target.value)}
+                disabled={isLoadingLoads}
                 className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
               >
-                <option value="">No driver selected</option>
-                {drivers.map((driver) => (
-                  <option key={driver.id} value={driver.id}>
-                    {driver.full_name}
+                <option value="">No load selected</option>
+                {loadOptions.map((load) => (
+                  <option key={load.id} value={load.id}>
+                    {load.label}
                   </option>
                 ))}
               </select>
@@ -139,6 +139,7 @@ export default function DriverUploadsPage() {
                 id="upload-file"
                 name="upload-file"
                 type="file"
+                accept="application/pdf,image/*"
                 onChange={(event) => setFile(event.target.files?.[0] ?? null)}
                 className="mt-2 block w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
               />

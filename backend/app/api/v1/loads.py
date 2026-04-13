@@ -257,6 +257,73 @@ def _serialize_load(item: Any, *, detailed: bool = False) -> dict[str, Any]:
     return payload
 
 
+def _escape_pdf_text(value: str) -> str:
+    return value.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
+
+
+def _build_simple_invoice_pdf(*, load: Any) -> bytes:
+    lines = [
+        "Freight Back Office OS Invoice",
+        "",
+        f"Load Number: {load.load_number or 'N/A'}",
+        f"Load ID: {load.id}",
+        f"Customer: {load.customer_account_name or load.customer_account_id or 'N/A'}",
+        f"Amount: {load.gross_amount or '0.00'} {load.currency_code or 'USD'}",
+        f"Pickup: {load.pickup_location or 'N/A'} ({load.pickup_date or 'N/A'})",
+        f"Delivery: {load.delivery_location or 'N/A'} ({load.delivery_date or 'N/A'})",
+        f"Generated At: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}",
+    ]
+
+    text_ops = ["BT", "/F1 12 Tf", "50 780 Td", "14 TL"]
+    first_line = True
+    for raw_line in lines:
+        if first_line:
+            text_ops.append(f"({_escape_pdf_text(raw_line)}) Tj")
+            first_line = False
+        else:
+            text_ops.append("T*")
+            text_ops.append(f"({_escape_pdf_text(raw_line)}) Tj")
+    text_ops.append("ET")
+    stream = "\n".join(text_ops).encode("latin-1", errors="replace")
+
+    objects: list[bytes] = [
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
+        b"/Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+        b"<< /Length "
+        + str(len(stream)).encode("ascii")
+        + b" >>\nstream\n"
+        + stream
+        + b"\nendstream",
+    ]
+
+    pdf = bytearray(b"%PDF-1.4\n")
+    offsets = [0]
+    for idx, obj in enumerate(objects, start=1):
+        offsets.append(len(pdf))
+        pdf.extend(f"{idx} 0 obj\n".encode("ascii"))
+        pdf.extend(obj)
+        pdf.extend(b"\nendobj\n")
+
+    xref_position = len(pdf)
+    pdf.extend(f"xref\n0 {len(objects) + 1}\n".encode("ascii"))
+    pdf.extend(b"0000000000 65535 f \n")
+    for offset in offsets[1:]:
+        pdf.extend(f"{offset:010} 00000 n \n".encode("ascii"))
+    pdf.extend(
+        (
+            "trailer\n"
+            f"<< /Size {len(objects) + 1} /Root 1 0 R >>\n"
+            "startxref\n"
+            f"{xref_position}\n"
+            "%%EOF\n"
+        ).encode("ascii")
+    )
+    return bytes(pdf)
+
+
 @router.post("/loads", response_model=ApiResponse)
 def create_load(
     payload: LoadCreateRequest,
@@ -438,6 +505,24 @@ def transition_load_status(
         meta={},
         error=None,
     )
+
+
+@router.get("/loads/{load_id}/invoice")
+def download_load_invoice(
+    load_id: uuid.UUID,
+    db: Session = Depends(get_db_session),
+) -> StreamingResponse:
+    service = LoadService(db)
+    load = service.get_load(str(load_id))
+    pdf_bytes = _build_simple_invoice_pdf(load=load)
+    filename = f"invoice-{load.load_number or load.id}.pdf"
+
+    return StreamingResponse(
+        io.BytesIO(pdf_bytes),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
 
 @router.get("/loads/export.csv")
 def export_loads_csv(

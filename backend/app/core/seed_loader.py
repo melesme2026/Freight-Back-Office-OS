@@ -27,6 +27,7 @@ SeedNormalizer = Callable[[dict[str, Any]], dict[str, Any]]
 _RUNTIME_STAFF_USER_PASSWORDS: dict[str, str] = {
     "admin@adwafreight.com": "Admin123!",
     "reviewer@adwafreight.com": "Reviewer123!",
+    "john.doe@example.com": "Driver123!",
 }
 
 SEED_SPECS: tuple[tuple[str, SeedModel, SeedNormalizer], ...] = (
