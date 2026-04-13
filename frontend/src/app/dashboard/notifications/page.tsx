@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 import { apiClient } from "@/lib/api-client";
@@ -145,6 +147,7 @@ function formatDateTime(value: string | null): string {
 }
 
 export default function NotificationsPage() {
+  const searchParams = useSearchParams();
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -217,6 +220,8 @@ export default function NotificationsPage() {
     };
   }, [notifications]);
 
+  const createdNotification = searchParams.get("created");
+
   return (
     <main className="min-h-screen bg-slate-50 text-slate-900">
       <div className="mx-auto max-w-7xl px-6 py-10">
@@ -234,15 +239,12 @@ export default function NotificationsPage() {
             </p>
           </div>
 
-          <button
-            type="button"
-            disabled
-            aria-disabled="true"
-            title="Notification creation is not yet wired in V1."
-            className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white opacity-60"
+          <Link
+            href="/dashboard/notifications/new"
+            className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-700"
           >
             New Notification
-          </button>
+          </Link>
         </div>
 
         <section className="grid gap-4 md:grid-cols-4">
@@ -274,6 +276,12 @@ export default function NotificationsPage() {
             </div>
           </div>
         </section>
+
+        {createdNotification ? (
+          <div className="mt-6 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+            Notification created successfully.
+          </div>
+        ) : null}
 
         {error ? (
           <div className="mt-6 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">

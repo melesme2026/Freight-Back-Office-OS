@@ -40,6 +40,17 @@ export const appConfig = {
   defaultOrganizationId:
     normalizeOptionalText(process.env.NEXT_PUBLIC_ORGANIZATION_ID) ||
     "00000000-0000-0000-0000-000000000001",
+  pricing: {
+    starterLink:
+      normalizeOptionalText(process.env.NEXT_PUBLIC_STRIPE_STARTER_LINK) ||
+      "https://buy.stripe.com/fZu8wP1HIc6m48R0PA7Vm00",
+    growthLink:
+      normalizeOptionalText(process.env.NEXT_PUBLIC_STRIPE_GROWTH_LINK) ||
+      "https://buy.stripe.com/fZu7sL1HI7Q6fRz7dY7Vm01",
+    enterpriseContact:
+      normalizeOptionalText(process.env.NEXT_PUBLIC_ENTERPRISE_CONTACT) ||
+      "mailto:mermerbrands@gmail.com",
+  },
 };
 
 export function buildApiUrl(path: string): string {

@@ -491,7 +491,7 @@ export default function DocumentDetailPage() {
               type="button"
               disabled
               aria-disabled="true"
-              title="Reprocessing is not yet wired in V1."
+              title="Intentionally unavailable in V1 release candidate."
               className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 opacity-60"
             >
               Reprocess
@@ -500,7 +500,7 @@ export default function DocumentDetailPage() {
               type="button"
               disabled
               aria-disabled="true"
-              title="Load linking action is not yet wired in V1."
+              title="Intentionally unavailable in V1 release candidate."
               className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white opacity-60"
             >
               Link to Load

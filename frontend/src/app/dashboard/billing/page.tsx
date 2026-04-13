@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { apiClient } from "@/lib/api-client";
-import { getAccessToken, getOrganizationId } from "@/lib/auth";
+import { getAccessToken, getOrganizationId, getUserRole } from "@/lib/auth";
 
 type BillingMetrics = {
   active_subscriptions?: number;
@@ -57,6 +57,16 @@ type NormalizedInvoiceListItem = {
   totalAmount: string | number | null;
   status: string;
   currencyCode: string;
+};
+
+type OrganizationBillingState = {
+  id: string;
+  billing_provider: string;
+  billing_status: string;
+  plan_code: string;
+  stripe_customer_id?: string | null;
+  stripe_subscription_id?: string | null;
+  billing_notes?: string | null;
 };
 
 function isWrappedResponse<T extends object>(
@@ -178,8 +188,14 @@ export default function BillingPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [organizationBilling, setOrganizationBilling] = useState<OrganizationBillingState | null>(null);
+  const [selectedBillingStatus, setSelectedBillingStatus] = useState("trial");
+  const [isSavingBillingStatus, setIsSavingBillingStatus] = useState(false);
+  const [billingStatusMessage, setBillingStatusMessage] = useState<string | null>(null);
 
   const isMountedRef = useRef(true);
+  const role = (getUserRole() ?? "").trim().toLowerCase();
+  const canOverrideBillingStatus = ["owner", "admin", "ops_manager", "billing_admin"].includes(role);
 
   const loadBillingData = useCallback(async (mode: "initial" | "refresh" = "initial"): Promise<void> => {
     const token = getAccessToken();
@@ -205,12 +221,16 @@ export default function BillingPage() {
 
       setErrorMessage(null);
 
-      const [summaryResponse, invoicesResponse] = await Promise.all([
+      const [summaryResponse, invoicesResponse, organizationResponse] = await Promise.all([
         apiClient.get<BillingSummaryResponse>("/billing/dashboard", {
           token,
           organizationId,
         }),
         apiClient.get<InvoiceListResponse>("/billing-invoices?page=1&page_size=5", {
+          token,
+          organizationId,
+        }),
+        apiClient.get<{ data?: OrganizationBillingState }>(`/organizations/${organizationId}`, {
           token,
           organizationId,
         }),
@@ -222,6 +242,9 @@ export default function BillingPage() {
 
       setMetrics(normalizeBillingMetrics(summaryResponse));
       setRecentInvoices(normalizeInvoiceList(invoicesResponse));
+      const orgData = organizationResponse?.data ?? null;
+      setOrganizationBilling(orgData);
+      setSelectedBillingStatus(orgData?.billing_status?.trim()?.toLowerCase() || "trial");
     } catch (error) {
       if (!isMountedRef.current) {
         return;
@@ -235,6 +258,7 @@ export default function BillingPage() {
         currency_code: "USD",
       });
       setRecentInvoices([]);
+      setOrganizationBilling(null);
       setErrorMessage(
         error instanceof Error && error.message
           ? error.message
@@ -249,6 +273,36 @@ export default function BillingPage() {
       setIsRefreshing(false);
     }
   }, []);
+
+  const saveBillingStatus = useCallback(async () => {
+    const token = getAccessToken();
+    const organizationId = getOrganizationId();
+    if (!token || !organizationId || !canOverrideBillingStatus) {
+      return;
+    }
+
+    try {
+      setIsSavingBillingStatus(true);
+      setBillingStatusMessage(null);
+      await apiClient.patch(
+        `/organizations/${organizationId}`,
+        { billing_status: selectedBillingStatus },
+        {
+          token,
+          organizationId,
+        }
+      );
+
+      setBillingStatusMessage("Billing status updated.");
+      await loadBillingData("refresh");
+    } catch (error) {
+      setBillingStatusMessage(
+        error instanceof Error ? error.message : "Unable to update billing status."
+      );
+    } finally {
+      setIsSavingBillingStatus(false);
+    }
+  }, [canOverrideBillingStatus, loadBillingData, selectedBillingStatus]);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -340,6 +394,62 @@ export default function BillingPage() {
               <div className="mt-2 break-words text-3xl font-bold text-slate-950">{item.value}</div>
             </div>
           ))}
+        </section>
+
+        <section className="mt-8 rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <h2 className="text-lg font-semibold text-slate-950">Organization Billing State</h2>
+              <p className="mt-2 text-sm text-slate-600">
+                Provider: {organizationBilling?.billing_provider ?? "none"} · Status:{" "}
+                {organizationBilling?.billing_status ?? "trial"} · Plan: {organizationBilling?.plan_code ?? "none"}
+              </p>
+              {organizationBilling?.stripe_subscription_id ? (
+                <p className="mt-1 text-xs text-slate-500">
+                  Stripe subscription: {organizationBilling.stripe_subscription_id}
+                </p>
+              ) : null}
+            </div>
+            <Link
+              href="/pricing"
+              className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
+            >
+              View Pricing
+            </Link>
+          </div>
+
+          {canOverrideBillingStatus ? (
+            <div className="mt-4 flex flex-wrap items-end gap-3 border-t border-slate-100 pt-4">
+              <label className="text-sm font-medium text-slate-700">
+                Manual status override
+                <select
+                  value={selectedBillingStatus}
+                  onChange={(event) => setSelectedBillingStatus(event.target.value)}
+                  className="mt-2 block rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
+                >
+                  <option value="trial">Trial</option>
+                  <option value="active">Active</option>
+                  <option value="manual_active">Manual Active</option>
+                  <option value="inactive">Inactive</option>
+                </select>
+              </label>
+              <button
+                type="button"
+                onClick={() => void saveBillingStatus()}
+                disabled={isSavingBillingStatus}
+                className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isSavingBillingStatus ? "Saving..." : "Save Billing Status"}
+              </button>
+              {billingStatusMessage ? (
+                <p className="text-sm text-slate-600">{billingStatusMessage}</p>
+              ) : null}
+            </div>
+          ) : (
+            <p className="mt-4 text-xs text-slate-500">
+              Billing status overrides are limited to owner/admin/ops manager/billing admin roles.
+            </p>
+          )}
         </section>
 
         <div className="mt-8 grid gap-6 xl:grid-cols-[1.3fr,1fr]">

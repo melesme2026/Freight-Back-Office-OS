@@ -152,6 +152,11 @@ const UPLOAD_DOCUMENT_TYPE_OPTIONS: Array<{
   { value: "unknown", label: "Other / Unknown" },
 ];
 
+const MANUAL_STATUS_OPTIONS: Array<{ value: LoadStatus; label: string }> = [
+  { value: "docs_received", label: "Docs Received" },
+  { value: "paid", label: "Paid" },
+];
+
 function statusBadge(status: string) {
   switch (status) {
     case "needs_review":
@@ -703,6 +708,9 @@ export default function LoadDetailPage() {
   const [loadDocuments, setLoadDocuments] = useState<LoadDocument[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isAdvancing, setIsAdvancing] = useState<boolean>(false);
+  const [isSettingStatus, setIsSettingStatus] = useState<boolean>(false);
+  const [manualStatus, setManualStatus] = useState<LoadStatus>("docs_received");
+  const [isGeneratingInvoice, setIsGeneratingInvoice] = useState<boolean>(false);
   const [isMarkingReviewed, setIsMarkingReviewed] = useState<boolean>(false);
   const [isDocumentsLoading, setIsDocumentsLoading] = useState<boolean>(false);
   const [isUploadingDocument, setIsUploadingDocument] = useState<boolean>(false);
@@ -1056,6 +1064,74 @@ export default function LoadDetailPage() {
     }
   }
 
+  async function handleSetManualStatus() {
+    if (!load || !load.id || isSettingStatus) {
+      return;
+    }
+
+    try {
+      setIsSettingStatus(true);
+      setError(null);
+      setActionMessage(null);
+
+      const token = getAccessToken();
+      const staffUserId = await fetchCurrentStaffUserId();
+
+      const response = await apiClient.post<ApiResponse<StatusTransitionResponse>>(
+        `/loads/${encodeURIComponent(load.id)}/status`,
+        {
+          new_status: manualStatus,
+          actor_staff_user_id: staffUserId,
+          actor_type: "staff_user",
+          notes: `Manual status update to ${manualStatus}`,
+        },
+        {
+          token: token ?? undefined,
+        }
+      );
+
+      await fetchPageData();
+      const resolvedStatus = response.data?.new_status ?? manualStatus;
+      setActionMessage(`Status updated to ${resolvedStatus.replaceAll("_", " ")}.`);
+    } catch (caught: unknown) {
+      setError(extractErrorMessage(caught, "Failed to set status."));
+    } finally {
+      setIsSettingStatus(false);
+    }
+  }
+
+  async function handleGenerateInvoice() {
+    if (!load || !load.id || isGeneratingInvoice) {
+      return;
+    }
+
+    try {
+      setIsGeneratingInvoice(true);
+      setError(null);
+      setActionMessage(null);
+
+      const token = getAccessToken();
+      const response = await fetch(buildApiUrl(`/loads/${encodeURIComponent(load.id)}/invoice`), {
+        method: "GET",
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
+
+      if (!response.ok) {
+        throw new Error("Failed to generate invoice.");
+      }
+
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      window.open(url, "_blank", "noopener,noreferrer");
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      setActionMessage("Invoice generated successfully.");
+    } catch (caught: unknown) {
+      setError(extractErrorMessage(caught, "Failed to generate invoice."));
+    } finally {
+      setIsGeneratingInvoice(false);
+    }
+  }
+
   async function handleUploadDocument(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0] ?? null;
 
@@ -1334,7 +1410,45 @@ export default function LoadDetailPage() {
                   ? `Advance to ${nextStatus.replaceAll("_", " ")}`
                   : "No Further Status"}
             </button>
+            <button
+              type="button"
+              onClick={handleGenerateInvoice}
+              disabled={isGeneratingInvoice}
+              className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {isGeneratingInvoice ? "Generating..." : "Generate Invoice"}
+            </button>
           </div>
+        </div>
+
+        <div className="mb-6 rounded-2xl border border-slate-200 bg-white p-4 shadow-soft">
+          <div className="flex flex-wrap items-end gap-3">
+            <label className="text-sm font-semibold text-slate-700">
+              Quick status set
+              <select
+                value={manualStatus}
+                onChange={(event) => setManualStatus(event.target.value as LoadStatus)}
+                className="mt-2 block rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
+              >
+                {MANUAL_STATUS_OPTIONS.map((item) => (
+                  <option key={item.value} value={item.value}>
+                    {item.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <button
+              type="button"
+              onClick={handleSetManualStatus}
+              disabled={isSettingStatus}
+              className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {isSettingStatus ? "Updating..." : "Set Status"}
+            </button>
+          </div>
+          <p className="mt-2 text-xs text-slate-500">
+            V1 quick controls support docs received and paid milestones.
+          </p>
         </div>
 
         {error ? (

@@ -20,10 +20,14 @@ from sqlalchemy.orm import Session
 from app.core.dependencies import get_db_session
 from app.core.exceptions import UnauthorizedError
 from app.core.security import get_current_token_payload
+from app.domain.enums.channel import Channel
+from app.repositories.driver_repo import DriverRepository
+from app.repositories.load_repo import LoadRepository
 from app.schemas.common import ApiResponse
 from app.services.ai.extraction_service import ExtractionService
 from app.services.documents.document_linker import DocumentLinker
 from app.services.documents.document_service import DocumentService
+from app.services.notifications.notification_service import NotificationService
 from app.services.documents.storage_service import StorageService
 
 router = APIRouter()
@@ -209,6 +213,34 @@ def _build_document_list_meta(
     }
 
 
+def _create_document_uploaded_notification(
+    *,
+    db: Session,
+    organization_id: str,
+    customer_account_id: str,
+    document_id: str,
+    driver_id: str | None,
+    load_id: str | None,
+) -> None:
+    try:
+        notification_service = NotificationService(db)
+        notification_service.create_notification(
+            organization_id=organization_id,
+            channel=Channel.MANUAL.value,
+            direction="inbound",
+            message_type="document_uploaded",
+            customer_account_id=customer_account_id,
+            driver_id=driver_id,
+            load_id=load_id,
+            subject="Driver document uploaded",
+            body_text=f"Document {document_id} was uploaded.",
+            status="queued",
+        )
+    except Exception:
+        # Keep upload path resilient even if notification creation fails.
+        return
+
+
 @router.post("/documents/upload", response_model=ApiResponse)
 async def upload_document(
     *,
@@ -266,10 +298,114 @@ async def upload_document(
             page_count=page_count,
             uploaded_by_staff_user_id=_uuid_to_str(uploaded_by_staff_user_id),
         )
+        _create_document_uploaded_notification(
+            db=db,
+            organization_id=str(organization_id),
+            customer_account_id=str(customer_account_id),
+            document_id=str(item.id),
+            driver_id=_uuid_to_str(driver_id),
+            load_id=_uuid_to_str(load_id),
+        )
 
         return ApiResponse(
             data=_serialize_document(item),
             meta={"uploaded": True},
+            error=None,
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to upload document: {exc}",
+        ) from exc
+
+
+@router.post("/driver/documents/upload", response_model=ApiResponse)
+async def upload_driver_document(
+    *,
+    organization_id: uuid.UUID = Form(...),
+    token_payload: dict[str, Any] = Depends(get_current_token_payload),
+    file: UploadFile = File(...),
+    document_type: str = Form(...),
+    load_id: uuid.UUID | None = Form(None),
+    db: Session = Depends(get_db_session),
+) -> ApiResponse:
+    _validate_upload_file(file)
+    normalized_document_type = _normalize_required_text(document_type, "document_type")
+
+    token_org_id = token_payload.get("organization_id")
+    token_role = str(token_payload.get("role") or "").strip().lower()
+    token_driver_id = token_payload.get("driver_id")
+
+    if str(organization_id) != str(token_org_id):
+        raise UnauthorizedError("organization_id does not match authenticated organization")
+    if token_role != "driver":
+        raise UnauthorizedError("Only driver accounts can use this endpoint")
+    if not token_driver_id:
+        raise UnauthorizedError("Driver token is missing driver_id")
+
+    driver_repo = DriverRepository(db)
+    load_repo = LoadRepository(db)
+    driver = driver_repo.get_by_id(token_driver_id)
+    if driver is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Driver profile not found.")
+    if str(driver.organization_id) != str(organization_id):
+        raise UnauthorizedError("Driver profile organization mismatch")
+
+    resolved_load_id: str | None = None
+    if load_id is not None:
+        load = load_repo.get_by_id(load_id)
+        if load is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Load not found.")
+        if str(load.organization_id) != str(organization_id):
+            raise UnauthorizedError("Load organization mismatch")
+        if str(load.driver_id) != str(driver.id):
+            raise UnauthorizedError("Drivers may only attach documents to their own loads")
+        resolved_load_id = str(load.id)
+
+    try:
+        storage = StorageService()
+        storage_result = await storage.save_file(file)
+        storage_key = storage_result.get("storage_key")
+        if not storage_key:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Storage service did not return a storage key.",
+            )
+
+        service = DocumentService(db)
+        item = service.create_document(
+            organization_id=str(organization_id),
+            customer_account_id=str(driver.customer_account_id),
+            storage_key=str(storage_key).strip(),
+            storage_bucket=_normalize_optional_text(
+                str(storage_result.get("bucket"))
+            )
+            if storage_result.get("bucket") is not None
+            else None,
+            source_channel="driver_portal",
+            driver_id=str(driver.id),
+            load_id=resolved_load_id,
+            document_type=normalized_document_type,
+            original_filename=_normalize_optional_text(file.filename),
+            mime_type=_normalize_optional_text(file.content_type),
+            file_size_bytes=storage_result.get("size"),
+            page_count=None,
+            uploaded_by_staff_user_id=None,
+        )
+        _create_document_uploaded_notification(
+            db=db,
+            organization_id=str(organization_id),
+            customer_account_id=str(driver.customer_account_id),
+            document_id=str(item.id),
+            driver_id=str(driver.id),
+            load_id=resolved_load_id,
+        )
+
+        return ApiResponse(
+            data=_serialize_document(item),
+            meta={"uploaded": True, "driver_upload": True},
             error=None,
         )
     except HTTPException:

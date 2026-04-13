@@ -12,6 +12,7 @@ from app.domain.enums.load_status import LoadStatus
 from app.domain.models.load import Load
 from app.repositories.load_repo import LoadRepository
 from app.repositories.validation_repo import ValidationRepository
+from app.services.notifications.notification_service import NotificationService
 from app.services.workflow.event_publisher import EventPublisher
 from app.services.workflow.state_machine import LoadStateMachine
 from app.services.workflow.transitions import LoadTransitionApplier
@@ -25,6 +26,7 @@ class WorkflowEngine:
         self.state_machine = LoadStateMachine()
         self.transition_applier = LoadTransitionApplier()
         self.event_publisher = EventPublisher(db)
+        self.notification_service = NotificationService(db)
 
     def get_load(self, load_id: str) -> Load:
         load = self.load_repo.get_by_id(load_id, include_related=True)
@@ -98,6 +100,11 @@ class WorkflowEngine:
             else None,
             actor_type=str(normalized_actor_type),
         )
+        self._create_load_status_notification(
+            load=updated_load,
+            old_status=old_status,
+            new_status=target_status,
+        )
 
         return {
             "id": str(updated_load.id),
@@ -105,6 +112,32 @@ class WorkflowEngine:
             "new_status": target_status,
             "changed_at": changed_at,
         }
+
+    def _create_load_status_notification(
+        self,
+        *,
+        load: Load,
+        old_status: LoadStatus,
+        new_status: LoadStatus,
+    ) -> None:
+        try:
+            self.notification_service.create_notification(
+                organization_id=str(load.organization_id),
+                channel="manual",
+                direction="outbound",
+                message_type="load_status_changed",
+                customer_account_id=str(load.customer_account_id),
+                driver_id=str(load.driver_id),
+                load_id=str(load.id),
+                subject="Load status updated",
+                body_text=(
+                    f"Load {load.load_number or load.id} moved from "
+                    f"{old_status.value} to {new_status.value}."
+                ),
+                status="queued",
+            )
+        except Exception:
+            return
 
     def _normalize_load_status(self, value: LoadStatus | str) -> LoadStatus:
         if isinstance(value, LoadStatus):

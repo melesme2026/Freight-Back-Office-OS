@@ -85,6 +85,27 @@ class Organization(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         default=True,
         server_default="true",
     )
+    billing_provider: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default="none",
+        server_default="none",
+    )
+    billing_status: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default="trial",
+        server_default="trial",
+    )
+    plan_code: Mapped[str] = mapped_column(
+        String(30),
+        nullable=False,
+        default="none",
+        server_default="none",
+    )
+    stripe_customer_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    stripe_subscription_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    billing_notes: Mapped[str | None] = mapped_column(String(1000), nullable=True)
 
     customer_accounts: Mapped[list["CustomerAccount"]] = relationship(
         back_populates="organization",
