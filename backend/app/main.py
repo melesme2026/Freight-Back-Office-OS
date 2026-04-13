@@ -17,16 +17,14 @@ def create_app() -> FastAPI:
 
     configure_logging()
 
-    api_prefix = settings.api_v1_prefix.rstrip("/")
-
     app = FastAPI(
         title=settings.app_name,
         version=settings.app_version,
         debug=settings.debug,
         lifespan=lifespan,
-        openapi_url=f"{api_prefix}/openapi.json",
-        docs_url=f"{api_prefix}/docs",
-        redoc_url=f"{api_prefix}/redoc",
+        openapi_url="/openapi.json",
+        docs_url="/docs",
+        redoc_url="/redoc",
     )
 
     app.add_middleware(RequestContextMiddleware)
@@ -42,6 +40,10 @@ def create_app() -> FastAPI:
 
     register_exception_handlers(app)
     app.include_router(api_router)
+
+    @app.get("/health")
+    def root_health() -> dict[str, str]:
+        return {"status": "ok"}
 
     return app
 

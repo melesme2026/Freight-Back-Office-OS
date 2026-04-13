@@ -70,12 +70,12 @@ export default function HomePage() {
               Driver Login
             </Link>
 
-            <a
-              href="mailto:sales@freightbackofficeos.com?subject=Freight%20Back%20Office%20OS%20Demo%20Request"
+            <Link
+              href="/request-demo"
               className="rounded-xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
             >
               Request Demo
-            </a>
+            </Link>
 
             <Link
               href="/pricing"
