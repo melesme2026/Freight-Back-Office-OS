@@ -12,6 +12,8 @@ def test_core_feature_routes_are_registered() -> None:
     }
 
     expected_routes = {
+        ("GET", "/health"),
+        ("GET", "/docs"),
         ("PATCH", "/api/v1/organizations/{organization_id}"),
         ("POST", "/api/v1/onboarding/{customer_account_id}/initialize"),
         ("GET", "/api/v1/onboarding/{customer_account_id}"),

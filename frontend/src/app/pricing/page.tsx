@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 import { appConfig } from "@/lib/config";
 
 type Plan = {
@@ -49,7 +51,7 @@ export default function PricingPage() {
       name: "Enterprise",
       price: "Contact us",
       summary: "Custom onboarding, custom pricing, and contact-led setup.",
-      href: appConfig.pricing.enterpriseContact,
+      href: `${appConfig.pricing.enterpriseContact}?subject=Freight%20Back%20Office%20OS%20Enterprise%20Inquiry`,
       cta: "Contact Sales",
       external: true,
     },
@@ -59,6 +61,14 @@ export default function PricingPage() {
     <main className="min-h-screen bg-slate-50 text-slate-900">
       <div className="mx-auto max-w-7xl px-6 py-12">
         <div className="mx-auto max-w-3xl text-center">
+          <div className="mb-4 flex justify-center">
+            <Link
+              href="/"
+              className="inline-flex rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+            >
+              ← Back to landing
+            </Link>
+          </div>
           <p className="text-sm font-medium text-brand-700">Pricing</p>
           <h1 className="mt-2 text-4xl font-bold tracking-tight text-slate-950">Simple organization billing for V1</h1>
           <p className="mt-4 text-sm leading-6 text-slate-600">
@@ -91,6 +101,24 @@ export default function PricingPage() {
               ) : null}
             </article>
           ))}
+        </section>
+
+        <section className="mt-8 rounded-2xl border border-slate-200 bg-white p-6 text-center shadow-soft">
+          <h2 className="text-lg font-semibold text-slate-900">Need a guided setup call?</h2>
+          <p className="mt-2 text-sm text-slate-600">
+            Use Request Demo for onboarding support or Contact Sales for enterprise rollout planning.
+          </p>
+          <div className="mt-4 flex flex-wrap justify-center gap-3">
+            <Link href="/request-demo" className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100">
+              Request Demo
+            </Link>
+            <a
+              href={`${appConfig.pricing.enterpriseContact}?subject=Freight%20Back%20Office%20OS%20Enterprise%20Inquiry`}
+              className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
+            >
+              Contact Sales
+            </a>
+          </div>
         </section>
       </div>
     </main>
