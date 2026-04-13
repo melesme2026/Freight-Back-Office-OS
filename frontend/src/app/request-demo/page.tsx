@@ -1,8 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useMemo, useState } from "react";
-import { useEffect } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
+
+const SALES_EMAIL = "mermerbrands@gmail.com";
+
+function encodeMailto(value: string): string {
+  return encodeURIComponent(value);
+}
 
 export default function RequestDemoPage() {
   const [isContactSales, setIsContactSales] = useState(false);
@@ -26,6 +31,32 @@ export default function RequestDemoPage() {
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
+    const trimmedName = name.trim();
+    const trimmedEmail = email.trim();
+    const trimmedCompany = company.trim();
+    const trimmedNotes = notes.trim();
+
+    const subject = isContactSales
+      ? `Freight Back Office OS Sales Request — ${trimmedCompany || trimmedName}`
+      : `Freight Back Office OS Demo Request — ${trimmedCompany || trimmedName}`;
+
+    const bodyLines = [
+      `Request type: ${isContactSales ? "Contact Sales" : "Request Demo"}`,
+      "",
+      `Full name: ${trimmedName}`,
+      `Work email: ${trimmedEmail}`,
+      `Company: ${trimmedCompany}`,
+      "",
+      "Notes:",
+      trimmedNotes || "No additional notes provided.",
+    ];
+
+    const mailtoUrl = `mailto:${SALES_EMAIL}?subject=${encodeMailto(
+      subject
+    )}&body=${encodeMailto(bodyLines.join("\n"))}`;
+
+    window.location.href = mailtoUrl;
     setSubmitted(true);
   }
 
@@ -33,20 +64,23 @@ export default function RequestDemoPage() {
     <main className="min-h-screen bg-slate-50 px-6 py-12 text-slate-900">
       <div className="mx-auto max-w-3xl rounded-2xl border border-slate-200 bg-white p-8 shadow-soft">
         <p className="text-sm font-medium text-brand-700">{title}</p>
+
         <h1 className="mt-2 text-3xl font-bold tracking-tight text-slate-950">
           {isContactSales
             ? "Talk to Freight Back Office OS sales"
             : "Book a Freight Back Office OS walkthrough"}
         </h1>
+
         <p className="mt-4 text-sm leading-6 text-slate-600">
           {isContactSales
-            ? "Share your rollout scope and target timeline. Our team will follow up with plan details and next steps."
-            : "Tell us about your team size, current workflow, and rollout timeline. We will follow up to schedule a guided demo and onboarding call."}
+            ? "Share your rollout scope and target timeline. We will open a real email draft so your request can be sent directly to sales."
+            : "Tell us about your team size, workflow, and rollout timeline. We will open a real email draft so your demo request can be sent directly to the team."}
         </p>
 
         {submitted ? (
           <div className="mt-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-            Request captured. For this V1 release candidate, outreach is handled manually and a sales rep will follow up using the email you provided.
+            Your email draft was opened so you can send your request directly to{" "}
+            <span className="font-semibold">{SALES_EMAIL}</span>.
           </div>
         ) : null}
 
@@ -59,6 +93,7 @@ export default function RequestDemoPage() {
             onChange={(event) => setName(event.target.value)}
             className="rounded-xl border border-slate-300 px-4 py-3 text-sm"
           />
+
           <input
             type="email"
             placeholder="Work email"
@@ -67,6 +102,7 @@ export default function RequestDemoPage() {
             onChange={(event) => setEmail(event.target.value)}
             className="rounded-xl border border-slate-300 px-4 py-3 text-sm"
           />
+
           <input
             type="text"
             placeholder="Company"
@@ -75,6 +111,7 @@ export default function RequestDemoPage() {
             onChange={(event) => setCompany(event.target.value)}
             className="rounded-xl border border-slate-300 px-4 py-3 text-sm"
           />
+
           <textarea
             placeholder="Monthly load volume, integrations needed, or questions"
             rows={4}
@@ -82,11 +119,12 @@ export default function RequestDemoPage() {
             onChange={(event) => setNotes(event.target.value)}
             className="rounded-xl border border-slate-300 px-4 py-3 text-sm"
           />
+
           <button
             type="submit"
             className="w-fit rounded-xl bg-brand-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-brand-700"
           >
-            {isContactSales ? "Submit sales request" : "Submit demo request"}
+            {isContactSales ? "Email sales request" : "Email demo request"}
           </button>
         </form>
 
@@ -97,6 +135,7 @@ export default function RequestDemoPage() {
           >
             View pricing
           </Link>
+
           <Link
             href="/"
             className="rounded-xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
