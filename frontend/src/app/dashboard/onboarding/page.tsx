@@ -197,7 +197,8 @@ export default function OnboardingPage() {
 
       const normalized = normalizeChecklist(payload);
       setChecklist(normalized);
-      setSuccessMessage("Checklist initialized.");
+      setSuccessMessage("Checklist initialized. You can now complete and save onboarding fields.");
+      await loadChecklist();
     } catch (error: unknown) {
       setErrorMessage(error instanceof Error ? error.message : "Failed to initialize onboarding checklist.");
     } finally {
@@ -323,6 +324,9 @@ export default function OnboardingPage() {
             <h2 className="text-lg font-semibold text-slate-950">Checklist not initialized</h2>
             <p className="mt-2 text-sm text-slate-600">
               No onboarding checklist exists yet for {selectedCustomer.account_name}.
+            </p>
+            <p className="mt-2 text-xs text-slate-500">
+              This is expected on first run before initialization.
             </p>
             <button
               type="button"

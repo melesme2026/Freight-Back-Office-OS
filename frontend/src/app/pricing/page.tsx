@@ -51,9 +51,9 @@ export default function PricingPage() {
       name: "Enterprise",
       price: "Contact us",
       summary: "Custom onboarding, custom pricing, and contact-led setup.",
-      href: `${appConfig.pricing.enterpriseContact}?subject=Freight%20Back%20Office%20OS%20Enterprise%20Inquiry`,
+      href: `${appConfig.pricing.enterpriseContact}?intent=contact-sales`,
       cta: "Contact Sales",
-      external: true,
+      external: false,
     },
   ];
 
@@ -86,7 +86,7 @@ export default function PricingPage() {
               <a
                 href={plan.href}
                 target={plan.external ? "_blank" : undefined}
-                rel={plan.external ? "noreferrer" : undefined}
+                rel={plan.external ? "noopener noreferrer" : undefined}
                 className={`mt-6 inline-flex rounded-xl px-4 py-2 text-sm font-semibold transition ${
                   plan.external
                     ? "bg-brand-600 text-white hover:bg-brand-700"
@@ -98,6 +98,11 @@ export default function PricingPage() {
 
               {plan.unavailableNote ? (
                 <p className="mt-3 text-xs text-amber-700">{plan.unavailableNote}</p>
+              ) : null}
+              {plan.external ? (
+                <p className="mt-3 text-xs text-slate-500">
+                  Opens Stripe checkout in a new tab so you can keep this page open.
+                </p>
               ) : null}
             </article>
           ))}
@@ -113,7 +118,7 @@ export default function PricingPage() {
               Request Demo
             </Link>
             <a
-              href={`${appConfig.pricing.enterpriseContact}?subject=Freight%20Back%20Office%20OS%20Enterprise%20Inquiry`}
+              href={`${appConfig.pricing.enterpriseContact}?intent=contact-sales`}
               className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
             >
               Contact Sales

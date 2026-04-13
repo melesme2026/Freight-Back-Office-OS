@@ -134,6 +134,9 @@ export default function DriverLoginPage() {
         <div className="mb-6">
           <h1 className="text-2xl font-bold tracking-tight text-slate-950">Driver Sign in</h1>
           <p className="mt-2 text-sm text-slate-600">Access your driver portal workspace.</p>
+          <p className="mt-2 text-xs text-slate-500">
+            Local demo default org: <span className="font-medium">00000000-0000-0000-0000-000000000001</span>. Test driver email: <span className="font-medium">john.doe@example.com</span>.
+          </p>
         </div>
 
         <form className="space-y-5" onSubmit={handleSubmit} noValidate>

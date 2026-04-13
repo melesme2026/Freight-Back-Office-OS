@@ -73,7 +73,7 @@ export default function DriverPortalPage() {
         setErrorMessage(null);
 
         const [loadsPayload, supportPayload] = await Promise.all([
-          apiClient.get<unknown>(`/loads?driver_id=${selectedDriverId}&status=in_transit&page=1&page_size=1`, {
+          apiClient.get<unknown>(`/loads?driver_id=${selectedDriverId}&page=1&page_size=1`, {
             token: token ?? undefined,
             organizationId: organizationId ?? undefined,
           }),
@@ -166,7 +166,7 @@ export default function DriverPortalPage() {
 
         <section className="mt-6 grid gap-4 md:grid-cols-2">
           <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
-            <div className="text-sm text-slate-500">Open loads (in transit)</div>
+            <div className="text-sm text-slate-500">Driver loads</div>
             <div className="mt-2 text-3xl font-bold text-slate-950">
               {isLoadingSummary ? "..." : openLoads}
             </div>

@@ -98,6 +98,12 @@ export default function DashboardLayout({
               <div>{userEmail ?? "Signed-in user"}</div>
               <div className="break-all">Org: {organizationId}</div>
             </div>
+            <Link
+              href="/"
+              className="mt-3 inline-flex text-xs font-semibold text-brand-700 hover:text-brand-800"
+            >
+              ← Back to landing
+            </Link>
           </div>
 
           <nav className="flex-1 space-y-1 px-3 py-4">

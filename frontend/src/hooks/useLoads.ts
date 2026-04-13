@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { apiClient } from "@/lib/api-client";
-import { getAccessToken } from "@/lib/auth";
+import { getAccessToken, getOrganizationId } from "@/lib/auth";
 
 export type Load = {
   id: string;
@@ -240,9 +240,11 @@ export function useLoads() {
       setError(null);
 
       const token = getAccessToken();
+      const organizationId = getOrganizationId();
 
       const response = await apiClient.get<ApiResponse<unknown>>("/loads", {
         token: token ?? undefined,
+        organizationId: organizationId ?? undefined,
       });
 
       setData(normalizeLoadsResponse(response));

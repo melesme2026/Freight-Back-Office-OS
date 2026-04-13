@@ -428,7 +428,7 @@ export default function LoadsPage() {
                       className="px-5 py-8 text-center text-sm text-slate-500"
                     >
                       {typedLoads.length === 0
-                        ? "No loads found."
+                        ? "No loads found. Create one with New Load or seed demo records using `make seed-dev-data`."
                         : "No loads match the current search or filter."}
                     </td>
                   </tr>

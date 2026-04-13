@@ -201,7 +201,7 @@ export default function ReviewQueuePage() {
                 ) : normalizedQueue.length === 0 ? (
                   <tr>
                     <td colSpan={5} className="px-5 py-10 text-center text-slate-500">
-                      No items currently require review.
+                      No items currently require review. If this is a fresh org, create demo loads/documents first.
                     </td>
                   </tr>
                 ) : (
