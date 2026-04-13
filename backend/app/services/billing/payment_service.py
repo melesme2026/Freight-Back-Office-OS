@@ -116,6 +116,7 @@ class PaymentService:
         customer_account_id: str | None = None,
         billing_invoice_id: str | None = None,
         payment_method_id: str | None = None,
+        driver_id: str | None = None,
         status: str | None = None,
         page: int = 1,
         page_size: int = 50,
@@ -125,6 +126,7 @@ class PaymentService:
             customer_account_id=self._clean_text(customer_account_id),
             billing_invoice_id=self._clean_text(billing_invoice_id),
             payment_method_id=self._clean_text(payment_method_id),
+            driver_id=self._clean_text(driver_id),
             status=self._clean_text(status),
             page=page,
             page_size=page_size,
@@ -137,12 +139,6 @@ class PaymentService:
         failure_reason: str | None = None,
     ) -> Payment:
         payment = self.get_payment(payment_id)
-
-        if payment.status == PaymentStatus.SUCCEEDED:
-            raise BillingError(
-                "Cannot mark a succeeded payment as failed",
-                details={"payment_id": payment_id, "status": payment.status.value},
-            )
 
         payment.status = PaymentStatus.FAILED
         payment.failed_at = datetime.now(timezone.utc)

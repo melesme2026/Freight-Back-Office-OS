@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from enum import StrEnum
+from app.domain.enums.compat import StrEnum
 
 
 class PaymentStatus(StrEnum):

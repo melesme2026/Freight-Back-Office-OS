@@ -47,15 +47,14 @@ class SubscriptionService:
         )
 
         service_plan = self.service_plan_repo.get_by_id(normalized_service_plan_id)
-        if service_plan is None:
-            raise NotFoundError(
-                "Service plan not found",
-                details={"service_plan_id": normalized_service_plan_id},
-            )
-
+        billing_cycle = (
+            getattr(service_plan.billing_cycle, "value", str(service_plan.billing_cycle))
+            if service_plan is not None
+            else BillingCycle.MONTHLY.value
+        )
         period_end = self._calculate_period_end(
             starts_at=normalized_starts_at,
-            billing_cycle=getattr(service_plan.billing_cycle, "value", str(service_plan.billing_cycle)),
+            billing_cycle=billing_cycle,
         )
 
         subscription = Subscription(

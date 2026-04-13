@@ -4,12 +4,16 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { apiClient } from "@/lib/api-client";
-import { clearAuth, getAccessToken, setAuthSession } from "@/lib/auth";
+import { clearAuth, getAccessToken, getUserRole, setAuthSession } from "@/lib/auth";
+import { resolvePostLoginRoute } from "@/lib/rbac";
 
 type LoginResponse = {
   data?: {
     access_token?: string;
     token_type?: string;
+    user?: {
+      role?: string;
+    };
   };
   message?: string;
   error?: {
@@ -47,9 +51,10 @@ export default function LoginPage() {
   // 🔥 Auto-redirect if already logged in
   useEffect(() => {
     const token = getAccessToken();
+    const userRole = getUserRole();
 
     if (token) {
-      router.replace("/dashboard");
+      router.replace(resolvePostLoginRoute(userRole));
     } else {
       setIsCheckingSession(false);
     }
@@ -104,6 +109,7 @@ export default function LoginPage() {
 
       const accessToken = payload?.data?.access_token?.trim();
       const tokenType = payload?.data?.token_type?.trim() || "Bearer";
+      const userRole = payload?.data?.user?.role?.trim().toLowerCase() || null;
 
       if (!accessToken) {
         throw new Error("Login succeeded but no access token was returned.");
@@ -114,9 +120,10 @@ export default function LoginPage() {
         tokenType,
         organizationId: normalizedOrganizationId,
         userEmail: normalizedEmail,
+        userRole,
       });
 
-      router.replace("/dashboard");
+      router.replace(resolvePostLoginRoute(userRole));
       router.refresh();
     } catch (error: unknown) {
       const message =

@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from app.domain.models.broker import Broker
     from app.domain.models.customer_account import CustomerAccount
     from app.domain.models.driver import Driver
+    from app.domain.models.ledger_entry import LedgerEntry
     from app.domain.models.load import Load
     from app.domain.models.load_document import LoadDocument
     from app.domain.models.notification import Notification
@@ -172,6 +173,11 @@ class Organization(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         lazy="selectin",
     )
     usage_records: Mapped[list["UsageRecord"]] = relationship(
+        back_populates="organization",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
+    ledger_entries: Mapped[list["LedgerEntry"]] = relationship(
         back_populates="organization",
         cascade="all, delete-orphan",
         lazy="selectin",

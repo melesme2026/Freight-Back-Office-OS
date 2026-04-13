@@ -8,9 +8,13 @@ import { getAccessToken, getOrganizationId } from "@/lib/auth";
 
 type BillingMetrics = {
   active_subscriptions?: number;
+  active_subscriptions_count?: number;
   open_invoices?: number;
+  open_invoices_count?: number;
   past_due_invoices?: number;
+  past_due_invoices_count?: number;
   collected_this_month?: string | number | null;
+  payments_collected_this_month?: string | number | null;
   currency_code?: string | null;
 };
 
@@ -41,7 +45,8 @@ type InvoiceListEnvelope = {
 type InvoiceListResponse =
   | InvoiceListEnvelope
   | {
-      data?: InvoiceListEnvelope;
+      data?: InvoiceListEnvelope | InvoiceListItem[];
+      meta?: { total?: number; page?: number; page_size?: number; pages?: number };
       message?: string;
     };
 
@@ -60,7 +65,15 @@ function isWrappedResponse<T extends object>(
   return typeof value === "object" && value !== null && ("data" in value || "message" in value);
 }
 
-function normalizeBillingMetrics(payload: BillingSummaryResponse | null): Required<BillingMetrics> {
+type NormalizedBillingMetrics = {
+  active_subscriptions: number;
+  open_invoices: number;
+  past_due_invoices: number;
+  collected_this_month: string | number | null;
+  currency_code: string;
+};
+
+function normalizeBillingMetrics(payload: BillingSummaryResponse | null): NormalizedBillingMetrics {
   let root: BillingMetrics | null = null;
 
   if (isWrappedResponse<BillingMetrics>(payload)) {
@@ -70,10 +83,10 @@ function normalizeBillingMetrics(payload: BillingSummaryResponse | null): Requir
   }
 
   return {
-    active_subscriptions: Number(root?.active_subscriptions ?? 0),
-    open_invoices: Number(root?.open_invoices ?? 0),
-    past_due_invoices: Number(root?.past_due_invoices ?? 0),
-    collected_this_month: root?.collected_this_month ?? 0,
+    active_subscriptions: Number(root?.active_subscriptions ?? root?.active_subscriptions_count ?? 0),
+    open_invoices: Number(root?.open_invoices ?? root?.open_invoices_count ?? 0),
+    past_due_invoices: Number(root?.past_due_invoices ?? root?.past_due_invoices_count ?? 0),
+    collected_this_month: root?.collected_this_month ?? root?.payments_collected_this_month ?? 0,
     currency_code: root?.currency_code?.trim() || "USD",
   };
 }
@@ -83,19 +96,19 @@ function normalizeInvoiceStatus(status: string | null | undefined): string {
 }
 
 function normalizeInvoiceList(payload: InvoiceListResponse | null): NormalizedInvoiceListItem[] {
-  let root: InvoiceListEnvelope | null = null;
+  let rawItems: InvoiceListItem[] = [];
 
-  if (isWrappedResponse<InvoiceListEnvelope>(payload)) {
-    root = payload.data ?? null;
-  } else if (payload && typeof payload === "object") {
-    root = payload as InvoiceListEnvelope;
+  if (isWrappedResponse<InvoiceListEnvelope | InvoiceListItem[]>(payload)) {
+    if (Array.isArray(payload.data)) {
+      rawItems = payload.data;
+    } else if (payload.data && typeof payload.data === "object" && Array.isArray(payload.data.items)) {
+      rawItems = payload.data.items;
+    }
+  } else if (payload && typeof payload === "object" && Array.isArray((payload as InvoiceListEnvelope).items)) {
+    rawItems = (payload as InvoiceListEnvelope).items ?? [];
   }
 
-  if (!Array.isArray(root?.items)) {
-    return [];
-  }
-
-  return root.items
+  return rawItems
     .filter((item): item is InvoiceListItem & { id: string } => typeof item?.id === "string" && item.id.length > 0)
     .map((item) => ({
       id: item.id,
@@ -154,7 +167,7 @@ function formatMoney(value: string | number | null | undefined, currencyCode?: s
 }
 
 export default function BillingPage() {
-  const [metrics, setMetrics] = useState<Required<BillingMetrics>>({
+  const [metrics, setMetrics] = useState<NormalizedBillingMetrics>({
     active_subscriptions: 0,
     open_invoices: 0,
     past_due_invoices: 0,

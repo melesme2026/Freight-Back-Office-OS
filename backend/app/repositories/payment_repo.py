@@ -58,6 +58,7 @@ class PaymentRepository:
         customer_account_id: uuid.UUID | str | None = None,
         billing_invoice_id: uuid.UUID | str | None = None,
         payment_method_id: uuid.UUID | str | None = None,
+        driver_id: uuid.UUID | str | None = None,
         status: PaymentStatus | str | None = None,
         page: int = DEFAULT_PAGE,
         page_size: int = DEFAULT_PAGE_SIZE,
@@ -86,6 +87,11 @@ class PaymentRepository:
             if payment_method_id is not None
             else None
         )
+        normalized_driver_id = (
+            self._normalize_uuid(driver_id, field_name="driver_id")
+            if driver_id is not None
+            else None
+        )
         normalized_status = self._normalize_status(status)
 
         stmt = select(Payment)
@@ -109,6 +115,10 @@ class PaymentRepository:
         if normalized_payment_method_id is not None:
             stmt = stmt.where(Payment.payment_method_id == normalized_payment_method_id)
             count_stmt = count_stmt.where(Payment.payment_method_id == normalized_payment_method_id)
+
+        if normalized_driver_id is not None:
+            stmt = stmt.where(Payment.driver_id == normalized_driver_id)
+            count_stmt = count_stmt.where(Payment.driver_id == normalized_driver_id)
 
         if normalized_status is not None:
             stmt = stmt.where(Payment.status == normalized_status)

@@ -1,11 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
+
+import { apiClient } from "@/lib/api-client";
+import { getAccessToken, getOrganizationId } from "@/lib/auth";
 
 type PaymentListItem = {
   id: string;
   customer_account_id?: string | null;
-  invoice_id?: string | null;
+  billing_invoice_id?: string | null;
   provider?: string | null;
   status: string;
   amount?: string | number | null;
@@ -21,27 +24,23 @@ type PaymentListEnvelope = {
   pages?: unknown;
 };
 
+type ResponseMeta = {
+  total?: unknown;
+  page?: unknown;
+  page_size?: unknown;
+  pages?: unknown;
+};
+
 type PaymentListResponse =
   | PaymentListEnvelope
+  | unknown[]
   | {
-      data?: PaymentListEnvelope;
+      data?: PaymentListEnvelope | unknown[];
+      meta?: ResponseMeta;
       message?: string;
     };
 
 const DEFAULT_PAGE_SIZE = 25;
-
-function getApiBaseUrl(): string {
-  const value = process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
-  return value && value.length > 0 ? value.replace(/\/+$/, "") : "http://127.0.0.1:8000";
-}
-
-function readStoredValue(key: string): string {
-  if (typeof window === "undefined") {
-    return "";
-  }
-
-  return window.localStorage.getItem(key)?.trim() ?? "";
-}
 
 function normalizeText(value: unknown): string | null {
   if (typeof value !== "string") {
@@ -95,7 +94,8 @@ function normalizePaymentListItem(value: unknown): PaymentListItem | null {
   return {
     id,
     customer_account_id: normalizeText(record.customer_account_id),
-    invoice_id: normalizeText(record.invoice_id),
+    billing_invoice_id:
+      normalizeText(record.billing_invoice_id) ?? normalizeText(record.invoice_id),
     provider: normalizeText(record.provider),
     status: normalizeText(record.status) ?? "unknown",
     amount: normalizeNumberLike(record.amount),
@@ -110,7 +110,7 @@ function isPaymentListEnvelope(value: unknown): value is PaymentListEnvelope {
 
 function isWrappedPaymentListResponse(
   value: unknown
-): value is { data?: PaymentListEnvelope; message?: string } {
+): value is { data?: PaymentListEnvelope | unknown[]; meta?: ResponseMeta; message?: string } {
   return typeof value === "object" && value !== null && !Array.isArray(value) && ("data" in value || "message" in value);
 }
 
@@ -121,40 +121,39 @@ function normalizePaymentListResponse(payload: PaymentListResponse | null): {
   pageSize: number;
   pages: number;
 } {
-  let root: PaymentListEnvelope | null = null;
+  let rawItems: unknown[] = [];
+  let meta: ResponseMeta | null = null;
 
   if (isWrappedPaymentListResponse(payload)) {
-    root = payload.data ?? null;
+    if (Array.isArray(payload.data)) {
+      rawItems = payload.data;
+      meta = payload.meta ?? null;
+    } else if (isPaymentListEnvelope(payload.data)) {
+      rawItems = Array.isArray(payload.data.items) ? payload.data.items : [];
+      meta = payload.data;
+    }
+  } else if (Array.isArray(payload)) {
+    rawItems = payload;
   } else if (isPaymentListEnvelope(payload)) {
-    root = payload;
+    rawItems = Array.isArray(payload.items) ? payload.items : [];
+    meta = payload;
   }
 
-  if (!root) {
-    return {
-      items: [],
-      total: 0,
-      page: 1,
-      pageSize: DEFAULT_PAGE_SIZE,
-      pages: 1,
-    };
-  }
-
-  const rawItems = Array.isArray(root.items) ? root.items : [];
   const items = rawItems
     .map((item) => normalizePaymentListItem(item))
     .filter((item): item is PaymentListItem => item !== null);
 
   const totalFallback = items.length;
-  const total = normalizePositiveInteger(root.total, totalFallback);
-  const page = normalizePositiveInteger(root.page, 1);
-  const pageSize = normalizePositiveInteger(root.page_size, DEFAULT_PAGE_SIZE);
+  const total = normalizePositiveInteger(meta?.total, totalFallback);
+  const page = normalizePositiveInteger(meta?.page, 1);
+  const pageSize = normalizePositiveInteger(meta?.page_size, DEFAULT_PAGE_SIZE);
   const computedPages = Math.max(1, Math.ceil(Math.max(total, items.length) / Math.max(1, pageSize)));
-  const pages = normalizePositiveInteger(root.pages, computedPages);
+  const pages = normalizePositiveInteger(meta?.pages, computedPages);
 
   return {
     items,
     total: Math.max(total, items.length),
-    page: Math.min(page, pages),
+    page: Math.min(page, Math.max(1, pages)),
     pageSize,
     pages: Math.max(1, pages),
   };
@@ -212,7 +211,6 @@ function formatDateTime(value: string | null | undefined): string {
 }
 
 export default function BillingPaymentsPage() {
-  const apiBaseUrl = useMemo(() => getApiBaseUrl(), []);
   const [items, setItems] = useState<PaymentListItem[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -226,9 +224,8 @@ export default function BillingPaymentsPage() {
     const controller = new AbortController();
 
     async function loadPayments(): Promise<void> {
-      const token = readStoredValue("fbos_access_token");
-      const tokenType = readStoredValue("fbos_token_type") || "Bearer";
-      const organizationId = readStoredValue("fbos_organization_id");
+      const token = getAccessToken();
+      const organizationId = getOrganizationId();
 
       if (!token || !organizationId) {
         setItems([]);
@@ -246,39 +243,11 @@ export default function BillingPaymentsPage() {
         const safePage = Math.max(1, page);
         const safePageSize = Math.max(1, pageSize);
 
-        const url = new URL(`${apiBaseUrl}/api/v1/payments`);
-        url.searchParams.set("page", String(safePage));
-        url.searchParams.set("page_size", String(safePageSize));
-
-        const response = await fetch(url.toString(), {
-          method: "GET",
-          headers: {
-            Accept: "application/json",
-            Authorization: `${tokenType} ${token}`,
-            "X-Organization-Id": organizationId,
-          },
-          cache: "no-store",
+        const payload = await apiClient.get<PaymentListResponse | null>(`/payments?page=${safePage}&page_size=${safePageSize}`, {
+          token,
+          organizationId,
           signal: controller.signal,
         });
-
-        let payload: PaymentListResponse | null = null;
-        try {
-          payload = (await response.json()) as PaymentListResponse;
-        } catch {
-          payload = null;
-        }
-
-        if (!response.ok) {
-          const message =
-            payload &&
-            typeof payload === "object" &&
-            "message" in payload &&
-            typeof payload.message === "string" &&
-            payload.message.trim()
-              ? payload.message.trim()
-              : "Unable to load payments.";
-          throw new Error(message);
-        }
 
         const normalized = normalizePaymentListResponse(payload);
 
@@ -318,7 +287,7 @@ export default function BillingPaymentsPage() {
     return () => {
       controller.abort();
     };
-  }, [apiBaseUrl, page, pageSize, reloadKey]);
+  }, [page, pageSize, reloadKey]);
 
   const canGoPrevious = page > 1;
   const canGoNext = page < pages;
@@ -411,7 +380,9 @@ export default function BillingPaymentsPage() {
                         <td className="px-5 py-4 text-slate-700">
                           {payment.customer_account_id || "—"}
                         </td>
-                        <td className="px-5 py-4 text-slate-700">{payment.invoice_id || "—"}</td>
+                        <td className="px-5 py-4 text-slate-700">
+                          {payment.billing_invoice_id || "—"}
+                        </td>
                         <td className="px-5 py-4 text-slate-700">{payment.provider || "—"}</td>
                         <td className="px-5 py-4">
                           <span
