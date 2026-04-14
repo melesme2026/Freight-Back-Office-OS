@@ -6,6 +6,10 @@ import { FormEvent, Suspense, useEffect, useMemo, useState } from "react";
 
 import { apiClient } from "@/lib/api-client";
 
+function normalizeActivationToken(value: string): string {
+  return value.replace(/\s+/g, "").trim();
+}
+
 function ActivateAccountPageContent() {
   const searchParams = useSearchParams();
   const tokenFromQuery = useMemo(() => searchParams.get("token") ?? "", [searchParams]);
@@ -26,7 +30,9 @@ function ActivateAccountPageContent() {
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (!token.trim() || !password || !confirmPassword) {
+    const normalizedToken = normalizeActivationToken(token);
+
+    if (!normalizedToken || !password || !confirmPassword) {
       setErrorMessage("Activation token and password are required.");
       return;
     }
@@ -47,8 +53,11 @@ function ActivateAccountPageContent() {
       setIsSuccess(false);
 
       await apiClient.post("/auth/activate-account", {
-        token: token.trim(),
+        token: normalizedToken,
         password,
+      }, {
+        authMode: "none",
+        onUnauthorized: "throw",
       });
 
       setIsSuccess(true);

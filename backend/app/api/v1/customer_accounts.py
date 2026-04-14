@@ -9,7 +9,8 @@ from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_db_session
-from app.core.exceptions import ValidationError
+from app.core.exceptions import UnauthorizedError, ValidationError
+from app.core.security import get_current_token_payload
 from app.schemas.common import ApiResponse
 from app.services.onboarding.customer_account_service import CustomerAccountService
 
@@ -112,8 +113,13 @@ def _serialize_customer_account(item: Any) -> dict[str, Any]:
 @router.post("/customer-accounts", response_model=ApiResponse)
 def create_customer_account(
     payload: CustomerAccountCreateRequest,
+    token_payload: dict[str, Any] = Depends(get_current_token_payload),
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
+    token_org_id = token_payload.get("organization_id")
+    if str(payload.organization_id) != str(token_org_id):
+        raise UnauthorizedError("organization_id does not match authenticated organization")
+
     service = CustomerAccountService(db)
     item = service.create_customer_account(
         organization_id=str(payload.organization_id),
@@ -137,15 +143,21 @@ def create_customer_account(
 def list_customer_accounts(
     *,
     organization_id: uuid.UUID | None = None,
+    token_payload: dict[str, Any] = Depends(get_current_token_payload),
     status: str | None = None,
     search: str | None = None,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=25, ge=1, le=200),
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
+    token_org_id = token_payload.get("organization_id")
+    effective_org_id = organization_id or uuid.UUID(str(token_org_id))
+    if str(effective_org_id) != str(token_org_id):
+        raise UnauthorizedError("organization_id does not match authenticated organization")
+
     service = CustomerAccountService(db)
     items, total = service.list_customer_accounts(
-        organization_id=str(organization_id) if organization_id else None,
+        organization_id=str(effective_org_id),
         status=_normalize_optional_text(status),
         search=_normalize_optional_text(search),
         page=page,
@@ -166,10 +178,14 @@ def list_customer_accounts(
 @router.get("/customer-accounts/{customer_account_id}", response_model=ApiResponse)
 def get_customer_account(
     customer_account_id: uuid.UUID,
+    token_payload: dict[str, Any] = Depends(get_current_token_payload),
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
     service = CustomerAccountService(db)
     item = service.get_customer_account(str(customer_account_id))
+    token_org_id = token_payload.get("organization_id")
+    if str(item.organization_id) != str(token_org_id):
+        raise UnauthorizedError("Customer account is not in authenticated organization")
 
     return ApiResponse(
         data=_serialize_customer_account(item),
@@ -182,9 +198,15 @@ def get_customer_account(
 def update_customer_account(
     customer_account_id: uuid.UUID,
     payload: CustomerAccountUpdateRequest,
+    token_payload: dict[str, Any] = Depends(get_current_token_payload),
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
     service = CustomerAccountService(db)
+    existing = service.get_customer_account(str(customer_account_id))
+    token_org_id = token_payload.get("organization_id")
+    if str(existing.organization_id) != str(token_org_id):
+        raise UnauthorizedError("Customer account is not in authenticated organization")
+
     item = service.update_customer_account(
         customer_account_id=str(customer_account_id),
         account_name=(

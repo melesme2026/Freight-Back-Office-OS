@@ -125,6 +125,18 @@ export default function CustomerDetailPage() {
   const [customer, setCustomer] = useState<CustomerAccountRecord | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [updateMessage, setUpdateMessage] = useState<string | null>(null);
+  const [updateError, setUpdateError] = useState<string | null>(null);
+  const [editAccountName, setEditAccountName] = useState("");
+  const [editAccountCode, setEditAccountCode] = useState("");
+  const [editStatus, setEditStatus] = useState("prospect");
+  const [editPrimaryContactName, setEditPrimaryContactName] = useState("");
+  const [editPrimaryContactEmail, setEditPrimaryContactEmail] = useState("");
+  const [editPrimaryContactPhone, setEditPrimaryContactPhone] = useState("");
+  const [editBillingEmail, setEditBillingEmail] = useState("");
+  const [editNotes, setEditNotes] = useState("");
 
   useEffect(() => {
     let isMounted = true;
@@ -170,6 +182,14 @@ export default function CustomerDetailPage() {
 
         if (isMounted) {
           setCustomer(normalized);
+          setEditAccountName(normalized.account_name ?? "");
+          setEditAccountCode(normalized.account_code ?? "");
+          setEditStatus((normalized.status ?? "prospect").toLowerCase());
+          setEditPrimaryContactName(normalized.primary_contact_name ?? "");
+          setEditPrimaryContactEmail(normalized.primary_contact_email ?? "");
+          setEditPrimaryContactPhone(normalized.primary_contact_phone ?? "");
+          setEditBillingEmail(normalized.billing_email ?? "");
+          setEditNotes(normalized.notes ?? "");
         }
       } catch (caught) {
         if (isMounted) {
@@ -246,6 +266,70 @@ export default function CustomerDetailPage() {
 
   function goToSupport() {
     router.push("/dashboard/support");
+  }
+
+  async function saveCustomerEdits() {
+    if (!customer) {
+      return;
+    }
+
+    const token = getAccessToken();
+    const organizationId = getOrganizationId();
+
+    if (!token || !organizationId) {
+      setUpdateError("Missing session context. Please sign in again.");
+      return;
+    }
+
+    if (!editAccountName.trim()) {
+      setUpdateError("Account name is required.");
+      return;
+    }
+
+    try {
+      setIsSaving(true);
+      setUpdateError(null);
+      setUpdateMessage(null);
+
+      const payload = await apiClient.patch<unknown>(
+        `/customer-accounts/${encodeURIComponent(customer.id)}`,
+        {
+          account_name: editAccountName.trim(),
+          account_code: editAccountCode.trim() ? editAccountCode.trim() : null,
+          status: editStatus.trim() ? editStatus.trim().toLowerCase() : "prospect",
+          primary_contact_name: editPrimaryContactName.trim() ? editPrimaryContactName.trim() : null,
+          primary_contact_email: editPrimaryContactEmail.trim() ? editPrimaryContactEmail.trim() : null,
+          primary_contact_phone: editPrimaryContactPhone.trim() ? editPrimaryContactPhone.trim() : null,
+          billing_email: editBillingEmail.trim() ? editBillingEmail.trim() : null,
+          notes: editNotes.trim() ? editNotes.trim() : null,
+        },
+        {
+          token,
+          organizationId,
+        }
+      );
+
+      const normalized = asCustomerAccountRecord(payload);
+      if (!normalized) {
+        throw new Error("Updated customer response could not be normalized.");
+      }
+
+      setCustomer(normalized);
+      setEditAccountName(normalized.account_name ?? "");
+      setEditAccountCode(normalized.account_code ?? "");
+      setEditStatus((normalized.status ?? "prospect").toLowerCase());
+      setEditPrimaryContactName(normalized.primary_contact_name ?? "");
+      setEditPrimaryContactEmail(normalized.primary_contact_email ?? "");
+      setEditPrimaryContactPhone(normalized.primary_contact_phone ?? "");
+      setEditBillingEmail(normalized.billing_email ?? "");
+      setEditNotes(normalized.notes ?? "");
+      setIsEditing(false);
+      setUpdateMessage("Customer account updated.");
+    } catch (caught: unknown) {
+      setUpdateError(caught instanceof Error ? caught.message : "Unable to update customer account.");
+    } finally {
+      setIsSaving(false);
+    }
   }
 
   if (isLoading) {
@@ -397,6 +481,27 @@ export default function CustomerDetailPage() {
           <div className="flex flex-wrap gap-3">
             <button
               type="button"
+              onClick={() => {
+                setIsEditing((current) => !current);
+                setUpdateError(null);
+                setUpdateMessage(null);
+                if (customer) {
+                  setEditAccountName(customer.account_name ?? "");
+                  setEditAccountCode(customer.account_code ?? "");
+                  setEditStatus((customer.status ?? "prospect").toLowerCase());
+                  setEditPrimaryContactName(customer.primary_contact_name ?? "");
+                  setEditPrimaryContactEmail(customer.primary_contact_email ?? "");
+                  setEditPrimaryContactPhone(customer.primary_contact_phone ?? "");
+                  setEditBillingEmail(customer.billing_email ?? "");
+                  setEditNotes(customer.notes ?? "");
+                }
+              }}
+              className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
+            >
+              {isEditing ? "Cancel Edit" : "Edit Account"}
+            </button>
+            <button
+              type="button"
               onClick={goToBilling}
               className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
             >
@@ -523,6 +628,102 @@ export default function CustomerDetailPage() {
                     : "No account notes have been added yet."}
                 </p>
               </div>
+
+              {updateError ? (
+                <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                  {updateError}
+                </div>
+              ) : null}
+              {updateMessage ? (
+                <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+                  {updateMessage}
+                </div>
+              ) : null}
+
+              {isEditing ? (
+                <div className="mt-4 space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <input
+                      type="text"
+                      value={editAccountName}
+                      onChange={(event) => setEditAccountName(event.target.value)}
+                      placeholder="Account name"
+                      className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
+                      disabled={isSaving}
+                    />
+                    <input
+                      type="text"
+                      value={editAccountCode}
+                      onChange={(event) => setEditAccountCode(event.target.value)}
+                      placeholder="Account code"
+                      className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
+                      disabled={isSaving}
+                    />
+                  </div>
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <select
+                      value={editStatus}
+                      onChange={(event) => setEditStatus(event.target.value)}
+                      className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
+                      disabled={isSaving}
+                    >
+                      <option value="prospect">Prospect</option>
+                      <option value="active">Active</option>
+                      <option value="inactive">Inactive</option>
+                    </select>
+                    <input
+                      type="email"
+                      value={editBillingEmail}
+                      onChange={(event) => setEditBillingEmail(event.target.value)}
+                      placeholder="Billing email"
+                      className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
+                      disabled={isSaving}
+                    />
+                  </div>
+                  <div className="grid gap-3 md:grid-cols-3">
+                    <input
+                      type="text"
+                      value={editPrimaryContactName}
+                      onChange={(event) => setEditPrimaryContactName(event.target.value)}
+                      placeholder="Primary contact name"
+                      className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
+                      disabled={isSaving}
+                    />
+                    <input
+                      type="email"
+                      value={editPrimaryContactEmail}
+                      onChange={(event) => setEditPrimaryContactEmail(event.target.value)}
+                      placeholder="Primary contact email"
+                      className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
+                      disabled={isSaving}
+                    />
+                    <input
+                      type="text"
+                      value={editPrimaryContactPhone}
+                      onChange={(event) => setEditPrimaryContactPhone(event.target.value)}
+                      placeholder="Primary contact phone"
+                      className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
+                      disabled={isSaving}
+                    />
+                  </div>
+                  <textarea
+                    value={editNotes}
+                    onChange={(event) => setEditNotes(event.target.value)}
+                    rows={4}
+                    placeholder="Notes"
+                    className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
+                    disabled={isSaving}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => void saveCustomerEdits()}
+                    disabled={isSaving}
+                    className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:opacity-60"
+                  >
+                    {isSaving ? "Saving..." : "Save Account Changes"}
+                  </button>
+                </div>
+              ) : null}
             </div>
 
             <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
