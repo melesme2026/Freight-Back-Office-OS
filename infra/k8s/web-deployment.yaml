@@ -24,7 +24,9 @@ spec:
             - name: NODE_ENV
               value: "production"
             - name: NEXT_PUBLIC_API_BASE_URL
-              value: "http://freight-api:8000/api/v1"
+              value: "http://freight-api:8000"
+            - name: NEXT_PUBLIC_API_VERSION_PREFIX
+              value: "/api/v1"
           readinessProbe:
             httpGet:
               path: /
