@@ -4,6 +4,7 @@ import Link from "next/link";
 import { FormEvent, useState } from "react";
 
 import { apiClient } from "@/lib/api-client";
+import { AuthNavigationLinks } from "../auth-navigation-links";
 
 type ForgotPasswordResponse = {
   data?: {
@@ -95,9 +96,11 @@ export default function ForgotPasswordPage() {
         </button>
       </form>
 
-      <div className="mt-4 text-xs text-slate-600">
-        Back to <Link href="/login" className="font-semibold text-brand-700">Staff Login</Link>
-      </div>
+      <AuthNavigationLinks
+        secondaryLinks={[
+          { href: "/reset-password", label: "Reset password" },
+        ]}
+      />
     </section>
   );
 }

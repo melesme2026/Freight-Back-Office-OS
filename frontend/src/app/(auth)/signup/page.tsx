@@ -1,12 +1,12 @@
 "use client";
 
-import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { apiClient } from "@/lib/api-client";
 import { clearAuth, getAccessToken, getOrganizationId, getUserRole, setAuthSession } from "@/lib/auth";
 import { resolvePostLoginRoute } from "@/lib/rbac";
+import { AuthNavigationLinks } from "../auth-navigation-links";
 
 type SignupResponse = {
   data?: {
@@ -135,9 +135,11 @@ export default function SignupPage() {
         </button>
       </form>
 
-      <div className="mt-4 text-xs text-slate-600">
-        Already have an account? <Link href="/login" className="font-semibold text-brand-700">Sign in</Link>
-      </div>
+      <AuthNavigationLinks
+        secondaryLinks={[
+          { href: "/login", label: "Already have an account? Sign in" },
+        ]}
+      />
     </section>
   );
 }

@@ -336,6 +336,7 @@ def invite_user(
             )
 
     existing = repo.get_by_email(organization_id=organization_id, email=normalized_email)
+    created_new_user = False
 
     if existing is None:
         item = StaffUser(
@@ -348,6 +349,11 @@ def invite_user(
             last_login_at=None,
         )
         existing = repo.create(item)
+        created_new_user = True
+
+    if created_new_user:
+        db.commit()
+        db.refresh(existing)
 
     activation_token = create_action_token(
         str(existing.id),

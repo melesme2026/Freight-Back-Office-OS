@@ -1,10 +1,10 @@
 "use client";
 
-import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { FormEvent, Suspense, useEffect, useMemo, useState } from "react";
 
 import { apiClient } from "@/lib/api-client";
+import { AuthNavigationLinks } from "../auth-navigation-links";
 
 function normalizeActivationToken(value: string): string {
   return value.replace(/\s+/g, "").trim();
@@ -98,10 +98,7 @@ function ActivateAccountPageContent() {
         </button>
       </form>
 
-      <div className="mt-4 flex gap-3 text-xs">
-        <Link href="/login" className="font-semibold text-brand-700">Staff Login</Link>
-        <Link href="/driver-login" className="font-semibold text-brand-700">Driver Login</Link>
-      </div>
+      <AuthNavigationLinks />
     </section>
   );
 }
