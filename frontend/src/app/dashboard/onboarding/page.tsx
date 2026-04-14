@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useCustomerAccounts } from "@/hooks/useCustomerAccounts";
@@ -121,11 +122,23 @@ export default function OnboardingPage() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
+  const availableCustomerIds = useMemo(
+    () => new Set(customerAccounts.map((account) => account.id)),
+    [customerAccounts]
+  );
+
   useEffect(() => {
-    if (!selectedCustomerId && customerAccounts.length > 0) {
+    if (customerAccounts.length === 0) {
+      if (selectedCustomerId) {
+        setSelectedCustomerId("");
+      }
+      return;
+    }
+
+    if (!selectedCustomerId || !availableCustomerIds.has(selectedCustomerId)) {
       setSelectedCustomerId(customerAccounts[0].id);
     }
-  }, [customerAccounts, selectedCustomerId]);
+  }, [availableCustomerIds, customerAccounts, selectedCustomerId]);
 
   const selectedCustomer = useMemo(
     () => customerAccounts.find((account) => account.id === selectedCustomerId) ?? null,
@@ -135,8 +148,9 @@ export default function OnboardingPage() {
   const loadChecklist = useCallback(async (): Promise<void> => {
     const token = getAccessToken();
     const organizationId = getOrganizationId();
+    const isSelectedCustomerInScope = availableCustomerIds.has(selectedCustomerId);
 
-    if (!selectedCustomerId || !organizationId) {
+    if (!selectedCustomerId || !organizationId || !isSelectedCustomerInScope) {
       setChecklist(null);
       return;
     }
@@ -166,7 +180,7 @@ export default function OnboardingPage() {
     } finally {
       setIsChecklistLoading(false);
     }
-  }, [selectedCustomerId]);
+  }, [availableCustomerIds, selectedCustomerId]);
 
   useEffect(() => {
     void loadChecklist();
@@ -175,9 +189,10 @@ export default function OnboardingPage() {
   async function initializeChecklist(): Promise<void> {
     const token = getAccessToken();
     const organizationId = getOrganizationId();
+    const isSelectedCustomerInScope = availableCustomerIds.has(selectedCustomerId);
 
-    if (!selectedCustomerId || !organizationId) {
-      setErrorMessage("Missing customer or organization context.");
+    if (!selectedCustomerId || !organizationId || !isSelectedCustomerInScope) {
+      setErrorMessage("Select a valid customer account from your organization to continue.");
       return;
     }
 
@@ -209,8 +224,9 @@ export default function OnboardingPage() {
   async function saveChecklist(): Promise<void> {
     const token = getAccessToken();
     const organizationId = getOrganizationId();
+    const isSelectedCustomerInScope = availableCustomerIds.has(selectedCustomerId);
 
-    if (!checklist || !selectedCustomerId || !organizationId) {
+    if (!checklist || !selectedCustomerId || !organizationId || !isSelectedCustomerInScope) {
       setErrorMessage("Checklist is not ready to save.");
       return;
     }
@@ -300,6 +316,21 @@ export default function OnboardingPage() {
             ))}
           </select>
         </section>
+
+        {!isCustomerLoading && customerAccounts.length === 0 ? (
+          <section className="mt-6 rounded-2xl border border-slate-200 bg-white px-6 py-8 shadow-soft">
+            <h2 className="text-lg font-semibold text-slate-950">No customer accounts yet</h2>
+            <p className="mt-2 text-sm text-slate-600">
+              Create a customer account first before initializing onboarding.
+            </p>
+            <Link
+              href="/dashboard/customers/new"
+              className="mt-4 inline-flex rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-700"
+            >
+              Create Customer Account
+            </Link>
+          </section>
+        ) : null}
 
         {errorMessage ? (
           <div className="mt-6 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
