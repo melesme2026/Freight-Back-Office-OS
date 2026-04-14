@@ -4,6 +4,8 @@ import { clearAuth } from "@/lib/auth";
 type RequestOptions = Omit<RequestInit, "body"> & {
   token?: string;
   organizationId?: string;
+  authMode?: "auto" | "none";
+  onUnauthorized?: "redirect" | "throw";
   body?: BodyInit | null;
   jsonBody?: unknown;
   responseType?: "json" | "text" | "blob" | "response";
@@ -191,6 +193,8 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   const {
     token,
     organizationId,
+    authMode = "auto",
+    onUnauthorized = "redirect",
     headers,
     body,
     jsonBody,
@@ -198,9 +202,11 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     ...rest
   } = options;
 
-  const resolvedToken = token ?? getStoredAccessToken();
+  const resolvedToken =
+    authMode === "none" ? undefined : token ?? getStoredAccessToken();
   const resolvedTokenType = getStoredTokenType();
-  const resolvedOrganizationId = organizationId ?? getStoredOrganizationId();
+  const resolvedOrganizationId =
+    authMode === "none" ? undefined : organizationId ?? getStoredOrganizationId();
 
   const normalizedHeaders = normalizeHeaders(headers);
   const resolvedBody = resolveRequestBody({ body, jsonBody });
@@ -225,7 +231,11 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   });
 
   if (!response.ok) {
-    if (response.status === 401 && typeof window !== "undefined") {
+    if (
+      response.status === 401 &&
+      onUnauthorized === "redirect" &&
+      typeof window !== "undefined"
+    ) {
       const isDriverPortalRequest = window.location.pathname.startsWith("/driver-portal");
       clearAuth();
       window.location.replace(isDriverPortalRequest ? "/driver-login" : "/login");

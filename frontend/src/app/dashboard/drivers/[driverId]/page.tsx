@@ -153,6 +153,14 @@ export default function DriverDetailPage() {
   const [activationToken, setActivationToken] = useState<string | null>(null);
   const [activationUrl, setActivationUrl] = useState<string | null>(null);
   const [inviteStatus, setInviteStatus] = useState<string | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isTogglingActive, setIsTogglingActive] = useState(false);
+  const [updateMessage, setUpdateMessage] = useState<string | null>(null);
+  const [updateError, setUpdateError] = useState<string | null>(null);
+  const [editFullName, setEditFullName] = useState("");
+  const [editPhone, setEditPhone] = useState("");
+  const [editEmail, setEditEmail] = useState("");
 
   useEffect(() => {
     let isMounted = true;
@@ -199,6 +207,9 @@ export default function DriverDetailPage() {
 
         if (isMounted) {
           setDriver(normalized);
+          setEditFullName(normalized.name);
+          setEditPhone(normalized.phone ?? "");
+          setEditEmail(normalized.email ?? "");
         }
       } catch (caught) {
         if (isMounted) {
@@ -320,6 +331,109 @@ export default function DriverDetailPage() {
       );
     } finally {
       setIsInviting(false);
+    }
+  }
+
+  async function saveDriverEdits() {
+    if (!driver) {
+      return;
+    }
+
+    const token = getAccessToken();
+    const organizationId = getOrganizationId();
+
+    if (!token || !organizationId) {
+      setUpdateError("Missing session context. Please sign in again.");
+      return;
+    }
+
+    if (!editFullName.trim()) {
+      setUpdateError("Driver name is required.");
+      return;
+    }
+
+    if (!editPhone.trim()) {
+      setUpdateError("Driver phone is required.");
+      return;
+    }
+
+    try {
+      setIsSaving(true);
+      setUpdateError(null);
+      setUpdateMessage(null);
+
+      const payload = await apiClient.patch<unknown>(
+        `/drivers/${encodeURIComponent(driver.id)}`,
+        {
+          full_name: editFullName.trim(),
+          phone: editPhone.trim(),
+          email: editEmail.trim() ? editEmail.trim() : null,
+        },
+        {
+          token,
+          organizationId,
+        }
+      );
+
+      const normalized = normalizeDriverDetail(payload, driver.id);
+      if (!normalized) {
+        throw new Error("Updated driver response could not be normalized.");
+      }
+
+      setDriver(normalized);
+      setEditFullName(normalized.name);
+      setEditPhone(normalized.phone ?? "");
+      setEditEmail(normalized.email ?? "");
+      setIsEditing(false);
+      setUpdateMessage("Driver profile updated.");
+    } catch (caught: unknown) {
+      setUpdateError(caught instanceof Error ? caught.message : "Unable to update driver.");
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  async function toggleDriverActiveState() {
+    if (!driver) {
+      return;
+    }
+
+    const token = getAccessToken();
+    const organizationId = getOrganizationId();
+
+    if (!token || !organizationId) {
+      setUpdateError("Missing session context. Please sign in again.");
+      return;
+    }
+
+    try {
+      setIsTogglingActive(true);
+      setUpdateError(null);
+      setUpdateMessage(null);
+
+      const nextIsActive = driver.status.toLowerCase() !== "active";
+      const payload = await apiClient.patch<unknown>(
+        `/drivers/${encodeURIComponent(driver.id)}`,
+        {
+          is_active: nextIsActive,
+        },
+        {
+          token,
+          organizationId,
+        }
+      );
+
+      const normalized = normalizeDriverDetail(payload, driver.id);
+      if (!normalized) {
+        throw new Error("Updated driver response could not be normalized.");
+      }
+
+      setDriver(normalized);
+      setUpdateMessage(nextIsActive ? "Driver reactivated." : "Driver deactivated.");
+    } catch (caught: unknown) {
+      setUpdateError(caught instanceof Error ? caught.message : "Unable to update driver status.");
+    } finally {
+      setIsTogglingActive(false);
     }
   }
 
@@ -448,12 +562,31 @@ export default function DriverDetailPage() {
           <div className="flex flex-wrap gap-3">
             <button
               type="button"
-              disabled
-              aria-disabled="true"
-              title="Driver editing is not yet wired in V1."
-              className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 opacity-60"
+              onClick={() => {
+                setIsEditing((current) => !current);
+                setUpdateError(null);
+                setUpdateMessage(null);
+                if (driver) {
+                  setEditFullName(driver.name);
+                  setEditPhone(driver.phone ?? "");
+                  setEditEmail(driver.email ?? "");
+                }
+              }}
+              className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
             >
-              Edit Driver
+              {isEditing ? "Cancel Edit" : "Edit Driver"}
+            </button>
+            <button
+              type="button"
+              onClick={() => void toggleDriverActiveState()}
+              disabled={isTogglingActive}
+              className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:opacity-60"
+            >
+              {isTogglingActive
+                ? "Saving..."
+                : driver.status.toLowerCase() === "active"
+                  ? "Deactivate Driver"
+                  : "Reactivate Driver"}
             </button>
             <button
               type="button"
@@ -493,6 +626,56 @@ export default function DriverDetailPage() {
                   </div>
                 ))}
               </div>
+
+              {updateError ? (
+                <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                  {updateError}
+                </div>
+              ) : null}
+              {updateMessage ? (
+                <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+                  {updateMessage}
+                </div>
+              ) : null}
+
+              {isEditing ? (
+                <div className="mt-4 space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <input
+                      type="text"
+                      value={editFullName}
+                      onChange={(event) => setEditFullName(event.target.value)}
+                      placeholder="Driver full name"
+                      className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
+                      disabled={isSaving}
+                    />
+                    <input
+                      type="text"
+                      value={editPhone}
+                      onChange={(event) => setEditPhone(event.target.value)}
+                      placeholder="Phone"
+                      className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
+                      disabled={isSaving}
+                    />
+                  </div>
+                  <input
+                    type="email"
+                    value={editEmail}
+                    onChange={(event) => setEditEmail(event.target.value)}
+                    placeholder="Email (optional)"
+                    className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
+                    disabled={isSaving}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => void saveDriverEdits()}
+                    disabled={isSaving}
+                    className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:opacity-60"
+                  >
+                    {isSaving ? "Saving..." : "Save Driver Changes"}
+                  </button>
+                </div>
+              ) : null}
             </div>
 
             <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
