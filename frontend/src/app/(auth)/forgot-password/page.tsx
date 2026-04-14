@@ -14,10 +14,7 @@ type ForgotPasswordResponse = {
   };
 };
 
-const DEFAULT_ORG = "00000000-0000-0000-0000-000000000001";
-
 export default function ForgotPasswordPage() {
-  const [organizationId, setOrganizationId] = useState(DEFAULT_ORG);
   const [email, setEmail] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -28,8 +25,8 @@ export default function ForgotPasswordPage() {
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (!organizationId.trim() || !email.trim()) {
-      setErrorMessage("Organization ID and email are required.");
+    if (!email.trim()) {
+      setErrorMessage("Email is required.");
       return;
     }
 
@@ -41,7 +38,6 @@ export default function ForgotPasswordPage() {
       setIsSuccess(false);
 
       const payload = await apiClient.post<ForgotPasswordResponse>("/auth/request-password-reset", {
-        organization_id: organizationId.trim(),
         email: email.trim().toLowerCase(),
       });
 
@@ -62,10 +58,9 @@ export default function ForgotPasswordPage() {
   return (
     <section className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-8 shadow-soft">
       <h1 className="text-2xl font-bold text-slate-950">Forgot Password</h1>
-      <p className="mt-2 text-sm text-slate-600">Request a password reset token for your organization account.</p>
+      <p className="mt-2 text-sm text-slate-600">Request a password reset token for your account.</p>
 
       <form className="mt-6 space-y-4" onSubmit={handleSubmit} noValidate>
-        <input type="text" value={organizationId} onChange={(event) => setOrganizationId(event.target.value)} placeholder="Organization ID" className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm" disabled={isSubmitting} />
         <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="Account email" className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm" disabled={isSubmitting} />
 
         {errorMessage ? <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{errorMessage}</div> : null}
