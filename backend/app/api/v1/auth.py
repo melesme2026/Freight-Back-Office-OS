@@ -100,22 +100,9 @@ class SignupRequestBody(BaseModel):
     organization_name: str
 
 
-def _resolve_organization_id(
-    *,
-    payload_organization_id: uuid.UUID | None,
-    x_organization_id: str | None,
-) -> uuid.UUID:
-    if payload_organization_id is not None:
-        return payload_organization_id
-
+def _parse_header_organization_id(x_organization_id: str | None) -> uuid.UUID | None:
     if not x_organization_id:
-        raise ValidationError(
-            "Missing organization_id. Provide X-Organization-Id header or organization_id in request body.",
-            details={
-                "header": "X-Organization-Id",
-                "field": "organization_id",
-            },
-        )
+        return None
 
     try:
         return uuid.UUID(x_organization_id)
@@ -124,6 +111,17 @@ def _resolve_organization_id(
             "Invalid X-Organization-Id header",
             details={"header": "X-Organization-Id", "value": x_organization_id},
         ) from exc
+
+
+def _resolve_organization_id(
+    *,
+    payload_organization_id: uuid.UUID | None,
+    x_organization_id: str | None,
+) -> uuid.UUID | None:
+    if payload_organization_id is not None:
+        return payload_organization_id
+
+    return _parse_header_organization_id(x_organization_id)
 
 
 def _serialize_staff_user(user) -> StaffUserAuthView:
@@ -235,12 +233,16 @@ def login(
     db: Session = Depends(get_db_session),
     x_organization_id: str | None = Header(default=None, alias="X-Organization-Id"),
 ) -> LoginResponse:
-    organization_id = _resolve_organization_id(
+    hinted_organization_id = _resolve_organization_id(
         payload_organization_id=payload.organization_id,
         x_organization_id=x_organization_id,
     )
 
     auth_service = AuthService(db)
+    organization_id = auth_service.resolve_organization_id_for_login(
+        email=payload.email,
+        organization_id=hinted_organization_id,
+    )
     user = auth_service.authenticate_staff_user(
         organization_id=organization_id,
         email=payload.email,
