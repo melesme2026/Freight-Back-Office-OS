@@ -73,6 +73,7 @@ def initialize_onboarding(
         organization_id=str(organization_id),
         customer_account_id=str(customer_account_id),
     )
+    db.commit()
 
     return ApiResponse(
         data=_serialize_onboarding_checklist(item),
@@ -125,6 +126,7 @@ def upsert_onboarding(
         go_live_ready=go_live_ready,
         completed_at=completed_at,
     )
+    db.commit()
 
     return ApiResponse(
         data=_serialize_onboarding_checklist(item),

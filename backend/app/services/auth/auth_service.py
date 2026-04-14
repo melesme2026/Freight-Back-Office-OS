@@ -3,9 +3,10 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.exceptions import UnauthorizedError
+from app.core.exceptions import UnauthorizedError, ValidationError
 from app.core.security import create_access_token, verify_password
 from app.domain.models.staff_user import StaffUser
 from app.repositories.driver_repo import DriverRepository
@@ -45,6 +46,30 @@ class AuthService:
         user = self.staff_user_repo.update(user)
 
         return user
+
+    def resolve_organization_id_for_login(
+        self,
+        *,
+        email: str,
+        organization_id: uuid.UUID | None = None,
+    ) -> uuid.UUID:
+        if organization_id is not None:
+            return organization_id
+
+        normalized_email = email.strip().lower()
+        stmt = select(StaffUser.organization_id).where(StaffUser.email == normalized_email).distinct()
+        organization_ids = list(self.db.scalars(stmt).all())
+
+        if not organization_ids:
+            raise UnauthorizedError("Invalid email or password")
+
+        if len(organization_ids) > 1:
+            raise ValidationError(
+                "Multiple organizations are associated with this email. Use advanced login with organization_id.",
+                details={"email": normalized_email, "organization_count": len(organization_ids)},
+            )
+
+        return organization_ids[0]
 
     def build_access_token(self, user: StaffUser) -> str:
         role_value = str(getattr(user.role, "value", user.role)).lower()

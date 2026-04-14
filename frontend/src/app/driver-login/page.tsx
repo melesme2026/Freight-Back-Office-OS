@@ -13,11 +13,10 @@ type LoginResponse = {
     token_type?: string;
     user?: {
       role?: string;
+      organization_id?: string;
     };
   };
 };
-
-const DEFAULT_ORGANIZATION_ID = "00000000-0000-0000-0000-000000000001";
 
 function normalizeText(value: string): string {
   return value.trim();
@@ -37,7 +36,8 @@ export default function DriverLoginPage() {
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [organizationId, setOrganizationId] = useState(DEFAULT_ORGANIZATION_ID);
+  const [organizationId, setOrganizationId] = useState("");
+  const [showAdvancedLogin, setShowAdvancedLogin] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isCheckingSession, setIsCheckingSession] = useState(true);
@@ -61,11 +61,6 @@ export default function DriverLoginPage() {
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (!normalizedOrganizationId) {
-      setErrorMessage("Organization ID is required.");
-      return;
-    }
-
     if (!normalizedEmail || !isValidEmail(normalizedEmail)) {
       setErrorMessage("Please enter a valid email address.");
       return;
@@ -83,16 +78,24 @@ export default function DriverLoginPage() {
       clearAuth();
       const payload = await apiClient.post<LoginResponse>(
         "/auth/login",
-        { email: normalizedEmail, password },
-        { organizationId: normalizedOrganizationId }
+        {
+          email: normalizedEmail,
+          password,
+          ...(normalizedOrganizationId ? { organization_id: normalizedOrganizationId } : {}),
+        },
+        {}
       );
 
       const accessToken = payload?.data?.access_token?.trim();
       const tokenType = payload?.data?.token_type?.trim() || "Bearer";
       const userRole = payload?.data?.user?.role?.trim().toLowerCase() || null;
+      const resolvedOrganizationId = normalizeText(payload?.data?.user?.organization_id ?? "");
 
       if (!accessToken) {
         throw new Error("Login succeeded but no access token was returned.");
+      }
+      if (!resolvedOrganizationId) {
+        throw new Error("Login succeeded but no organization context was returned.");
       }
 
       if (!isDriverRole(userRole)) {
@@ -102,7 +105,7 @@ export default function DriverLoginPage() {
       setAuthSession({
         accessToken,
         tokenType,
-        organizationId: normalizedOrganizationId,
+        organizationId: resolvedOrganizationId,
         userEmail: normalizedEmail,
         userRole,
       });
@@ -134,17 +137,9 @@ export default function DriverLoginPage() {
         <div className="mb-6">
           <h1 className="text-2xl font-bold tracking-tight text-slate-950">Driver Sign in</h1>
           <p className="mt-2 text-sm text-slate-600">Access your driver portal workspace.</p>
-          <p className="mt-2 text-xs text-slate-500">
-            Local demo default org: <span className="font-medium">00000000-0000-0000-0000-000000000001</span>. Test driver email: <span className="font-medium">john.doe@example.com</span>.
-          </p>
         </div>
 
         <form className="space-y-5" onSubmit={handleSubmit} noValidate>
-          <div>
-            <label className="mb-2 block text-sm font-medium text-slate-700">Organization ID</label>
-            <input type="text" value={organizationId} onChange={(e) => setOrganizationId(e.target.value)} className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm" disabled={isSubmitting} />
-          </div>
-
           <div>
             <label className="mb-2 block text-sm font-medium text-slate-700">Email</label>
             <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm" disabled={isSubmitting} />
@@ -160,6 +155,29 @@ export default function DriverLoginPage() {
           <button type="submit" disabled={isSubmitting} className="w-full rounded-xl bg-brand-600 px-4 py-3 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60">
             {isSubmitting ? "Signing in..." : "Sign in"}
           </button>
+
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+            <button
+              type="button"
+              className="text-xs font-semibold text-slate-700 hover:text-slate-900"
+              onClick={() => setShowAdvancedLogin((current) => !current)}
+            >
+              {showAdvancedLogin ? "Hide" : "Show"} Advanced / Admin login
+            </button>
+            {showAdvancedLogin ? (
+              <div className="mt-3">
+                <label className="mb-2 block text-xs font-medium text-slate-700">Organization ID override</label>
+                <input
+                  type="text"
+                  value={organizationId}
+                  onChange={(e) => setOrganizationId(e.target.value)}
+                  className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm"
+                  placeholder="Optional: only for multi-org/admin debugging"
+                  disabled={isSubmitting}
+                />
+              </div>
+            ) : null}
+          </div>
         </form>
         <div className="mt-4 flex gap-3 text-xs">
           <a href="/activate-account" className="font-semibold text-brand-700 hover:text-brand-800">
