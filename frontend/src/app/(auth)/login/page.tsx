@@ -228,6 +228,14 @@ export default function LoginPage() {
         <a href="/" className="mt-4 inline-flex text-xs font-semibold text-brand-700 hover:text-brand-800">
           ← Back to landing
         </a>
+        <div className="mt-2 flex gap-3 text-xs">
+          <a href="/signup" className="font-semibold text-brand-700 hover:text-brand-800">
+            Create account
+          </a>
+          <a href="/forgot-password" className="font-semibold text-brand-700 hover:text-brand-800">
+            Forgot password
+          </a>
+        </div>
       </section>
     </main>
   );

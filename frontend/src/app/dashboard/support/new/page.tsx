@@ -265,6 +265,24 @@ export default function NewSupportTicketPage() {
         ) : null}
 
         <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
+          <div className="mb-6 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <h2 className="text-sm font-semibold text-slate-900">Operations templates</h2>
+            <p className="mt-1 text-xs text-slate-600">
+              Use these built-in templates for broker/AP follow-up during support escalations.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2 text-xs">
+              <a href="/business-assets/invoice-template.md" target="_blank" rel="noreferrer" className="rounded-lg border border-slate-300 bg-white px-3 py-1 font-semibold text-slate-700 hover:bg-slate-100">
+                Invoice template
+              </a>
+              <a href="/business-assets/invoice-email-template.txt" target="_blank" rel="noreferrer" className="rounded-lg border border-slate-300 bg-white px-3 py-1 font-semibold text-slate-700 hover:bg-slate-100">
+                Invoice email template
+              </a>
+              <a href="/business-assets/invoice-followup-template.txt" target="_blank" rel="noreferrer" className="rounded-lg border border-slate-300 bg-white px-3 py-1 font-semibold text-slate-700 hover:bg-slate-100">
+                Payment follow-up template
+              </a>
+            </div>
+          </div>
+
           <form className="space-y-6" onSubmit={handleSubmit}>
             <div className="grid gap-6 md:grid-cols-2">
               <div className="md:col-span-2">

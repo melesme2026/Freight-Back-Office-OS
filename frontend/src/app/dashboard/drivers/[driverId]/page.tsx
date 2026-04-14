@@ -148,6 +148,11 @@ export default function DriverDetailPage() {
   const [driver, setDriver] = useState<DriverDetailView | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [isInviting, setIsInviting] = useState(false);
+  const [inviteError, setInviteError] = useState<string | null>(null);
+  const [activationToken, setActivationToken] = useState<string | null>(null);
+  const [activationUrl, setActivationUrl] = useState<string | null>(null);
+  const [inviteStatus, setInviteStatus] = useState<string | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -264,6 +269,59 @@ export default function DriverDetailPage() {
   const openSupport = () => {
     router.push("/dashboard/support");
   };
+
+  async function inviteDriverToPortal() {
+    const token = getAccessToken();
+    const organizationId = getOrganizationId();
+
+    if (!token || !organizationId) {
+      setInviteError("Missing session context. Please sign in again.");
+      return;
+    }
+
+    if (!driver?.email) {
+      setInviteError("Driver email is required before generating an invite.");
+      return;
+    }
+
+    try {
+      setIsInviting(true);
+      setInviteError(null);
+      setActivationToken(null);
+      setActivationUrl(null);
+      setInviteStatus(null);
+
+      const payload = await apiClient.post<{
+        data?: { activation_token?: string; activation_url?: string; email_status?: string };
+      }>(
+        "/auth/invite-user",
+        {
+          email: driver.email,
+          full_name: driver.name,
+          role: "driver",
+          organization_id: organizationId,
+        },
+        {
+          token,
+          organizationId,
+        }
+      );
+
+      const tokenValue = payload?.data?.activation_token?.trim();
+      const activationUrlValue = payload?.data?.activation_url?.trim() || null;
+      const emailStatus = payload?.data?.email_status?.trim() || "sent";
+
+      setInviteStatus(`Invite processed. Email status: ${emailStatus}.`);
+      setActivationUrl(activationUrlValue);
+      setActivationToken(tokenValue || null);
+    } catch (caught: unknown) {
+      setInviteError(
+        caught instanceof Error ? caught.message : "Unable to generate driver invite."
+      );
+    } finally {
+      setIsInviting(false);
+    }
+  }
 
   if (isLoading) {
     return (
@@ -471,6 +529,59 @@ export default function DriverDetailPage() {
                   workspace to review current freight activity.
                 </p>
               </div>
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
+              <h2 className="text-lg font-semibold text-slate-950">Driver Portal Invite</h2>
+              <p className="mt-2 text-sm text-slate-600">
+                Generate an activation invite for this driver profile. Drivers activate first, then sign in through Driver Login.
+              </p>
+              <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+                Driver email: <span className="font-semibold">{driver.email ?? "Not set"}</span>
+              </div>
+
+              {inviteError ? (
+                <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                  {inviteError}
+                </div>
+              ) : null}
+
+              {inviteStatus ? (
+                <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+                  {inviteStatus}
+                </div>
+              ) : null}
+
+              {activationToken ? (
+                <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs text-emerald-800">
+                  <div className="font-semibold">Activation token generated</div>
+                  <div className="mt-1 break-all">{activationToken}</div>
+                  <a
+                    href={`/activate-account?token=${encodeURIComponent(activationToken)}`}
+                    className="mt-2 inline-block font-semibold text-brand-700"
+                  >
+                    Open activation page →
+                  </a>
+                </div>
+              ) : null}
+
+              {!activationToken && activationUrl ? (
+                <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs text-emerald-800">
+                  <div className="font-semibold">Activation link generated</div>
+                  <a href={activationUrl} className="mt-1 inline-block font-semibold text-brand-700">
+                    Open activation page →
+                  </a>
+                </div>
+              ) : null}
+
+              <button
+                type="button"
+                onClick={() => void inviteDriverToPortal()}
+                disabled={isInviting || !driver.email}
+                className="mt-4 rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:opacity-60"
+              >
+                {isInviting ? "Generating invite..." : "Generate driver activation invite"}
+              </button>
             </div>
           </section>
 

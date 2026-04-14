@@ -57,8 +57,15 @@ export default function HomePage() {
 
           <div className="mt-8 flex flex-wrap gap-4">
             <Link
-              href="/login"
+              href="/signup"
               className="rounded-xl bg-brand-600 px-5 py-3 text-sm font-semibold text-white shadow-soft transition hover:bg-brand-700"
+            >
+              Create Account
+            </Link>
+
+            <Link
+              href="/login"
+              className="rounded-xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
             >
               Staff Login
             </Link>

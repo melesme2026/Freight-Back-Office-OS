@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 
-import { useDrivers } from "@/hooks/useDrivers";
 import { apiClient } from "@/lib/api-client";
 import { getAccessToken, getOrganizationId } from "@/lib/auth";
 
@@ -57,23 +56,15 @@ function normalizeLoads(payload: unknown): DriverLoad[] {
 }
 
 export default function DriverLoadsPage() {
-  const { drivers, isLoading: isDriverLoading, error: driverError } = useDrivers();
-  const [selectedDriverId, setSelectedDriverId] = useState("");
   const [loads, setLoads] = useState<DriverLoad[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!selectedDriverId && drivers.length > 0) {
-      setSelectedDriverId(drivers[0].id);
-    }
-  }, [drivers, selectedDriverId]);
-
-  useEffect(() => {
     const token = getAccessToken();
     const organizationId = getOrganizationId();
 
-    if (!selectedDriverId || !organizationId) {
+    if (!organizationId) {
       setLoads([]);
       setIsLoading(false);
       return;
@@ -87,7 +78,7 @@ export default function DriverLoadsPage() {
         setErrorMessage(null);
 
         const payload = await apiClient.get<unknown>(
-          `/loads?driver_id=${selectedDriverId}&page=1&page_size=50`,
+          "/loads?page=1&page_size=50",
           {
             token: token ?? undefined,
             organizationId: organizationId ?? undefined,
@@ -110,7 +101,7 @@ export default function DriverLoadsPage() {
     return () => {
       mounted = false;
     };
-  }, [selectedDriverId]);
+  }, []);
 
   return (
     <main className="min-h-screen bg-slate-50 text-slate-900">
@@ -120,30 +111,8 @@ export default function DriverLoadsPage() {
           <h1 className="text-3xl font-bold tracking-tight text-slate-950">My Loads</h1>
         </div>
 
-        {driverError ? (
-          <div className="mb-6 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-            {driverError}
-          </div>
-        ) : null}
-
-        <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
-          <label htmlFor="loads-driver-select" className="text-sm font-semibold text-slate-700">
-            Driver
-          </label>
-          <select
-            id="loads-driver-select"
-            value={selectedDriverId}
-            onChange={(event) => setSelectedDriverId(event.target.value)}
-            disabled={isDriverLoading || drivers.length === 0}
-            className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
-          >
-            {drivers.length === 0 ? <option value="">No drivers available</option> : null}
-            {drivers.map((driver) => (
-              <option key={driver.id} value={driver.id}>
-                {driver.full_name}
-              </option>
-            ))}
-          </select>
+        <section className="rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-600 shadow-soft">
+          Showing loads assigned to your driver account.
         </section>
 
         {errorMessage ? (
