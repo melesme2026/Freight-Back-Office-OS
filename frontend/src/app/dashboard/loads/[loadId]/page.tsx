@@ -5,6 +5,7 @@ import { ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from "
 
 import { apiClient } from "@/lib/api-client";
 import { getAccessToken, getOrganizationId } from "@/lib/auth";
+import { buildApiUrl as buildConfiguredApiUrl } from "@/lib/config";
 
 type LoadStatus =
   | "new"
@@ -608,20 +609,6 @@ function normalizeLoadIdParam(value: string | string[] | undefined): string | nu
   return null;
 }
 
-function buildApiUrl(path: string) {
-  const baseUrl = (process.env.NEXT_PUBLIC_API_BASE_URL ?? "").trim().replace(/\/+$/, "");
-  const versionPrefix = (process.env.NEXT_PUBLIC_API_VERSION_PREFIX ?? "/api/v1")
-    .trim()
-    .replace(/\/+$/, "");
-  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
-
-  if (baseUrl) {
-    return `${baseUrl}${versionPrefix}${normalizedPath}`;
-  }
-
-  return `${versionPrefix}${normalizedPath}`;
-}
-
 function normalizeDocumentTypeLabel(value?: string | null) {
   const normalized = (value ?? "").trim().toLowerCase();
 
@@ -1111,7 +1098,7 @@ export default function LoadDetailPage() {
       setActionMessage(null);
 
       const token = getAccessToken();
-      const response = await fetch(buildApiUrl(`/loads/${encodeURIComponent(load.id)}/invoice`), {
+      const response = await fetch(buildConfiguredApiUrl(`/loads/${encodeURIComponent(load.id)}/invoice`), {
         method: "GET",
         headers: token ? { Authorization: `Bearer ${token}` } : undefined,
       });
@@ -1180,7 +1167,7 @@ export default function LoadDetailPage() {
         formData.append("document_type", selectedUploadDocumentType);
       }
 
-      const uploadResponse = await fetch(buildApiUrl("/documents/upload"), {
+      const uploadResponse = await fetch(buildConfiguredApiUrl("/documents/upload"), {
         method: "POST",
         headers: token
           ? {
@@ -1227,7 +1214,7 @@ export default function LoadDetailPage() {
       const token = getAccessToken();
 
       const response = await fetch(
-        buildApiUrl(`/documents/${encodeURIComponent(document.id)}/download`),
+        buildConfiguredApiUrl(`/documents/${encodeURIComponent(document.id)}/download`),
         {
           method: "GET",
           headers: token

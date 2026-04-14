@@ -76,7 +76,15 @@ export function buildApiUrl(path: string): string {
       : normalizedPath;
   }
 
+  const baseAlreadyIncludesVersionPrefix =
+    appConfig.apiBaseUrl.length > 0 &&
+    appConfig.apiVersionPrefix.length > 0 &&
+    (appConfig.apiBaseUrl === appConfig.apiVersionPrefix ||
+      appConfig.apiBaseUrl.endsWith(appConfig.apiVersionPrefix));
+
   return appConfig.apiBaseUrl
-    ? `${appConfig.apiBaseUrl}${appConfig.apiVersionPrefix}${normalizedPath}`
+    ? baseAlreadyIncludesVersionPrefix
+      ? `${appConfig.apiBaseUrl}${normalizedPath}`
+      : `${appConfig.apiBaseUrl}${appConfig.apiVersionPrefix}${normalizedPath}`
     : `${appConfig.apiVersionPrefix}${normalizedPath}`;
 }

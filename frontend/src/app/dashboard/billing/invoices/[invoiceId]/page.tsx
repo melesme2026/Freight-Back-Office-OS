@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { buildApiUrl } from "@/lib/config";
 
 type InvoiceLine = {
   id: string;
@@ -37,11 +38,6 @@ type InvoiceResponse =
       data?: InvoiceRecord | null;
       message?: string;
     };
-
-function getApiBaseUrl(): string {
-  const value = process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
-  return value && value.length > 0 ? value.replace(/\/+$/, "") : "http://127.0.0.1:8000";
-}
 
 function readStoredValue(key: string): string {
   if (typeof window === "undefined") {
@@ -228,7 +224,6 @@ export default function InvoiceDetailPage() {
   const params = useParams<{ invoiceId: string | string[] }>();
   const invoiceId = normalizeRouteParam(params?.invoiceId);
 
-  const apiBaseUrl = useMemo(() => getApiBaseUrl(), []);
   const [invoice, setInvoice] = useState<InvoiceRecord | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -261,7 +256,7 @@ export default function InvoiceDetailPage() {
         setErrorMessage(null);
 
         const response = await fetch(
-          `${apiBaseUrl}/api/v1/billing-invoices/${encodeURIComponent(invoiceId)}`,
+          buildApiUrl(`/billing-invoices/${encodeURIComponent(invoiceId)}`),
           {
             method: "GET",
             headers: {
@@ -314,7 +309,7 @@ export default function InvoiceDetailPage() {
     return () => {
       controller.abort();
     };
-  }, [apiBaseUrl, invoiceId, reloadKey]);
+  }, [invoiceId, reloadKey]);
 
   const currencyCode = invoice?.currency_code ?? "USD";
   const lines = Array.isArray(invoice?.lines) ? invoice.lines : [];
