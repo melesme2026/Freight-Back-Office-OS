@@ -80,15 +80,14 @@ class AuthService:
         }
 
         if role_value == "driver":
-            drivers, _ = self.driver_repo.list(
+            driver = self.driver_repo.get_by_email(
                 organization_id=user.organization_id,
-                search=user.email,
-                page=1,
-                page_size=1,
+                email=user.email,
+                include_related=False,
             )
-            if not drivers:
+            if driver is None:
                 raise UnauthorizedError("Driver account is not linked to a driver profile")
-            additional_claims["driver_id"] = str(drivers[0].id)
+            additional_claims["driver_id"] = str(driver.id)
 
         return create_access_token(
             subject=str(user.id),

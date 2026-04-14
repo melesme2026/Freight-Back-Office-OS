@@ -37,6 +37,29 @@ class DriverRepository:
 
         return self.db.scalar(stmt)
 
+    def get_by_email(
+        self,
+        *,
+        organization_id: uuid.UUID | str,
+        email: str,
+        include_related: bool = False,
+    ) -> Driver | None:
+        normalized_organization_id = self._normalize_uuid(
+            organization_id,
+            field_name="organization_id",
+        )
+        normalized_email = email.strip().lower()
+
+        stmt = select(Driver).where(
+            Driver.organization_id == normalized_organization_id,
+            Driver.email == normalized_email,
+        )
+
+        if include_related:
+            stmt = self._apply_related(stmt)
+
+        return self.db.scalar(stmt)
+
     def list(
         self,
         *,

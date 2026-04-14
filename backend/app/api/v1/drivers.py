@@ -125,6 +125,7 @@ def create_driver(
         is_active=payload.is_active,
     )
     created = repo.create(item)
+    db.commit()
     created = repo.get_by_id(created.id, include_related=True) or created
 
     return ApiResponse(
@@ -196,10 +197,14 @@ def get_driver(
 def update_driver(
     driver_id: uuid.UUID,
     payload: DriverUpdateRequest,
+    token_payload: dict[str, Any] = Depends(get_current_token_payload),
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
     repo = DriverRepository(db)
     item = _get_driver_or_404(repo, driver_id)
+    token_org_id = token_payload.get("organization_id")
+    if str(item.organization_id) != str(token_org_id):
+        raise UnauthorizedError("Driver is not in authenticated organization")
 
     if payload.customer_account_id is not None:
         item.customer_account_id = payload.customer_account_id
@@ -213,6 +218,7 @@ def update_driver(
         item.is_active = payload.is_active
 
     updated = repo.update(item)
+    db.commit()
     updated = repo.get_by_id(updated.id, include_related=True) or updated
 
     return ApiResponse(

@@ -30,6 +30,7 @@ from app.domain.models.staff_user import StaffUser
 from app.domain.models.organization import Organization
 from app.domain.enums.role import Role
 from app.repositories.organization_repo import OrganizationRepository
+from app.repositories.driver_repo import DriverRepository
 from app.services.auth.auth_service import AuthService
 from app.services.auth.token_service import TokenService
 from app.services.notifications.email_service import EmailService
@@ -320,6 +321,20 @@ def invite_user(
 
     repo = StaffUserRepository(db)
     normalized_email = payload.email.strip().lower()
+    normalized_role = payload.role.strip().lower()
+
+    if normalized_role == Role.DRIVER.value:
+        driver_repo = DriverRepository(db)
+        driver_profile = driver_repo.get_by_email(
+            organization_id=organization_id,
+            email=normalized_email,
+        )
+        if driver_profile is None:
+            raise ValidationError(
+                "Driver profile not found for invite email. Create the driver profile first.",
+                details={"email": normalized_email, "organization_id": str(organization_id)},
+            )
+
     existing = repo.get_by_email(organization_id=organization_id, email=normalized_email)
 
     if existing is None:
@@ -328,7 +343,7 @@ def invite_user(
             email=normalized_email,
             full_name=payload.full_name.strip(),
             password_hash=hash_password("ChangeMe123!"),
-            role=payload.role.strip().lower(),
+            role=normalized_role,
             is_active=False,
             last_login_at=None,
         )
