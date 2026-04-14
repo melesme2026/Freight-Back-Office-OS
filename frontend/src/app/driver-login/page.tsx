@@ -161,6 +161,14 @@ export default function DriverLoginPage() {
             {isSubmitting ? "Signing in..." : "Sign in"}
           </button>
         </form>
+        <div className="mt-4 flex gap-3 text-xs">
+          <a href="/activate-account" className="font-semibold text-brand-700 hover:text-brand-800">
+            Activate invited account
+          </a>
+          <a href="/forgot-password" className="font-semibold text-brand-700 hover:text-brand-800">
+            Reset password
+          </a>
+        </div>
       </section>
     </main>
   );

@@ -1,0 +1,25 @@
+Subject: Invoice Submission – Load #[Load Number] – Adwa Express LLC
+
+Hello,
+
+Please find attached the invoice package for the completed load below:
+
+Load Number: [Load Number]
+Invoice Number: [Invoice Number]
+Carrier: Adwa Express LLC
+Amount Due: $[Total Amount]
+
+Attached:
+- Invoice
+- Signed Proof of Delivery
+- Bill of Lading
+- Rate Confirmation
+- Supporting receipts, if applicable
+
+Please confirm receipt and let us know if anything else is needed.
+
+Thank you,
+[Your Name]
+Adwa Express LLC
+[Phone Number]
+[Business Email]

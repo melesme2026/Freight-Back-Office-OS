@@ -6,9 +6,11 @@ from datetime import timedelta
 from fastapi import APIRouter, Depends, Header
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
+from sqlalchemy import select
 
 from app.core.dependencies import get_db_session
 from app.core.exceptions import UnauthorizedError, ValidationError
+from app.core.config import get_settings
 from app.core.security import (
     create_action_token,
     decode_token,
@@ -25,8 +27,13 @@ from app.schemas.auth import (
 from app.schemas.common import ApiResponse
 from app.repositories.staff_user_repo import StaffUserRepository
 from app.domain.models.staff_user import StaffUser
+from app.domain.models.organization import Organization
+from app.domain.enums.role import Role
+from app.repositories.organization_repo import OrganizationRepository
 from app.services.auth.auth_service import AuthService
 from app.services.auth.token_service import TokenService
+from app.services.notifications.email_service import EmailService
+from app.utils.text_utils import slugify
 
 
 router = APIRouter()
@@ -81,6 +88,18 @@ class ConfirmPasswordResetRequest(BaseModel):
 
     token: str
     new_password: str
+
+
+class SignupRequestBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    full_name: str
+    email: str
+    password: str
+    confirm_password: str
+    organization_name: str
+
+
 def _resolve_organization_id(
     *,
     payload_organization_id: uuid.UUID | None,
@@ -116,6 +135,98 @@ def _serialize_staff_user(user) -> StaffUserAuthView:
         role=user.role,
         is_active=user.is_active,
     )
+
+
+def _normalize_required_text(value: str, field_name: str) -> str:
+    normalized = value.strip()
+    if not normalized:
+        raise ValidationError(f"{field_name} is required", details={field_name: value})
+    return normalized
+
+
+def _normalize_email(value: str) -> str:
+    normalized = _normalize_required_text(value, "email").lower()
+    if "@" not in normalized:
+        raise ValidationError("Invalid email address", details={"email": value})
+    return normalized
+
+
+def _build_unique_org_slug(repo: OrganizationRepository, organization_name: str) -> str:
+    base_slug = slugify(organization_name) or "org"
+    candidate = base_slug
+    counter = 2
+
+    while repo.get_by_slug(candidate) is not None:
+        candidate = f"{base_slug}-{counter}"
+        counter += 1
+
+    return candidate
+
+
+def _should_expose_auth_tokens() -> bool:
+    settings = get_settings()
+    return settings.email_dev_allow_token_response or settings.environment in {"local", "development", "test"}
+
+
+@router.post("/auth/signup", response_model=LoginResponse)
+def signup(
+    payload: SignupRequestBody,
+    db: Session = Depends(get_db_session),
+) -> LoginResponse:
+    normalized_full_name = _normalize_required_text(payload.full_name, "full_name")
+    normalized_email = _normalize_email(payload.email)
+    normalized_org_name = _normalize_required_text(payload.organization_name, "organization_name")
+
+    if payload.password != payload.confirm_password:
+        raise ValidationError("Passwords do not match", details={"field": "confirm_password"})
+    if len(payload.password.strip()) < 8:
+        raise ValidationError("Password must be at least 8 characters", details={"field": "password"})
+
+    existing_email = db.scalar(select(StaffUser).where(StaffUser.email == normalized_email))
+    if existing_email is not None:
+        raise ValidationError("An account with this email already exists", details={"email": normalized_email})
+
+    organization_repo = OrganizationRepository(db)
+    organization = Organization(
+        name=normalized_org_name,
+        slug=_build_unique_org_slug(organization_repo, normalized_org_name),
+        legal_name=normalized_org_name,
+        email=normalized_email,
+        timezone="America/Toronto",
+        currency_code="USD",
+        is_active=True,
+        billing_provider="none",
+        billing_status="trial",
+        plan_code="none",
+    )
+    organization = organization_repo.create(organization)
+
+    user_repo = StaffUserRepository(db)
+    user = StaffUser(
+        organization_id=organization.id,
+        email=normalized_email,
+        full_name=normalized_full_name,
+        password_hash=hash_password(payload.password),
+        role=Role.OWNER.value,
+        is_active=True,
+        last_login_at=None,
+    )
+    user = user_repo.create(user)
+
+    db.commit()
+    db.refresh(organization)
+    db.refresh(user)
+
+    auth_service = AuthService(db)
+    access_token = auth_service.build_access_token(user)
+    data = LoginResponseData(
+        access_token=access_token,
+        token_type="bearer",
+        expires_in=ACCESS_TOKEN_EXPIRES_IN_SECONDS,
+        user=_serialize_staff_user(user),
+    )
+
+    return LoginResponse(data=data, meta={"signup_completed": True}, error=None)
 
 
 @router.post("/auth/login", response_model=LoginResponse)
@@ -228,8 +339,32 @@ def invite_user(
         expires_delta=timedelta(hours=24),
     )
 
+    settings = get_settings()
+    activation_url = f"{settings.web_app_base_url.rstrip('/')}/activate-account?token={activation_token}"
+    email_service = EmailService()
+    email_result = email_service.send_message(
+        to_email=normalized_email,
+        subject="Freight Back Office OS — Account Activation",
+        body_text=(
+            f"Hello {payload.full_name.strip()},\n\n"
+            "You have been invited to Freight Back Office OS.\n"
+            f"Activate your account using this link:\n{activation_url}\n\n"
+            "If you did not expect this invite, contact your dispatcher/admin."
+        ),
+        metadata={"type": "auth_invite", "organization_id": str(organization_id)},
+    )
+
+    response_data: dict[str, str | bool] = {
+        "user_id": str(existing.id),
+        "invite_sent": True,
+        "email_status": str(email_result.get("status", "unknown")),
+    }
+    if _should_expose_auth_tokens():
+        response_data["activation_url"] = activation_url
+        response_data["activation_token"] = activation_token
+
     return ApiResponse(
-        data={"user_id": str(existing.id), "activation_token": activation_token},
+        data=response_data,
         meta={},
         error=None,
     )
@@ -278,8 +413,30 @@ def request_password_reset(
         expires_delta=timedelta(minutes=30),
     )
 
+    settings = get_settings()
+    reset_url = f"{settings.web_app_base_url.rstrip('/')}/reset-password?token={reset_token}"
+    email_service = EmailService()
+    email_result = email_service.send_message(
+        to_email=user.email,
+        subject="Freight Back Office OS — Password Reset",
+        body_text=(
+            "A password reset was requested for your Freight Back Office OS account.\n\n"
+            f"Reset your password using this link:\n{reset_url}\n\n"
+            "If you did not request this, ignore this message."
+        ),
+        metadata={"type": "auth_password_reset", "organization_id": str(user.organization_id)},
+    )
+
+    response_data: dict[str, str | bool] = {
+        "reset_requested": True,
+        "email_status": str(email_result.get("status", "unknown")),
+    }
+    if _should_expose_auth_tokens():
+        response_data["reset_url"] = reset_url
+        response_data["reset_token"] = reset_token
+
     return ApiResponse(
-        data={"reset_requested": True, "reset_token": reset_token},
+        data=response_data,
         meta={},
         error=None,
     )

@@ -117,6 +117,14 @@ class Settings(BaseSettings):
     email_enabled: bool = Field(default=False)
     email_provider: Literal["smtp", "ses", "sendgrid", "none"] = Field(default="none")
     default_from_email: str = Field(default="no-reply@freightbackoffice.local")
+    web_app_base_url: str = Field(default="http://localhost:3000")
+    email_dev_allow_token_response: bool = Field(default=False)
+    smtp_host: str | None = Field(default=None)
+    smtp_port: int = Field(default=587, ge=1, le=65535)
+    smtp_username: str | None = Field(default=None)
+    smtp_password: str | None = Field(default=None)
+    smtp_use_tls: bool = Field(default=True)
+    smtp_use_ssl: bool = Field(default=False)
 
     billing_enabled: bool = Field(default=False)
     payment_provider: Literal["stripe", "manual", "none"] = Field(default="none")
@@ -135,6 +143,9 @@ class Settings(BaseSettings):
         "ai_enabled",
         "whatsapp_enabled",
         "email_enabled",
+        "email_dev_allow_token_response",
+        "smtp_use_tls",
+        "smtp_use_ssl",
         "billing_enabled",
         mode="before",
     )
@@ -193,6 +204,7 @@ class Settings(BaseSettings):
         "jwt_algorithm",
         "openai_model",
         "default_from_email",
+        "web_app_base_url",
         mode="before",
     )
     @classmethod
@@ -219,6 +231,9 @@ class Settings(BaseSettings):
         "whatsapp_webhook_secret",
         "stripe_secret_key",
         "stripe_webhook_secret",
+        "smtp_host",
+        "smtp_username",
+        "smtp_password",
         mode="before",
     )
     @classmethod
@@ -318,6 +333,8 @@ class Settings(BaseSettings):
             raise ValueError(
                 "email_provider must be configured when email_enabled=True"
             )
+        if self.email_enabled and self.email_provider == "smtp" and not self.smtp_host:
+            raise ValueError("smtp_host must be configured when email_enabled=True and email_provider='smtp'")
 
         if self.billing_enabled and self.payment_provider == "none":
             raise ValueError(
