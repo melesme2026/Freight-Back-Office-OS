@@ -65,7 +65,7 @@ services:
       retries: 5
       start_period: 20s
     command: >
-      sh -c "cd /app/backend && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+      sh -c "cd /app/backend && alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
 
   worker:
     build:
