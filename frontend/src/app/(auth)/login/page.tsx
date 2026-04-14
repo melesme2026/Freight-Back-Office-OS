@@ -4,7 +4,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { apiClient } from "@/lib/api-client";
-import { clearAuth, getAccessToken, getUserRole, setAuthSession } from "@/lib/auth";
+import { clearAuth, getAccessToken, getOrganizationId, getUserRole, setAuthSession } from "@/lib/auth";
 import { isDriverRole } from "@/lib/rbac";
 import { resolvePostLoginRoute } from "@/lib/rbac";
 
@@ -52,10 +52,14 @@ export default function LoginPage() {
   // 🔥 Auto-redirect if already logged in
   useEffect(() => {
     const token = getAccessToken();
+    const organizationId = getOrganizationId();
     const userRole = getUserRole();
 
-    if (token) {
+    if (token && organizationId) {
       router.replace(resolvePostLoginRoute(userRole));
+    } else if (token && !organizationId) {
+      clearAuth();
+      setIsCheckingSession(false);
     } else {
       setIsCheckingSession(false);
     }

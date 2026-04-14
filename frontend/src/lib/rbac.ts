@@ -1,5 +1,4 @@
 const DRIVER_ROLES = new Set(["driver"]);
-const DRIVER_PORTAL_PREVIEW_ROLES = new Set(["owner", "admin"]);
 
 function normalizeRole(role: string | null | undefined): string {
   return (role ?? "").trim().toLowerCase();
@@ -14,8 +13,7 @@ export function canAccessDashboard(role: string | null | undefined): boolean {
 }
 
 export function canAccessDriverPortal(role: string | null | undefined): boolean {
-  const normalized = normalizeRole(role);
-  return DRIVER_ROLES.has(normalized) || DRIVER_PORTAL_PREVIEW_ROLES.has(normalized);
+  return DRIVER_ROLES.has(normalizeRole(role));
 }
 
 export function resolvePostLoginRoute(

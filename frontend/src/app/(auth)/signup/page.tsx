@@ -1,11 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { apiClient } from "@/lib/api-client";
-import { clearAuth, setAuthSession } from "@/lib/auth";
+import { clearAuth, getAccessToken, getOrganizationId, getUserRole, setAuthSession } from "@/lib/auth";
 import { resolvePostLoginRoute } from "@/lib/rbac";
 
 type SignupResponse = {
@@ -30,6 +30,24 @@ export default function SignupPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isCheckingSession, setIsCheckingSession] = useState(true);
+
+  useEffect(() => {
+    const token = getAccessToken();
+    const organizationId = getOrganizationId();
+    const userRole = getUserRole();
+
+    if (token && organizationId) {
+      router.replace(resolvePostLoginRoute(userRole));
+      return;
+    }
+
+    if (token && !organizationId) {
+      clearAuth();
+    }
+
+    setIsCheckingSession(false);
+  }, [router]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -82,6 +100,16 @@ export default function SignupPage() {
     } finally {
       setIsSubmitting(false);
     }
+  }
+
+  if (isCheckingSession) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-50">
+        <div className="rounded-xl border border-slate-200 bg-white px-6 py-4 text-sm text-slate-600 shadow-soft">
+          Checking session...
+        </div>
+      </div>
+    );
   }
 
   return (
