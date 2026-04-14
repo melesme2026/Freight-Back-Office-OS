@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { apiClient } from "@/lib/api-client";
 import { clearAuth, getAccessToken, getOrganizationId, getUserRole, setAuthSession } from "@/lib/auth";
 import { isDriverRole, resolvePostLoginRoute } from "@/lib/rbac";
+import { AuthNavigationLinks } from "../(auth)/auth-navigation-links";
 
 type LoginResponse = {
   data?: {
@@ -183,14 +184,11 @@ export default function DriverLoginPage() {
             ) : null}
           </div>
         </form>
-        <div className="mt-4 flex gap-3 text-xs">
-          <a href="/activate-account" className="font-semibold text-brand-700 hover:text-brand-800">
-            Activate invited account
-          </a>
-          <a href="/forgot-password" className="font-semibold text-brand-700 hover:text-brand-800">
-            Reset password
-          </a>
-        </div>
+        <AuthNavigationLinks
+          secondaryLinks={[
+            { href: "/activate-account", label: "Activate invited account" },
+          ]}
+        />
       </section>
     </main>
   );

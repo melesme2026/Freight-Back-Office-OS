@@ -7,6 +7,7 @@ import { apiClient } from "@/lib/api-client";
 import { clearAuth, getAccessToken, getOrganizationId, getUserRole, setAuthSession } from "@/lib/auth";
 import { isDriverRole } from "@/lib/rbac";
 import { resolvePostLoginRoute } from "@/lib/rbac";
+import { AuthNavigationLinks } from "../auth-navigation-links";
 
 type LoginResponse = {
   data?: {
@@ -166,7 +167,7 @@ export default function LoginPage() {
             Access the Freight Back Office OS operator dashboard.
           </p>
           <p className="mt-2 text-xs text-slate-500">
-            Driver account? Use <a href="/driver-login" className="font-semibold text-brand-700 hover:text-brand-800">Driver Login</a>.
+            Driver account? Use Driver Login.
           </p>
         </div>
 
@@ -234,17 +235,11 @@ export default function LoginPage() {
             ) : null}
           </div>
         </form>
-        <a href="/" className="mt-4 inline-flex text-xs font-semibold text-brand-700 hover:text-brand-800">
-          ← Back to landing
-        </a>
-        <div className="mt-2 flex gap-3 text-xs">
-          <a href="/signup" className="font-semibold text-brand-700 hover:text-brand-800">
-            Create account
-          </a>
-          <a href="/forgot-password" className="font-semibold text-brand-700 hover:text-brand-800">
-            Forgot password
-          </a>
-        </div>
+        <AuthNavigationLinks
+          secondaryLinks={[
+            { href: "/signup", label: "Create account" },
+          ]}
+        />
       </section>
     </main>
   );
