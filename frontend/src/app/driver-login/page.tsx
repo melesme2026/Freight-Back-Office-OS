@@ -4,7 +4,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { apiClient } from "@/lib/api-client";
-import { clearAuth, getAccessToken, getUserRole, setAuthSession } from "@/lib/auth";
+import { clearAuth, getAccessToken, getOrganizationId, getUserRole, setAuthSession } from "@/lib/auth";
 import { isDriverRole, resolvePostLoginRoute } from "@/lib/rbac";
 
 type LoginResponse = {
@@ -44,12 +44,16 @@ export default function DriverLoginPage() {
 
   useEffect(() => {
     const token = getAccessToken();
+    const organizationId = getOrganizationId();
     const userRole = getUserRole();
 
-    if (token && isDriverRole(userRole)) {
+    if (token && organizationId && isDriverRole(userRole)) {
       router.replace("/driver-portal");
-    } else if (token) {
+    } else if (token && organizationId) {
       router.replace(resolvePostLoginRoute(userRole));
+    } else if (token && !organizationId) {
+      clearAuth();
+      setIsCheckingSession(false);
     } else {
       setIsCheckingSession(false);
     }
