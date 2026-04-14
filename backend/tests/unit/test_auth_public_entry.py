@@ -70,7 +70,6 @@ def test_invite_activate_and_reset_password_flow(db_session) -> None:
 
     reset_request_response = request_password_reset(
         PasswordResetRequest(
-            organization_id=organization_id,
             email="driver1@opsfreight.com",
         ),
         db=db_session,

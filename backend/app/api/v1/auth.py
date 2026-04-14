@@ -79,7 +79,7 @@ class ActivateAccountRequest(BaseModel):
 class PasswordResetRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    organization_id: uuid.UUID
+    organization_id: uuid.UUID | None = None
     email: str
 
 
@@ -399,10 +399,20 @@ def request_password_reset(
     payload: PasswordResetRequest,
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
+    normalized_email = payload.email.strip().lower()
+    organization_id = payload.organization_id
+
+    if organization_id is None:
+        stmt = select(StaffUser.organization_id).where(StaffUser.email == normalized_email).distinct()
+        organization_ids = list(db.scalars(stmt).all())
+        if len(organization_ids) != 1:
+            return ApiResponse(data={"reset_requested": True}, meta={}, error=None)
+        organization_id = organization_ids[0]
+
     repo = StaffUserRepository(db)
     user = repo.get_by_email(
-        organization_id=payload.organization_id,
-        email=payload.email.strip().lower(),
+        organization_id=organization_id,
+        email=normalized_email,
     )
 
     if user is None:

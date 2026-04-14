@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { FormEvent, Suspense, useMemo, useState } from "react";
+import { FormEvent, Suspense, useEffect, useMemo, useState } from "react";
 
 import { apiClient } from "@/lib/api-client";
 
@@ -17,11 +17,17 @@ function ActivateAccountPageContent() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSuccess, setIsSuccess] = useState(false);
 
+  useEffect(() => {
+    if (tokenFromQuery.trim()) {
+      setToken(tokenFromQuery);
+    }
+  }, [tokenFromQuery]);
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     if (!token.trim() || !password || !confirmPassword) {
-      setErrorMessage("Activation token and password fields are required.");
+      setErrorMessage("Activation token and password are required.");
       return;
     }
 
@@ -61,7 +67,13 @@ function ActivateAccountPageContent() {
       <p className="mt-2 text-sm text-slate-600">Complete your invited account setup by setting your password.</p>
 
       <form className="mt-6 space-y-4" onSubmit={handleSubmit} noValidate>
-        <textarea value={token} onChange={(event) => setToken(event.target.value)} placeholder="Activation token" className="h-24 w-full rounded-xl border border-slate-300 px-4 py-3 text-xs" disabled={isSubmitting || isSuccess} />
+        {tokenFromQuery.trim() ? (
+          <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-600">
+            Activation token detected from your invite link.
+          </div>
+        ) : (
+          <textarea value={token} onChange={(event) => setToken(event.target.value)} placeholder="Activation token" className="h-24 w-full rounded-xl border border-slate-300 px-4 py-3 text-xs" disabled={isSubmitting || isSuccess} />
+        )}
         <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Create password" className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm" disabled={isSubmitting || isSuccess} />
         <input type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} placeholder="Confirm password" className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm" disabled={isSubmitting || isSuccess} />
 
