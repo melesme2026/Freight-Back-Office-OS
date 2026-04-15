@@ -3,9 +3,16 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
-import { useDrivers } from "@/hooks/useDrivers";
 import { apiClient } from "@/lib/api-client";
 import { getAccessToken, getOrganizationId } from "@/lib/auth";
+
+type TokenClaims = {
+  sub?: string;
+  email?: string;
+  role?: string;
+  driver_id?: string;
+  organization_id?: string;
+};
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -41,27 +48,77 @@ function listCount(payload: unknown): number {
   return items.length;
 }
 
+function parseJwtClaims(token: string | null): TokenClaims | null {
+  if (!token) {
+    return null;
+  }
+
+  const parts = token.split(".");
+  if (parts.length < 2) {
+    return null;
+  }
+
+  try {
+    const base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const padded = base64.padEnd(Math.ceil(base64.length / 4) * 4, "=");
+    const decoded =
+      typeof window !== "undefined"
+        ? window.atob(padded)
+        : Buffer.from(padded, "base64").toString("utf-8");
+
+    const parsed = JSON.parse(decoded) as unknown;
+    const record = asRecord(parsed);
+
+    if (!record) {
+      return null;
+    }
+
+    return {
+      sub: typeof record.sub === "string" ? record.sub : undefined,
+      email: typeof record.email === "string" ? record.email : undefined,
+      role: typeof record.role === "string" ? record.role : undefined,
+      driver_id: typeof record.driver_id === "string" ? record.driver_id : undefined,
+      organization_id:
+        typeof record.organization_id === "string" ? record.organization_id : undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
 export default function DriverPortalPage() {
-  const { drivers, isLoading: isDriverLoading, error: driverError } = useDrivers();
-  const [selectedDriverId, setSelectedDriverId] = useState<string>("");
   const [openLoads, setOpenLoads] = useState<number>(0);
   const [openTickets, setOpenTickets] = useState<number>(0);
   const [isLoadingSummary, setIsLoadingSummary] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!selectedDriverId && drivers.length > 0) {
-      setSelectedDriverId(drivers[0].id);
-    }
-  }, [drivers, selectedDriverId]);
+  const token = getAccessToken();
+  const organizationId = getOrganizationId();
+
+  const claims = useMemo(() => parseJwtClaims(token), [token]);
+  const driverId = claims?.driver_id ?? "";
+  const driverEmail = claims?.email ?? "";
+  const role = claims?.role ?? "";
 
   useEffect(() => {
-    const token = getAccessToken();
-    const organizationId = getOrganizationId();
-
-    if (!selectedDriverId || !organizationId) {
+    if (!token || !organizationId) {
       setOpenLoads(0);
       setOpenTickets(0);
+      setErrorMessage("Missing authenticated session.");
+      return;
+    }
+
+    if (role !== "driver") {
+      setOpenLoads(0);
+      setOpenTickets(0);
+      setErrorMessage("Driver portal requires an authenticated driver session.");
+      return;
+    }
+
+    if (!driverId) {
+      setOpenLoads(0);
+      setOpenTickets(0);
+      setErrorMessage("Missing driver_id in authenticated session.");
       return;
     }
 
@@ -73,12 +130,12 @@ export default function DriverPortalPage() {
         setErrorMessage(null);
 
         const [loadsPayload, supportPayload] = await Promise.all([
-          apiClient.get<unknown>(`/loads?driver_id=${selectedDriverId}&page=1&page_size=1`, {
+          apiClient.get<unknown>(`/loads?driver_id=${driverId}&page=1&page_size=1`, {
             token: token ?? undefined,
             organizationId: organizationId ?? undefined,
           }),
           apiClient.get<unknown>(
-            `/support/tickets?driver_id=${selectedDriverId}&status=open&page=1&page_size=1`,
+            `/support/tickets?driver_id=${driverId}&status=open&page=1&page_size=1`,
             {
               token: token ?? undefined,
               organizationId: organizationId ?? undefined,
@@ -96,6 +153,7 @@ export default function DriverPortalPage() {
         if (!mounted) {
           return;
         }
+
         setOpenLoads(0);
         setOpenTickets(0);
         setErrorMessage(
@@ -113,12 +171,7 @@ export default function DriverPortalPage() {
     return () => {
       mounted = false;
     };
-  }, [selectedDriverId]);
-
-  const selectedDriver = useMemo(
-    () => drivers.find((driver) => driver.id === selectedDriverId) ?? null,
-    [drivers, selectedDriverId]
-  );
+  }, [token, organizationId, role, driverId]);
 
   return (
     <main className="min-h-screen bg-slate-50 text-slate-900">
@@ -132,30 +185,18 @@ export default function DriverPortalPage() {
           </p>
         </div>
 
-        {driverError ? (
-          <div className="mb-6 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-            {driverError}
-          </div>
-        ) : null}
-
         <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
-          <label htmlFor="driver-select" className="text-sm font-semibold text-slate-700">
-            Driver
-          </label>
-          <select
-            id="driver-select"
-            value={selectedDriverId}
-            onChange={(event) => setSelectedDriverId(event.target.value)}
-            disabled={isDriverLoading || drivers.length === 0}
-            className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
-          >
-            {drivers.length === 0 ? <option value="">No drivers available</option> : null}
-            {drivers.map((driver) => (
-              <option key={driver.id} value={driver.id}>
-                {driver.full_name}
-              </option>
-            ))}
-          </select>
+          <div className="text-sm font-semibold text-slate-700">Authenticated driver</div>
+          <div className="mt-3 space-y-1 text-sm text-slate-600">
+            <p>
+              <span className="font-medium text-slate-800">Email:</span>{" "}
+              {driverEmail || "—"}
+            </p>
+            <p>
+              <span className="font-medium text-slate-800">Driver ID:</span>{" "}
+              {driverId || "—"}
+            </p>
+          </div>
         </section>
 
         {errorMessage ? (
@@ -180,19 +221,31 @@ export default function DriverPortalPage() {
         </section>
 
         <section className="mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <Link href="/driver-portal/loads" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-soft">
+          <Link
+            href="/driver-portal/loads"
+            className="rounded-2xl border border-slate-200 bg-white p-5 shadow-soft"
+          >
             <h2 className="text-base font-semibold text-slate-950">Loads</h2>
             <p className="mt-2 text-sm text-slate-600">Driver-scoped load list preview.</p>
           </Link>
-          <Link href="/driver-portal/uploads" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-soft">
+          <Link
+            href="/driver-portal/uploads"
+            className="rounded-2xl border border-slate-200 bg-white p-5 shadow-soft"
+          >
             <h2 className="text-base font-semibold text-slate-950">Uploads</h2>
             <p className="mt-2 text-sm text-slate-600">Upload documents into real processing flow.</p>
           </Link>
-          <Link href="/driver-portal/support" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-soft">
+          <Link
+            href="/driver-portal/support"
+            className="rounded-2xl border border-slate-200 bg-white p-5 shadow-soft"
+          >
             <h2 className="text-base font-semibold text-slate-950">Support</h2>
             <p className="mt-2 text-sm text-slate-600">View driver-related support tickets.</p>
           </Link>
-          <Link href="/driver-portal/billing" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-soft">
+          <Link
+            href="/driver-portal/billing"
+            className="rounded-2xl border border-slate-200 bg-white p-5 shadow-soft"
+          >
             <h2 className="text-base font-semibold text-slate-950">Billing</h2>
             <p className="mt-2 text-sm text-slate-600">
               Billing visibility status and currently supported scope.
@@ -200,9 +253,9 @@ export default function DriverPortalPage() {
           </Link>
         </section>
 
-        {selectedDriver ? (
+        {driverId ? (
           <p className="mt-6 text-xs text-slate-500">
-            Previewing as: {selectedDriver.full_name} ({selectedDriver.id})
+            Authenticated as driver ID: {driverId}
           </p>
         ) : null}
       </div>
