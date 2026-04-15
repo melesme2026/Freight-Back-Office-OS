@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
 
-from app.core.exceptions import NotFoundError, ValidationError
+from app.core.exceptions import NotFoundError, UnauthorizedError, ValidationError
 from app.domain.models.support_ticket import SupportTicket
 from app.repositories.support_ticket_repo import SupportTicketRepository
 
@@ -39,19 +39,34 @@ class SupportService:
             resolved_at=None,
         )
         created = self.support_ticket_repo.create(ticket)
-        return self.support_ticket_repo.get_by_id(created.id) or created
+        return (
+            self.support_ticket_repo.get_by_id(
+                created.id,
+                organization_id=organization_id,
+            )
+            or created
+        )
 
-    def get_ticket(self, ticket_id: str) -> SupportTicket:
+    def get_ticket(self, ticket_id: str, *, organization_id: str) -> SupportTicket:
         normalized_ticket_id = self._require_text(ticket_id, field_name="ticket_id")
-        ticket = self.support_ticket_repo.get_by_id(normalized_ticket_id)
+        normalized_organization_id = self._require_text(
+            organization_id,
+            field_name="organization_id",
+        )
+        ticket = self.support_ticket_repo.get_by_id(
+            normalized_ticket_id,
+            organization_id=normalized_organization_id,
+        )
         if ticket is None:
             raise NotFoundError("Support ticket not found", details={"ticket_id": normalized_ticket_id})
+        if str(ticket.organization_id) != normalized_organization_id:
+            raise UnauthorizedError("Support ticket is not in authenticated organization")
         return ticket
 
     def list_tickets(
         self,
         *,
-        organization_id: str | None = None,
+        organization_id: str,
         customer_account_id: str | None = None,
         driver_id: str | None = None,
         load_id: str | None = None,
@@ -62,8 +77,12 @@ class SupportService:
         page: int = 1,
         page_size: int = 50,
     ) -> tuple[list[SupportTicket], int]:
+        normalized_organization_id = self._require_text(
+            organization_id,
+            field_name="organization_id",
+        )
         return self.support_ticket_repo.list(
-            organization_id=self._clean_text(organization_id),
+            organization_id=normalized_organization_id,
             customer_account_id=self._clean_text(customer_account_id),
             driver_id=self._clean_text(driver_id),
             load_id=self._clean_text(load_id),
@@ -79,9 +98,14 @@ class SupportService:
         self,
         *,
         ticket_id: str,
+        organization_id: str,
         **updates,
     ) -> SupportTicket:
-        ticket = self.get_ticket(ticket_id)
+        normalized_organization_id = self._require_text(
+            organization_id,
+            field_name="organization_id",
+        )
+        ticket = self.get_ticket(ticket_id, organization_id=normalized_organization_id)
 
         for field, value in updates.items():
             if not hasattr(ticket, field) or value is None:
@@ -112,7 +136,13 @@ class SupportService:
             ticket.resolved_at = None
 
         updated = self.support_ticket_repo.update(ticket)
-        return self.support_ticket_repo.get_by_id(updated.id) or updated
+        return (
+            self.support_ticket_repo.get_by_id(
+                updated.id,
+                organization_id=normalized_organization_id,
+            )
+            or updated
+        )
 
     @staticmethod
     def _clean_text(value: str | None) -> str | None:

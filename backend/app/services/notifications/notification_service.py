@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
 
-from app.core.exceptions import NotFoundError, ValidationError
+from app.core.exceptions import NotFoundError, UnauthorizedError, ValidationError
 from app.domain.enums.notification_status import NotificationStatus
 from app.domain.models.notification import Notification
 from app.repositories.notification_repo import NotificationRepository
@@ -50,25 +50,40 @@ class NotificationService:
             error_message=None,
         )
         created = self.notification_repo.create(notification)
-        return self.notification_repo.get_by_id(created.id) or created
+        return (
+            self.notification_repo.get_by_id(
+                created.id,
+                organization_id=organization_id,
+            )
+            or created
+        )
 
-    def get_notification(self, notification_id: str) -> Notification:
+    def get_notification(self, notification_id: str, *, organization_id: str) -> Notification:
         normalized_notification_id = self._require_text(
             notification_id,
             field_name="notification_id",
         )
-        notification = self.notification_repo.get_by_id(normalized_notification_id)
+        normalized_organization_id = self._require_text(
+            organization_id,
+            field_name="organization_id",
+        )
+        notification = self.notification_repo.get_by_id(
+            normalized_notification_id,
+            organization_id=normalized_organization_id,
+        )
         if notification is None:
             raise NotFoundError(
                 "Notification not found",
                 details={"notification_id": normalized_notification_id},
             )
+        if str(notification.organization_id) != normalized_organization_id:
+            raise UnauthorizedError("Notification is not in authenticated organization")
         return notification
 
     def list_notifications(
         self,
         *,
-        organization_id: str | None = None,
+        organization_id: str,
         customer_account_id: str | None = None,
         driver_id: str | None = None,
         load_id: str | None = None,
@@ -77,8 +92,12 @@ class NotificationService:
         page: int = 1,
         page_size: int = 100,
     ) -> tuple[list[Notification], int]:
+        normalized_organization_id = self._require_text(
+            organization_id,
+            field_name="organization_id",
+        )
         return self.notification_repo.list(
-            organization_id=self._clean_text(organization_id),
+            organization_id=normalized_organization_id,
             customer_account_id=self._clean_text(customer_account_id),
             driver_id=self._clean_text(driver_id),
             load_id=self._clean_text(load_id),
@@ -92,37 +111,78 @@ class NotificationService:
         self,
         *,
         notification_id: str,
+        organization_id: str,
         provider_message_id: str | None = None,
     ) -> Notification:
-        notification = self.get_notification(notification_id)
+        normalized_organization_id = self._require_text(
+            organization_id,
+            field_name="organization_id",
+        )
+        notification = self.get_notification(
+            notification_id,
+            organization_id=normalized_organization_id,
+        )
         notification.status = NotificationStatus.SENT
         notification.sent_at = datetime.now(timezone.utc)
         if provider_message_id:
             notification.provider_message_id = self._clean_text(provider_message_id)
         notification.error_message = None
         updated = self.notification_repo.update(notification)
-        return self.notification_repo.get_by_id(updated.id) or updated
+        return (
+            self.notification_repo.get_by_id(
+                updated.id,
+                organization_id=normalized_organization_id,
+            )
+            or updated
+        )
 
-    def mark_delivered(self, *, notification_id: str) -> Notification:
-        notification = self.get_notification(notification_id)
+    def mark_delivered(self, *, notification_id: str, organization_id: str) -> Notification:
+        normalized_organization_id = self._require_text(
+            organization_id,
+            field_name="organization_id",
+        )
+        notification = self.get_notification(
+            notification_id,
+            organization_id=normalized_organization_id,
+        )
         notification.status = NotificationStatus.DELIVERED
         notification.delivered_at = datetime.now(timezone.utc)
         notification.error_message = None
         updated = self.notification_repo.update(notification)
-        return self.notification_repo.get_by_id(updated.id) or updated
+        return (
+            self.notification_repo.get_by_id(
+                updated.id,
+                organization_id=normalized_organization_id,
+            )
+            or updated
+        )
 
     def mark_failed(
         self,
         *,
         notification_id: str,
+        organization_id: str,
         error_message: str | None = None,
     ) -> Notification:
-        notification = self.get_notification(notification_id)
+        normalized_organization_id = self._require_text(
+            organization_id,
+            field_name="organization_id",
+        )
+        notification = self.get_notification(
+            notification_id,
+            organization_id=normalized_organization_id,
+        )
         notification.status = NotificationStatus.FAILED
         notification.failed_at = datetime.now(timezone.utc)
         notification.error_message = self._clean_text(error_message)
         updated = self.notification_repo.update(notification)
-        return self.notification_repo.get_by_id(updated.id) or updated
+        return (
+            self.notification_repo.get_by_id(
+                updated.id,
+                organization_id=normalized_organization_id,
+            )
+            or updated
+        )
 
     def _normalize_status(
         self,

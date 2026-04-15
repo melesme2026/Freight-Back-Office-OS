@@ -22,15 +22,27 @@ class SupportTicketRepository:
         self.db.refresh(support_ticket)
         return support_ticket
 
-    def get_by_id(self, ticket_id: uuid.UUID | str) -> SupportTicket | None:
+    def get_by_id(
+        self,
+        ticket_id: uuid.UUID | str,
+        *,
+        organization_id: uuid.UUID | str,
+    ) -> SupportTicket | None:
         normalized_ticket_id = self._normalize_uuid(ticket_id, field_name="ticket_id")
-        stmt = select(SupportTicket).where(SupportTicket.id == normalized_ticket_id)
+        normalized_organization_id = self._normalize_uuid(
+            organization_id,
+            field_name="organization_id",
+        )
+        stmt = select(SupportTicket).where(
+            SupportTicket.id == normalized_ticket_id,
+            SupportTicket.organization_id == normalized_organization_id,
+        )
         return self.db.scalar(stmt)
 
     def list(
         self,
         *,
-        organization_id: uuid.UUID | str | None = None,
+        organization_id: uuid.UUID | str,
         customer_account_id: uuid.UUID | str | None = None,
         driver_id: uuid.UUID | str | None = None,
         load_id: uuid.UUID | str | None = None,
@@ -44,10 +56,9 @@ class SupportTicketRepository:
         normalized_page = max(page, 1)
         normalized_page_size = min(max(page_size, 1), self.MAX_PAGE_SIZE)
 
-        normalized_organization_id = (
-            self._normalize_uuid(organization_id, field_name="organization_id")
-            if organization_id is not None
-            else None
+        normalized_organization_id = self._normalize_uuid(
+            organization_id,
+            field_name="organization_id",
         )
         normalized_customer_account_id = (
             self._normalize_uuid(customer_account_id, field_name="customer_account_id")
@@ -79,9 +90,8 @@ class SupportTicketRepository:
         stmt = select(SupportTicket)
         count_stmt: Select[tuple[int]] = select(func.count()).select_from(SupportTicket)
 
-        if normalized_organization_id is not None:
-            stmt = stmt.where(SupportTicket.organization_id == normalized_organization_id)
-            count_stmt = count_stmt.where(SupportTicket.organization_id == normalized_organization_id)
+        stmt = stmt.where(SupportTicket.organization_id == normalized_organization_id)
+        count_stmt = count_stmt.where(SupportTicket.organization_id == normalized_organization_id)
 
         if normalized_customer_account_id is not None:
             stmt = stmt.where(SupportTicket.customer_account_id == normalized_customer_account_id)

@@ -9,7 +9,8 @@ from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_db_session
-from app.core.exceptions import ValidationError
+from app.core.exceptions import UnauthorizedError, ValidationError
+from app.core.security import get_current_token_payload
 from app.schemas.common import ApiResponse
 from app.services.support.support_service import SupportService
 from app.services.support.ticket_routing_service import TicketRoutingService
@@ -66,6 +67,25 @@ def _normalize_optional_text(value: str | None) -> str | None:
     return normalized or None
 
 
+def _get_token_org_id(token_payload: dict[str, Any]) -> str:
+    token_org_id = token_payload.get("organization_id")
+    if not token_org_id:
+        raise UnauthorizedError("Token organization_id is missing")
+    return str(token_org_id)
+
+
+def _get_token_role(token_payload: dict[str, Any]) -> str:
+    return str(token_payload.get("role") or "").strip().lower()
+
+
+def _get_token_driver_id(token_payload: dict[str, Any]) -> str | None:
+    token_driver_id = token_payload.get("driver_id")
+    if token_driver_id is None:
+        return None
+    normalized = str(token_driver_id).strip()
+    return normalized or None
+
+
 def _to_iso_or_none(value: object | None) -> str | None:
     if value is None:
         return None
@@ -113,8 +133,23 @@ def _serialize_support_ticket(item: Any) -> dict[str, Any]:
 @router.post("/support/tickets", response_model=ApiResponse)
 def create_support_ticket(
     payload: SupportTicketCreateRequest,
+    token_payload: dict[str, Any] = Depends(get_current_token_payload),
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
+    token_org_id = _get_token_org_id(token_payload)
+    if str(payload.organization_id) != token_org_id:
+        raise UnauthorizedError("organization_id does not match authenticated organization")
+
+    token_role = _get_token_role(token_payload)
+    token_driver_id = _get_token_driver_id(token_payload)
+    effective_driver_id = _uuid_to_str(payload.driver_id)
+    if token_role == "driver":
+        if not token_driver_id:
+            raise UnauthorizedError("Driver token is missing driver_id")
+        if effective_driver_id is not None and effective_driver_id != token_driver_id:
+            raise UnauthorizedError("Driver may only create tickets for own driver_id")
+        effective_driver_id = token_driver_id
+
     normalized_priority = _normalize_required_text(
         payload.priority,
         field_name="priority",
@@ -136,11 +171,11 @@ def create_support_ticket(
 
     service = SupportService(db)
     item = service.create_ticket(
-        organization_id=str(payload.organization_id),
+        organization_id=token_org_id,
         subject=normalized_subject,
         description=normalized_description,
         customer_account_id=_uuid_to_str(payload.customer_account_id),
-        driver_id=_uuid_to_str(payload.driver_id),
+        driver_id=effective_driver_id,
         load_id=_uuid_to_str(payload.load_id),
         priority=normalized_priority,
         assigned_to_staff_user_id=_uuid_to_str(payload.assigned_to_staff_user_id),
@@ -169,13 +204,28 @@ def list_support_tickets(
     search: str | None = None,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=50, ge=1, le=200),
+    token_payload: dict[str, Any] = Depends(get_current_token_payload),
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
+    token_org_id = _get_token_org_id(token_payload)
+    if organization_id is not None and str(organization_id) != token_org_id:
+        raise UnauthorizedError("organization_id does not match authenticated organization")
+
+    token_role = _get_token_role(token_payload)
+    token_driver_id = _get_token_driver_id(token_payload)
+    effective_driver_id = _uuid_to_str(driver_id)
+    if token_role == "driver":
+        if not token_driver_id:
+            raise UnauthorizedError("Driver token is missing driver_id")
+        if effective_driver_id is not None and effective_driver_id != token_driver_id:
+            raise UnauthorizedError("Driver may only access own support tickets")
+        effective_driver_id = token_driver_id
+
     service = SupportService(db)
     items, total = service.list_tickets(
-        organization_id=_uuid_to_str(organization_id),
+        organization_id=token_org_id,
         customer_account_id=_uuid_to_str(customer_account_id),
-        driver_id=_uuid_to_str(driver_id),
+        driver_id=effective_driver_id,
         load_id=_uuid_to_str(load_id),
         assigned_to_staff_user_id=_uuid_to_str(assigned_to_staff_user_id),
         status=_normalize_optional_text(status),
@@ -195,10 +245,12 @@ def list_support_tickets(
 @router.get("/support/tickets/{ticket_id}", response_model=ApiResponse)
 def get_support_ticket(
     ticket_id: uuid.UUID,
+    token_payload: dict[str, Any] = Depends(get_current_token_payload),
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
+    token_org_id = _get_token_org_id(token_payload)
     service = SupportService(db)
-    item = service.get_ticket(str(ticket_id))
+    item = service.get_ticket(str(ticket_id), organization_id=token_org_id)
 
     return ApiResponse(
         data=_serialize_support_ticket(item),
@@ -211,13 +263,26 @@ def get_support_ticket(
 def update_support_ticket(
     ticket_id: uuid.UUID,
     payload: SupportTicketUpdateRequest,
+    token_payload: dict[str, Any] = Depends(get_current_token_payload),
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
+    token_org_id = _get_token_org_id(token_payload)
+    token_role = _get_token_role(token_payload)
+    token_driver_id = _get_token_driver_id(token_payload)
+    effective_driver_id = _uuid_to_str(payload.driver_id)
+    if token_role == "driver":
+        if not token_driver_id:
+            raise UnauthorizedError("Driver token is missing driver_id")
+        if effective_driver_id is not None and effective_driver_id != token_driver_id:
+            raise UnauthorizedError("Driver may only update own support tickets")
+        effective_driver_id = token_driver_id
+
     service = SupportService(db)
     item = service.update_ticket(
         ticket_id=str(ticket_id),
+        organization_id=token_org_id,
         customer_account_id=_uuid_to_str(payload.customer_account_id),
-        driver_id=_uuid_to_str(payload.driver_id),
+        driver_id=effective_driver_id,
         load_id=_uuid_to_str(payload.load_id),
         subject=_normalize_optional_text(payload.subject),
         description=_normalize_optional_text(payload.description),

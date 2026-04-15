@@ -9,7 +9,8 @@ from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_db_session
-from app.core.exceptions import ValidationError
+from app.core.exceptions import UnauthorizedError, ValidationError
+from app.core.security import get_current_token_payload
 from app.schemas.common import ApiResponse
 from app.services.notifications.notification_service import NotificationService
 
@@ -59,6 +60,25 @@ def _normalize_required_text(value: str, *, field_name: str) -> str:
             details={field_name: value},
         )
     return normalized
+
+
+def _get_token_org_id(token_payload: dict[str, Any]) -> str:
+    token_org_id = token_payload.get("organization_id")
+    if not token_org_id:
+        raise UnauthorizedError("Token organization_id is missing")
+    return str(token_org_id)
+
+
+def _get_token_role(token_payload: dict[str, Any]) -> str:
+    return str(token_payload.get("role") or "").strip().lower()
+
+
+def _get_token_driver_id(token_payload: dict[str, Any]) -> str | None:
+    token_driver_id = token_payload.get("driver_id")
+    if token_driver_id is None:
+        return None
+    normalized = str(token_driver_id).strip()
+    return normalized or None
 
 
 def _to_iso_or_none(value: object | None) -> str | None:
@@ -116,16 +136,31 @@ def _serialize_notification(item: Any) -> dict[str, Any]:
 @router.post("/notifications", response_model=ApiResponse)
 def create_notification(
     payload: NotificationCreateRequest,
+    token_payload: dict[str, Any] = Depends(get_current_token_payload),
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
+    token_org_id = _get_token_org_id(token_payload)
+    if str(payload.organization_id) != token_org_id:
+        raise UnauthorizedError("organization_id does not match authenticated organization")
+
+    token_role = _get_token_role(token_payload)
+    token_driver_id = _get_token_driver_id(token_payload)
+    effective_driver_id = _uuid_to_str(payload.driver_id)
+    if token_role == "driver":
+        if not token_driver_id:
+            raise UnauthorizedError("Driver token is missing driver_id")
+        if effective_driver_id is not None and effective_driver_id != token_driver_id:
+            raise UnauthorizedError("Driver may only create notifications for own driver_id")
+        effective_driver_id = token_driver_id
+
     service = NotificationService(db)
     item = service.create_notification(
-        organization_id=str(payload.organization_id),
+        organization_id=token_org_id,
         channel=_normalize_required_text(payload.channel, field_name="channel"),
         direction=_normalize_required_text(payload.direction, field_name="direction"),
         message_type=_normalize_required_text(payload.message_type, field_name="message_type"),
         customer_account_id=_uuid_to_str(payload.customer_account_id),
-        driver_id=_uuid_to_str(payload.driver_id),
+        driver_id=effective_driver_id,
         load_id=_uuid_to_str(payload.load_id),
         created_by_staff_user_id=_uuid_to_str(payload.created_by_staff_user_id),
         subject=_normalize_optional_text(payload.subject),
@@ -152,13 +187,28 @@ def list_notifications(
     status: str | None = None,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=100, ge=1, le=500),
+    token_payload: dict[str, Any] = Depends(get_current_token_payload),
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
+    token_org_id = _get_token_org_id(token_payload)
+    if organization_id is not None and str(organization_id) != token_org_id:
+        raise UnauthorizedError("organization_id does not match authenticated organization")
+
+    token_role = _get_token_role(token_payload)
+    token_driver_id = _get_token_driver_id(token_payload)
+    effective_driver_id = _uuid_to_str(driver_id)
+    if token_role == "driver":
+        if not token_driver_id:
+            raise UnauthorizedError("Driver token is missing driver_id")
+        if effective_driver_id is not None and effective_driver_id != token_driver_id:
+            raise UnauthorizedError("Driver may only access own notifications")
+        effective_driver_id = token_driver_id
+
     service = NotificationService(db)
     items, total = service.list_notifications(
-        organization_id=_uuid_to_str(organization_id),
+        organization_id=token_org_id,
         customer_account_id=_uuid_to_str(customer_account_id),
-        driver_id=_uuid_to_str(driver_id),
+        driver_id=effective_driver_id,
         load_id=_uuid_to_str(load_id),
         channel=_normalize_optional_text(channel),
         status=_normalize_optional_text(status),
@@ -180,10 +230,12 @@ def list_notifications(
 @router.get("/notifications/{notification_id}", response_model=ApiResponse)
 def get_notification(
     notification_id: uuid.UUID,
+    token_payload: dict[str, Any] = Depends(get_current_token_payload),
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
+    token_org_id = _get_token_org_id(token_payload)
     service = NotificationService(db)
-    item = service.get_notification(str(notification_id))
+    item = service.get_notification(str(notification_id), organization_id=token_org_id)
 
     return ApiResponse(
         data=_serialize_notification(item),
@@ -196,11 +248,14 @@ def get_notification(
 def mark_notification_sent(
     notification_id: uuid.UUID,
     payload: NotificationMarkSentRequest,
+    token_payload: dict[str, Any] = Depends(get_current_token_payload),
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
+    token_org_id = _get_token_org_id(token_payload)
     service = NotificationService(db)
     item = service.mark_sent(
         notification_id=str(notification_id),
+        organization_id=token_org_id,
         provider_message_id=_normalize_optional_text(payload.provider_message_id),
     )
 

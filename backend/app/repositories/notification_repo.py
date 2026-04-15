@@ -24,12 +24,24 @@ class NotificationRepository:
         self.db.refresh(notification)
         return notification
 
-    def get_by_id(self, notification_id: uuid.UUID | str) -> Notification | None:
+    def get_by_id(
+        self,
+        notification_id: uuid.UUID | str,
+        *,
+        organization_id: uuid.UUID | str,
+    ) -> Notification | None:
         normalized_notification_id = self._normalize_uuid(
             notification_id,
             field_name="notification_id",
         )
-        stmt = select(Notification).where(Notification.id == normalized_notification_id)
+        normalized_organization_id = self._normalize_uuid(
+            organization_id,
+            field_name="organization_id",
+        )
+        stmt = select(Notification).where(
+            Notification.id == normalized_notification_id,
+            Notification.organization_id == normalized_organization_id,
+        )
         return self.db.scalar(stmt)
 
     def get_by_provider_message_id(
@@ -48,7 +60,7 @@ class NotificationRepository:
     def list(
         self,
         *,
-        organization_id: uuid.UUID | str | None = None,
+        organization_id: uuid.UUID | str,
         customer_account_id: uuid.UUID | str | None = None,
         driver_id: uuid.UUID | str | None = None,
         load_id: uuid.UUID | str | None = None,
@@ -60,10 +72,9 @@ class NotificationRepository:
         normalized_page = max(page, 1)
         normalized_page_size = min(max(page_size, 1), self.MAX_PAGE_SIZE)
 
-        normalized_organization_id = (
-            self._normalize_uuid(organization_id, field_name="organization_id")
-            if organization_id is not None
-            else None
+        normalized_organization_id = self._normalize_uuid(
+            organization_id,
+            field_name="organization_id",
         )
         normalized_customer_account_id = (
             self._normalize_uuid(customer_account_id, field_name="customer_account_id")
@@ -86,9 +97,8 @@ class NotificationRepository:
         stmt = select(Notification)
         count_stmt: Select[tuple[int]] = select(func.count()).select_from(Notification)
 
-        if normalized_organization_id is not None:
-            stmt = stmt.where(Notification.organization_id == normalized_organization_id)
-            count_stmt = count_stmt.where(Notification.organization_id == normalized_organization_id)
+        stmt = stmt.where(Notification.organization_id == normalized_organization_id)
+        count_stmt = count_stmt.where(Notification.organization_id == normalized_organization_id)
 
         if normalized_customer_account_id is not None:
             stmt = stmt.where(Notification.customer_account_id == normalized_customer_account_id)
