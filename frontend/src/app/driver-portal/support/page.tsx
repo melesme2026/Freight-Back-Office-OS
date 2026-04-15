@@ -1,8 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
-import { useDrivers } from "@/hooks/useDrivers";
 import { apiClient } from "@/lib/api-client";
 import { getAccessToken, getOrganizationId } from "@/lib/auth";
 
@@ -11,6 +10,14 @@ type SupportTicket = {
   subject: string;
   status: string;
   priority: string;
+};
+
+type TokenClaims = {
+  sub?: string;
+  email?: string;
+  role?: string;
+  driver_id?: string;
+  organization_id?: string;
 };
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -28,6 +35,44 @@ function asText(value: unknown, fallback = "—"): string {
     return String(value);
   }
   return fallback;
+}
+
+function parseJwtClaims(token: string | null): TokenClaims | null {
+  if (!token) {
+    return null;
+  }
+
+  const parts = token.split(".");
+  if (parts.length < 2) {
+    return null;
+  }
+
+  try {
+    const base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const padded = base64.padEnd(Math.ceil(base64.length / 4) * 4, "=");
+    const decoded =
+      typeof window !== "undefined"
+        ? window.atob(padded)
+        : Buffer.from(padded, "base64").toString("utf-8");
+
+    const parsed = JSON.parse(decoded) as unknown;
+    const record = asRecord(parsed);
+
+    if (!record) {
+      return null;
+    }
+
+    return {
+      sub: typeof record.sub === "string" ? record.sub : undefined,
+      email: typeof record.email === "string" ? record.email : undefined,
+      role: typeof record.role === "string" ? record.role : undefined,
+      driver_id: typeof record.driver_id === "string" ? record.driver_id : undefined,
+      organization_id:
+        typeof record.organization_id === "string" ? record.organization_id : undefined,
+    };
+  } catch {
+    return null;
+  }
 }
 
 function normalizeTickets(payload: unknown): SupportTicket[] {
@@ -55,25 +100,37 @@ function normalizeTickets(payload: unknown): SupportTicket[] {
 }
 
 export default function DriverSupportPage() {
-  const { drivers, isLoading: isDriverLoading, error: driverError } = useDrivers();
-  const [selectedDriverId, setSelectedDriverId] = useState("");
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!selectedDriverId && drivers.length > 0) {
-      setSelectedDriverId(drivers[0].id);
-    }
-  }, [drivers, selectedDriverId]);
+  const token = getAccessToken();
+  const organizationId = getOrganizationId();
+
+  const claims = useMemo(() => parseJwtClaims(token), [token]);
+  const driverId = claims?.driver_id ?? "";
+  const driverEmail = claims?.email ?? "";
+  const role = claims?.role ?? "";
 
   useEffect(() => {
-    const token = getAccessToken();
-    const organizationId = getOrganizationId();
-
-    if (!selectedDriverId || !organizationId) {
+    if (!token || !organizationId) {
       setTickets([]);
       setIsLoading(false);
+      setErrorMessage("Missing authenticated session.");
+      return;
+    }
+
+    if (role !== "driver") {
+      setTickets([]);
+      setIsLoading(false);
+      setErrorMessage("Driver portal requires an authenticated driver session.");
+      return;
+    }
+
+    if (!driverId) {
+      setTickets([]);
+      setIsLoading(false);
+      setErrorMessage("Missing driver_id in authenticated session.");
       return;
     }
 
@@ -85,7 +142,7 @@ export default function DriverSupportPage() {
         setErrorMessage(null);
 
         const payload = await apiClient.get<unknown>(
-          `/support/tickets?driver_id=${selectedDriverId}&page=1&page_size=50`,
+          `/support/tickets?driver_id=${driverId}&page=1&page_size=50`,
           {
             token: token ?? undefined,
             organizationId: organizationId ?? undefined,
@@ -108,7 +165,7 @@ export default function DriverSupportPage() {
     return () => {
       mounted = false;
     };
-  }, [selectedDriverId]);
+  }, [token, organizationId, role, driverId]);
 
   return (
     <main className="min-h-screen bg-slate-50 text-slate-900">
@@ -116,32 +173,23 @@ export default function DriverSupportPage() {
         <div className="mb-8">
           <p className="text-sm font-medium text-brand-700">Driver Portal / Support</p>
           <h1 className="text-3xl font-bold tracking-tight text-slate-950">Support Tickets</h1>
+          <p className="mt-2 text-sm text-slate-600">
+            Authenticated driver support tickets only.
+          </p>
         </div>
 
-        {driverError ? (
-          <div className="mb-6 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-            {driverError}
-          </div>
-        ) : null}
-
         <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
-          <label htmlFor="support-driver-select" className="text-sm font-semibold text-slate-700">
-            Driver
-          </label>
-          <select
-            id="support-driver-select"
-            value={selectedDriverId}
-            onChange={(event) => setSelectedDriverId(event.target.value)}
-            disabled={isDriverLoading || drivers.length === 0}
-            className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
-          >
-            {drivers.length === 0 ? <option value="">No drivers available</option> : null}
-            {drivers.map((driver) => (
-              <option key={driver.id} value={driver.id}>
-                {driver.full_name}
-              </option>
-            ))}
-          </select>
+          <div className="text-sm font-semibold text-slate-700">Authenticated driver</div>
+          <div className="mt-3 space-y-1 text-sm text-slate-600">
+            <p>
+              <span className="font-medium text-slate-800">Email:</span>{" "}
+              {driverEmail || "—"}
+            </p>
+            <p>
+              <span className="font-medium text-slate-800">Driver ID:</span>{" "}
+              {driverId || "—"}
+            </p>
+          </div>
         </section>
 
         {errorMessage ? (
