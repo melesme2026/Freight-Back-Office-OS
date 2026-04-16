@@ -184,6 +184,8 @@ def create_support_ticket(
     payload_out = _serialize_support_ticket(item)
     payload_out["route"] = routing
 
+    db.commit()
+
     return ApiResponse(
         data=payload_out,
         meta={},
@@ -291,6 +293,8 @@ def update_support_ticket(
         assigned_to_staff_user_id=_uuid_to_str(payload.assigned_to_staff_user_id),
         resolved_at=_normalize_optional_text(payload.resolved_at),
     )
+
+    db.commit()
 
     return ApiResponse(
         data=_serialize_support_ticket(item),

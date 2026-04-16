@@ -117,6 +117,8 @@ def create_broker(
     )
     created = repo.create(item)
 
+    db.commit()
+
     return ApiResponse(
         data=_serialize_broker(created),
         meta={},
@@ -192,6 +194,8 @@ def update_broker(
         item.notes = _normalize_optional_text(payload.notes)
 
     updated = repo.update(item)
+
+    db.commit()
 
     return ApiResponse(
         data=_serialize_broker(updated),

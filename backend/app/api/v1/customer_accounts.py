@@ -132,6 +132,8 @@ def create_customer_account(
         notes=_normalize_optional_text(payload.notes),
     )
 
+    db.commit()
+
     return ApiResponse(
         data=_serialize_customer_account(item),
         meta={},
@@ -222,6 +224,8 @@ def update_customer_account(
         billing_email=_normalize_email(payload.billing_email),
         notes=_normalize_optional_text(payload.notes),
     )
+
+    db.commit()
 
     return ApiResponse(
         data=_serialize_customer_account(item),

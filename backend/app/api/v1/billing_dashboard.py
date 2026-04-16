@@ -7,6 +7,8 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_db_session
+from app.core.exceptions import UnauthorizedError
+from app.core.security import get_current_token_payload
 from app.schemas.common import ApiResponse
 from app.services.billing.billing_service import BillingService
 
@@ -34,10 +36,16 @@ def _to_decimal_string(value: object | None) -> str | None:
 def get_billing_dashboard(
     *,
     organization_id: uuid.UUID | None = None,
+    token_payload: dict[str, object] = Depends(get_current_token_payload),
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
+    token_org_id = token_payload.get("organization_id")
+    effective_org_id = organization_id or uuid.UUID(str(token_org_id))
+    if str(effective_org_id) != str(token_org_id):
+        raise UnauthorizedError("organization_id does not match authenticated organization")
+
     service = BillingService(db)
-    data = service.get_billing_dashboard(organization_id=organization_id)
+    data = service.get_billing_dashboard(organization_id=str(effective_org_id))
 
     return ApiResponse(
         data={
