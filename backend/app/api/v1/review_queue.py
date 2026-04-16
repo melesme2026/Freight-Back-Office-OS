@@ -6,11 +6,12 @@ from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_db_session
-from app.core.exceptions import ValidationError
+from app.core.exceptions import UnauthorizedError
+from app.core.security import get_current_token_payload
 from app.schemas.common import ApiResponse
 from app.services.review.human_review_service import HumanReviewService
 from app.services.review.review_queue_service import ReviewQueueService
@@ -126,7 +127,6 @@ def _serialize_reviewed_load(item: Any) -> dict[str, Any]:
 class CorrectExtractedFieldRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    staff_user_id: uuid.UUID
     field_value_text: str | None = None
     field_value_number: str | None = None
     field_value_date: str | None = None
@@ -136,14 +136,11 @@ class CorrectExtractedFieldRequest(BaseModel):
 class ResolveValidationIssueRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    staff_user_id: uuid.UUID
     resolution_notes: str | None = None
 
 
 class MarkLoadReviewedRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
-
-    staff_user_id: uuid.UUID = Field(...)
 
 
 @router.get("/review-queue", response_model=ApiResponse)
@@ -152,11 +149,17 @@ def get_review_queue(
     organization_id: uuid.UUID | None = None,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=25, ge=1, le=200),
+    token_payload: dict[str, Any] = Depends(get_current_token_payload),
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
+    token_org_id = token_payload.get("organization_id")
+    effective_org_id = organization_id or uuid.UUID(str(token_org_id))
+    if str(effective_org_id) != str(token_org_id):
+        raise UnauthorizedError("organization_id does not match authenticated organization")
+
     service = ReviewQueueService(db)
     result = service.get_review_queue(
-        organization_id=_uuid_to_str(organization_id),
+        organization_id=_uuid_to_str(effective_org_id),
         page=page,
         page_size=page_size,
     )
@@ -176,17 +179,24 @@ def get_review_queue(
 def correct_extracted_field(
     field_id: uuid.UUID,
     payload: CorrectExtractedFieldRequest,
+    token_payload: dict[str, Any] = Depends(get_current_token_payload),
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
+    token_org_id = token_payload.get("organization_id")
+    reviewer_staff_user_id = str(token_payload.get("sub") or "").strip()
+
     service = HumanReviewService(db)
     item = service.correct_extracted_field(
         field_id=str(field_id),
-        staff_user_id=str(payload.staff_user_id),
+        organization_id=str(token_org_id),
+        staff_user_id=reviewer_staff_user_id,
         field_value_text=_normalize_optional_text(payload.field_value_text),
         field_value_number=_normalize_optional_text(payload.field_value_number),
         field_value_date=_normalize_optional_text(payload.field_value_date),
         field_value_json=payload.field_value_json,
     )
+
+    db.commit()
 
     return ApiResponse(
         data=_serialize_extracted_field(item),
@@ -199,14 +209,21 @@ def correct_extracted_field(
 def resolve_validation_issue(
     issue_id: uuid.UUID,
     payload: ResolveValidationIssueRequest,
+    token_payload: dict[str, Any] = Depends(get_current_token_payload),
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
+    token_org_id = token_payload.get("organization_id")
+    reviewer_staff_user_id = str(token_payload.get("sub") or "").strip()
+
     service = HumanReviewService(db)
     item = service.resolve_validation_issue(
         issue_id=str(issue_id),
-        staff_user_id=str(payload.staff_user_id),
+        organization_id=str(token_org_id),
+        staff_user_id=reviewer_staff_user_id,
         resolution_notes=_normalize_optional_text(payload.resolution_notes),
     )
+
+    db.commit()
 
     return ApiResponse(
         data=_serialize_validation_issue(item),
@@ -219,22 +236,21 @@ def resolve_validation_issue(
 def mark_load_reviewed(
     load_id: uuid.UUID,
     payload: MarkLoadReviewedRequest | None = None,
-    staff_user_id: uuid.UUID | None = Query(default=None),
+    token_payload: dict[str, Any] = Depends(get_current_token_payload),
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
-    resolved_staff_user_id = payload.staff_user_id if payload is not None else staff_user_id
-
-    if resolved_staff_user_id is None:
-        raise ValidationError(
-            "staff_user_id is required",
-            details={"staff_user_id": None},
-        )
+    _ = payload
+    reviewer_staff_user_id = str(token_payload.get("sub") or "").strip()
+    token_org_id = token_payload.get("organization_id")
 
     service = HumanReviewService(db)
     item = service.mark_load_reviewed(
         load_id=str(load_id),
-        staff_user_id=str(resolved_staff_user_id),
+        organization_id=str(token_org_id),
+        staff_user_id=reviewer_staff_user_id,
     )
+
+    db.commit()
 
     return ApiResponse(
         data=_serialize_reviewed_load(item),

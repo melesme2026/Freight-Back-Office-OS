@@ -306,6 +306,7 @@ async def upload_document(
             driver_id=_uuid_to_str(driver_id),
             load_id=_uuid_to_str(load_id),
         )
+        db.commit()
 
         return ApiResponse(
             data=_serialize_document(item),
@@ -402,6 +403,7 @@ async def upload_driver_document(
             driver_id=str(driver.id),
             load_id=resolved_load_id,
         )
+        db.commit()
 
         return ApiResponse(
             data=_serialize_document(item),
@@ -420,8 +422,13 @@ async def upload_driver_document(
 @router.post("/documents", response_model=ApiResponse)
 def create_document(
     payload: DocumentCreateRequest,
+    token_payload: dict[str, Any] = Depends(get_current_token_payload),
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
+    token_org_id = token_payload.get("organization_id")
+    if str(payload.organization_id) != str(token_org_id):
+        raise UnauthorizedError("organization_id does not match authenticated organization")
+
     normalized_storage_key = _normalize_required_text(payload.storage_key, "storage_key")
     normalized_source_channel = _normalize_required_text(
         payload.source_channel,
@@ -444,6 +451,8 @@ def create_document(
         page_count=payload.page_count,
         uploaded_by_staff_user_id=_uuid_to_str(payload.uploaded_by_staff_user_id),
     )
+
+    db.commit()
 
     return ApiResponse(
         data=_serialize_document(item),
@@ -501,10 +510,20 @@ def get_documents_by_load(
     *,
     page: int = Query(1, ge=1),
     page_size: int = Query(DEFAULT_LOAD_DOCUMENT_PAGE_SIZE, ge=1, le=500),
+    token_payload: dict[str, Any] = Depends(get_current_token_payload),
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
+    token_org_id = token_payload.get("organization_id")
+    load_repo = LoadRepository(db)
+    load = load_repo.get_by_id(load_id)
+    if load is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Load not found.")
+    if str(load.organization_id) != str(token_org_id):
+        raise UnauthorizedError("Load is not in authenticated organization")
+
     service = DocumentService(db)
     items, total_count = service.list_documents(
+        organization_id=str(token_org_id),
         load_id=str(load_id),
         page=page,
         page_size=page_size,
@@ -525,10 +544,14 @@ def get_documents_by_load(
 @router.get("/documents/{document_id}/download")
 def download_document(
     document_id: uuid.UUID,
+    token_payload: dict[str, Any] = Depends(get_current_token_payload),
     db: Session = Depends(get_db_session),
 ):
     service = DocumentService(db)
     item = service.get_document(str(document_id))
+    token_org_id = token_payload.get("organization_id")
+    if str(item.organization_id) != str(token_org_id):
+        raise UnauthorizedError("Document is not in authenticated organization")
 
     storage_key = getattr(item, "storage_key", None)
     if not storage_key:
@@ -544,10 +567,14 @@ def download_document(
 @router.get("/documents/{document_id}", response_model=ApiResponse)
 def get_document(
     document_id: uuid.UUID,
+    token_payload: dict[str, Any] = Depends(get_current_token_payload),
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
     service = DocumentService(db)
     item = service.get_document(str(document_id))
+    token_org_id = token_payload.get("organization_id")
+    if str(item.organization_id) != str(token_org_id):
+        raise UnauthorizedError("Document is not in authenticated organization")
 
     return ApiResponse(data=_serialize_document(item), meta={}, error=None)
 
@@ -560,6 +587,7 @@ def extract_document(
 ) -> ApiResponse:
     service = ExtractionService(db)
     result = service.extract_document(document_id=str(document_id), force=payload.force)
+    db.commit()
 
     return ApiResponse(data=result, meta={}, error=None)
 
@@ -576,6 +604,7 @@ def reprocess_document(
         force_reclassification=payload.force_reclassification,
         force_reextraction=payload.force_reextraction,
     )
+    db.commit()
 
     return ApiResponse(data=result, meta={}, error=None)
 
@@ -591,5 +620,6 @@ def link_document_to_load(
         document_id=str(document_id),
         load_id=str(payload.load_id),
     )
+    db.commit()
 
     return ApiResponse(data=result, meta={}, error=None)

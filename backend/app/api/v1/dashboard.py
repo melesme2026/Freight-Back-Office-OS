@@ -8,6 +8,8 @@ from sqlalchemy.orm import Session
 from sqlalchemy.sql import Select
 
 from app.core.dependencies import get_db_session
+from app.core.exceptions import UnauthorizedError
+from app.core.security import get_current_token_payload
 from app.domain.enums.load_status import LoadStatus
 from app.domain.enums.processing_status import ProcessingStatus
 from app.domain.enums.validation_severity import ValidationSeverity
@@ -39,11 +41,17 @@ def _apply_optional_org_filter(
 def get_dashboard(
     *,
     organization_id: uuid.UUID | None = None,
+    token_payload: dict[str, object] = Depends(get_current_token_payload),
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
+    token_org_id = token_payload.get("organization_id")
+    effective_org_id = organization_id or uuid.UUID(str(token_org_id))
+    if str(effective_org_id) != str(token_org_id):
+        raise UnauthorizedError("organization_id does not match authenticated organization")
+
     loads_total_stmt = _apply_optional_org_filter(
         select(func.count()).select_from(Load),
-        organization_id=organization_id,
+        organization_id=effective_org_id,
         model=Load,
     )
 
@@ -51,7 +59,7 @@ def get_dashboard(
         select(func.count())
         .select_from(Load)
         .where(Load.status == LoadStatus.NEEDS_REVIEW),
-        organization_id=organization_id,
+        organization_id=effective_org_id,
         model=Load,
     )
 
@@ -59,7 +67,7 @@ def get_dashboard(
         select(func.count())
         .select_from(Load)
         .where(Load.status == LoadStatus.VALIDATED),
-        organization_id=organization_id,
+        organization_id=effective_org_id,
         model=Load,
     )
 
@@ -67,7 +75,7 @@ def get_dashboard(
         select(func.count())
         .select_from(Load)
         .where(Load.status == LoadStatus.PAID),
-        organization_id=organization_id,
+        organization_id=effective_org_id,
         model=Load,
     )
 
@@ -75,7 +83,7 @@ def get_dashboard(
         select(func.count())
         .select_from(LoadDocument)
         .where(LoadDocument.processing_status != ProcessingStatus.COMPLETED),
-        organization_id=organization_id,
+        organization_id=effective_org_id,
         model=LoadDocument,
     )
 
@@ -84,7 +92,7 @@ def get_dashboard(
         .select_from(ValidationIssue)
         .where(ValidationIssue.is_resolved.is_(False))
         .where(ValidationIssue.severity == ValidationSeverity.CRITICAL),
-        organization_id=organization_id,
+        organization_id=effective_org_id,
         model=ValidationIssue,
     )
 

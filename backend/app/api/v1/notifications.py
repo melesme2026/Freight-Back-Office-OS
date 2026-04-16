@@ -104,6 +104,8 @@ def _enum_to_string(value: object | None) -> str | None:
 
 
 def _serialize_notification(item: Any) -> dict[str, Any]:
+    recipient = item.driver_id or item.customer_account_id or item.load_id
+
     return {
         "id": str(item.id),
         "organization_id": str(item.organization_id),
@@ -121,6 +123,7 @@ def _serialize_notification(item: Any) -> dict[str, Any]:
         "direction": item.direction,
         "message_type": item.message_type,
         "subject": item.subject,
+        "recipient": str(recipient) if recipient else None,
         "body_text": item.body_text,
         "provider_message_id": item.provider_message_id,
         "status": _enum_to_string(item.status),
@@ -168,6 +171,8 @@ def create_notification(
         provider_message_id=_normalize_optional_text(payload.provider_message_id),
         status=_normalize_required_text(payload.status, field_name="status"),
     )
+
+    db.commit()
 
     return ApiResponse(
         data=_serialize_notification(item),
@@ -258,6 +263,8 @@ def mark_notification_sent(
         organization_id=token_org_id,
         provider_message_id=_normalize_optional_text(payload.provider_message_id),
     )
+
+    db.commit()
 
     return ApiResponse(
         data={

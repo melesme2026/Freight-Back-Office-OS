@@ -356,6 +356,7 @@ def create_load(
         notes=_normalize_optional_text(payload.notes),
     )
 
+    db.commit()
     item = service.get_load(str(item.id))
 
     return ApiResponse(
@@ -425,10 +426,14 @@ def list_loads(
 @router.get("/loads/{load_id}", response_model=ApiResponse)
 def get_load(
     load_id: uuid.UUID,
+    token_payload: dict[str, Any] = Depends(get_current_token_payload),
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
     service = LoadService(db)
     item = service.get_load(str(load_id))
+    token_org_id = token_payload.get("organization_id")
+    if str(item.organization_id) != str(token_org_id):
+        raise UnauthorizedError("Load is not in authenticated organization")
 
     return ApiResponse(
         data=_serialize_load(item, detailed=True),
@@ -441,9 +446,15 @@ def get_load(
 def update_load(
     load_id: uuid.UUID,
     payload: LoadUpdateRequest,
+    token_payload: dict[str, Any] = Depends(get_current_token_payload),
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
     service = LoadService(db)
+    existing = service.get_load(str(load_id))
+    token_org_id = token_payload.get("organization_id")
+    if str(existing.organization_id) != str(token_org_id):
+        raise UnauthorizedError("Load is not in authenticated organization")
+
     item = service.update_load(
         load_id=str(load_id),
         customer_account_id=_uuid_to_str(payload.customer_account_id),
@@ -469,6 +480,7 @@ def update_load(
         notes=_normalize_optional_text(payload.notes),
     )
 
+    db.commit()
     item = service.get_load(str(item.id))
 
     return ApiResponse(
@@ -482,8 +494,15 @@ def update_load(
 def transition_load_status(
     load_id: uuid.UUID,
     payload: LoadStatusTransitionRequest,
+    token_payload: dict[str, Any] = Depends(get_current_token_payload),
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
+    service = LoadService(db)
+    existing = service.get_load(str(load_id))
+    token_org_id = token_payload.get("organization_id")
+    if str(existing.organization_id) != str(token_org_id):
+        raise UnauthorizedError("Load is not in authenticated organization")
+
     parsed_status = _parse_load_status(payload.new_status)
 
     engine = WorkflowEngine(db)
@@ -494,6 +513,8 @@ def transition_load_status(
         actor_type=_normalize_required_text(payload.actor_type, "actor_type"),
         notes=_normalize_optional_text(payload.notes),
     )
+
+    db.commit()
 
     return ApiResponse(
         data={
