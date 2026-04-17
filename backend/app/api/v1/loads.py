@@ -70,6 +70,7 @@ class LoadUpdateRequest(BaseModel):
     has_ratecon: bool | None = None
     has_bol: bool | None = None
     has_invoice: bool | None = None
+    follow_up_required: bool | None = None
     notes: str | None = None
 
 
@@ -79,6 +80,16 @@ class LoadStatusTransitionRequest(BaseModel):
     new_status: str
     actor_staff_user_id: uuid.UUID | None = None
     actor_type: str = "system"
+    notes: str | None = None
+
+
+class LoadWorkflowActionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    action: str
+    actor_staff_user_id: uuid.UUID | None = None
+    actor_type: str = "system"
+    follow_up_required: bool | None = None
     notes: str | None = None
 
 
@@ -240,6 +251,8 @@ def _serialize_load(item: Any, *, detailed: bool = False) -> dict[str, Any]:
                 "last_reviewed_at": _to_iso_or_none(
                     getattr(item, "last_reviewed_at", None)
                 ),
+                "last_contacted_at": _to_iso_or_none(getattr(item, "last_contacted_at", None)),
+                "follow_up_required": bool(getattr(item, "follow_up_required", False)),
                 "submitted_at": _to_iso_or_none(item.submitted_at),
                 "funded_at": _to_iso_or_none(item.funded_at),
                 "paid_at": _to_iso_or_none(item.paid_at),
@@ -477,6 +490,7 @@ def update_load(
         has_ratecon=payload.has_ratecon,
         has_bol=payload.has_bol,
         has_invoice=payload.has_invoice,
+        follow_up_required=payload.follow_up_required,
         notes=_normalize_optional_text(payload.notes),
     )
 
@@ -522,6 +536,43 @@ def transition_load_status(
             "old_status": result["old_status"],
             "new_status": result["new_status"],
             "changed_at": result["changed_at"],
+        },
+        meta={},
+        error=None,
+    )
+
+
+@router.post("/loads/{load_id}/workflow-actions", response_model=ApiResponse)
+def execute_load_workflow_action(
+    load_id: uuid.UUID,
+    payload: LoadWorkflowActionRequest,
+    token_payload: dict[str, Any] = Depends(get_current_token_payload),
+    db: Session = Depends(get_db_session),
+) -> ApiResponse:
+    service = LoadService(db)
+    existing = service.get_load(str(load_id))
+    token_org_id = token_payload.get("organization_id")
+    if str(existing.organization_id) != str(token_org_id):
+        raise UnauthorizedError("Load is not in authenticated organization")
+
+    engine = WorkflowEngine(db)
+    result = engine.apply_operational_action(
+        load_id=str(load_id),
+        action=_normalize_required_text(payload.action, "action"),
+        actor_staff_user_id=_uuid_to_str(payload.actor_staff_user_id),
+        actor_type=_normalize_required_text(payload.actor_type, "actor_type"),
+        follow_up_required=payload.follow_up_required,
+        notes=_normalize_optional_text(payload.notes),
+    )
+    db.commit()
+
+    return ApiResponse(
+        data={
+            "id": result["id"],
+            "old_status": result["old_status"],
+            "new_status": result["new_status"],
+            "changed_at": result["changed_at"],
+            "action": _normalize_required_text(payload.action, "action").lower(),
         },
         meta={},
         error=None,

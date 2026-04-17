@@ -57,24 +57,7 @@ class WorkflowEngine:
             new_status=target_status,
         )
 
-        if target_status in {
-            LoadStatus.VALIDATED,
-            LoadStatus.READY_TO_SUBMIT,
-            LoadStatus.SUBMITTED,
-        }:
-            blocking_issue_count = self.validation_repo.count_blocking_unresolved_for_load(
-                load.id
-            )
-            if blocking_issue_count > 0:
-                raise ValidationError(
-                    "Load cannot transition while unresolved blocking validation issues exist",
-                    details={
-                        "load_id": str(load.id),
-                        "current_status": str(current_status),
-                        "target_status": str(target_status),
-                        "blocking_issue_count": blocking_issue_count,
-                    },
-                )
+        self._assert_transition_preconditions(load=load, current_status=current_status, target_status=target_status)
 
         old_status = current_status
         updated_load = self.transition_applier.apply_status_change(
@@ -112,6 +95,103 @@ class WorkflowEngine:
             "new_status": target_status,
             "changed_at": changed_at,
         }
+
+    def apply_operational_action(
+        self,
+        *,
+        load_id: str,
+        action: str,
+        actor_staff_user_id: str | None = None,
+        actor_type: str | AuditActorType = AuditActorType.SYSTEM,
+        notes: str | None = None,
+        follow_up_required: bool | None = None,
+    ) -> dict[str, Any]:
+        normalized_action = self._normalize_action(action)
+        normalized_notes = self._clean_text(notes)
+
+        if normalized_action == "mark_sent_to_broker":
+            result = self.transition_load(
+                load_id=load_id,
+                new_status=LoadStatus.SUBMITTED_TO_BROKER,
+                actor_staff_user_id=actor_staff_user_id,
+                actor_type=actor_type,
+                notes=normalized_notes or "Marked as sent to broker.",
+            )
+            self._publish_operational_event(
+                load_id=load_id,
+                event_type="broker_contacted",
+                actor_staff_user_id=actor_staff_user_id,
+                actor_type=actor_type,
+                notes=normalized_notes,
+            )
+            self._update_operational_metadata(
+                load_id=load_id,
+                last_contacted=True,
+                follow_up_required=True if follow_up_required is None else follow_up_required,
+            )
+            return result
+
+        if normalized_action == "mark_waiting_on_broker":
+            result = self.transition_load(
+                load_id=load_id,
+                new_status=LoadStatus.WAITING_ON_BROKER,
+                actor_staff_user_id=actor_staff_user_id,
+                actor_type=actor_type,
+                notes=normalized_notes or "Marked as waiting on broker.",
+            )
+            self._update_operational_metadata(
+                load_id=load_id,
+                follow_up_required=True if follow_up_required is None else follow_up_required,
+            )
+            return result
+
+        if normalized_action == "mark_submitted_to_factoring":
+            result = self.transition_load(
+                load_id=load_id,
+                new_status=LoadStatus.SUBMITTED_TO_FACTORING,
+                actor_staff_user_id=actor_staff_user_id,
+                actor_type=actor_type,
+                notes=normalized_notes or "Marked as submitted to factoring.",
+            )
+            self._publish_operational_event(
+                load_id=load_id,
+                event_type="broker_response_received",
+                actor_staff_user_id=actor_staff_user_id,
+                actor_type=actor_type,
+                notes=normalized_notes,
+            )
+            self._publish_operational_event(
+                load_id=load_id,
+                event_type="submitted_to_factoring",
+                actor_staff_user_id=actor_staff_user_id,
+                actor_type=actor_type,
+                notes=normalized_notes,
+            )
+            self._update_operational_metadata(
+                load_id=load_id,
+                follow_up_required=True if follow_up_required is None else follow_up_required,
+            )
+            return result
+
+        result = self.transition_load(
+            load_id=load_id,
+            new_status=LoadStatus.FUNDED,
+            actor_staff_user_id=actor_staff_user_id,
+            actor_type=actor_type,
+            notes=normalized_notes or "Marked as funded.",
+        )
+        self._publish_operational_event(
+            load_id=load_id,
+            event_type="funding_confirmed",
+            actor_staff_user_id=actor_staff_user_id,
+            actor_type=actor_type,
+            notes=normalized_notes,
+        )
+        self._update_operational_metadata(
+            load_id=load_id,
+            follow_up_required=False if follow_up_required is None else follow_up_required,
+        )
+        return result
 
     def _create_load_status_notification(
         self,
@@ -193,3 +273,112 @@ class WorkflowEngine:
 
         cleaned = str(value).strip()
         return cleaned or None
+
+    @staticmethod
+    def _normalize_action(value: str) -> str:
+        normalized = str(value or "").strip().lower()
+        allowed = {
+            "mark_sent_to_broker",
+            "mark_waiting_on_broker",
+            "mark_submitted_to_factoring",
+            "mark_funded",
+        }
+        if normalized not in allowed:
+            raise ValidationError(
+                "Invalid workflow action",
+                details={"action": value, "allowed_actions": sorted(allowed)},
+            )
+        return normalized
+
+    def _assert_transition_preconditions(
+        self,
+        *,
+        load: Load,
+        current_status: LoadStatus,
+        target_status: LoadStatus,
+    ) -> None:
+        if target_status in {
+            LoadStatus.READY_TO_SUBMIT,
+            LoadStatus.SUBMITTED_TO_BROKER,
+            LoadStatus.WAITING_ON_BROKER,
+            LoadStatus.SUBMITTED_TO_FACTORING,
+            LoadStatus.WAITING_ON_FUNDING,
+            LoadStatus.FUNDED,
+            LoadStatus.PAID,
+        }:
+            blocking_issue_count = self.validation_repo.count_blocking_unresolved_for_load(
+                load.id
+            )
+            if blocking_issue_count > 0:
+                raise ValidationError(
+                    "Load cannot transition while unresolved blocking validation issues exist",
+                    details={
+                        "load_id": str(load.id),
+                        "current_status": str(current_status),
+                        "target_status": str(target_status),
+                        "blocking_issue_count": blocking_issue_count,
+                    },
+                )
+
+        if target_status in {
+            LoadStatus.SUBMITTED_TO_BROKER,
+            LoadStatus.WAITING_ON_BROKER,
+            LoadStatus.SUBMITTED_TO_FACTORING,
+            LoadStatus.WAITING_ON_FUNDING,
+            LoadStatus.FUNDED,
+            LoadStatus.PAID,
+        }:
+            missing_docs: list[str] = []
+            if not bool(load.has_ratecon):
+                missing_docs.append("rate_confirmation")
+            if not bool(load.has_bol):
+                missing_docs.append("bill_of_lading")
+            if not bool(load.has_invoice):
+                missing_docs.append("invoice")
+            if missing_docs:
+                raise ValidationError(
+                    "Load cannot transition to broker/factoring stages until all required documents are present",
+                    details={
+                        "load_id": str(load.id),
+                        "current_status": str(current_status),
+                        "target_status": str(target_status),
+                        "missing_documents": missing_docs,
+                    },
+                )
+
+    def _publish_operational_event(
+        self,
+        *,
+        load_id: str,
+        event_type: str,
+        actor_staff_user_id: str | None,
+        actor_type: str | AuditActorType,
+        notes: str | None,
+    ) -> None:
+        load = self.get_load(load_id)
+        self.event_publisher.publish_load_event(
+            organization_id=str(load.organization_id),
+            load_id=str(load.id),
+            event_type=event_type,
+            old_status=str(load.status),
+            new_status=str(load.status),
+            event_payload={"notes": notes} if notes else None,
+            actor_staff_user_id=actor_staff_user_id,
+            actor_type=actor_type,
+        )
+
+    def _update_operational_metadata(
+        self,
+        *,
+        load_id: str,
+        last_contacted: bool = False,
+        follow_up_required: bool | None = None,
+    ) -> None:
+        load = self.get_load(load_id)
+        now = datetime.now(timezone.utc)
+        if last_contacted:
+            load.last_contacted_at = now
+        if follow_up_required is not None:
+            load.follow_up_required = bool(follow_up_required)
+        load.updated_at = now
+        self.load_repo.update(load)

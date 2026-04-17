@@ -58,7 +58,7 @@ class LoadSummaryService:
             "warning_issue_count": warning_issue_count,
             "unresolved_issue_count": unresolved_issue_count,
             "is_ready_for_submission": (
-                normalized_status in {LoadStatus.VALIDATED, LoadStatus.READY_TO_SUBMIT}
+                normalized_status in {LoadStatus.READY_TO_SUBMIT}
                 and blocking_issue_count == 0
             ),
         }
@@ -80,12 +80,15 @@ class LoadSummaryService:
             "new": LoadStatus.NEW,
             "docs_received": LoadStatus.DOCS_RECEIVED,
             "needs_review": LoadStatus.NEEDS_REVIEW,
-            "validated": LoadStatus.VALIDATED,
             "ready_to_submit": LoadStatus.READY_TO_SUBMIT,
-            "submitted": LoadStatus.SUBMITTED,
+            "submitted_to_broker": LoadStatus.SUBMITTED_TO_BROKER,
+            "waiting_on_broker": LoadStatus.WAITING_ON_BROKER,
+            "submitted_to_factoring": LoadStatus.SUBMITTED_TO_FACTORING,
+            "waiting_on_funding": LoadStatus.WAITING_ON_FUNDING,
             "funded": LoadStatus.FUNDED,
             "paid": LoadStatus.PAID,
-            "cancelled": LoadStatus.CANCELLED,
+            "exception": LoadStatus.EXCEPTION,
+            "archived": LoadStatus.ARCHIVED,
         }
 
         return aliases.get(normalized)

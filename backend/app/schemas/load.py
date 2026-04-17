@@ -64,6 +64,7 @@ class LoadUpdate(BaseModel):
     has_ratecon: bool | None = None
     has_bol: bool | None = None
     has_invoice: bool | None = None
+    follow_up_required: bool | None = None
     notes: str | None = None
 
 
@@ -104,6 +105,8 @@ class LoadRead(BaseModel):
     extraction_confidence_avg: Decimal | None = None
     last_reviewed_by: str | None = None
     last_reviewed_at: datetime | None = None
+    last_contacted_at: datetime | None = None
+    follow_up_required: bool = False
     submitted_at: datetime | None = None
     funded_at: datetime | None = None
     paid_at: datetime | None = None

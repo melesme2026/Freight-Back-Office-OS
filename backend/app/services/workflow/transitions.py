@@ -18,7 +18,12 @@ class LoadTransitionApplier:
 
         load.status = new_status
 
-        if new_status == LoadStatus.SUBMITTED:
+        if new_status in {
+            LoadStatus.SUBMITTED_TO_BROKER,
+            LoadStatus.WAITING_ON_BROKER,
+            LoadStatus.SUBMITTED_TO_FACTORING,
+            LoadStatus.WAITING_ON_FUNDING,
+        }:
             if load.submitted_at is None:
                 load.submitted_at = now
 
@@ -38,12 +43,13 @@ class LoadTransitionApplier:
 
         if new_status in {LoadStatus.NEW, LoadStatus.DOCS_RECEIVED}:
             load.processing_status = ProcessingStatus.PENDING
-        elif new_status == LoadStatus.EXTRACTING:
-            load.processing_status = ProcessingStatus.IN_PROGRESS
         elif new_status in {
-            LoadStatus.VALIDATED,
+            LoadStatus.NEEDS_REVIEW,
             LoadStatus.READY_TO_SUBMIT,
-            LoadStatus.SUBMITTED,
+            LoadStatus.SUBMITTED_TO_BROKER,
+            LoadStatus.WAITING_ON_BROKER,
+            LoadStatus.SUBMITTED_TO_FACTORING,
+            LoadStatus.WAITING_ON_FUNDING,
             LoadStatus.FUNDED,
             LoadStatus.PAID,
             LoadStatus.ARCHIVED,
