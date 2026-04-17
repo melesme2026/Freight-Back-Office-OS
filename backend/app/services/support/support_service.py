@@ -63,6 +63,22 @@ class SupportService:
             raise UnauthorizedError("Support ticket is not in authenticated organization")
         return ticket
 
+    def get_ticket_for_actor(
+        self,
+        ticket_id: str,
+        *,
+        organization_id: str,
+        actor_driver_id: str | None = None,
+    ) -> SupportTicket:
+        ticket = self.get_ticket(ticket_id, organization_id=organization_id)
+        normalized_actor_driver_id = self._clean_text(actor_driver_id)
+        if normalized_actor_driver_id is None:
+            return ticket
+
+        if str(getattr(ticket, "driver_id", "") or "") != normalized_actor_driver_id:
+            raise UnauthorizedError("Driver may only access own support tickets")
+        return ticket
+
     def list_tickets(
         self,
         *,
@@ -99,13 +115,18 @@ class SupportService:
         *,
         ticket_id: str,
         organization_id: str,
+        actor_driver_id: str | None = None,
         **updates,
     ) -> SupportTicket:
         normalized_organization_id = self._require_text(
             organization_id,
             field_name="organization_id",
         )
-        ticket = self.get_ticket(ticket_id, organization_id=normalized_organization_id)
+        ticket = self.get_ticket_for_actor(
+            ticket_id,
+            organization_id=normalized_organization_id,
+            actor_driver_id=actor_driver_id,
+        )
 
         for field, value in updates.items():
             if not hasattr(ticket, field) or value is None:

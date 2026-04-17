@@ -130,6 +130,24 @@ def _enum_to_string(value: object | None) -> str | None:
     return str(value)
 
 
+def _authorize_document_mutation(
+    *,
+    item: Any,
+    token_payload: dict[str, Any],
+) -> None:
+    token_org_id = token_payload.get("organization_id")
+    if str(getattr(item, "organization_id", "")) != str(token_org_id):
+        raise UnauthorizedError("Document is not in authenticated organization")
+
+    token_role = str(token_payload.get("role") or "").strip().lower()
+    if token_role == "driver":
+        token_driver_id = token_payload.get("driver_id")
+        if not token_driver_id:
+            raise UnauthorizedError("Driver token is missing driver_id")
+        if str(getattr(item, "driver_id", "")) != str(token_driver_id):
+            raise UnauthorizedError("Drivers may only mutate their own documents")
+
+
 def _serialize_document(item: Any) -> dict[str, Any]:
     load = getattr(item, "load", None)
     driver = getattr(item, "driver", None)
@@ -256,6 +274,7 @@ async def upload_document(
     page_count: int | None = Form(None),
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
+    _ = uploaded_by_staff_user_id
     _validate_upload_file(file)
     token_org_id = token_payload.get("organization_id")
     if str(organization_id) != str(token_org_id):
@@ -279,6 +298,12 @@ async def upload_document(
         storage_bucket = storage_result.get("bucket")
 
         service = DocumentService(db)
+        token_role = str(token_payload.get("role") or "").strip().lower()
+        token_subject = str(token_payload.get("sub") or "").strip()
+        server_uploaded_by_staff_user_id: str | None = None
+        if token_role != "driver" and token_subject:
+            server_uploaded_by_staff_user_id = token_subject
+
         item = service.create_document(
             organization_id=str(organization_id),
             customer_account_id=str(customer_account_id),
@@ -296,7 +321,7 @@ async def upload_document(
             mime_type=_normalize_optional_text(file.content_type),
             file_size_bytes=file_size_bytes,
             page_count=page_count,
-            uploaded_by_staff_user_id=_uuid_to_str(uploaded_by_staff_user_id),
+            uploaded_by_staff_user_id=server_uploaded_by_staff_user_id,
         )
         _create_document_uploaded_notification(
             db=db,
@@ -583,8 +608,16 @@ def get_document(
 def extract_document(
     document_id: uuid.UUID,
     payload: ExtractDocumentRequest,
+    token_payload: dict[str, Any] = Depends(get_current_token_payload),
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
+    document_service = DocumentService(db)
+    document = document_service.get_document_in_organization(
+        document_id=str(document_id),
+        organization_id=str(token_payload.get("organization_id")),
+    )
+    _authorize_document_mutation(item=document, token_payload=token_payload)
+
     service = ExtractionService(db)
     result = service.extract_document(document_id=str(document_id), force=payload.force)
     db.commit()
@@ -596,9 +629,15 @@ def extract_document(
 def reprocess_document(
     document_id: uuid.UUID,
     payload: ReprocessDocumentRequest,
+    token_payload: dict[str, Any] = Depends(get_current_token_payload),
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
     service = DocumentService(db)
+    document = service.get_document_in_organization(
+        document_id=str(document_id),
+        organization_id=str(token_payload.get("organization_id")),
+    )
+    _authorize_document_mutation(item=document, token_payload=token_payload)
     result = service.reprocess_document(
         document_id=str(document_id),
         force_reclassification=payload.force_reclassification,
@@ -613,8 +652,31 @@ def reprocess_document(
 def link_document_to_load(
     document_id: uuid.UUID,
     payload: LinkDocumentToLoadRequest,
+    token_payload: dict[str, Any] = Depends(get_current_token_payload),
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
+    document_service = DocumentService(db)
+    document = document_service.get_document_in_organization(
+        document_id=str(document_id),
+        organization_id=str(token_payload.get("organization_id")),
+    )
+    _authorize_document_mutation(item=document, token_payload=token_payload)
+
+    load_repo = LoadRepository(db)
+    load = load_repo.get_by_id(payload.load_id)
+    if load is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Load not found.")
+    if str(load.organization_id) != str(token_payload.get("organization_id")):
+        raise UnauthorizedError("Load is not in authenticated organization")
+
+    token_role = str(token_payload.get("role") or "").strip().lower()
+    if token_role == "driver":
+        token_driver_id = token_payload.get("driver_id")
+        if not token_driver_id:
+            raise UnauthorizedError("Driver token is missing driver_id")
+        if str(load.driver_id) != str(token_driver_id):
+            raise UnauthorizedError("Drivers may only link documents to their own loads")
+
     linker = DocumentLinker(db)
     result = linker.link_document_to_load(
         document_id=str(document_id),

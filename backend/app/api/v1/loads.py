@@ -174,6 +174,20 @@ def _enum_to_string(value: object | None) -> str | None:
     return str(value)
 
 
+def _authorize_load_access(*, item: Any, token_payload: dict[str, Any]) -> None:
+    token_org_id = token_payload.get("organization_id")
+    if str(getattr(item, "organization_id", "")) != str(token_org_id):
+        raise UnauthorizedError("Load is not in authenticated organization")
+
+    token_role = str(token_payload.get("role") or "").lower()
+    if token_role == "driver":
+        token_driver_id = token_payload.get("driver_id")
+        if not token_driver_id:
+            raise UnauthorizedError("Driver token is missing driver_id")
+        if str(getattr(item, "driver_id", "")) != str(token_driver_id):
+            raise UnauthorizedError("Driver may only access own loads")
+
+
 def _parse_load_status(value: str) -> LoadStatus:
     normalized = _normalize_required_text(value, "new_status").strip().lower()
 
@@ -444,9 +458,7 @@ def get_load(
 ) -> ApiResponse:
     service = LoadService(db)
     item = service.get_load(str(load_id))
-    token_org_id = token_payload.get("organization_id")
-    if str(item.organization_id) != str(token_org_id):
-        raise UnauthorizedError("Load is not in authenticated organization")
+    _authorize_load_access(item=item, token_payload=token_payload)
 
     return ApiResponse(
         data=_serialize_load(item, detailed=True),
@@ -582,10 +594,12 @@ def execute_load_workflow_action(
 @router.get("/loads/{load_id}/invoice")
 def download_load_invoice(
     load_id: uuid.UUID,
+    token_payload: dict[str, Any] = Depends(get_current_token_payload),
     db: Session = Depends(get_db_session),
 ) -> StreamingResponse:
     service = LoadService(db)
     load = service.get_load(str(load_id))
+    _authorize_load_access(item=load, token_payload=token_payload)
     pdf_bytes = _build_simple_invoice_pdf(load=load)
     filename = f"invoice-{load.load_number or load.id}.pdf"
 
