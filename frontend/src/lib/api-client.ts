@@ -247,10 +247,12 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   return parseResponseBody<T>(response, responseType);
 }
 
-function resolveMutationBody(body?: unknown):
-  | { body: BodyInit }
-  | { jsonBody: unknown }
-  | {} {
+type MutationRequestBody = {
+  body?: BodyInit;
+  jsonBody?: unknown;
+};
+
+function resolveMutationBody(body?: unknown): MutationRequestBody {
   if (
     isFormData(body) ||
     typeof body === "string" ||
