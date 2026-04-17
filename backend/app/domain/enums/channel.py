@@ -9,3 +9,4 @@ class Channel(StrEnum):
     EMAIL = "email"
     API = "api"
     MANUAL = "manual"
+    DRIVER_PORTAL = "driver_portal"

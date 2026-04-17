@@ -324,19 +324,20 @@ export default function SupportPage() {
                   <th className="px-5 py-4 font-semibold">Priority</th>
                   <th className="px-5 py-4 font-semibold">Linked Records</th>
                   <th className="px-5 py-4 font-semibold">Updated</th>
+                  <th className="px-5 py-4 font-semibold">Actions</th>
                 </tr>
               </thead>
 
               <tbody className="divide-y divide-slate-100">
                 {isLoading ? (
                   <tr>
-                    <td colSpan={5} className="px-5 py-10 text-center text-slate-500">
+                    <td colSpan={6} className="px-5 py-10 text-center text-slate-500">
                       Loading support tickets...
                     </td>
                   </tr>
                 ) : tickets.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-5 py-10 text-center text-slate-500">
+                    <td colSpan={6} className="px-5 py-10 text-center text-slate-500">
                       No support tickets found.
                     </td>
                   </tr>
@@ -379,6 +380,29 @@ export default function SupportPage() {
 
                       <td className="px-5 py-4 align-top text-slate-700">
                         {formatDateTime(ticket.updated_at ?? ticket.created_at)}
+                      </td>
+
+                      <td className="px-5 py-4 align-top">
+                        <div className="flex flex-col gap-2">
+                          {ticket.load_id ? (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                router.push(`/dashboard/loads/${encodeURIComponent(ticket.load_id!)}`)
+                              }
+                              className="inline-flex items-center rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
+                            >
+                              Open load
+                            </button>
+                          ) : null}
+                          <button
+                            type="button"
+                            onClick={() => router.push("/dashboard/support/new")}
+                            className="inline-flex items-center rounded-lg border border-brand-300 bg-brand-50 px-3 py-1.5 text-xs font-semibold text-brand-700 transition hover:bg-brand-100"
+                          >
+                            Create follow-up
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))

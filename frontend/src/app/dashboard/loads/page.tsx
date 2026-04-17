@@ -38,17 +38,13 @@ type LoadListItem = {
 
 type StatusFilter =
   | "all"
-  | "new"
-  | "docs_received"
-  | "extracting"
-  | "needs_review"
-  | "validated"
   | "ready_to_submit"
-  | "submitted"
+  | "submitted_to_broker"
+  | "waiting_on_broker"
+  | "submitted_to_factoring"
+  | "waiting_on_funding"
   | "funded"
   | "paid"
-  | "exception"
-  | "archived";
 
 function normalizeText(value: NullableString): string {
   return typeof value === "string" ? value.trim().toLowerCase() : "";
@@ -58,18 +54,18 @@ function statusBadge(status?: string | null) {
   switch ((status ?? "").toLowerCase()) {
     case "needs_review":
       return "bg-amber-100 text-amber-800";
-    case "validated":
-      return "bg-emerald-100 text-emerald-800";
-    case "submitted":
+    case "submitted_to_broker":
       return "bg-blue-100 text-blue-800";
+    case "waiting_on_broker":
+      return "bg-sky-100 text-sky-800";
     case "paid":
       return "bg-purple-100 text-purple-800";
-    case "docs_received":
-      return "bg-cyan-100 text-cyan-800";
-    case "extracting":
+    case "submitted_to_factoring":
       return "bg-indigo-100 text-indigo-800";
     case "ready_to_submit":
-      return "bg-sky-100 text-sky-800";
+      return "bg-emerald-100 text-emerald-800";
+    case "waiting_on_funding":
+      return "bg-violet-100 text-violet-800";
     case "funded":
       return "bg-violet-100 text-violet-800";
     case "exception":
@@ -196,17 +192,13 @@ function matchesSearch(load: LoadListItem, query: string): boolean {
 
 const STATUS_OPTIONS: Array<{ value: StatusFilter; label: string }> = [
   { value: "all", label: "All statuses" },
-  { value: "new", label: "New" },
-  { value: "docs_received", label: "Docs Received" },
-  { value: "extracting", label: "Extracting" },
-  { value: "needs_review", label: "Needs Review" },
-  { value: "validated", label: "Validated" },
   { value: "ready_to_submit", label: "Ready to Submit" },
-  { value: "submitted", label: "Submitted" },
+  { value: "submitted_to_broker", label: "Submitted to Broker" },
+  { value: "waiting_on_broker", label: "Waiting on Broker" },
+  { value: "submitted_to_factoring", label: "Submitted to Factoring" },
+  { value: "waiting_on_funding", label: "Waiting on Funding" },
   { value: "funded", label: "Funded" },
   { value: "paid", label: "Paid" },
-  { value: "exception", label: "Exception" },
-  { value: "archived", label: "Archived" },
 ];
 
 export default function LoadsPage() {
@@ -255,15 +247,19 @@ export default function LoadsPage() {
     const active = typedLoads.filter(
       (load) => normalizeText(load.status) !== "archived"
     ).length;
-    const needsReview = typedLoads.filter(
-      (load) => normalizeText(load.status) === "needs_review"
+    const waiting = typedLoads.filter((load) =>
+      ["waiting_on_broker", "waiting_on_funding"].includes(normalizeText(load.status))
     ).length;
-    const paid = typedLoads.filter(
-      (load) => normalizeText(load.status) === "paid"
+    const submittedToBroker = typedLoads.filter(
+      (load) => normalizeText(load.status) === "submitted_to_broker"
     ).length;
+    const followUp = typedLoads.filter(
+      (load) => normalizeText(load.status) === "ready_to_submit"
+    ).length;
+    const paid = typedLoads.filter((load) => normalizeText(load.status) === "paid").length;
     const missingDocs = typedLoads.filter((load) => docCount(load) < 3).length;
 
-    return { total, active, needsReview, paid, missingDocs };
+    return { total, active, waiting, submittedToBroker, followUp, paid, missingDocs };
   }, [typedLoads]);
 
   return (
@@ -321,10 +317,28 @@ export default function LoadsPage() {
 
           <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-soft">
             <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Needs Review
+              Submitted to Broker
             </div>
             <div className="mt-2 text-2xl font-bold text-amber-700">
-              {metrics.needsReview}
+              {metrics.submittedToBroker}
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-soft">
+            <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Waiting
+            </div>
+            <div className="mt-2 text-2xl font-bold text-amber-700">
+              {metrics.waiting}
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-soft">
+            <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Ready to Submit
+            </div>
+            <div className="mt-2 text-2xl font-bold text-emerald-700">
+              {metrics.followUp}
             </div>
           </div>
 
@@ -334,15 +348,6 @@ export default function LoadsPage() {
             </div>
             <div className="mt-2 text-2xl font-bold text-purple-700">
               {metrics.paid}
-            </div>
-          </div>
-
-          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-soft">
-            <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Missing Docs
-            </div>
-            <div className="mt-2 text-2xl font-bold text-rose-700">
-              {metrics.missingDocs}
             </div>
           </div>
         </div>

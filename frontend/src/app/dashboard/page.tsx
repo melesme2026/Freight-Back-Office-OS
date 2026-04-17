@@ -100,8 +100,11 @@ export default function DashboardPage() {
       return "Attention Needed";
     }
 
-    if ((metrics.loads_needing_review ?? 0) > 0) {
-      return "Operational Review Pending";
+    if (
+      (metrics.loads_waiting_on_broker ?? 0) > 0 ||
+      (metrics.loads_waiting_on_funding ?? 0) > 0
+    ) {
+      return "Follow-up Pending";
     }
 
     return "Stable";
@@ -158,26 +161,24 @@ export default function DashboardPage() {
 
         <section className="mb-8 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <MetricCard
-            label="Loads in progress"
-            value={loading ? "..." : metrics?.loads_total ?? 0}
-          />
-          <MetricCard
-            label="Needs review"
-            value={loading ? "..." : metrics?.loads_needing_review ?? 0}
+            label="Ready to Submit"
+            value={loading ? "..." : metrics?.loads_ready_to_submit ?? 0}
             tone="warning"
           />
           <MetricCard
-            label="Pending documents"
-            value={loading ? "..." : metrics?.documents_pending_processing ?? 0}
+            label="Waiting on Broker"
+            value={loading ? "..." : metrics?.loads_waiting_on_broker ?? 0}
+            tone="warning"
           />
           <MetricCard
-            label="Critical issues"
-            value={loading ? "..." : metrics?.critical_validation_issues ?? 0}
-            tone={
-              !loading && (metrics?.critical_validation_issues ?? 0) > 0
-                ? "danger"
-                : "success"
-            }
+            label="Waiting on Funding"
+            value={loading ? "..." : metrics?.loads_waiting_on_funding ?? 0}
+            tone="warning"
+          />
+          <MetricCard
+            label="Paid"
+            value={loading ? "..." : metrics?.loads_paid ?? 0}
+            tone="success"
           />
         </section>
 

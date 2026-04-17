@@ -5,6 +5,12 @@ export type DashboardMetrics = {
   loads_total: number;
   loads_needing_review: number;
   loads_validated: number;
+  loads_ready_to_submit: number;
+  loads_submitted_to_broker: number;
+  loads_waiting_on_broker: number;
+  loads_submitted_to_factoring: number;
+  loads_waiting_on_funding: number;
+  loads_funded: number;
   loads_paid: number;
   documents_pending_processing: number;
   critical_validation_issues: number;
@@ -50,6 +56,12 @@ function normalizeDashboardMetrics(payload: unknown): DashboardMetrics | null {
     loads_total: asNumber(source.loads_total),
     loads_needing_review: asNumber(source.loads_needing_review),
     loads_validated: asNumber(source.loads_validated),
+    loads_ready_to_submit: asNumber(source.loads_ready_to_submit),
+    loads_submitted_to_broker: asNumber(source.loads_submitted_to_broker),
+    loads_waiting_on_broker: asNumber(source.loads_waiting_on_broker),
+    loads_submitted_to_factoring: asNumber(source.loads_submitted_to_factoring),
+    loads_waiting_on_funding: asNumber(source.loads_waiting_on_funding),
+    loads_funded: asNumber(source.loads_funded),
     loads_paid: asNumber(source.loads_paid),
     documents_pending_processing: asNumber(source.documents_pending_processing),
     critical_validation_issues: asNumber(source.critical_validation_issues),

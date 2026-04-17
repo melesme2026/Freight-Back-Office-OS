@@ -141,6 +141,42 @@ class ReviewQueueService:
             ),
         }
 
+
+    def get_load_review_context(
+        self,
+        *,
+        organization_id: str,
+        load_id: str,
+    ) -> dict[str, Any]:
+        load = self.load_repo.get_by_id(load_id, include_related=True)
+        if load is None or str(getattr(load, "organization_id", "")) != str(organization_id):
+            raise ValueError("Load not found")
+
+        item = self._build_queue_item(load)
+        if item is not None:
+            return item
+
+        return {
+            "load_id": str(load.id),
+            "load_number": load.load_number,
+            "status": self._normalize_status(getattr(load, "status", None)),
+            "issue_count": 0,
+            "blocking_issue_count": 0,
+            "warning_issue_count": 0,
+            "primary_issue": None,
+            "severity": "low",
+            "primary_issue_is_blocking": False,
+            "primary_issue_rule_code": None,
+            "extraction_confidence_avg": self._safe_float(
+                getattr(load, "extraction_confidence_avg", None)
+            ),
+            "last_reviewed_at": (
+                load.last_reviewed_at.isoformat()
+                if getattr(load, "last_reviewed_at", None) is not None
+                else None
+            ),
+        }
+
     def get_review_queue(
         self,
         *,

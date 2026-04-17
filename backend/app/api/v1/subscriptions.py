@@ -9,6 +9,8 @@ from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_db_session
+from app.core.exceptions import UnauthorizedError
+from app.core.security import get_current_token_payload
 from app.schemas.common import ApiResponse
 from app.services.billing.subscription_service import SubscriptionService
 
@@ -85,6 +87,23 @@ def _enum_to_string(value: object | None) -> str | None:
     return str(value)
 
 
+
+
+def _resolve_effective_org_id(
+    *,
+    organization_id: uuid.UUID | None,
+    token_payload: dict[str, Any],
+) -> uuid.UUID:
+    token_org_id = token_payload.get("organization_id")
+    effective_org_id = organization_id or uuid.UUID(str(token_org_id))
+    if str(effective_org_id) != str(token_org_id):
+        raise UnauthorizedError("organization_id does not match authenticated organization")
+    return effective_org_id
+
+
+def _assert_item_org(item: Any, *, token_org_id: uuid.UUID) -> None:
+    if str(getattr(item, "organization_id", "")) != str(token_org_id):
+        raise UnauthorizedError("Resource is not in authenticated organization")
 def _serialize_subscription(item: Any) -> dict[str, Any]:
     return {
         "id": str(item.id),
@@ -108,11 +127,17 @@ def _serialize_subscription(item: Any) -> dict[str, Any]:
 @router.post("/subscriptions", response_model=ApiResponse)
 def create_subscription(
     payload: SubscriptionCreateRequest,
+    token_payload: dict[str, Any] = Depends(get_current_token_payload),
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
+    effective_org_id = _resolve_effective_org_id(
+        organization_id=payload.organization_id,
+        token_payload=token_payload,
+    )
+
     service = SubscriptionService(db)
     item = service.create_subscription(
-        organization_id=str(payload.organization_id),
+        organization_id=str(effective_org_id),
         customer_account_id=str(payload.customer_account_id),
         service_plan_id=str(payload.service_plan_id),
         starts_at=payload.starts_at,
@@ -136,11 +161,17 @@ def list_subscriptions(
     status: str | None = None,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=25, ge=1, le=200),
+    token_payload: dict[str, Any] = Depends(get_current_token_payload),
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
+    effective_org_id = _resolve_effective_org_id(
+        organization_id=organization_id,
+        token_payload=token_payload,
+    )
+
     service = SubscriptionService(db)
     items, total = service.list_subscriptions(
-        organization_id=_uuid_to_str(organization_id),
+        organization_id=_uuid_to_str(effective_org_id),
         customer_account_id=_uuid_to_str(customer_account_id),
         service_plan_id=_uuid_to_str(service_plan_id),
         status=_normalize_optional_text(status),
@@ -162,10 +193,13 @@ def list_subscriptions(
 @router.get("/subscriptions/{subscription_id}", response_model=ApiResponse)
 def get_subscription(
     subscription_id: uuid.UUID,
+    token_payload: dict[str, Any] = Depends(get_current_token_payload),
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
     service = SubscriptionService(db)
     item = service.get_subscription(str(subscription_id))
+    token_org_id = uuid.UUID(str(token_payload.get("organization_id")))
+    _assert_item_org(item, token_org_id=token_org_id)
 
     return ApiResponse(
         data=_serialize_subscription(item),
@@ -178,9 +212,13 @@ def get_subscription(
 def update_subscription(
     subscription_id: uuid.UUID,
     payload: SubscriptionUpdateRequest,
+    token_payload: dict[str, Any] = Depends(get_current_token_payload),
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
     service = SubscriptionService(db)
+    existing = service.get_subscription(str(subscription_id))
+    token_org_id = uuid.UUID(str(token_payload.get("organization_id")))
+    _assert_item_org(existing, token_org_id=token_org_id)
     item = service.update_subscription(
         subscription_id=str(subscription_id),
         status=_normalize_optional_text(payload.status),
@@ -205,9 +243,13 @@ def update_subscription(
 def cancel_subscription(
     subscription_id: uuid.UUID,
     payload: SubscriptionCancelRequest,
+    token_payload: dict[str, Any] = Depends(get_current_token_payload),
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
     service = SubscriptionService(db)
+    existing = service.get_subscription(str(subscription_id))
+    token_org_id = uuid.UUID(str(token_payload.get("organization_id")))
+    _assert_item_org(existing, token_org_id=token_org_id)
     item = service.cancel_subscription(
         subscription_id=str(subscription_id),
         cancel_at_period_end=payload.cancel_at_period_end,

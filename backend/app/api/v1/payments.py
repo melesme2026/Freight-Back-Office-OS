@@ -10,7 +10,8 @@ from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_db_session
-from app.core.exceptions import NotFoundError, ValidationError
+from app.core.exceptions import NotFoundError, UnauthorizedError, ValidationError
+from app.core.security import get_current_token_payload
 from app.domain.models.payment_method import PaymentMethod
 from app.repositories.payment_method_repo import PaymentMethodRepository
 from app.schemas.common import ApiResponse
@@ -187,6 +188,23 @@ def _serialize_payment(item: Any) -> dict[str, Any]:
     }
 
 
+
+
+def _resolve_effective_org_id(
+    *,
+    organization_id: uuid.UUID | None,
+    token_payload: dict[str, Any],
+) -> uuid.UUID:
+    token_org_id = token_payload.get("organization_id")
+    effective_org_id = organization_id or uuid.UUID(str(token_org_id))
+    if str(effective_org_id) != str(token_org_id):
+        raise UnauthorizedError("organization_id does not match authenticated organization")
+    return effective_org_id
+
+
+def _assert_item_org(item: Any, *, token_org_id: uuid.UUID) -> None:
+    if str(getattr(item, "organization_id", "")) != str(token_org_id):
+        raise UnauthorizedError("Resource is not in authenticated organization")
 def _get_payment_method_or_404(
     repo: PaymentMethodRepository,
     payment_method_id: uuid.UUID,
@@ -203,8 +221,14 @@ def _get_payment_method_or_404(
 @router.post("/payment-methods", response_model=ApiResponse)
 def create_payment_method(
     payload: PaymentMethodCreateRequest,
+    token_payload: dict[str, Any] = Depends(get_current_token_payload),
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
+    effective_org_id = _resolve_effective_org_id(
+        organization_id=payload.organization_id,
+        token_payload=token_payload,
+    )
+
     repo = PaymentMethodRepository(db)
 
     normalized_provider_payment_method_id = _normalize_required_text(
@@ -229,7 +253,7 @@ def create_payment_method(
         repo.clear_default_for_customer_account(payload.customer_account_id)
 
     item = PaymentMethod(
-        organization_id=payload.organization_id,
+        organization_id=effective_org_id,
         customer_account_id=payload.customer_account_id,
         provider=_normalize_required_text(payload.provider, "provider"),
         provider_customer_id=_normalize_optional_text(payload.provider_customer_id),
@@ -261,11 +285,17 @@ def list_payment_methods(
     is_active: bool | None = None,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=50, ge=1, le=200),
+    token_payload: dict[str, Any] = Depends(get_current_token_payload),
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
+    effective_org_id = _resolve_effective_org_id(
+        organization_id=organization_id,
+        token_payload=token_payload,
+    )
+
     repo = PaymentMethodRepository(db)
     items, total = repo.list(
-        organization_id=organization_id,
+        organization_id=effective_org_id,
         customer_account_id=customer_account_id,
         provider=_normalize_optional_text(provider),
         is_default=is_default,
@@ -284,10 +314,13 @@ def list_payment_methods(
 @router.get("/payment-methods/{payment_method_id}", response_model=ApiResponse)
 def get_payment_method(
     payment_method_id: uuid.UUID,
+    token_payload: dict[str, Any] = Depends(get_current_token_payload),
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
+    token_org_id = uuid.UUID(str(token_payload.get("organization_id")))
     repo = PaymentMethodRepository(db)
     item = _get_payment_method_or_404(repo, payment_method_id)
+    _assert_item_org(item, token_org_id=token_org_id)
 
     return ApiResponse(
         data=_serialize_payment_method(item),
@@ -300,10 +333,13 @@ def get_payment_method(
 def update_payment_method(
     payment_method_id: uuid.UUID,
     payload: PaymentMethodUpdateRequest,
+    token_payload: dict[str, Any] = Depends(get_current_token_payload),
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
+    token_org_id = uuid.UUID(str(token_payload.get("organization_id")))
     repo = PaymentMethodRepository(db)
     item = _get_payment_method_or_404(repo, payment_method_id)
+    _assert_item_org(item, token_org_id=token_org_id)
 
     if payload.is_default is True:
         repo.clear_default_for_customer_account(item.customer_account_id)
@@ -335,11 +371,17 @@ def update_payment_method(
 @router.post("/payments/collect", response_model=ApiResponse)
 def collect_payment(
     payload: CollectPaymentRequest,
+    token_payload: dict[str, Any] = Depends(get_current_token_payload),
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
+    effective_org_id = _resolve_effective_org_id(
+        organization_id=payload.organization_id,
+        token_payload=token_payload,
+    )
+
     service = PaymentService(db)
     item = service.collect_payment(
-        organization_id=str(payload.organization_id),
+        organization_id=str(effective_org_id),
         customer_account_id=str(payload.customer_account_id),
         billing_invoice_id=str(payload.billing_invoice_id),
         amount=_parse_amount(payload.amount),
@@ -366,11 +408,17 @@ def list_payments(
     status: str | None = None,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=50, ge=1, le=200),
+    token_payload: dict[str, Any] = Depends(get_current_token_payload),
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
+    effective_org_id = _resolve_effective_org_id(
+        organization_id=organization_id,
+        token_payload=token_payload,
+    )
+
     service = PaymentService(db)
     items, total = service.list_payments(
-        organization_id=_uuid_to_str(organization_id),
+        organization_id=_uuid_to_str(effective_org_id),
         customer_account_id=_uuid_to_str(customer_account_id),
         billing_invoice_id=_uuid_to_str(billing_invoice_id),
         payment_method_id=_uuid_to_str(payment_method_id),
@@ -390,10 +438,13 @@ def list_payments(
 @router.get("/payments/{payment_id}", response_model=ApiResponse)
 def get_payment(
     payment_id: uuid.UUID,
+    token_payload: dict[str, Any] = Depends(get_current_token_payload),
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
+    token_org_id = uuid.UUID(str(token_payload.get("organization_id")))
     service = PaymentService(db)
     item = service.get_payment(str(payment_id))
+    _assert_item_org(item, token_org_id=token_org_id)
 
     return ApiResponse(
         data=_serialize_payment(item),
@@ -406,9 +457,13 @@ def get_payment(
 def mark_payment_failed(
     payment_id: uuid.UUID,
     payload: MarkPaymentFailedRequest,
+    token_payload: dict[str, Any] = Depends(get_current_token_payload),
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
+    token_org_id = uuid.UUID(str(token_payload.get("organization_id")))
     service = PaymentService(db)
+    existing = service.get_payment(str(payment_id))
+    _assert_item_org(existing, token_org_id=token_org_id)
     item = service.mark_failed(
         payment_id=str(payment_id),
         failure_reason=_normalize_optional_text(payload.failure_reason),

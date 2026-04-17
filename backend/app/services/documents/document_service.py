@@ -400,6 +400,9 @@ class DocumentService:
             "email": Channel.EMAIL,
             "whatsapp": Channel.WHATSAPP,
             "api": Channel.API,
+            "driver_portal": Channel.DRIVER_PORTAL,
+            "driver-portal": Channel.DRIVER_PORTAL,
+            "driver portal": Channel.DRIVER_PORTAL,
         }
 
         if normalized in aliases:

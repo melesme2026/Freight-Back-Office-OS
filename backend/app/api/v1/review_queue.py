@@ -257,3 +257,27 @@ def mark_load_reviewed(
         meta={},
         error=None,
     )
+
+
+@router.get("/review-queue/loads/{load_id}/context", response_model=ApiResponse)
+def get_load_review_context(
+    load_id: uuid.UUID,
+    token_payload: dict[str, Any] = Depends(get_current_token_payload),
+    db: Session = Depends(get_db_session),
+) -> ApiResponse:
+    token_org_id = token_payload.get("organization_id")
+
+    service = ReviewQueueService(db)
+    try:
+        item = service.get_load_review_context(
+            organization_id=str(token_org_id),
+            load_id=str(load_id),
+        )
+    except ValueError as exc:
+        raise UnauthorizedError("Load is not in authenticated organization") from exc
+
+    return ApiResponse(
+        data=item,
+        meta={},
+        error=None,
+    )
