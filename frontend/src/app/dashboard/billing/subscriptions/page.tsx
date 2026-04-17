@@ -218,6 +218,7 @@ export default function BillingSubscriptionsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  const [isCreating, setIsCreating] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -295,6 +296,45 @@ export default function BillingSubscriptionsPage() {
     setReloadKey((current) => current + 1);
   }
 
+  async function handleCreateSubscription(): Promise<void> {
+    const token = getAccessToken();
+    const organizationId = getOrganizationId();
+
+    if (!token || !organizationId) {
+      setErrorMessage("Missing session context. Please sign in again.");
+      return;
+    }
+
+    const customerAccountId = window.prompt("Customer account UUID");
+    if (!customerAccountId?.trim()) return;
+    const servicePlanId = window.prompt("Service plan UUID");
+    if (!servicePlanId?.trim()) return;
+    const startsAt = window.prompt("Start date/time (ISO)", new Date().toISOString());
+    if (!startsAt?.trim()) return;
+    const billingEmail = window.prompt("Billing email (optional)", "");
+
+    try {
+      setIsCreating(true);
+      setErrorMessage(null);
+      await apiClient.post(
+        "/subscriptions",
+        {
+          organization_id: organizationId,
+          customer_account_id: customerAccountId.trim(),
+          service_plan_id: servicePlanId.trim(),
+          starts_at: startsAt.trim(),
+          billing_email: billingEmail?.trim() || null,
+        },
+        { token, organizationId }
+      );
+      handleRetry();
+    } catch (error: unknown) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to create subscription.");
+    } finally {
+      setIsCreating(false);
+    }
+  }
+
   return (
     <main className="min-h-screen bg-slate-50 text-slate-900">
       <div className="mx-auto max-w-7xl px-6 py-10">
@@ -322,12 +362,12 @@ export default function BillingSubscriptionsPage() {
 
             <button
               type="button"
-              disabled
-              aria-disabled="true"
-              title="Subscription creation is not yet available in V1."
-              className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white opacity-60"
+              onClick={() => void handleCreateSubscription()}
+              disabled={isCreating || isLoading}
+              title="Create a minimal operational subscription."
+              className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              New Subscription
+              {isCreating ? "Creating..." : "New Subscription"}
             </button>
           </div>
         </div>

@@ -110,6 +110,62 @@ export default function DashboardPage() {
     return "Stable";
   }, [metrics]);
 
+  const actionNow = useMemo(() => {
+    if (!metrics) {
+      return [];
+    }
+
+    const followUpRequired =
+      (metrics.loads_ready_to_submit ?? 0) +
+      (metrics.loads_waiting_on_broker ?? 0) +
+      (metrics.loads_waiting_on_funding ?? 0);
+    const agingRisk =
+      (metrics.loads_waiting_on_broker ?? 0) +
+      (metrics.loads_waiting_on_funding ?? 0);
+    const blockedOrReviewNeeded =
+      (metrics.loads_needing_review ?? 0) +
+      (metrics.critical_validation_issues ?? 0);
+
+    return [
+      {
+        label: "Follow-up Required",
+        value: followUpRequired,
+        tone: followUpRequired > 0 ? "warning" : "success",
+        helper: "Ready / waiting stages that need operator touches.",
+      },
+      {
+        label: "Overdue / Aging Risk",
+        value: agingRisk,
+        tone: agingRisk > 0 ? "danger" : "success",
+        helper: "Loads sitting with broker/funding pending states.",
+      },
+      {
+        label: "Waiting on Broker",
+        value: metrics.loads_waiting_on_broker ?? 0,
+        tone: (metrics.loads_waiting_on_broker ?? 0) > 0 ? "warning" : "default",
+        helper: "Broker response follow-up queue.",
+      },
+      {
+        label: "Waiting on Funding",
+        value: metrics.loads_waiting_on_funding ?? 0,
+        tone: (metrics.loads_waiting_on_funding ?? 0) > 0 ? "warning" : "default",
+        helper: "Factoring/funding confirmation queue.",
+      },
+      {
+        label: "Ready to Submit",
+        value: metrics.loads_ready_to_submit ?? 0,
+        tone: (metrics.loads_ready_to_submit ?? 0) > 0 ? "warning" : "default",
+        helper: "Prepared loads ready for outbound action.",
+      },
+      {
+        label: "Blocked / Review Needed",
+        value: blockedOrReviewNeeded,
+        tone: blockedOrReviewNeeded > 0 ? "danger" : "success",
+        helper: "Validation-critical or review-stage work.",
+      },
+    ] as const;
+  }, [metrics]);
+
   return (
     <div className="px-6 py-10 text-slate-900">
       <div className="mx-auto max-w-7xl">
@@ -180,6 +236,27 @@ export default function DashboardPage() {
             value={loading ? "..." : metrics?.loads_paid ?? 0}
             tone="success"
           />
+        </section>
+
+        <section className="mb-8 rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
+          <div className="mb-4">
+            <h2 className="text-lg font-semibold text-slate-950">Action-Now Command Center</h2>
+            <p className="mt-1 text-sm text-slate-600">
+              Prioritized operational slices so dispatch and billing teams can act quickly.
+            </p>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {(loading ? [] : actionNow).map((item) => (
+              <div key={item.label} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <MetricCard label={item.label} value={item.value} tone={item.tone} />
+                <p className="mt-2 text-xs text-slate-600">{item.helper}</p>
+              </div>
+            ))}
+            {loading ? (
+              <div className="text-sm text-slate-500">Loading action-now slices...</div>
+            ) : null}
+          </div>
         </section>
 
         <section className="mb-8 rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">

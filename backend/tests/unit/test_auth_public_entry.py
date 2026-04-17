@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from app.domain.models.driver import Driver
 from app.api.v1.auth import (
     ActivateAccountRequest,
     ConfirmPasswordResetRequest,
@@ -45,6 +46,17 @@ def test_invite_activate_and_reset_password_flow(db_session) -> None:
 
     owner_token = signup_response.data.access_token
     organization_id = signup_response.data.user.organization_id
+
+    driver_profile = Driver(
+        organization_id=organization_id,
+        customer_account_id=None,
+        full_name="Driver One",
+        phone="+15551112222",
+        email="driver1@opsfreight.com",
+        is_active=True,
+    )
+    db_session.add(driver_profile)
+    db_session.commit()
 
     invite_response = invite_user(
         InviteUserRequest(

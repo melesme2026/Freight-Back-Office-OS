@@ -221,6 +221,7 @@ export default function BillingInvoicesPage() {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState<number>(0);
+  const [isCreating, setIsCreating] = useState<boolean>(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -302,6 +303,67 @@ export default function BillingInvoicesPage() {
     router.push(`/dashboard/billing/invoices/${invoiceId}`);
   }
 
+  async function handleCreateInvoice(): Promise<void> {
+    const token = getAccessToken();
+    const organizationId = getOrganizationId();
+
+    if (!token || !organizationId) {
+      setErrorMessage("Missing session context. Please sign in again.");
+      return;
+    }
+
+    const customerAccountId = window.prompt("Customer account UUID");
+    if (!customerAccountId?.trim()) {
+      return;
+    }
+
+    const issuedAt = window.prompt("Issued date/time (ISO, e.g. 2026-04-17T00:00:00Z)", new Date().toISOString());
+    if (!issuedAt?.trim()) {
+      return;
+    }
+
+    const dueAt = window.prompt("Due date/time (ISO, optional)", "");
+    const lineDescription = window.prompt("Line description", "Freight service");
+    if (!lineDescription?.trim()) {
+      return;
+    }
+    const lineAmount = window.prompt("Line amount", "0.00");
+    if (!lineAmount?.trim()) {
+      return;
+    }
+
+    try {
+      setIsCreating(true);
+      setErrorMessage(null);
+
+      await apiClient.post(
+        "/billing-invoices",
+        {
+          organization_id: organizationId,
+          customer_account_id: customerAccountId.trim(),
+          issued_at: issuedAt.trim(),
+          due_at: dueAt?.trim() || null,
+          currency_code: "USD",
+          lines: [
+            {
+              line_type: "service",
+              description: lineDescription.trim(),
+              quantity: "1",
+              unit_price: lineAmount.trim(),
+            },
+          ],
+        },
+        { token, organizationId }
+      );
+
+      handleRetry();
+    } catch (error: unknown) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to create invoice.");
+    } finally {
+      setIsCreating(false);
+    }
+  }
+
   return (
     <main className="min-h-screen bg-slate-50 text-slate-900">
       <div className="mx-auto max-w-7xl px-6 py-10">
@@ -326,12 +388,12 @@ export default function BillingInvoicesPage() {
 
             <button
               type="button"
-              disabled
-              aria-disabled="true"
-              title="Invoice creation is not yet available in V1."
-              className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white opacity-60"
+              onClick={() => void handleCreateInvoice()}
+              disabled={isCreating || isLoading}
+              title="Create a minimal operational invoice."
+              className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              New Invoice
+              {isCreating ? "Creating..." : "New Invoice"}
             </button>
           </div>
         </div>

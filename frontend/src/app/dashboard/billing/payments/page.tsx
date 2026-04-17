@@ -219,6 +219,7 @@ export default function BillingPaymentsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  const [isRecording, setIsRecording] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -296,6 +297,45 @@ export default function BillingPaymentsPage() {
     setReloadKey((current) => current + 1);
   }
 
+  async function handleRecordPayment(): Promise<void> {
+    const token = getAccessToken();
+    const organizationId = getOrganizationId();
+
+    if (!token || !organizationId) {
+      setErrorMessage("Missing session context. Please sign in again.");
+      return;
+    }
+
+    const customerAccountId = window.prompt("Customer account UUID");
+    if (!customerAccountId?.trim()) return;
+    const billingInvoiceId = window.prompt("Invoice UUID");
+    if (!billingInvoiceId?.trim()) return;
+    const amount = window.prompt("Payment amount", "0.00");
+    if (!amount?.trim()) return;
+    const driverId = window.prompt("Driver UUID (optional)", "");
+
+    try {
+      setIsRecording(true);
+      setErrorMessage(null);
+      await apiClient.post(
+        "/payments/collect",
+        {
+          organization_id: organizationId,
+          customer_account_id: customerAccountId.trim(),
+          billing_invoice_id: billingInvoiceId.trim(),
+          amount: amount.trim(),
+          driver_id: driverId?.trim() || null,
+        },
+        { token, organizationId }
+      );
+      handleRetry();
+    } catch (error: unknown) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to record payment.");
+    } finally {
+      setIsRecording(false);
+    }
+  }
+
   return (
     <main className="min-h-screen bg-slate-50 text-slate-900">
       <div className="mx-auto max-w-7xl px-6 py-10">
@@ -321,10 +361,11 @@ export default function BillingPaymentsPage() {
 
             <button
               type="button"
-              disabled
-              className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white opacity-60"
+              onClick={() => void handleRecordPayment()}
+              disabled={isRecording || isLoading}
+              className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              Record Payment
+              {isRecording ? "Recording..." : "Record Payment"}
             </button>
           </div>
         </div>
