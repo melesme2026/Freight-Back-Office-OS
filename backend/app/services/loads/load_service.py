@@ -179,6 +179,7 @@ class LoadService:
             "has_ratecon",
             "has_bol",
             "has_invoice",
+            "follow_up_required",
             "notes",
             "status",
             "processing_status",
@@ -236,7 +237,13 @@ class LoadService:
                     setattr(load, field, None)
                 else:
                     setattr(load, field, self._normalize_uuid(value, field_name="broker_id"))
-            elif field in {"documents_complete", "has_ratecon", "has_bol", "has_invoice"}:
+            elif field in {
+                "documents_complete",
+                "has_ratecon",
+                "has_bol",
+                "has_invoice",
+                "follow_up_required",
+            }:
                 setattr(load, field, bool(value))
             else:
                 setattr(load, field, value)
@@ -265,7 +272,7 @@ class LoadService:
         if has_invoice is not None:
             load.has_invoice = bool(has_invoice)
 
-        load.documents_complete = bool(load.has_ratecon and load.has_bol)
+        load.documents_complete = bool(load.has_ratecon and load.has_bol and load.has_invoice)
         if load.documents_complete and load.status == LoadStatus.NEW:
             self._sync_status_timestamps(
                 load,
@@ -300,7 +307,12 @@ class LoadService:
         _ = old_status
         now = datetime.now(timezone.utc)
 
-        if new_status == LoadStatus.SUBMITTED and load.submitted_at is None:
+        if new_status in {
+            LoadStatus.SUBMITTED_TO_BROKER,
+            LoadStatus.WAITING_ON_BROKER,
+            LoadStatus.SUBMITTED_TO_FACTORING,
+            LoadStatus.WAITING_ON_FUNDING,
+        } and load.submitted_at is None:
             load.submitted_at = now
 
         if new_status == LoadStatus.FUNDED:

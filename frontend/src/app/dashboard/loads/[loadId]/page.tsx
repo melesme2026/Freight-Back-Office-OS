@@ -10,11 +10,12 @@ import { buildApiUrl as buildConfiguredApiUrl } from "@/lib/config";
 type LoadStatus =
   | "new"
   | "docs_received"
-  | "extracting"
   | "needs_review"
-  | "validated"
   | "ready_to_submit"
-  | "submitted"
+  | "submitted_to_broker"
+  | "waiting_on_broker"
+  | "submitted_to_factoring"
+  | "waiting_on_funding"
   | "funded"
   | "paid"
   | "exception"
@@ -43,6 +44,8 @@ type Load = {
   last_reviewed_by?: string | null;
   last_reviewed_by_name?: string | null;
   last_reviewed_at?: string | null;
+  last_contacted_at?: string | null;
+  follow_up_required?: boolean | null;
   submitted_at?: string | null;
   funded_at?: string | null;
   paid_at?: string | null;
@@ -84,6 +87,12 @@ type StatusTransitionResponse = {
   changed_at: string;
 };
 
+type WorkflowAction =
+  | "mark_sent_to_broker"
+  | "mark_waiting_on_broker"
+  | "mark_submitted_to_factoring"
+  | "mark_funded";
+
 type MarkReviewedResponse = {
   id: string;
   last_reviewed_by?: string | null;
@@ -118,25 +127,36 @@ type UploadDocumentType =
   | "pod"
   | "unknown";
 
+type OperationalChecklistState = "complete" | "current" | "pending" | "blocked";
+
+type OperationalChecklistItem = {
+  key: string;
+  label: string;
+  state: OperationalChecklistState;
+  detail: string;
+};
+
 const NEXT_STATUS_MAP: Partial<Record<LoadStatus, LoadStatus>> = {
   new: "docs_received",
-  docs_received: "extracting",
-  extracting: "needs_review",
-  needs_review: "validated",
-  validated: "ready_to_submit",
-  ready_to_submit: "submitted",
-  submitted: "funded",
+  docs_received: "needs_review",
+  needs_review: "ready_to_submit",
+  ready_to_submit: "submitted_to_broker",
+  submitted_to_broker: "waiting_on_broker",
+  waiting_on_broker: "submitted_to_factoring",
+  submitted_to_factoring: "waiting_on_funding",
+  waiting_on_funding: "funded",
   funded: "paid",
 };
 
 const WORKFLOW_ORDER: LoadStatus[] = [
   "new",
   "docs_received",
-  "extracting",
   "needs_review",
-  "validated",
   "ready_to_submit",
-  "submitted",
+  "submitted_to_broker",
+  "waiting_on_broker",
+  "submitted_to_factoring",
+  "waiting_on_funding",
   "funded",
   "paid",
 ];
@@ -155,6 +175,8 @@ const UPLOAD_DOCUMENT_TYPE_OPTIONS: Array<{
 
 const MANUAL_STATUS_OPTIONS: Array<{ value: LoadStatus; label: string }> = [
   { value: "docs_received", label: "Docs Received" },
+  { value: "ready_to_submit", label: "Ready to Submit" },
+  { value: "waiting_on_funding", label: "Waiting on Funding" },
   { value: "paid", label: "Paid" },
 ];
 
@@ -162,20 +184,22 @@ function statusBadge(status: string) {
   switch (status) {
     case "needs_review":
       return "bg-amber-100 text-amber-800";
-    case "validated":
+    case "ready_to_submit":
       return "bg-emerald-100 text-emerald-800";
-    case "submitted":
+    case "submitted_to_broker":
       return "bg-blue-100 text-blue-800";
+    case "waiting_on_broker":
+      return "bg-sky-100 text-sky-800";
+    case "submitted_to_factoring":
+      return "bg-indigo-100 text-indigo-800";
+    case "waiting_on_funding":
+      return "bg-violet-100 text-violet-800";
     case "paid":
       return "bg-purple-100 text-purple-800";
     case "docs_received":
       return "bg-cyan-100 text-cyan-800";
-    case "extracting":
-      return "bg-indigo-100 text-indigo-800";
-    case "ready_to_submit":
-      return "bg-sky-100 text-sky-800";
     case "funded":
-      return "bg-violet-100 text-violet-800";
+      return "bg-teal-100 text-teal-800";
     case "exception":
       return "bg-rose-100 text-rose-800";
     case "archived":
@@ -419,11 +443,12 @@ function normalizeLoadStatus(value: unknown): LoadStatus {
   switch (normalized) {
     case "new":
     case "docs_received":
-    case "extracting":
     case "needs_review":
-    case "validated":
     case "ready_to_submit":
-    case "submitted":
+    case "submitted_to_broker":
+    case "waiting_on_broker":
+    case "submitted_to_factoring":
+    case "waiting_on_funding":
     case "funded":
     case "paid":
     case "exception":
@@ -489,6 +514,8 @@ function normalizeLoad(payload: unknown): Load | null {
     last_reviewed_by: getStringField(record, "last_reviewed_by"),
     last_reviewed_by_name: getStringField(record, "last_reviewed_by_name"),
     last_reviewed_at: getStringField(record, "last_reviewed_at"),
+    last_contacted_at: getStringField(record, "last_contacted_at"),
+    follow_up_required: getOptionalBooleanField(record, "follow_up_required"),
     submitted_at: getStringField(record, "submitted_at"),
     funded_at: getStringField(record, "funded_at"),
     paid_at: getStringField(record, "paid_at"),
@@ -670,10 +697,32 @@ function getPaymentStageLabel(load: Load) {
   if (load.status === "funded" || load.funded_at) {
     return load.is_factored ? "Factored / Funded" : "Funded";
   }
-  if (load.status === "submitted" || load.submitted_at) {
-    return "Submitted";
+  if (load.status === "waiting_on_funding") {
+    return "Waiting on Funding";
+  }
+  if (load.status === "submitted_to_factoring") {
+    return "Submitted to Factoring";
+  }
+  if (load.status === "waiting_on_broker") {
+    return "Waiting on Broker";
+  }
+  if (load.status === "submitted_to_broker" || load.submitted_at) {
+    return "Submitted to Broker";
   }
   return "Not yet submitted";
+}
+
+function operationalChecklistBadge(state: OperationalChecklistState) {
+  switch (state) {
+    case "complete":
+      return "bg-emerald-100 text-emerald-800";
+    case "current":
+      return "bg-brand-100 text-brand-800";
+    case "blocked":
+      return "bg-rose-100 text-rose-800";
+    default:
+      return "bg-slate-100 text-slate-600";
+  }
 }
 
 function extractErrorMessage(caught: unknown, fallback: string) {
@@ -699,6 +748,7 @@ export default function LoadDetailPage() {
   const [manualStatus, setManualStatus] = useState<LoadStatus>("docs_received");
   const [isGeneratingInvoice, setIsGeneratingInvoice] = useState<boolean>(false);
   const [isMarkingReviewed, setIsMarkingReviewed] = useState<boolean>(false);
+  const [isExecutingWorkflowAction, setIsExecutingWorkflowAction] = useState<boolean>(false);
   const [isDocumentsLoading, setIsDocumentsLoading] = useState<boolean>(false);
   const [isUploadingDocument, setIsUploadingDocument] = useState<boolean>(false);
   const [downloadingDocumentId, setDownloadingDocumentId] = useState<string | null>(null);
@@ -931,16 +981,26 @@ export default function LoadDetailPage() {
     }
 
     if (
-      (nextStatus === "validated" ||
-        nextStatus === "ready_to_submit" ||
-        nextStatus === "submitted") &&
+      (nextStatus === "ready_to_submit" ||
+        nextStatus === "submitted_to_broker" ||
+        nextStatus === "waiting_on_broker" ||
+        nextStatus === "submitted_to_factoring" ||
+        nextStatus === "waiting_on_funding" ||
+        nextStatus === "funded" ||
+        nextStatus === "paid") &&
       totalOpenIssues > 0
     ) {
       return "Resolve open validation issues before advancing this load.";
     }
 
     if (
-      (nextStatus === "ready_to_submit" || nextStatus === "submitted") &&
+      (nextStatus === "ready_to_submit" ||
+        nextStatus === "submitted_to_broker" ||
+        nextStatus === "waiting_on_broker" ||
+        nextStatus === "submitted_to_factoring" ||
+        nextStatus === "waiting_on_funding" ||
+        nextStatus === "funded" ||
+        nextStatus === "paid") &&
       requiredDocsReceivedCount < 3
     ) {
       return "All required documents must be present before submission readiness.";
@@ -975,6 +1035,102 @@ export default function LoadDetailPage() {
       return { status, state };
     });
   }, [load]);
+
+  const brokerFactoringWorkflow = useMemo((): OperationalChecklistItem[] => {
+    if (!load) {
+      return [];
+    }
+
+    const brokerIdentity = [load.broker_name_raw, load.broker_name, load.broker_id].some(
+      (value) => typeof value === "string" && value.trim().length > 0
+    );
+    const brokerEmailAvailable =
+      typeof load.broker_email_raw === "string" && load.broker_email_raw.trim().length > 0;
+
+    const documentsReady = requiredDocsReceivedCount === 3;
+    const validationReady = totalOpenIssues === 0;
+    const packageReady = documentsReady && validationReady;
+    const submissionCompleted =
+      load.status === "submitted_to_broker" ||
+      load.status === "waiting_on_broker" ||
+      load.status === "submitted_to_factoring" ||
+      load.status === "waiting_on_funding" ||
+      load.status === "funded" ||
+      load.status === "paid" ||
+      Boolean(load.submitted_at);
+    const fundingCompleted = load.status === "funded" || load.status === "paid" || Boolean(load.funded_at);
+    const paymentCompleted = load.status === "paid" || Boolean(load.paid_at);
+    const factoringEnabled =
+      load.is_factored === true ||
+      (typeof load.factoring_provider === "string" && load.factoring_provider.trim().length > 0);
+
+    return [
+      {
+        key: "broker-profile",
+        label: "Broker profile confirmed",
+        state: brokerIdentity ? "complete" : "blocked",
+        detail: brokerIdentity
+          ? "Broker reference is present on this load."
+          : "Capture broker identity before handoff.",
+      },
+      {
+        key: "broker-contact",
+        label: "Broker contact routed",
+        state: brokerEmailAvailable ? "complete" : "pending",
+        detail: brokerEmailAvailable
+          ? "Email contact is available for updates."
+          : "Add a broker email for cleaner communication.",
+      },
+      {
+        key: "package-readiness",
+        label: "Invoice package readiness",
+        state: packageReady ? "complete" : documentsReady ? "blocked" : "pending",
+        detail: packageReady
+          ? "Required docs received and no open validation blockers."
+          : documentsReady
+            ? "Resolve validation blockers before submission."
+            : "Collect RateCon, BOL, and Invoice documents.",
+      },
+      {
+        key: "submission",
+        label: factoringEnabled ? "Submitted to factor/broker" : "Submitted to broker/AP",
+        state: submissionCompleted ? "complete" : packageReady ? "current" : "pending",
+        detail: submissionCompleted
+          ? `Submitted ${formatDateTime(load.submitted_at)}.`
+          : packageReady
+            ? "Ready for operational submission now."
+            : "Submission unlocks after package readiness is complete.",
+      },
+      {
+        key: "funding",
+        label: factoringEnabled ? "Funding confirmed" : "Payment receipt tracked",
+        state: fundingCompleted ? "complete" : submissionCompleted ? "current" : "pending",
+        detail: fundingCompleted
+          ? `Funding checkpoint reached ${formatDateTime(load.funded_at)}.`
+          : submissionCompleted
+            ? "Awaiting funding/payment acknowledgment."
+            : "Funding follows successful submission.",
+      },
+      {
+        key: "settlement",
+        label: "Final settlement complete",
+        state: paymentCompleted ? "complete" : fundingCompleted ? "current" : "pending",
+        detail: paymentCompleted
+          ? `Settled ${formatDateTime(load.paid_at)}.`
+          : fundingCompleted
+            ? "Track remaining payout to close this load."
+            : "Settlement closes the broker/factoring cycle.",
+      },
+    ];
+  }, [load, requiredDocsReceivedCount, totalOpenIssues]);
+
+  const brokerFactoringNextAction = useMemo(() => {
+    const nextItem = brokerFactoringWorkflow.find((item) => item.state !== "complete");
+    if (!nextItem) {
+      return "Broker/factoring operational workflow is complete.";
+    }
+    return `Next action: ${nextItem.label}.`;
+  }, [brokerFactoringWorkflow]);
 
   async function handleMarkReviewed() {
     if (!load || !loadId || isMarkingReviewed) {
@@ -1084,6 +1240,42 @@ export default function LoadDetailPage() {
       setError(extractErrorMessage(caught, "Failed to set status."));
     } finally {
       setIsSettingStatus(false);
+    }
+  }
+
+  async function handleWorkflowAction(action: WorkflowAction) {
+    if (!load || !load.id || isExecutingWorkflowAction) {
+      return;
+    }
+
+    try {
+      setIsExecutingWorkflowAction(true);
+      setError(null);
+      setActionMessage(null);
+
+      const token = getAccessToken();
+      const staffUserId = await fetchCurrentStaffUserId();
+
+      const response = await apiClient.post<ApiResponse<StatusTransitionResponse>>(
+        `/loads/${encodeURIComponent(load.id)}/workflow-actions`,
+        {
+          action,
+          actor_staff_user_id: staffUserId,
+          actor_type: "staff_user",
+          notes: `Operational workflow action: ${action}`,
+        },
+        {
+          token: token ?? undefined,
+        }
+      );
+
+      await fetchPageData();
+      const resolvedStatus = response.data?.new_status ?? load.status;
+      setActionMessage(`Workflow action complete. Status is now ${resolvedStatus.replaceAll("_", " ")}.`);
+    } catch (caught: unknown) {
+      setError(extractErrorMessage(caught, "Failed to execute workflow action."));
+    } finally {
+      setIsExecutingWorkflowAction(false);
     }
   }
 
@@ -1436,6 +1628,48 @@ export default function LoadDetailPage() {
           <p className="mt-2 text-xs text-slate-500">
             V1 quick controls support docs received and paid milestones.
           </p>
+        </div>
+
+        <div className="mb-6 rounded-2xl border border-slate-200 bg-white p-4 shadow-soft">
+          <h2 className="text-sm font-semibold text-slate-900">Broker / Factoring Staff Actions</h2>
+          <p className="mt-1 text-xs text-slate-500">
+            Use explicit actions for broker and factoring operations. Each action logs workflow
+            events and transitions status.
+          </p>
+          <div className="mt-3 grid gap-2 md:grid-cols-2">
+            <button
+              type="button"
+              onClick={() => void handleWorkflowAction("mark_sent_to_broker")}
+              disabled={isExecutingWorkflowAction}
+              className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-left text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Mark as Sent to Broker
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleWorkflowAction("mark_waiting_on_broker")}
+              disabled={isExecutingWorkflowAction}
+              className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-left text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Mark as Waiting on Broker
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleWorkflowAction("mark_submitted_to_factoring")}
+              disabled={isExecutingWorkflowAction}
+              className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-left text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Mark as Submitted to Factoring
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleWorkflowAction("mark_funded")}
+              disabled={isExecutingWorkflowAction}
+              className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-left text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Mark as Funded
+            </button>
+          </div>
         </div>
 
         {error ? (
@@ -1879,7 +2113,10 @@ export default function LoadDetailPage() {
             </div>
 
             <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
-              <h2 className="mb-4 text-lg font-semibold text-slate-950">Payment / Factoring</h2>
+              <h2 className="mb-4 text-lg font-semibold text-slate-950">
+                Broker / Factoring Workflow
+              </h2>
+              <p className="mb-4 text-sm text-slate-600">{brokerFactoringNextAction}</p>
               <div className="space-y-3 text-sm text-slate-700">
                 <div className="flex items-center justify-between gap-4">
                   <span>Stage</span>
@@ -1923,6 +2160,43 @@ export default function LoadDetailPage() {
                     {load.factoring_provider ?? "—"}
                   </span>
                 </div>
+                <div className="flex items-center justify-between gap-4">
+                  <span>Last Contacted</span>
+                  <span className="font-medium text-slate-900">
+                    {formatDateTime(load.last_contacted_at)}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-4">
+                  <span>Follow-up Required</span>
+                  <span className="font-medium text-slate-900">
+                    {load.follow_up_required === true
+                      ? "Yes"
+                      : load.follow_up_required === false
+                        ? "No"
+                        : "—"}
+                  </span>
+                </div>
+              </div>
+
+              <div className="mt-4 space-y-2">
+                {brokerFactoringWorkflow.map((item) => (
+                  <div
+                    key={item.key}
+                    className="rounded-xl border border-slate-200 px-3 py-2"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="text-sm font-medium text-slate-900">{item.label}</div>
+                      <span
+                        className={`rounded-full px-2.5 py-1 text-xs font-semibold ${operationalChecklistBadge(
+                          item.state
+                        )}`}
+                      >
+                        {item.state}
+                      </span>
+                    </div>
+                    <div className="mt-1 text-xs text-slate-600">{item.detail}</div>
+                  </div>
+                ))}
               </div>
 
               {load.factoring_notes ? (

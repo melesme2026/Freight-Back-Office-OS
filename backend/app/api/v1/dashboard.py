@@ -63,10 +63,10 @@ def get_dashboard(
         model=Load,
     )
 
-    loads_validated_stmt = _apply_optional_org_filter(
+    loads_ready_to_submit_stmt = _apply_optional_org_filter(
         select(func.count())
         .select_from(Load)
-        .where(Load.status == LoadStatus.VALIDATED),
+        .where(Load.status == LoadStatus.READY_TO_SUBMIT),
         organization_id=effective_org_id,
         model=Load,
     )
@@ -100,7 +100,7 @@ def get_dashboard(
         data={
             "loads_total": _scalar_count(db, loads_total_stmt),
             "loads_needing_review": _scalar_count(db, loads_needing_review_stmt),
-            "loads_validated": _scalar_count(db, loads_validated_stmt),
+            "loads_validated": _scalar_count(db, loads_ready_to_submit_stmt),
             "loads_paid": _scalar_count(db, loads_paid_stmt),
             "documents_pending_processing": _scalar_count(
                 db,

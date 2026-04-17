@@ -38,23 +38,23 @@ def test_transition_applier_sets_submitted_timestamp() -> None:
 
     updated = applier.apply_status_change(
         load=load,
-        new_status=LoadStatus.SUBMITTED,
+        new_status=LoadStatus.SUBMITTED_TO_BROKER,
     )
 
-    assert updated.status == LoadStatus.SUBMITTED
+    assert updated.status == LoadStatus.SUBMITTED_TO_BROKER
     assert updated.submitted_at is not None
 
 
-def test_transition_applier_sets_processing_completed_for_validated() -> None:
+def test_transition_applier_sets_processing_completed_for_ready_to_submit() -> None:
     load = DummyLoad()
     applier = LoadTransitionApplier()
 
     updated = applier.apply_status_change(
         load=load,
-        new_status=LoadStatus.VALIDATED,
+        new_status=LoadStatus.READY_TO_SUBMIT,
     )
 
-    assert updated.status == LoadStatus.VALIDATED
+    assert updated.status == LoadStatus.READY_TO_SUBMIT
     assert updated.processing_status == "completed"
 
 

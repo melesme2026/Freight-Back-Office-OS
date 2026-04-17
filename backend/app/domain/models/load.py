@@ -168,6 +168,16 @@ class Load(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         DateTime(timezone=True),
         nullable=True,
     )
+    last_contacted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    follow_up_required: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default="false",
+    )
 
     submitted_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
