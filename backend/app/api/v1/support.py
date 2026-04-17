@@ -251,8 +251,21 @@ def get_support_ticket(
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
     token_org_id = _get_token_org_id(token_payload)
+    token_role = _get_token_role(token_payload)
+    token_driver_id = _get_token_driver_id(token_payload)
+
+    actor_driver_id: str | None = None
+    if token_role == "driver":
+        if not token_driver_id:
+            raise UnauthorizedError("Driver token is missing driver_id")
+        actor_driver_id = token_driver_id
+
     service = SupportService(db)
-    item = service.get_ticket(str(ticket_id), organization_id=token_org_id)
+    item = service.get_ticket_for_actor(
+        str(ticket_id),
+        organization_id=token_org_id,
+        actor_driver_id=actor_driver_id,
+    )
 
     return ApiResponse(
         data=_serialize_support_ticket(item),
@@ -283,6 +296,7 @@ def update_support_ticket(
     item = service.update_ticket(
         ticket_id=str(ticket_id),
         organization_id=token_org_id,
+        actor_driver_id=token_driver_id if token_role == "driver" else None,
         customer_account_id=_uuid_to_str(payload.customer_account_id),
         driver_id=effective_driver_id,
         load_id=_uuid_to_str(payload.load_id),

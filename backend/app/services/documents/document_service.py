@@ -131,6 +131,24 @@ class DocumentService:
             )
         return document
 
+    def get_document_in_organization(
+        self,
+        *,
+        document_id: str,
+        organization_id: str,
+    ) -> LoadDocument:
+        document = self.get_document(document_id)
+        normalized_organization_id = self._normalize_required_text(
+            "organization_id",
+            organization_id,
+        )
+        if str(document.organization_id) != normalized_organization_id:
+            raise NotFoundError(
+                "Document not found",
+                details={"document_id": document_id, "organization_id": normalized_organization_id},
+            )
+        return document
+
     def list_documents(
         self,
         *,
