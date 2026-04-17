@@ -78,6 +78,41 @@ def get_dashboard(
         organization_id=effective_org_id,
         model=Load,
     )
+    loads_submitted_to_broker_stmt = _apply_optional_org_filter(
+        select(func.count())
+        .select_from(Load)
+        .where(Load.status == LoadStatus.SUBMITTED_TO_BROKER),
+        organization_id=effective_org_id,
+        model=Load,
+    )
+    loads_waiting_on_broker_stmt = _apply_optional_org_filter(
+        select(func.count())
+        .select_from(Load)
+        .where(Load.status == LoadStatus.WAITING_ON_BROKER),
+        organization_id=effective_org_id,
+        model=Load,
+    )
+    loads_submitted_to_factoring_stmt = _apply_optional_org_filter(
+        select(func.count())
+        .select_from(Load)
+        .where(Load.status == LoadStatus.SUBMITTED_TO_FACTORING),
+        organization_id=effective_org_id,
+        model=Load,
+    )
+    loads_waiting_on_funding_stmt = _apply_optional_org_filter(
+        select(func.count())
+        .select_from(Load)
+        .where(Load.status == LoadStatus.WAITING_ON_FUNDING),
+        organization_id=effective_org_id,
+        model=Load,
+    )
+    loads_funded_stmt = _apply_optional_org_filter(
+        select(func.count())
+        .select_from(Load)
+        .where(Load.status == LoadStatus.FUNDED),
+        organization_id=effective_org_id,
+        model=Load,
+    )
 
     documents_pending_processing_stmt = _apply_optional_org_filter(
         select(func.count())
@@ -101,6 +136,18 @@ def get_dashboard(
             "loads_total": _scalar_count(db, loads_total_stmt),
             "loads_needing_review": _scalar_count(db, loads_needing_review_stmt),
             "loads_validated": _scalar_count(db, loads_ready_to_submit_stmt),
+            "loads_ready_to_submit": _scalar_count(db, loads_ready_to_submit_stmt),
+            "loads_submitted_to_broker": _scalar_count(
+                db,
+                loads_submitted_to_broker_stmt,
+            ),
+            "loads_waiting_on_broker": _scalar_count(db, loads_waiting_on_broker_stmt),
+            "loads_submitted_to_factoring": _scalar_count(
+                db,
+                loads_submitted_to_factoring_stmt,
+            ),
+            "loads_waiting_on_funding": _scalar_count(db, loads_waiting_on_funding_stmt),
+            "loads_funded": _scalar_count(db, loads_funded_stmt),
             "loads_paid": _scalar_count(db, loads_paid_stmt),
             "documents_pending_processing": _scalar_count(
                 db,

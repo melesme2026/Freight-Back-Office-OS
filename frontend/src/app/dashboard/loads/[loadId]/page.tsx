@@ -779,19 +779,14 @@ export default function LoadDetailPage() {
     }
 
     const token = getAccessToken();
-    const response = await apiClient.get<ApiResponse<unknown>>("/review-queue", {
-      token: token ?? undefined,
-    });
-
-    const items = Array.isArray(response.data) ? response.data : [];
-    for (const item of items) {
-      const normalized = normalizeReviewQueueItem(item);
-      if (normalized && normalized.load_id === loadId) {
-        return normalized;
+    const response = await apiClient.get<ApiResponse<unknown>>(
+      `/review-queue/loads/${encodeURIComponent(loadId)}/context`,
+      {
+        token: token ?? undefined,
       }
-    }
+    );
 
-    return null;
+    return normalizeReviewQueueItem(response.data);
   }, [loadId]);
 
   const fetchLoadDocuments = useCallback(

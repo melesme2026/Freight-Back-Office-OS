@@ -10,6 +10,8 @@ from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_db_session
+from app.core.exceptions import UnauthorizedError
+from app.core.security import get_current_token_payload
 from app.schemas.common import ApiResponse
 from app.services.billing.invoice_service import InvoiceService
 
@@ -143,6 +145,23 @@ def _serialize_invoice_detail(invoice: Any) -> dict[str, Any]:
     return payload
 
 
+
+
+def _resolve_effective_org_id(
+    *,
+    organization_id: uuid.UUID | None,
+    token_payload: dict[str, Any],
+) -> uuid.UUID:
+    token_org_id = token_payload.get("organization_id")
+    effective_org_id = organization_id or uuid.UUID(str(token_org_id))
+    if str(effective_org_id) != str(token_org_id):
+        raise UnauthorizedError("organization_id does not match authenticated organization")
+    return effective_org_id
+
+
+def _assert_item_org(item: Any, *, token_org_id: uuid.UUID) -> None:
+    if str(getattr(item, "organization_id", "")) != str(token_org_id):
+        raise UnauthorizedError("Resource is not in authenticated organization")
 def _serialize_invoice_update(invoice: Any) -> dict[str, Any]:
     return {
         "id": str(invoice.id),
@@ -162,11 +181,17 @@ def _serialize_invoice_update(invoice: Any) -> dict[str, Any]:
 @router.post("/billing-invoices", response_model=ApiResponse)
 def create_billing_invoice(
     payload: BillingInvoiceCreateRequest,
+    token_payload: dict[str, Any] = Depends(get_current_token_payload),
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
+    effective_org_id = _resolve_effective_org_id(
+        organization_id=payload.organization_id,
+        token_payload=token_payload,
+    )
+
     service = InvoiceService(db)
     item = service.create_invoice(
-        organization_id=str(payload.organization_id),
+        organization_id=str(effective_org_id),
         customer_account_id=str(payload.customer_account_id),
         issued_at=payload.issued_at,
         subscription_id=_uuid_to_str(payload.subscription_id),
@@ -196,11 +221,17 @@ def list_billing_invoices(
     due_before: str | None = None,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=25, ge=1, le=200),
+    token_payload: dict[str, Any] = Depends(get_current_token_payload),
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
+    effective_org_id = _resolve_effective_org_id(
+        organization_id=organization_id,
+        token_payload=token_payload,
+    )
+
     service = InvoiceService(db)
     items, total = service.list_invoices(
-        organization_id=_uuid_to_str(organization_id),
+        organization_id=_uuid_to_str(effective_org_id),
         customer_account_id=_uuid_to_str(customer_account_id),
         subscription_id=_uuid_to_str(subscription_id),
         driver_id=_uuid_to_str(driver_id),
@@ -224,10 +255,13 @@ def list_billing_invoices(
 @router.get("/billing-invoices/{invoice_id}", response_model=ApiResponse)
 def get_billing_invoice(
     invoice_id: uuid.UUID,
+    token_payload: dict[str, Any] = Depends(get_current_token_payload),
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
     service = InvoiceService(db)
     item = service.get_invoice(str(invoice_id))
+    token_org_id = uuid.UUID(str(token_payload.get("organization_id")))
+    _assert_item_org(item, token_org_id=token_org_id)
 
     return ApiResponse(
         data=_serialize_invoice_detail(item),
@@ -240,9 +274,13 @@ def get_billing_invoice(
 def update_billing_invoice(
     invoice_id: uuid.UUID,
     payload: BillingInvoiceUpdateRequest,
+    token_payload: dict[str, Any] = Depends(get_current_token_payload),
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
     service = InvoiceService(db)
+    existing = service.get_invoice(str(invoice_id))
+    token_org_id = uuid.UUID(str(token_payload.get("organization_id")))
+    _assert_item_org(existing, token_org_id=token_org_id)
     item = service.update_invoice(
         invoice_id=str(invoice_id),
         status=_normalize_optional_text(payload.status),
@@ -264,9 +302,13 @@ def update_billing_invoice(
 @router.post("/billing-invoices/{invoice_id}/mark-past-due", response_model=ApiResponse)
 def mark_billing_invoice_past_due(
     invoice_id: uuid.UUID,
+    token_payload: dict[str, Any] = Depends(get_current_token_payload),
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
     service = InvoiceService(db)
+    existing = service.get_invoice(str(invoice_id))
+    token_org_id = uuid.UUID(str(token_payload.get("organization_id")))
+    _assert_item_org(existing, token_org_id=token_org_id)
     item = service.mark_past_due(invoice_id=str(invoice_id))
 
     return ApiResponse(

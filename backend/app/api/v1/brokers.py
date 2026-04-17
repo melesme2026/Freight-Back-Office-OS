@@ -9,7 +9,8 @@ from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_db_session
-from app.core.exceptions import NotFoundError, ValidationError
+from app.core.exceptions import NotFoundError, UnauthorizedError, ValidationError
+from app.core.security import get_current_token_payload
 from app.domain.models.broker import Broker
 from app.repositories.broker_repo import BrokerRepository
 from app.schemas.common import ApiResponse
@@ -89,25 +90,49 @@ def _serialize_broker(item: Any) -> dict[str, Any]:
     }
 
 
-def _get_broker_or_404(repo: BrokerRepository, broker_id: uuid.UUID) -> Broker:
+def _resolve_effective_org_id(
+    *,
+    organization_id: uuid.UUID | None,
+    token_payload: dict[str, Any],
+) -> uuid.UUID:
+    token_org_id = token_payload.get("organization_id")
+    effective_org_id = organization_id or uuid.UUID(str(token_org_id))
+    if str(effective_org_id) != str(token_org_id):
+        raise UnauthorizedError("organization_id does not match authenticated organization")
+    return effective_org_id
+
+
+def _get_broker_or_404(
+    repo: BrokerRepository,
+    broker_id: uuid.UUID,
+    *,
+    token_org_id: uuid.UUID,
+) -> Broker:
     item = repo.get_by_id(broker_id)
     if item is None:
         raise NotFoundError(
             "Broker not found",
             details={"broker_id": str(broker_id)},
         )
+    if str(item.organization_id) != str(token_org_id):
+        raise UnauthorizedError("Broker is not in authenticated organization")
     return item
 
 
 @router.post("/brokers", response_model=ApiResponse)
 def create_broker(
     payload: BrokerCreateRequest,
+    token_payload: dict[str, Any] = Depends(get_current_token_payload),
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
+    effective_org_id = _resolve_effective_org_id(
+        organization_id=payload.organization_id,
+        token_payload=token_payload,
+    )
     repo = BrokerRepository(db)
 
     item = Broker(
-        organization_id=payload.organization_id,
+        organization_id=effective_org_id,
         name=_normalize_required_text(payload.name, field_name="name"),
         mc_number=_normalize_optional_text(payload.mc_number),
         email=_normalize_email(payload.email),
@@ -134,11 +159,17 @@ def list_brokers(
     search: str | None = None,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=25, ge=1, le=200),
+    token_payload: dict[str, Any] = Depends(get_current_token_payload),
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
+    effective_org_id = _resolve_effective_org_id(
+        organization_id=organization_id,
+        token_payload=token_payload,
+    )
+
     repo = BrokerRepository(db)
     items, total = repo.list(
-        organization_id=organization_id,
+        organization_id=effective_org_id,
         mc_number=_normalize_optional_text(mc_number),
         search=_normalize_optional_text(search),
         page=page,
@@ -159,10 +190,12 @@ def list_brokers(
 @router.get("/brokers/{broker_id}", response_model=ApiResponse)
 def get_broker(
     broker_id: uuid.UUID,
+    token_payload: dict[str, Any] = Depends(get_current_token_payload),
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
+    token_org_id = uuid.UUID(str(token_payload.get("organization_id")))
     repo = BrokerRepository(db)
-    item = _get_broker_or_404(repo, broker_id)
+    item = _get_broker_or_404(repo, broker_id, token_org_id=token_org_id)
 
     return ApiResponse(
         data=_serialize_broker(item),
@@ -175,10 +208,12 @@ def get_broker(
 def update_broker(
     broker_id: uuid.UUID,
     payload: BrokerUpdateRequest,
+    token_payload: dict[str, Any] = Depends(get_current_token_payload),
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
+    token_org_id = uuid.UUID(str(token_payload.get("organization_id")))
     repo = BrokerRepository(db)
-    item = _get_broker_or_404(repo, broker_id)
+    item = _get_broker_or_404(repo, broker_id, token_org_id=token_org_id)
 
     if payload.name is not None:
         item.name = _normalize_required_text(payload.name, field_name="name")

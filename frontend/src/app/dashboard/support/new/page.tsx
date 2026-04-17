@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 
 import { useCustomerAccounts } from "@/hooks/useCustomerAccounts";
 import { useDrivers } from "@/hooks/useDrivers";
@@ -50,6 +50,14 @@ type LoadOption = {
   status: string;
   customer_account_id?: string | null;
   driver_id?: string | null;
+};
+
+type StaffUserOption = {
+  id: string;
+  full_name: string;
+  email: string;
+  role: string | null;
+  is_active: boolean;
 };
 
 type TicketPriority = "low" | "normal" | "high" | "urgent";
@@ -100,6 +108,9 @@ export default function NewSupportTicketPage() {
   const typedCustomerAccounts = (customerAccounts ?? []) as CustomerAccountOption[];
   const typedDrivers = (drivers ?? []) as DriverOption[];
   const typedLoads = (loads ?? []) as LoadOption[];
+  const [staffUsers, setStaffUsers] = useState<StaffUserOption[]>([]);
+  const [staffUsersError, setStaffUsersError] = useState<string | null>(null);
+  const [isLoadingStaffUsers, setIsLoadingStaffUsers] = useState<boolean>(true);
 
   const [subject, setSubject] = useState("");
   const [description, setDescription] = useState("");
@@ -111,6 +122,88 @@ export default function NewSupportTicketPage() {
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadStaffUsers() {
+      const token = getAccessToken();
+
+      if (!organizationId.trim()) {
+        if (isMounted) {
+          setStaffUsers([]);
+          setStaffUsersError("Organization context is missing.");
+          setIsLoadingStaffUsers(false);
+        }
+        return;
+      }
+
+      try {
+        setIsLoadingStaffUsers(true);
+        setStaffUsersError(null);
+
+        const response = await apiClient.get<ApiResponse<unknown>>(
+          "/staff-users?page=1&page_size=200&is_active=true",
+          {
+            token: token ?? undefined,
+            organizationId: organizationId.trim(),
+          }
+        );
+
+        const items = Array.isArray(response.data) ? response.data : [];
+        const normalized = items
+          .map((item) => {
+            if (!item || typeof item !== "object" || Array.isArray(item)) {
+              return null;
+            }
+
+            const record = item as Record<string, unknown>;
+            const id = typeof record.id === "string" ? record.id.trim() : "";
+            const fullName =
+              typeof record.full_name === "string" ? record.full_name.trim() : "";
+            const email = typeof record.email === "string" ? record.email.trim() : "";
+            const isActive = record.is_active !== false;
+
+            if (!id || !fullName || !email) {
+              return null;
+            }
+
+            return {
+              id,
+              full_name: fullName,
+              email,
+              role:
+                typeof record.role === "string" && record.role.trim().length > 0
+                  ? record.role.trim()
+                  : null,
+              is_active: isActive,
+            } satisfies StaffUserOption;
+          })
+          .filter((item) => item !== null) as StaffUserOption[];
+
+        if (isMounted) {
+          setStaffUsers(normalized);
+        }
+      } catch (error) {
+        if (isMounted) {
+          setStaffUsers([]);
+          setStaffUsersError(
+            error instanceof Error ? error.message : "Failed to load staff users."
+          );
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoadingStaffUsers(false);
+        }
+      }
+    }
+
+    void loadStaffUsers();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [organizationId]);
 
   const activeCustomerAccounts = useMemo(() => {
     return typedCustomerAccounts.filter(
@@ -146,8 +239,21 @@ export default function NewSupportTicketPage() {
     return effectiveLoads.find((load) => load.id === loadId) ?? null;
   }, [effectiveLoads, loadId]);
 
+  const activeStaffUsers = useMemo(() => {
+    return staffUsers.filter((staffUser) => staffUser.is_active);
+  }, [staffUsers]);
+
+  const selectedAssignee = useMemo(() => {
+    return activeStaffUsers.find((staffUser) => staffUser.id === assignedToStaffUserId) ?? null;
+  }, [activeStaffUsers, assignedToStaffUserId]);
+
   const pageError =
-    submitError ?? customerAccountsError ?? driversError ?? loadsError ?? null;
+    submitError ??
+    customerAccountsError ??
+    driversError ??
+    loadsError ??
+    staffUsersError ??
+    null;
 
   const canSubmit = useMemo(() => {
     return (
@@ -157,7 +263,8 @@ export default function NewSupportTicketPage() {
       !isSubmitting &&
       !isLoadingCustomers &&
       !isLoadingDrivers &&
-      !isLoadingLoads
+      !isLoadingLoads &&
+      !isLoadingStaffUsers
     );
   }, [
     organizationId,
@@ -167,6 +274,7 @@ export default function NewSupportTicketPage() {
     isLoadingCustomers,
     isLoadingDrivers,
     isLoadingLoads,
+    isLoadingStaffUsers,
   ]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -331,18 +439,25 @@ export default function NewSupportTicketPage() {
                   htmlFor="assigned_to_staff_user_id"
                   className="mb-2 block text-sm font-semibold text-slate-800"
                 >
-                  Assigned Staff User ID
+                  Assign to staff
                 </label>
-                <input
+                <select
                   id="assigned_to_staff_user_id"
                   name="assigned_to_staff_user_id"
-                  type="text"
                   value={assignedToStaffUserId}
                   onChange={(event) => setAssignedToStaffUserId(event.target.value)}
-                  placeholder="Optional staff user UUID"
-                  autoComplete="off"
-                  className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-200"
-                />
+                  disabled={isLoadingStaffUsers}
+                  className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-200 disabled:cursor-not-allowed disabled:bg-slate-100"
+                >
+                  <option value="">
+                    {isLoadingStaffUsers ? "Loading staff users..." : "Optional: auto-route"}
+                  </option>
+                  {activeStaffUsers.map((staffUser) => (
+                    <option key={staffUser.id} value={staffUser.id}>
+                      {staffUser.full_name} • {staffUser.email}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div>
@@ -446,7 +561,7 @@ export default function NewSupportTicketPage() {
               />
             </div>
 
-            <div className="grid gap-4 md:grid-cols-4">
+            <div className="grid gap-4 md:grid-cols-5">
               <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
                 <div className="font-semibold text-slate-800">Organization</div>
                 <div className="mt-1 break-all">
@@ -478,6 +593,15 @@ export default function NewSupportTicketPage() {
                 <div className="font-semibold text-slate-800">Selected Load</div>
                 <div className="mt-1">
                   {selectedLoad ? selectedLoad.load_number || selectedLoad.id : "None"}
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                <div className="font-semibold text-slate-800">Assigned Staff</div>
+                <div className="mt-1">
+                  {selectedAssignee
+                    ? `${selectedAssignee.full_name} (${selectedAssignee.email})`
+                    : "Auto-route"}
                 </div>
               </div>
             </div>
