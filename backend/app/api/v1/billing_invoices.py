@@ -162,6 +162,44 @@ def _resolve_effective_org_id(
 def _assert_item_org(item: Any, *, token_org_id: uuid.UUID) -> None:
     if str(getattr(item, "organization_id", "")) != str(token_org_id):
         raise UnauthorizedError("Resource is not in authenticated organization")
+
+
+def _get_token_role(token_payload: dict[str, Any]) -> str:
+    return str(token_payload.get("role") or "").strip().lower()
+
+
+def _get_token_driver_id(token_payload: dict[str, Any]) -> str | None:
+    token_driver_id = token_payload.get("driver_id")
+    if token_driver_id is None:
+        return None
+    normalized = str(token_driver_id).strip()
+    return normalized or None
+
+
+def _ensure_staff_role_for_mutation(token_payload: dict[str, Any]) -> None:
+    if _get_token_role(token_payload) == "driver":
+        raise UnauthorizedError("Driver accounts cannot mutate billing invoices")
+
+
+def _assert_driver_can_access_invoice(
+    *,
+    item: Any,
+    token_payload: dict[str, Any],
+) -> None:
+    token_role = _get_token_role(token_payload)
+    if token_role != "driver":
+        return
+
+    token_driver_id = _get_token_driver_id(token_payload)
+    if not token_driver_id:
+        raise UnauthorizedError("Driver token is missing driver_id")
+
+    payments = getattr(item, "payments", []) or []
+    has_driver_payment = any(str(getattr(payment, "driver_id", "")) == token_driver_id for payment in payments)
+    if not has_driver_payment:
+        raise UnauthorizedError("Drivers may only access invoices tied to their own payments")
+
+
 def _serialize_invoice_update(invoice: Any) -> dict[str, Any]:
     return {
         "id": str(invoice.id),
@@ -184,6 +222,7 @@ def create_billing_invoice(
     token_payload: dict[str, Any] = Depends(get_current_token_payload),
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
+    _ensure_staff_role_for_mutation(token_payload)
     effective_org_id = _resolve_effective_org_id(
         organization_id=payload.organization_id,
         token_payload=token_payload,
@@ -224,17 +263,26 @@ def list_billing_invoices(
     token_payload: dict[str, Any] = Depends(get_current_token_payload),
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
+    token_role = _get_token_role(token_payload)
+    token_driver_id = _get_token_driver_id(token_payload)
     effective_org_id = _resolve_effective_org_id(
         organization_id=organization_id,
         token_payload=token_payload,
     )
+    effective_driver_id = driver_id
+    if token_role == "driver":
+        if not token_driver_id:
+            raise UnauthorizedError("Driver token is missing driver_id")
+        if driver_id is not None and str(driver_id) != token_driver_id:
+            raise UnauthorizedError("Drivers may only list their own invoices")
+        effective_driver_id = uuid.UUID(token_driver_id)
 
     service = InvoiceService(db)
     items, total = service.list_invoices(
         organization_id=_uuid_to_str(effective_org_id),
         customer_account_id=_uuid_to_str(customer_account_id),
         subscription_id=_uuid_to_str(subscription_id),
-        driver_id=_uuid_to_str(driver_id),
+        driver_id=_uuid_to_str(effective_driver_id),
         status=_normalize_optional_text(status),
         due_before=_normalize_optional_text(due_before),
         page=page,
@@ -262,6 +310,7 @@ def get_billing_invoice(
     item = service.get_invoice(str(invoice_id))
     token_org_id = uuid.UUID(str(token_payload.get("organization_id")))
     _assert_item_org(item, token_org_id=token_org_id)
+    _assert_driver_can_access_invoice(item=item, token_payload=token_payload)
 
     return ApiResponse(
         data=_serialize_invoice_detail(item),
@@ -277,6 +326,7 @@ def update_billing_invoice(
     token_payload: dict[str, Any] = Depends(get_current_token_payload),
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
+    _ensure_staff_role_for_mutation(token_payload)
     service = InvoiceService(db)
     existing = service.get_invoice(str(invoice_id))
     token_org_id = uuid.UUID(str(token_payload.get("organization_id")))
@@ -305,6 +355,7 @@ def mark_billing_invoice_past_due(
     token_payload: dict[str, Any] = Depends(get_current_token_payload),
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
+    _ensure_staff_role_for_mutation(token_payload)
     service = InvoiceService(db)
     existing = service.get_invoice(str(invoice_id))
     token_org_id = uuid.UUID(str(token_payload.get("organization_id")))

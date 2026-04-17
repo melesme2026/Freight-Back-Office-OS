@@ -136,7 +136,7 @@ export function useCustomerAccounts() {
 
       setData(normalizeCustomerAccountsResponse(response));
     } catch (err: unknown) {
-      if ((err as any)?.name === "AbortError") return;
+      if (err instanceof DOMException && err.name === "AbortError") return;
 
       const message =
         err instanceof Error ? err.message : "Failed to fetch customer accounts";

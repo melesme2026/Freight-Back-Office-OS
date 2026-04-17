@@ -205,6 +205,41 @@ def _resolve_effective_org_id(
 def _assert_item_org(item: Any, *, token_org_id: uuid.UUID) -> None:
     if str(getattr(item, "organization_id", "")) != str(token_org_id):
         raise UnauthorizedError("Resource is not in authenticated organization")
+
+
+def _get_token_role(token_payload: dict[str, Any]) -> str:
+    return str(token_payload.get("role") or "").strip().lower()
+
+
+def _get_token_driver_id(token_payload: dict[str, Any]) -> str | None:
+    token_driver_id = token_payload.get("driver_id")
+    if token_driver_id is None:
+        return None
+    normalized = str(token_driver_id).strip()
+    return normalized or None
+
+
+def _ensure_staff_role_for_mutation(token_payload: dict[str, Any]) -> None:
+    if _get_token_role(token_payload) == "driver":
+        raise UnauthorizedError("Driver accounts cannot mutate payments")
+
+
+def _assert_driver_can_access_payment(
+    *,
+    item: Any,
+    token_payload: dict[str, Any],
+) -> None:
+    token_role = _get_token_role(token_payload)
+    if token_role != "driver":
+        return
+
+    token_driver_id = _get_token_driver_id(token_payload)
+    if not token_driver_id:
+        raise UnauthorizedError("Driver token is missing driver_id")
+    if str(getattr(item, "driver_id", "")) != token_driver_id:
+        raise UnauthorizedError("Drivers may only access their own payments")
+
+
 def _get_payment_method_or_404(
     repo: PaymentMethodRepository,
     payment_method_id: uuid.UUID,
@@ -224,6 +259,7 @@ def create_payment_method(
     token_payload: dict[str, Any] = Depends(get_current_token_payload),
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
+    _ensure_staff_role_for_mutation(token_payload)
     effective_org_id = _resolve_effective_org_id(
         organization_id=payload.organization_id,
         token_payload=token_payload,
@@ -336,6 +372,7 @@ def update_payment_method(
     token_payload: dict[str, Any] = Depends(get_current_token_payload),
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
+    _ensure_staff_role_for_mutation(token_payload)
     token_org_id = uuid.UUID(str(token_payload.get("organization_id")))
     repo = PaymentMethodRepository(db)
     item = _get_payment_method_or_404(repo, payment_method_id)
@@ -374,6 +411,7 @@ def collect_payment(
     token_payload: dict[str, Any] = Depends(get_current_token_payload),
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
+    _ensure_staff_role_for_mutation(token_payload)
     effective_org_id = _resolve_effective_org_id(
         organization_id=payload.organization_id,
         token_payload=token_payload,
@@ -411,10 +449,19 @@ def list_payments(
     token_payload: dict[str, Any] = Depends(get_current_token_payload),
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
+    token_role = _get_token_role(token_payload)
+    token_driver_id = _get_token_driver_id(token_payload)
     effective_org_id = _resolve_effective_org_id(
         organization_id=organization_id,
         token_payload=token_payload,
     )
+    effective_driver_id = driver_id
+    if token_role == "driver":
+        if not token_driver_id:
+            raise UnauthorizedError("Driver token is missing driver_id")
+        if driver_id is not None and str(driver_id) != token_driver_id:
+            raise UnauthorizedError("Drivers may only list their own payments")
+        effective_driver_id = uuid.UUID(token_driver_id)
 
     service = PaymentService(db)
     items, total = service.list_payments(
@@ -422,7 +469,7 @@ def list_payments(
         customer_account_id=_uuid_to_str(customer_account_id),
         billing_invoice_id=_uuid_to_str(billing_invoice_id),
         payment_method_id=_uuid_to_str(payment_method_id),
-        driver_id=_uuid_to_str(driver_id),
+        driver_id=_uuid_to_str(effective_driver_id),
         status=_normalize_lower_optional_text(status),
         page=page,
         page_size=page_size,
@@ -445,6 +492,7 @@ def get_payment(
     service = PaymentService(db)
     item = service.get_payment(str(payment_id))
     _assert_item_org(item, token_org_id=token_org_id)
+    _assert_driver_can_access_payment(item=item, token_payload=token_payload)
 
     return ApiResponse(
         data=_serialize_payment(item),
@@ -460,6 +508,7 @@ def mark_payment_failed(
     token_payload: dict[str, Any] = Depends(get_current_token_payload),
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
+    _ensure_staff_role_for_mutation(token_payload)
     token_org_id = uuid.UUID(str(token_payload.get("organization_id")))
     service = PaymentService(db)
     existing = service.get_payment(str(payment_id))
