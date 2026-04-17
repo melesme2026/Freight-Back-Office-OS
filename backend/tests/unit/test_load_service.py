@@ -40,6 +40,16 @@ def test_attach_document_flags_marks_docs_received(db_session) -> None:
 
     assert updated.has_ratecon is True
     assert updated.has_bol is True
+    assert updated.has_invoice is False
+    assert updated.documents_complete is False
+    assert updated.status == LoadStatus.NEW
+
+    updated = service.attach_document_flags(
+        load_id=str(item.id),
+        has_invoice=True,
+    )
+
+    assert updated.has_invoice is True
     assert updated.documents_complete is True
     assert updated.status == LoadStatus.DOCS_RECEIVED
 

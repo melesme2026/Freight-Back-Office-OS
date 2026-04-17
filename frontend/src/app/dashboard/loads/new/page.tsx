@@ -2,29 +2,16 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 
 import { useCustomerAccounts } from "@/hooks/useCustomerAccounts";
 import { useDrivers } from "@/hooks/useDrivers";
 import { apiClient } from "@/lib/api-client";
 import { getAccessToken, getOrganizationId } from "@/lib/auth";
 
-type ApiError = {
-  code?: string;
-  message?: string;
-  details?: Record<string, unknown>;
-};
+type ApiResponse<T> = { data: T };
 
-type ApiResponse<T> = {
-  data: T;
-  meta?: Record<string, unknown>;
-  error?: ApiError | null;
-};
-
-type CreatedLoad = {
-  id: string;
-  load_number?: string | null;
-};
+type CreatedLoad = { id: string };
 
 type CustomerAccountOption = {
   id: string;
@@ -40,19 +27,16 @@ type DriverOption = {
   is_active: boolean;
 };
 
+type BrokerOption = {
+  id: string;
+  name: string;
+  email?: string | null;
+  mc_number?: string | null;
+};
+
 function parseAmount(value: string): string | null {
-  const trimmed = value.trim();
-
-  if (!trimmed) {
-    return null;
-  }
-
-  const parsed = Number.parseFloat(trimmed);
+  const parsed = Number.parseFloat(value.trim());
   return Number.isFinite(parsed) ? parsed.toFixed(2) : null;
-}
-
-function normalizeText(value: string): string {
-  return value.trim();
 }
 
 function normalizeOptionalText(value: string): string | null {
@@ -67,39 +51,21 @@ function normalizeCurrencyCode(value: string): string {
 
 function isValidEmail(value: string): boolean {
   const normalized = value.trim();
-
-  if (!normalized) {
-    return true;
-  }
-
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized);
-}
-
-function getStatusLabel(value: string | null | undefined): string {
-  const normalized = value?.trim();
-  return normalized && normalized.length > 0 ? normalized : "Unknown";
+  return !normalized || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized);
 }
 
 export default function NewLoadPage() {
   const router = useRouter();
 
-  const {
-    customerAccounts,
-    isLoading: isLoadingCustomers,
-    error: customerAccountsError,
-  } = useCustomerAccounts();
-
-  const {
-    drivers,
-    isLoading: isLoadingDrivers,
-    error: driversError,
-  } = useDrivers();
+  const { customerAccounts, isLoading: isLoadingCustomers, error: customerAccountsError } = useCustomerAccounts();
+  const { drivers, isLoading: isLoadingDrivers, error: driversError } = useDrivers();
 
   const organizationId = getOrganizationId() ?? "";
 
   const [customerAccountId, setCustomerAccountId] = useState("");
   const [driverId, setDriverId] = useState("");
   const [brokerId, setBrokerId] = useState("");
+  const [brokerSearch, setBrokerSearch] = useState("");
 
   const [loadNumber, setLoadNumber] = useState("");
   const [pickupLocation, setPickupLocation] = useState("");
@@ -110,41 +76,36 @@ export default function NewLoadPage() {
   const [currencyCode, setCurrencyCode] = useState("USD");
   const [notes, setNotes] = useState("");
 
+  const [brokers, setBrokers] = useState<BrokerOption[]>([]);
+  const [isLoadingBrokers, setIsLoadingBrokers] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   const typedCustomerAccounts = (customerAccounts ?? []) as CustomerAccountOption[];
   const typedDrivers = (drivers ?? []) as DriverOption[];
 
-  const activeCustomerAccounts = useMemo(() => {
-    return typedCustomerAccounts.filter(
-      (account) => account.status.trim().toLowerCase() === "active"
-    );
+  const effectiveCustomerAccounts = useMemo(() => {
+    const active = typedCustomerAccounts.filter((account) => account.status.trim().toLowerCase() === "active");
+    return active.length > 0 ? active : typedCustomerAccounts;
   }, [typedCustomerAccounts]);
 
-  const activeDrivers = useMemo(() => {
-    return typedDrivers.filter((driver) => driver.is_active);
+  const effectiveDrivers = useMemo(() => {
+    const active = typedDrivers.filter((driver) => driver.is_active);
+    return active.length > 0 ? active : typedDrivers;
   }, [typedDrivers]);
 
-  const effectiveCustomerAccounts =
-    activeCustomerAccounts.length > 0 ? activeCustomerAccounts : typedCustomerAccounts;
+  const filteredBrokers = useMemo(() => {
+    const query = brokerSearch.trim().toLowerCase();
+    if (!query) return brokers;
+    return brokers.filter((broker) => [broker.name, broker.email, broker.mc_number].some((value) => value?.toLowerCase().includes(query)));
+  }, [brokerSearch, brokers]);
 
-  const effectiveDrivers = activeDrivers.length > 0 ? activeDrivers : typedDrivers;
-
-  const selectedCustomerAccount = useMemo(() => {
-    return (
-      effectiveCustomerAccounts.find((account) => account.id === customerAccountId) ?? null
-    );
-  }, [effectiveCustomerAccounts, customerAccountId]);
-
-  const selectedDriver = useMemo(() => {
-    return effectiveDrivers.find((driver) => driver.id === driverId) ?? null;
-  }, [effectiveDrivers, driverId]);
+  const selectedBroker = useMemo(() => brokers.find((broker) => broker.id === brokerId) ?? null, [brokers, brokerId]);
 
   const parsedAmount = useMemo(() => parseAmount(grossAmount), [grossAmount]);
 
-  const canSubmit = useMemo(() => {
-    return (
+  const canSubmit = useMemo(
+    () =>
       organizationId.trim().length > 0 &&
       customerAccountId.trim().length > 0 &&
       driverId.trim().length > 0 &&
@@ -152,46 +113,60 @@ export default function NewLoadPage() {
       !isSubmitting &&
       !isLoadingCustomers &&
       !isLoadingDrivers &&
-      isValidEmail(brokerEmail)
-    );
-  }, [
-    organizationId,
-    customerAccountId,
-    driverId,
-    loadNumber,
-    isSubmitting,
-    isLoadingCustomers,
-    isLoadingDrivers,
-    brokerEmail,
-  ]);
+      isValidEmail(brokerEmail),
+    [organizationId, customerAccountId, driverId, loadNumber, isSubmitting, isLoadingCustomers, isLoadingDrivers, brokerEmail]
+  );
 
-  const pageError = submitError ?? customerAccountsError ?? driversError ?? null;
+  useEffect(() => {
+    const token = getAccessToken();
+    if (!organizationId) return;
+
+    let mounted = true;
+
+    async function loadBrokers() {
+      try {
+        setIsLoadingBrokers(true);
+        const response = await apiClient.get<{ data?: Array<Record<string, unknown>> }>("/brokers?page=1&page_size=200", {
+          token: token ?? undefined,
+          organizationId,
+        });
+
+        if (!mounted) return;
+
+        const normalized = (response.data ?? [])
+          .map((item) => {
+            const id = typeof item.id === "string" ? item.id : null;
+            const name = typeof item.name === "string" ? item.name : null;
+            if (!id || !name) return null;
+            return {
+              id,
+              name,
+              email: typeof item.email === "string" ? item.email : null,
+              mc_number: typeof item.mc_number === "string" ? item.mc_number : null,
+            } as BrokerOption;
+          })
+          .filter((item): item is BrokerOption => item !== null);
+
+        setBrokers(normalized);
+      } catch {
+        if (mounted) setBrokers([]);
+      } finally {
+        if (mounted) setIsLoadingBrokers(false);
+      }
+    }
+
+    void loadBrokers();
+
+    return () => {
+      mounted = false;
+    };
+  }, [organizationId]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     if (!organizationId.trim()) {
       setSubmitError("Organization context is missing. Please sign in again.");
-      return;
-    }
-
-    if (!customerAccountId.trim()) {
-      setSubmitError("Please select a customer account.");
-      return;
-    }
-
-    if (!driverId.trim()) {
-      setSubmitError("Please select a driver.");
-      return;
-    }
-
-    if (!loadNumber.trim()) {
-      setSubmitError("Load number is required.");
-      return;
-    }
-
-    if (brokerEmail.trim() && !isValidEmail(brokerEmail)) {
-      setSubmitError("Please enter a valid broker email address.");
       return;
     }
 
@@ -206,361 +181,145 @@ export default function NewLoadPage() {
 
       const token = getAccessToken();
 
-      const payload = {
-        organization_id: organizationId.trim(),
-        customer_account_id: customerAccountId.trim(),
-        driver_id: driverId.trim(),
-        broker_id: normalizeOptionalText(brokerId),
-        source_channel: "manual",
-        load_number: normalizeText(loadNumber),
-        pickup_location: normalizeOptionalText(pickupLocation),
-        delivery_location: normalizeOptionalText(deliveryLocation),
-        gross_amount: parsedAmount,
-        broker_name_raw: normalizeOptionalText(brokerName),
-        broker_email_raw: normalizeOptionalText(brokerEmail),
-        currency_code: normalizeCurrencyCode(currencyCode),
-        notes: normalizeOptionalText(notes),
-      };
-
-      const response = await apiClient.post<ApiResponse<CreatedLoad>>("/loads", payload, {
-        token: token ?? undefined,
-        organizationId: organizationId.trim(),
-      });
+      const response = await apiClient.post<ApiResponse<CreatedLoad>>(
+        "/loads",
+        {
+          organization_id: organizationId.trim(),
+          customer_account_id: customerAccountId.trim(),
+          driver_id: driverId.trim(),
+          broker_id: normalizeOptionalText(brokerId),
+          source_channel: "manual",
+          load_number: loadNumber.trim(),
+          pickup_location: normalizeOptionalText(pickupLocation),
+          delivery_location: normalizeOptionalText(deliveryLocation),
+          gross_amount: parsedAmount,
+          broker_name_raw: normalizeOptionalText(brokerName),
+          broker_email_raw: normalizeOptionalText(brokerEmail),
+          currency_code: normalizeCurrencyCode(currencyCode),
+          notes: normalizeOptionalText(notes),
+        },
+        {
+          token: token ?? undefined,
+          organizationId: organizationId.trim(),
+        }
+      );
 
       const createdLoadId = response.data?.id;
-
-      if (createdLoadId && createdLoadId.trim().length > 0) {
-        router.push(`/dashboard/loads/${createdLoadId}`);
-        return;
-      }
-
-      router.push("/dashboard/loads");
+      router.push(createdLoadId ? `/dashboard/loads/${createdLoadId}` : "/dashboard/loads");
     } catch (caught: unknown) {
-      const message =
-        caught instanceof Error
-          ? caught.message
-          : "Failed to create load. Please verify the selected records and try again.";
-
-      setSubmitError(message);
+      setSubmitError(caught instanceof Error ? caught.message : "Failed to create load.");
     } finally {
       setIsSubmitting(false);
     }
   }
 
+  const pageError = submitError ?? customerAccountsError ?? driversError ?? null;
+
   return (
     <main className="min-h-screen bg-slate-50 text-slate-900">
       <div className="mx-auto max-w-5xl px-6 py-10">
-        <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div className="mb-8 flex items-end justify-between gap-4">
           <div>
-            <p className="text-sm font-medium text-brand-700">
-              Dashboard / Loads / New
-            </p>
-            <h1 className="text-3xl font-bold tracking-tight text-slate-950">
-              Create New Load
-            </h1>
-            <p className="mt-2 text-sm leading-6 text-slate-600">
-              Add a freight load after booking so operations can track workflow,
-              documents, payment progress, and follow-up from one place.
-            </p>
+            <p className="text-sm font-medium text-brand-700">Dashboard / Loads / New</p>
+            <h1 className="text-3xl font-bold tracking-tight text-slate-950">Create New Load</h1>
           </div>
-
-          <Link
-            href="/dashboard/loads"
-            className="inline-flex items-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
-          >
-            Back to Loads
-          </Link>
+          <Link href="/dashboard/loads" className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100">Back to Loads</Link>
         </div>
 
-        {pageError ? (
-          <div className="mb-6 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-            {pageError}
-          </div>
-        ) : null}
+        {pageError ? <div className="mb-6 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{pageError}</div> : null}
 
         <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
           <form className="space-y-6" onSubmit={handleSubmit}>
             <div className="grid gap-6 md:grid-cols-2">
               <div>
-                <label
-                  htmlFor="customer_account_id"
-                  className="mb-2 block text-sm font-semibold text-slate-800"
-                >
-                  Customer Account <span className="text-rose-600">*</span>
-                </label>
-                <select
-                  id="customer_account_id"
-                  name="customer_account_id"
-                  value={customerAccountId}
-                  onChange={(event) => setCustomerAccountId(event.target.value)}
-                  disabled={isLoadingCustomers}
-                  className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-200 disabled:cursor-not-allowed disabled:bg-slate-100"
-                >
-                  <option value="">
-                    {isLoadingCustomers
-                      ? "Loading customer accounts..."
-                      : "Select customer account"}
-                  </option>
+                <label className="mb-2 block text-sm font-semibold text-slate-800">Customer Account *</label>
+                <select value={customerAccountId} onChange={(event) => setCustomerAccountId(event.target.value)} disabled={isLoadingCustomers} className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm">
+                  <option value="">{isLoadingCustomers ? "Loading customer accounts..." : "Select customer account"}</option>
                   {effectiveCustomerAccounts.map((account) => (
-                    <option key={account.id} value={account.id}>
-                      {account.account_name}
-                      {account.account_code ? ` (${account.account_code})` : ""}
-                    </option>
+                    <option key={account.id} value={account.id}>{account.account_name}{account.account_code ? ` (${account.account_code})` : ""}</option>
                   ))}
                 </select>
               </div>
 
               <div>
-                <label
-                  htmlFor="driver_id"
-                  className="mb-2 block text-sm font-semibold text-slate-800"
-                >
-                  Driver <span className="text-rose-600">*</span>
-                </label>
-                <select
-                  id="driver_id"
-                  name="driver_id"
-                  value={driverId}
-                  onChange={(event) => setDriverId(event.target.value)}
-                  disabled={isLoadingDrivers}
-                  className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-200 disabled:cursor-not-allowed disabled:bg-slate-100"
-                >
-                  <option value="">
-                    {isLoadingDrivers ? "Loading drivers..." : "Select driver"}
-                  </option>
+                <label className="mb-2 block text-sm font-semibold text-slate-800">Driver *</label>
+                <select value={driverId} onChange={(event) => setDriverId(event.target.value)} disabled={isLoadingDrivers} className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm">
+                  <option value="">{isLoadingDrivers ? "Loading drivers..." : "Select driver"}</option>
                   {effectiveDrivers.map((driver) => (
-                    <option key={driver.id} value={driver.id}>
-                      {driver.full_name}
-                      {driver.phone ? ` • ${driver.phone}` : ""}
-                    </option>
+                    <option key={driver.id} value={driver.id}>{driver.full_name}{driver.phone ? ` • ${driver.phone}` : ""}</option>
                   ))}
                 </select>
               </div>
 
               <div>
-                <label
-                  htmlFor="load_number"
-                  className="mb-2 block text-sm font-semibold text-slate-800"
-                >
-                  Load Number <span className="text-rose-600">*</span>
-                </label>
-                <input
-                  id="load_number"
-                  name="load_number"
-                  type="text"
-                  value={loadNumber}
-                  onChange={(event) => setLoadNumber(event.target.value)}
-                  placeholder="LD-100245"
-                  autoComplete="off"
-                  className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-200"
-                />
+                <label className="mb-2 block text-sm font-semibold text-slate-800">Load Number *</label>
+                <input type="text" value={loadNumber} onChange={(event) => setLoadNumber(event.target.value)} placeholder="LD-100245" className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm" />
               </div>
 
               <div>
-                <label
-                  htmlFor="gross_amount"
-                  className="mb-2 block text-sm font-semibold text-slate-800"
-                >
-                  Gross Amount
-                </label>
-                <input
-                  id="gross_amount"
-                  name="gross_amount"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={grossAmount}
-                  onChange={(event) => setGrossAmount(event.target.value)}
-                  placeholder="2500.00"
-                  className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-200"
-                />
+                <label className="mb-2 block text-sm font-semibold text-slate-800">Gross Amount</label>
+                <input type="number" step="0.01" min="0" value={grossAmount} onChange={(event) => setGrossAmount(event.target.value)} placeholder="2500.00" className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm" />
               </div>
 
               <div>
-                <label
-                  htmlFor="pickup_location"
-                  className="mb-2 block text-sm font-semibold text-slate-800"
-                >
-                  Pickup Location
-                </label>
-                <input
-                  id="pickup_location"
-                  name="pickup_location"
-                  type="text"
-                  value={pickupLocation}
-                  onChange={(event) => setPickupLocation(event.target.value)}
-                  placeholder="Chicago, IL"
-                  className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-200"
-                />
+                <label className="mb-2 block text-sm font-semibold text-slate-800">Broker Lookup</label>
+                <input type="text" value={brokerSearch} onChange={(event) => setBrokerSearch(event.target.value)} placeholder="Search broker name, email, MC..." className="mb-2 w-full rounded-xl border border-slate-300 px-4 py-3 text-sm" />
+                <select value={brokerId} onChange={(event) => {
+                  const value = event.target.value;
+                  setBrokerId(value);
+                  const selected = brokers.find((broker) => broker.id === value);
+                  if (selected) {
+                    setBrokerName(selected.name);
+                    setBrokerEmail(selected.email ?? "");
+                  }
+                }} disabled={isLoadingBrokers} className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm">
+                  <option value="">{isLoadingBrokers ? "Loading brokers..." : "Select broker (optional)"}</option>
+                  {filteredBrokers.map((broker) => (
+                    <option key={broker.id} value={broker.id}>{broker.name}{broker.email ? ` • ${broker.email}` : ""}{broker.mc_number ? ` • MC ${broker.mc_number}` : ""}</option>
+                  ))}
+                </select>
               </div>
 
               <div>
-                <label
-                  htmlFor="delivery_location"
-                  className="mb-2 block text-sm font-semibold text-slate-800"
-                >
-                  Delivery Location
-                </label>
-                <input
-                  id="delivery_location"
-                  name="delivery_location"
-                  type="text"
-                  value={deliveryLocation}
-                  onChange={(event) => setDeliveryLocation(event.target.value)}
-                  placeholder="Atlanta, GA"
-                  className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-200"
-                />
+                <label className="mb-2 block text-sm font-semibold text-slate-800">Broker Email</label>
+                <input type="email" value={brokerEmail} onChange={(event) => setBrokerEmail(event.target.value)} placeholder="broker@example.com" className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm" />
               </div>
 
               <div>
-                <label
-                  htmlFor="broker_name_raw"
-                  className="mb-2 block text-sm font-semibold text-slate-800"
-                >
-                  Broker Name
-                </label>
-                <input
-                  id="broker_name_raw"
-                  name="broker_name_raw"
-                  type="text"
-                  value={brokerName}
-                  onChange={(event) => setBrokerName(event.target.value)}
-                  placeholder="TQL"
-                  className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-200"
-                />
+                <label className="mb-2 block text-sm font-semibold text-slate-800">Pickup Location</label>
+                <input type="text" value={pickupLocation} onChange={(event) => setPickupLocation(event.target.value)} placeholder="Chicago, IL" className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm" />
               </div>
 
               <div>
-                <label
-                  htmlFor="broker_email_raw"
-                  className="mb-2 block text-sm font-semibold text-slate-800"
-                >
-                  Broker Email
-                </label>
-                <input
-                  id="broker_email_raw"
-                  name="broker_email_raw"
-                  type="email"
-                  value={brokerEmail}
-                  onChange={(event) => setBrokerEmail(event.target.value)}
-                  placeholder="broker@example.com"
-                  className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-200"
-                />
+                <label className="mb-2 block text-sm font-semibold text-slate-800">Delivery Location</label>
+                <input type="text" value={deliveryLocation} onChange={(event) => setDeliveryLocation(event.target.value)} placeholder="Atlanta, GA" className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm" />
               </div>
 
               <div>
-                <label
-                  htmlFor="currency_code"
-                  className="mb-2 block text-sm font-semibold text-slate-800"
-                >
-                  Currency Code
-                </label>
-                <input
-                  id="currency_code"
-                  name="currency_code"
-                  type="text"
-                  maxLength={3}
-                  value={currencyCode}
-                  onChange={(event) => setCurrencyCode(event.target.value.toUpperCase())}
-                  placeholder="USD"
-                  className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm uppercase text-slate-900 outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-200"
-                />
+                <label className="mb-2 block text-sm font-semibold text-slate-800">Broker Name (override)</label>
+                <input type="text" value={brokerName} onChange={(event) => setBrokerName(event.target.value)} placeholder="Autofilled from selected broker" className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm" />
               </div>
 
               <div>
-                <label
-                  htmlFor="broker_id"
-                  className="mb-2 block text-sm font-semibold text-slate-800"
-                >
-                  Broker ID
-                </label>
-                <input
-                  id="broker_id"
-                  name="broker_id"
-                  type="text"
-                  value={brokerId}
-                  onChange={(event) => setBrokerId(event.target.value)}
-                  placeholder="Optional broker UUID"
-                  autoComplete="off"
-                  className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-200"
-                />
+                <label className="mb-2 block text-sm font-semibold text-slate-800">Currency Code</label>
+                <input type="text" maxLength={3} value={currencyCode} onChange={(event) => setCurrencyCode(event.target.value.toUpperCase())} placeholder="USD" className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm uppercase" />
               </div>
             </div>
 
             <div>
-              <label
-                htmlFor="notes"
-                className="mb-2 block text-sm font-semibold text-slate-800"
-              >
-                Notes
-              </label>
-              <textarea
-                id="notes"
-                name="notes"
-                rows={5}
-                value={notes}
-                onChange={(event) => setNotes(event.target.value)}
-                placeholder="Add any operational notes for this load..."
-                className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-200"
-              />
+              <label className="mb-2 block text-sm font-semibold text-slate-800">Notes</label>
+              <textarea rows={5} value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Add operational notes..." className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm" />
             </div>
 
-            <div className="grid gap-4 md:grid-cols-3">
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-                <div className="font-semibold text-slate-800">Organization Context</div>
-                <div className="mt-1">
-                  {organizationId
-                    ? `Using active organization: ${organizationId}`
-                    : "No organization context found. Please sign in again before creating a load."}
-                </div>
-              </div>
-
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-                <div className="font-semibold text-slate-800">Selected Customer</div>
-                <div className="mt-1">
-                  {selectedCustomerAccount
-                    ? `${selectedCustomerAccount.account_name}${
-                        selectedCustomerAccount.account_code
-                          ? ` (${selectedCustomerAccount.account_code})`
-                          : ""
-                      }`
-                    : "No customer selected yet."}
-                </div>
-                {selectedCustomerAccount ? (
-                  <div className="mt-1 text-xs text-slate-500">
-                    Status: {getStatusLabel(selectedCustomerAccount.status)}
-                  </div>
-                ) : null}
-              </div>
-
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-                <div className="font-semibold text-slate-800">Selected Driver</div>
-                <div className="mt-1">
-                  {selectedDriver ? selectedDriver.full_name : "No driver selected yet."}
-                </div>
-                {selectedDriver?.phone ? (
-                  <div className="mt-1 text-xs text-slate-500">
-                    Phone: {selectedDriver.phone}
-                  </div>
-                ) : null}
-              </div>
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+              <div className="font-semibold text-slate-800">Selected Broker</div>
+              <div className="mt-1">{selectedBroker ? selectedBroker.name : "No broker selected"}</div>
+              {selectedBroker?.email ? <div className="mt-1 text-xs text-slate-500">Email: {selectedBroker.email}</div> : null}
             </div>
 
             <div className="flex flex-wrap gap-3">
-              <button
-                type="submit"
-                disabled={!canSubmit}
-                className="rounded-xl bg-brand-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {isSubmitting ? "Creating..." : "Create Load"}
-              </button>
-
-              <Link
-                href="/dashboard/loads"
-                className="rounded-xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
-              >
-                Cancel
-              </Link>
+              <button type="submit" disabled={!canSubmit} className="rounded-xl bg-brand-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50">{isSubmitting ? "Creating..." : "Create Load"}</button>
+              <Link href="/dashboard/loads" className="rounded-xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-100">Cancel</Link>
             </div>
           </form>
         </section>
