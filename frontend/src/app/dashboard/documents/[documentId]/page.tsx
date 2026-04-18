@@ -285,6 +285,11 @@ export default function DocumentDetailPage() {
   const [document, setDocument] = useState<DocumentDetailView | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [isReprocessing, setIsReprocessing] = useState(false);
+  const [isExtracting, setIsExtracting] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -359,10 +364,118 @@ export default function DocumentDetailPage() {
     () => (document?.validationIssues.length ?? 0) > 0,
     [document]
   );
+  const linkedLoadId = useMemo(() => {
+    const value = document?.linkedLoad?.trim();
+    if (!value) {
+      return null;
+    }
+
+    return /^[0-9a-fA-F-]{36}$/.test(value) ? value : null;
+  }, [document?.linkedLoad]);
 
   const handleBack = () => {
     router.back();
   };
+
+  async function handleReprocessDocument() {
+    if (!documentId) return;
+
+    const token = getAccessToken();
+    const organizationId = getOrganizationId();
+
+    if (!token || !organizationId) {
+      setActionError("Missing session context. Please sign in again.");
+      return;
+    }
+
+    try {
+      setIsReprocessing(true);
+      setActionError(null);
+      setActionMessage(null);
+
+      await apiClient.post(
+        `/documents/${encodeURIComponent(documentId)}/reprocess`,
+        {
+          force_reclassification: true,
+          force_reextraction: true,
+        },
+        { token, organizationId }
+      );
+
+      setActionMessage("Document reprocessing requested.");
+      router.refresh();
+    } catch (caught: unknown) {
+      setActionError(caught instanceof Error ? caught.message : "Unable to reprocess document.");
+    } finally {
+      setIsReprocessing(false);
+    }
+  }
+
+  async function handleRunExtraction() {
+    if (!documentId) return;
+
+    const token = getAccessToken();
+    const organizationId = getOrganizationId();
+
+    if (!token || !organizationId) {
+      setActionError("Missing session context. Please sign in again.");
+      return;
+    }
+
+    try {
+      setIsExtracting(true);
+      setActionError(null);
+      setActionMessage(null);
+
+      await apiClient.post(
+        `/documents/${encodeURIComponent(documentId)}/extract`,
+        { force: true },
+        { token, organizationId }
+      );
+      setActionMessage("Extraction requested. Refresh after processing completes.");
+      router.refresh();
+    } catch (caught: unknown) {
+      setActionError(caught instanceof Error ? caught.message : "Unable to run extraction.");
+    } finally {
+      setIsExtracting(false);
+    }
+  }
+
+  async function handleDownloadOriginal() {
+    if (!documentId) return;
+
+    const token = getAccessToken();
+    const organizationId = getOrganizationId();
+
+    if (!token || !organizationId) {
+      setActionError("Missing session context. Please sign in again.");
+      return;
+    }
+
+    try {
+      setIsDownloading(true);
+      setActionError(null);
+      setActionMessage(null);
+
+      const blob = await apiClient.getBlob(
+        `/documents/${encodeURIComponent(documentId)}/download`,
+        { token, organizationId }
+      );
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const link = window.document.createElement("a");
+      link.href = downloadUrl;
+      link.download = document?.originalFilename || `${documentId}.bin`;
+      window.document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(downloadUrl);
+      setActionMessage("Document download started.");
+    } catch (caught: unknown) {
+      setActionError(caught instanceof Error ? caught.message : "Unable to download original file.");
+    } finally {
+      setIsDownloading(false);
+    }
+  }
 
   if (isLoading) {
     return (
@@ -484,29 +597,37 @@ export default function DocumentDetailPage() {
               Review document metadata, extracted fields, validation outcomes,
               and preview content.
             </p>
+            <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
+              Extraction/OCR processing in this release is beta-grade and may use placeholder output for some files.
+              Validate critical fields before operational decisions.
+            </div>
           </div>
 
           <div className="flex flex-wrap gap-3">
             <button
               type="button"
-              disabled
-              aria-disabled="true"
-              title="Intentionally unavailable in V1 release candidate."
-              className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 opacity-60"
+              onClick={() => void handleReprocessDocument()}
+              disabled={isReprocessing || isExtracting}
+              className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              Reprocess
+              {isReprocessing ? "Reprocessing..." : "Reprocess"}
             </button>
             <button
               type="button"
-              disabled
-              aria-disabled="true"
-              title="Intentionally unavailable in V1 release candidate."
-              className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white opacity-60"
+              onClick={() => void handleRunExtraction()}
+              disabled={isExtracting || isReprocessing}
+              className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              Link to Load
+              {isExtracting ? "Running..." : "Run Extraction"}
             </button>
           </div>
         </div>
+        {actionError ? (
+          <div className="mb-6 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{actionError}</div>
+        ) : null}
+        {actionMessage ? (
+          <div className="mb-6 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{actionMessage}</div>
+        ) : null}
 
         <div className="grid gap-6 xl:grid-cols-[1.4fr,1fr]">
           <section className="space-y-6">
@@ -663,31 +784,34 @@ export default function DocumentDetailPage() {
               <div className="space-y-3">
                 <button
                   type="button"
-                  disabled
-                  aria-disabled="true"
-                  title="Field correction is not yet wired in V1."
-                  className="w-full rounded-xl border border-slate-300 px-4 py-3 text-left text-sm font-semibold text-slate-700 opacity-60"
+                  onClick={() => router.push("/dashboard/review-queue")}
+                  className="w-full rounded-xl border border-slate-300 px-4 py-3 text-left text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
                 >
-                  Correct Extracted Fields
+                  Open Review Queue (Field Corrections)
                 </button>
                 <button
                   type="button"
-                  disabled
-                  aria-disabled="true"
-                  title="Validation issue resolution is not yet wired in V1."
-                  className="w-full rounded-xl border border-slate-300 px-4 py-3 text-left text-sm font-semibold text-slate-700 opacity-60"
+                  onClick={() => router.push("/dashboard/review-queue")}
+                  className="w-full rounded-xl border border-slate-300 px-4 py-3 text-left text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
                 >
-                  Resolve Validation Issue
+                  Resolve Validation Issues
                 </button>
                 <button
                   type="button"
-                  disabled
-                  aria-disabled="true"
-                  title="Original file download is not yet wired in V1."
-                  className="w-full rounded-xl border border-slate-300 px-4 py-3 text-left text-sm font-semibold text-slate-700 opacity-60"
+                  onClick={() => void handleDownloadOriginal()}
+                  disabled={isDownloading}
+                  className="w-full rounded-xl border border-slate-300 px-4 py-3 text-left text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  Download Original File
+                  {isDownloading ? "Downloading..." : "Download Original File"}
                 </button>
+                {linkedLoadId ? (
+                  <Link
+                    href={`/dashboard/loads/${linkedLoadId}`}
+                    className="block rounded-xl border border-slate-300 px-4 py-3 text-left text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
+                  >
+                    Open Linked Load
+                  </Link>
+                ) : null}
                 <Link
                   href="/dashboard/documents"
                   className="block rounded-xl border border-slate-300 px-4 py-3 text-left text-sm font-semibold text-slate-700 transition hover:bg-slate-100"

@@ -167,7 +167,7 @@ export default function LoginPage() {
             Access the Freight Back Office OS operator dashboard.
           </p>
           <p className="mt-2 text-xs text-slate-500">
-            Driver account? Use Driver Login.
+            Driver account? Use Driver Login. Driver accounts are staff-invited only.
           </p>
         </div>
 

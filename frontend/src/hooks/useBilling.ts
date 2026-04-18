@@ -49,10 +49,18 @@ function normalizeBillingSummary(payload: unknown): BillingSummary | null {
   const source = nested ?? root;
 
   return {
-    active_subscriptions: asOptionalNumber(source.active_subscriptions),
-    open_invoices: asOptionalNumber(source.open_invoices),
-    past_due_invoices: asOptionalNumber(source.past_due_invoices),
-    collected_this_month: asOptionalNumber(source.collected_this_month),
+    active_subscriptions: asOptionalNumber(
+      source.active_subscriptions ?? source.active_subscriptions_count
+    ),
+    open_invoices: asOptionalNumber(
+      source.open_invoices ?? source.open_invoices_count
+    ),
+    past_due_invoices: asOptionalNumber(
+      source.past_due_invoices ?? source.past_due_invoices_count
+    ),
+    collected_this_month: asOptionalNumber(
+      source.collected_this_month ?? source.payments_collected_this_month
+    ),
   };
 }
 
@@ -68,7 +76,7 @@ export function useBilling() {
     try {
       const token = getAccessToken();
 
-      const response = await apiClient.get<unknown>("/billing-dashboard", {
+      const response = await apiClient.get<unknown>("/billing/dashboard", {
         token: token ?? undefined,
       });
 
@@ -94,7 +102,7 @@ export function useBilling() {
       try {
         const token = getAccessToken();
 
-        const response = await apiClient.get<unknown>("/billing-dashboard", {
+        const response = await apiClient.get<unknown>("/billing/dashboard", {
           token: token ?? undefined,
         });
 

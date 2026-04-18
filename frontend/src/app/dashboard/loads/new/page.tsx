@@ -278,6 +278,9 @@ export default function NewLoadPage() {
                     <option key={broker.id} value={broker.id}>{broker.name}{broker.email ? ` • ${broker.email}` : ""}{broker.mc_number ? ` • MC ${broker.mc_number}` : ""}</option>
                   ))}
                 </select>
+                <Link href="/dashboard/brokers" className="mt-2 inline-flex text-xs font-semibold text-brand-700 hover:text-brand-800">
+                  Manage broker profiles →
+                </Link>
               </div>
 
               <div>

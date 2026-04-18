@@ -375,6 +375,9 @@ export default function DocumentsPage() {
         ) : null}
 
         <section className="mt-8 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-soft">
+          <div className="border-b border-amber-200 bg-amber-50 px-5 py-3 text-xs text-amber-900">
+            OCR/extraction is running in beta mode and may return placeholder or incomplete field output for some documents.
+          </div>
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-slate-200 text-sm">
               <thead className="bg-slate-50">

@@ -116,8 +116,11 @@ export default function SignupPage() {
     <section className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-8 shadow-soft">
       <h1 className="text-2xl font-bold text-slate-950">Create Staff Account</h1>
       <p className="mt-2 text-sm text-slate-600">
-        Create your organization workspace and owner account.
+        Create your organization workspace and owner staff account.
       </p>
+      <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
+        Driver accounts are invite-only. Drivers cannot self-sign up from this page.
+      </div>
 
       <form className="mt-6 space-y-4" onSubmit={handleSubmit} noValidate>
         <input type="text" placeholder="Full name" value={fullName} onChange={(event) => setFullName(event.target.value)} className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm" disabled={isSubmitting} />
@@ -138,6 +141,7 @@ export default function SignupPage() {
       <AuthNavigationLinks
         secondaryLinks={[
           { href: "/login", label: "Already have an account? Sign in" },
+          { href: "/driver-login", label: "Driver sign in (invited accounts only)" },
         ]}
       />
     </section>

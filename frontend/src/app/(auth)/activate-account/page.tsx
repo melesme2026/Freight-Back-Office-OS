@@ -74,6 +74,9 @@ function ActivateAccountPageContent() {
     <section className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-8 shadow-soft">
       <h1 className="text-2xl font-bold text-slate-950">Activate Account</h1>
       <p className="mt-2 text-sm text-slate-600">Complete your invited account setup by setting your password.</p>
+      <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs text-slate-600">
+        Activation requires a valid invite from your operations team. For driver access, staff must first create your driver profile and then send an invite to the same email address.
+      </div>
 
       <form className="mt-6 space-y-4" onSubmit={handleSubmit} noValidate>
         {tokenFromQuery.trim() ? (

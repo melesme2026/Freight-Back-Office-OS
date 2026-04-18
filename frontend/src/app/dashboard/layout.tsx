@@ -25,6 +25,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/dashboard/review-queue", label: "Review Queue" },
   { href: "/dashboard/documents", label: "Documents" },
   { href: "/dashboard/customers", label: "Customers" },
+  { href: "/dashboard/brokers", label: "Brokers" },
   { href: "/dashboard/drivers", label: "Drivers" },
   { href: "/dashboard/billing", label: "Billing" },
   { href: "/dashboard/onboarding", label: "Onboarding" },

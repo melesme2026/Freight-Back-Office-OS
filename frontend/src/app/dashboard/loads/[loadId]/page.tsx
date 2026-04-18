@@ -1925,6 +1925,9 @@ export default function LoadDetailPage() {
                   )}
                 </div>
               </div>
+              <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
+                Document OCR/extraction is in beta mode. Verify extracted values manually before submission/funding actions.
+              </div>
 
               <div className="mb-6 grid gap-3 sm:grid-cols-3">
                 {documentChecklist.map((document) => (
