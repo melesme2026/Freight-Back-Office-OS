@@ -52,7 +52,7 @@ services:
       - key: WEB_APP_BASE_URL
         value: https://fbos-nginx.onrender.com
       - key: CORS_ALLOWED_ORIGINS
-        value: https://fbos-nginx.onrender.com
+        value: '["https://fbos-nginx.onrender.com"]'
       - key: STORAGE_PROVIDER
         value: local
       - key: STORAGE_LOCAL_ROOT
