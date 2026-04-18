@@ -1,12 +1,36 @@
 services:
-  - type: keyvalue
-    name: fbos-staging-redis
+  - type: web
+    name: fbos-nginx
+    runtime: docker
     region: oregon
     plan: starter
-    ipAllowList: []
+    dockerfilePath: ./infra/docker/nginx.Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/v1/health
+    envVars:
+      - key: API_UPSTREAM_HOST
+        fromService:
+          type: pserv
+          name: fbos-api
+          property: host
+      - key: API_UPSTREAM_PORT
+        fromService:
+          type: pserv
+          name: fbos-api
+          property: port
+      - key: WEB_UPSTREAM_HOST
+        fromService:
+          type: pserv
+          name: fbos-web
+          property: host
+      - key: WEB_UPSTREAM_PORT
+        fromService:
+          type: pserv
+          name: fbos-web
+          property: port
 
   - type: pserv
-    name: fbos-staging-api
+    name: fbos-api
     runtime: docker
     region: oregon
     plan: starter
@@ -23,141 +47,12 @@ services:
         generateValue: true
       - key: DATABASE_URL_OVERRIDE
         fromDatabase:
-          name: fbos-staging-postgres
-          property: connectionString
-      - key: REDIS_URL_OVERRIDE
-        fromService:
-          type: keyvalue
-          name: fbos-staging-redis
-          property: connectionString
-      - key: CELERY_BROKER_URL
-        fromService:
-          type: keyvalue
-          name: fbos-staging-redis
-          property: connectionString
-      - key: CELERY_RESULT_BACKEND
-        fromService:
-          type: keyvalue
-          name: fbos-staging-redis
+          name: fbos-postgres
           property: connectionString
       - key: WEB_APP_BASE_URL
-        value: https://staging.freightbackofficeos.com
+        value: https://fbos-nginx.onrender.com
       - key: CORS_ALLOWED_ORIGINS
-        value: https://staging.freightbackofficeos.com
-      - key: STORAGE_PROVIDER
-        value: local
-      - key: STORAGE_LOCAL_ROOT
-        value: /app/data/sandbox/uploaded-docs
-      - key: LOG_LEVEL
-        value: INFO
-      - key: LOG_JSON
-        value: "true"
-      - key: AI_ENABLED
-        value: "false"
-      - key: WHATSAPP_ENABLED
-        value: "false"
-      - key: EMAIL_ENABLED
-        value: "false"
-      - key: EMAIL_PROVIDER
-        value: none
-      - key: BILLING_ENABLED
-        value: "false"
-
-  - type: worker
-    name: fbos-staging-worker
-    runtime: docker
-    region: oregon
-    plan: starter
-    dockerfilePath: ./infra/docker/worker.Dockerfile
-    dockerContext: .
-    dockerCommand: >-
-      sh -c "cd /app/backend && celery -A app.workers.celery_app.celery_app worker --loglevel=info"
-    envVars:
-      - key: ENVIRONMENT
-        value: staging
-      - key: DEBUG
-        value: "false"
-      - key: SECRET_KEY
-        fromService:
-          type: pserv
-          name: fbos-staging-api
-          envVarKey: SECRET_KEY
-      - key: DATABASE_URL_OVERRIDE
-        fromDatabase:
-          name: fbos-staging-postgres
-          property: connectionString
-      - key: REDIS_URL_OVERRIDE
-        fromService:
-          type: keyvalue
-          name: fbos-staging-redis
-          property: connectionString
-      - key: CELERY_BROKER_URL
-        fromService:
-          type: keyvalue
-          name: fbos-staging-redis
-          property: connectionString
-      - key: CELERY_RESULT_BACKEND
-        fromService:
-          type: keyvalue
-          name: fbos-staging-redis
-          property: connectionString
-      - key: STORAGE_PROVIDER
-        value: local
-      - key: STORAGE_LOCAL_ROOT
-        value: /app/data/sandbox/uploaded-docs
-      - key: LOG_LEVEL
-        value: INFO
-      - key: LOG_JSON
-        value: "true"
-      - key: AI_ENABLED
-        value: "false"
-      - key: WHATSAPP_ENABLED
-        value: "false"
-      - key: EMAIL_ENABLED
-        value: "false"
-      - key: EMAIL_PROVIDER
-        value: none
-      - key: BILLING_ENABLED
-        value: "false"
-
-  - type: worker
-    name: fbos-staging-beat
-    runtime: docker
-    region: oregon
-    plan: starter
-    dockerfilePath: ./infra/docker/worker.Dockerfile
-    dockerContext: .
-    dockerCommand: >-
-      sh -c "cd /app/backend && celery -A app.workers.celery_app.celery_app beat --loglevel=info"
-    envVars:
-      - key: ENVIRONMENT
-        value: staging
-      - key: DEBUG
-        value: "false"
-      - key: SECRET_KEY
-        fromService:
-          type: pserv
-          name: fbos-staging-api
-          envVarKey: SECRET_KEY
-      - key: DATABASE_URL_OVERRIDE
-        fromDatabase:
-          name: fbos-staging-postgres
-          property: connectionString
-      - key: REDIS_URL_OVERRIDE
-        fromService:
-          type: keyvalue
-          name: fbos-staging-redis
-          property: connectionString
-      - key: CELERY_BROKER_URL
-        fromService:
-          type: keyvalue
-          name: fbos-staging-redis
-          property: connectionString
-      - key: CELERY_RESULT_BACKEND
-        fromService:
-          type: keyvalue
-          name: fbos-staging-redis
-          property: connectionString
+        value: https://fbos-nginx.onrender.com
       - key: STORAGE_PROVIDER
         value: local
       - key: STORAGE_LOCAL_ROOT
@@ -178,7 +73,7 @@ services:
         value: "false"
 
   - type: pserv
-    name: fbos-staging-web
+    name: fbos-web
     runtime: docker
     region: oregon
     plan: starter
@@ -192,38 +87,8 @@ services:
       - key: NEXT_PUBLIC_API_VERSION_PREFIX
         value: /api/v1
 
-  - type: web
-    name: fbos-staging-nginx
-    runtime: docker
-    region: oregon
-    plan: starter
-    dockerfilePath: ./infra/docker/nginx.Dockerfile
-    dockerContext: .
-    healthCheckPath: /api/v1/health
-    envVars:
-      - key: API_UPSTREAM_HOST
-        fromService:
-          type: pserv
-          name: fbos-staging-api
-          property: host
-      - key: API_UPSTREAM_PORT
-        fromService:
-          type: pserv
-          name: fbos-staging-api
-          property: port
-      - key: WEB_UPSTREAM_HOST
-        fromService:
-          type: pserv
-          name: fbos-staging-web
-          property: host
-      - key: WEB_UPSTREAM_PORT
-        fromService:
-          type: pserv
-          name: fbos-staging-web
-          property: port
-
 databases:
-  - name: fbos-staging-postgres
+  - name: fbos-postgres
     region: oregon
     plan: basic-256mb
     postgresMajorVersion: "16"
