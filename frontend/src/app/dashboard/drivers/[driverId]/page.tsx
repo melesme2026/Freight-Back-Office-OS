@@ -291,7 +291,7 @@ export default function DriverDetailPage() {
     }
 
     if (!driver?.email) {
-      setInviteError("Driver email is required before generating an invite.");
+      setInviteError("Driver email is required before generating an invite. Add and save an email first.");
       return;
     }
 
@@ -327,7 +327,9 @@ export default function DriverDetailPage() {
       setActivationToken(tokenValue || null);
     } catch (caught: unknown) {
       setInviteError(
-        caught instanceof Error ? caught.message : "Unable to generate driver invite."
+        caught instanceof Error
+          ? `${caught.message} (Confirm this email matches an existing driver profile before inviting.)`
+          : "Unable to generate driver invite. Confirm driver profile email is saved first."
       );
     } finally {
       setIsInviting(false);

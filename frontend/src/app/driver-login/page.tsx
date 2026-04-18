@@ -142,6 +142,9 @@ export default function DriverLoginPage() {
         <div className="mb-6">
           <h1 className="text-2xl font-bold tracking-tight text-slate-950">Driver Sign in</h1>
           <p className="mt-2 text-sm text-slate-600">Access your driver portal workspace.</p>
+          <p className="mt-2 text-xs text-slate-500">
+            Driver accounts are invite-only. If you were not invited by staff, contact your dispatcher.
+          </p>
         </div>
 
         <form className="space-y-5" onSubmit={handleSubmit} noValidate>

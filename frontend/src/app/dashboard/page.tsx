@@ -32,6 +32,11 @@ const dashboardCards = [
     href: "/dashboard/drivers",
   },
   {
+    title: "Brokers",
+    description: "Manage broker contacts, MC profiles, and payment terms.",
+    href: "/dashboard/brokers",
+  },
+  {
     title: "Support",
     description: "Monitor support workflows and escalation readiness.",
     href: "/dashboard/support",
