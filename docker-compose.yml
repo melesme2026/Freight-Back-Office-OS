@@ -155,6 +155,12 @@ services:
       dockerfile: infra/docker/nginx.Dockerfile
     container_name: freight_back_office_nginx
     restart: unless-stopped
+    environment:
+      PORT: 80
+      API_UPSTREAM_HOST: api
+      API_UPSTREAM_PORT: 8000
+      WEB_UPSTREAM_HOST: web
+      WEB_UPSTREAM_PORT: 3000
     depends_on:
       api:
         condition: service_healthy
