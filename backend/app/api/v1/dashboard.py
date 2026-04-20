@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from collections import defaultdict
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import func, select
@@ -17,6 +18,8 @@ from app.domain.models.load import Load
 from app.domain.models.load_document import LoadDocument
 from app.domain.models.validation_issue import ValidationIssue
 from app.schemas.common import ApiResponse
+from app.services.loads.load_service import LoadService
+from app.services.loads.operational_queue_service import OperationalQueueService
 
 
 router = APIRouter()
@@ -131,6 +134,41 @@ def get_dashboard(
         model=ValidationIssue,
     )
 
+    load_service = LoadService(db)
+    queue_service = OperationalQueueService()
+    queue_counts: dict[str, int] = defaultdict(int)
+    queue_examples: dict[str, list[dict[str, object]]] = defaultdict(list)
+
+    loads, _ = load_service.list_loads(
+        organization_id=str(effective_org_id),
+        page=1,
+        page_size=500,
+    )
+    prioritized = sorted(
+        (
+            (item, queue_service.evaluate_load(item))
+            for item in loads
+        ),
+        key=lambda pair: pair[1].get("priority_score", 0),
+        reverse=True,
+    )
+
+    for load, operational in prioritized:
+        queue_name = str(operational.get("queue") or "none")
+        queue_counts[queue_name] += 1
+        if queue_name != "none" and len(queue_examples[queue_name]) < 5:
+            queue_examples[queue_name].append(
+                {
+                    "id": str(load.id),
+                    "load_number": load.load_number,
+                    "status": str(load.status.value),
+                    "next_action": operational.get("next_action"),
+                    "is_overdue": bool(operational.get("is_overdue", False)),
+                    "days_in_state": operational.get("days_in_state"),
+                    "priority_score": operational.get("priority_score"),
+                }
+            )
+
     return ApiResponse(
         data={
             "loads_total": _scalar_count(db, loads_total_stmt),
@@ -157,6 +195,8 @@ def get_dashboard(
                 db,
                 critical_validation_issues_stmt,
             ),
+            "operational_queues": dict(queue_counts),
+            "queue_load_examples": dict(queue_examples),
         },
         meta={},
         error=None,

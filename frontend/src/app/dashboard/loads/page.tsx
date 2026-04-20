@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { apiClient } from "@/lib/api-client";
 import { getAccessToken, getOrganizationId } from "@/lib/auth";
 
@@ -34,6 +35,12 @@ type LoadListItem = {
   has_bol?: boolean | null | undefined;
   has_invoice?: boolean | null | undefined;
   documents_complete?: boolean | null | undefined;
+  operational?: {
+    queue?: string;
+    next_action?: { label?: string };
+    is_overdue?: boolean;
+    priority_score?: number;
+  } | null;
 };
 
 type StatusFilter =
@@ -211,6 +218,8 @@ const STATUS_OPTIONS: Array<{ value: StatusFilter; label: string }> = [
 
 export default function LoadsPage() {
   const { loads, isLoading, error } = useLoads();
+  const searchParams = useSearchParams();
+  const queueFilter = searchParams.get("queue")?.trim().toLowerCase() ?? "";
 
   async function handleExportCsv(): Promise<void> {
     const token = getAccessToken();
@@ -240,15 +249,24 @@ export default function LoadsPage() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
 
   const filteredLoads = useMemo(() => {
-    return typedLoads.filter((load) => {
+    return typedLoads
+      .filter((load) => {
       const matchesStatus =
         statusFilter === "all"
           ? true
           : normalizeText(load.status) === statusFilter;
 
-      return matchesStatus && matchesSearch(load, search);
-    });
-  }, [typedLoads, search, statusFilter]);
+      const matchesQueue = queueFilter
+        ? normalizeText(load.operational?.queue) === queueFilter
+        : true;
+
+      return matchesStatus && matchesQueue && matchesSearch(load, search);
+    })
+      .sort(
+        (a, b) =>
+          (b.operational?.priority_score ?? 0) - (a.operational?.priority_score ?? 0)
+      );
+  }, [typedLoads, search, statusFilter, queueFilter]);
 
   const metrics = useMemo(() => {
     const total = typedLoads.length;
@@ -285,6 +303,11 @@ export default function LoadsPage() {
               Review active freight loads, document completeness, and current
               workflow state.
             </p>
+            {queueFilter ? (
+              <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-brand-700">
+                Queue: {queueFilter.replaceAll("_", " ")}
+              </p>
+            ) : null}
           </div>
 
           <div className="flex gap-3">
@@ -420,6 +443,7 @@ export default function LoadsPage() {
                   <th className="px-5 py-4 font-semibold">Status</th>
                   <th className="px-5 py-4 font-semibold">Docs</th>
                   <th className="px-5 py-4 font-semibold">Amount</th>
+                  <th className="px-5 py-4 font-semibold">Next Action</th>
                   <th className="px-5 py-4 font-semibold">Action</th>
                 </tr>
               </thead>
@@ -428,7 +452,7 @@ export default function LoadsPage() {
                 {isLoading ? (
                   <tr>
                     <td
-                      colSpan={6}
+                      colSpan={7}
                       className="px-5 py-8 text-center text-sm text-slate-500"
                     >
                       Loading loads...
@@ -437,7 +461,7 @@ export default function LoadsPage() {
                 ) : filteredLoads.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={6}
+                      colSpan={7}
                       className="px-5 py-8 text-center text-sm text-slate-500"
                     >
                       {typedLoads.length === 0
@@ -496,6 +520,17 @@ export default function LoadsPage() {
 
                       <td className="px-5 py-4 align-top font-medium text-slate-900">
                         {formatCurrency(load.gross_amount, load.currency_code)}
+                      </td>
+
+                      <td className="px-5 py-4 align-top">
+                        <div className="text-sm text-slate-700">
+                          {load.operational?.next_action?.label || "Monitor load"}
+                        </div>
+                        {load.operational?.is_overdue ? (
+                          <span className="mt-1 inline-flex rounded-full bg-rose-100 px-2 py-1 text-xs font-semibold text-rose-700">
+                            Overdue follow-up
+                          </span>
+                        ) : null}
                       </td>
 
                       <td className="px-5 py-4 align-top">

@@ -14,6 +14,16 @@ export type DashboardMetrics = {
   loads_paid: number;
   documents_pending_processing: number;
   critical_validation_issues: number;
+  operational_queues: Record<string, number>;
+  queue_load_examples: Record<string, Array<{
+    id: string;
+    load_number?: string | null;
+    status?: string;
+    next_action?: { code?: string; label?: string };
+    is_overdue?: boolean;
+    days_in_state?: number | null;
+    priority_score?: number;
+  }>>;
 };
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -65,6 +75,9 @@ function normalizeDashboardMetrics(payload: unknown): DashboardMetrics | null {
     loads_paid: asNumber(source.loads_paid),
     documents_pending_processing: asNumber(source.documents_pending_processing),
     critical_validation_issues: asNumber(source.critical_validation_issues),
+    operational_queues: asRecord(source.operational_queues) as Record<string, number> ?? {},
+    queue_load_examples:
+      (asRecord(source.queue_load_examples) as DashboardMetrics["queue_load_examples"]) ?? {},
   };
 }
 

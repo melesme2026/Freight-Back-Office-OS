@@ -19,6 +19,7 @@ from app.domain.enums.document_type import DocumentType
 from app.domain.enums.load_status import LoadStatus
 from app.schemas.common import ApiResponse
 from app.services.loads.load_service import LoadService
+from app.services.loads.operational_queue_service import OperationalQueueService
 from app.services.loads.packet_readiness import calculate_packet_readiness
 from app.services.workflow.workflow_engine import WorkflowEngine
 
@@ -237,6 +238,7 @@ def _serialize_load(item: Any, *, detailed: bool = False) -> dict[str, Any]:
     last_reviewed_by_user = getattr(item, "last_reviewed_by_user", None)
 
     packet_readiness = _build_load_packet_readiness(item)
+    operational = OperationalQueueService().evaluate_load(item)
 
     payload = {
         "id": str(item.id),
@@ -265,6 +267,7 @@ def _serialize_load(item: Any, *, detailed: bool = False) -> dict[str, Any]:
         "has_bol": item.has_bol,
         "has_invoice": item.has_invoice,
         "packet_readiness": packet_readiness,
+        "operational": operational,
         "created_at": _to_iso_or_none(item.created_at),
         "updated_at": _to_iso_or_none(item.updated_at),
     }
@@ -432,6 +435,7 @@ def list_loads(
     date_from: str | None = None,
     date_to: str | None = None,
     search: str | None = None,
+    queue: str | None = None,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=25, ge=1, le=200),
     db: Session = Depends(get_db_session),
@@ -453,6 +457,8 @@ def list_loads(
         effective_driver_id = uuid.UUID(str(token_driver_id))
 
     service = LoadService(db)
+    normalized_queue = _normalize_optional_text(queue)
+
     items, total = service.list_loads(
         organization_id=_uuid_to_str(effective_org_id),
         customer_account_id=_uuid_to_str(customer_account_id),
@@ -465,6 +471,32 @@ def list_loads(
         page=page,
         page_size=page_size,
     )
+
+    if normalized_queue:
+        # Queue filtering is derived from operational state and done in-memory to avoid
+        # duplicating business logic in the repository layer.
+        all_items, _ = service.list_loads(
+            organization_id=_uuid_to_str(effective_org_id),
+            customer_account_id=_uuid_to_str(customer_account_id),
+            driver_id=_uuid_to_str(effective_driver_id),
+            status=_normalize_optional_text(status),
+            source_channel=_normalize_optional_text(source_channel),
+            date_from=_normalize_optional_text(date_from),
+            date_to=_normalize_optional_text(date_to),
+            search=_normalize_optional_text(search),
+            page=1,
+            page_size=500,
+        )
+        queue_service = OperationalQueueService()
+        queue_filtered = [
+            item
+            for item in all_items
+            if queue_service.evaluate_load(item).get("queue") == normalized_queue
+        ]
+        total = len(queue_filtered)
+        start = (page - 1) * page_size
+        end = start + page_size
+        items = queue_filtered[start:end]
 
     return ApiResponse(
         data=[_serialize_load(item, detailed=False) for item in items],

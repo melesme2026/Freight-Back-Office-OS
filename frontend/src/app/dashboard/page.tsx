@@ -43,6 +43,17 @@ const dashboardCards = [
   },
 ] as const;
 
+const OPERATIONAL_QUEUE_DEFS = [
+  { key: "missing_documents", label: "Missing Documents", tone: "danger" as const },
+  { key: "docs_needs_attention", label: "Docs Need Attention", tone: "warning" as const },
+  { key: "ready_to_invoice", label: "Ready to Invoice", tone: "warning" as const },
+  { key: "ready_to_submit", label: "Ready to Submit", tone: "warning" as const },
+  { key: "submitted_waiting_funding", label: "Submitted Waiting Funding", tone: "default" as const },
+  { key: "advance_paid_reserve_pending", label: "Advance Paid / Reserve Pending", tone: "default" as const },
+  { key: "payment_overdue", label: "Payment Overdue", tone: "danger" as const },
+  { key: "disputed_or_short_paid", label: "Disputed / Short Paid", tone: "danger" as const },
+] as const;
+
 function MetricCard({
   label,
   value,
@@ -261,6 +272,67 @@ export default function DashboardPage() {
             {loading ? (
               <div className="text-sm text-slate-500">Loading action-now slices...</div>
             ) : null}
+          </div>
+        </section>
+
+        <section className="mb-8 rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
+          <div className="mb-4">
+            <h2 className="text-lg font-semibold text-slate-950">Operational Queues</h2>
+            <p className="mt-1 text-sm text-slate-600">
+              Click a queue to open filtered loads with the backend-computed next action.
+            </p>
+          </div>
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            {OPERATIONAL_QUEUE_DEFS.map((queue) => (
+              <Link
+                key={queue.key}
+                href={`/dashboard/loads?queue=${encodeURIComponent(queue.key)}`}
+                className="rounded-xl border border-slate-200 bg-slate-50 p-4 transition hover:border-brand-300 hover:bg-brand-50"
+              >
+                <MetricCard
+                  label={queue.label}
+                  value={loading ? "..." : metrics?.operational_queues?.[queue.key] ?? 0}
+                  tone={queue.tone}
+                />
+              </Link>
+            ))}
+          </div>
+        </section>
+
+        <section className="mb-8 rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
+          <div className="mb-4">
+            <h2 className="text-lg font-semibold text-slate-950">Priority Worklist</h2>
+            <p className="mt-1 text-sm text-slate-600">
+              Highest-priority loads to move toward funding and payment first.
+            </p>
+          </div>
+          <div className="space-y-3">
+            {Object.values(metrics?.queue_load_examples ?? {})
+              .flat()
+              .sort((a, b) => (b.priority_score ?? 0) - (a.priority_score ?? 0))
+              .slice(0, 8)
+              .map((item) => (
+                <div key={item.id} className="rounded-xl border border-slate-200 p-4">
+                  <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                    <div>
+                      <div className="text-sm font-semibold text-slate-900">
+                        {item.load_number || item.id}
+                      </div>
+                      <div className="text-xs text-slate-500">
+                        {(item.status || "unknown").replaceAll("_", " ")}
+                      </div>
+                    </div>
+                    <div className="text-sm text-slate-700">
+                      {item.next_action?.label || "Monitor load"}
+                      {item.is_overdue ? (
+                        <span className="ml-2 rounded-md bg-rose-100 px-2 py-1 text-xs font-semibold text-rose-700">
+                          Overdue
+                        </span>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+              ))}
           </div>
         </section>
 
