@@ -6,77 +6,89 @@ from app.domain.enums.load_status import LoadStatus
 
 class LoadStateMachine:
     ALLOWED_TRANSITIONS: dict[LoadStatus, set[LoadStatus]] = {
-        LoadStatus.NEW: {
+        LoadStatus.BOOKED: {
+            LoadStatus.IN_TRANSIT,
             LoadStatus.DOCS_RECEIVED,
-            LoadStatus.NEEDS_REVIEW,
-            LoadStatus.EXCEPTION,
+            LoadStatus.DOCS_NEEDS_ATTENTION,
+            LoadStatus.ARCHIVED,
+        },
+        LoadStatus.IN_TRANSIT: {
+            LoadStatus.DELIVERED,
+            LoadStatus.DOCS_NEEDS_ATTENTION,
+            LoadStatus.ARCHIVED,
+        },
+        LoadStatus.DELIVERED: {
+            LoadStatus.DOCS_RECEIVED,
+            LoadStatus.DOCS_NEEDS_ATTENTION,
             LoadStatus.ARCHIVED,
         },
         LoadStatus.DOCS_RECEIVED: {
-            LoadStatus.NEEDS_REVIEW,
-            LoadStatus.EXCEPTION,
+            LoadStatus.INVOICE_READY,
+            LoadStatus.DOCS_NEEDS_ATTENTION,
             LoadStatus.ARCHIVED,
         },
-        LoadStatus.NEEDS_REVIEW: {
+        LoadStatus.DOCS_NEEDS_ATTENTION: {
             LoadStatus.DOCS_RECEIVED,
-            LoadStatus.EXCEPTION,
+            LoadStatus.INVOICE_READY,
             LoadStatus.ARCHIVED,
-            LoadStatus.READY_TO_SUBMIT,
         },
-        LoadStatus.READY_TO_SUBMIT: {
-            LoadStatus.NEEDS_REVIEW,
+        LoadStatus.INVOICE_READY: {
             LoadStatus.SUBMITTED_TO_BROKER,
-            LoadStatus.EXCEPTION,
+            LoadStatus.SUBMITTED_TO_FACTORING,
+            LoadStatus.DOCS_NEEDS_ATTENTION,
             LoadStatus.ARCHIVED,
         },
         LoadStatus.SUBMITTED_TO_BROKER: {
-            LoadStatus.READY_TO_SUBMIT,
-            LoadStatus.WAITING_ON_BROKER,
-            LoadStatus.SUBMITTED_TO_FACTORING,
-            LoadStatus.EXCEPTION,
-            LoadStatus.ARCHIVED,
-        },
-        LoadStatus.WAITING_ON_BROKER: {
-            LoadStatus.SUBMITTED_TO_BROKER,
-            LoadStatus.SUBMITTED_TO_FACTORING,
-            LoadStatus.EXCEPTION,
+            LoadStatus.FULLY_PAID,
+            LoadStatus.SHORT_PAID,
+            LoadStatus.DISPUTED,
+            LoadStatus.DOCS_NEEDS_ATTENTION,
             LoadStatus.ARCHIVED,
         },
         LoadStatus.SUBMITTED_TO_FACTORING: {
-            LoadStatus.WAITING_ON_BROKER,
-            LoadStatus.WAITING_ON_FUNDING,
-            LoadStatus.FUNDED,
-            LoadStatus.EXCEPTION,
+            LoadStatus.PACKET_REJECTED,
+            LoadStatus.ADVANCE_PAID,
+            LoadStatus.DISPUTED,
+            LoadStatus.SHORT_PAID,
             LoadStatus.ARCHIVED,
         },
-        LoadStatus.WAITING_ON_FUNDING: {
+        LoadStatus.PACKET_REJECTED: {
+            LoadStatus.RESUBMISSION_NEEDED,
+            LoadStatus.DOCS_NEEDS_ATTENTION,
+            LoadStatus.ARCHIVED,
+        },
+        LoadStatus.RESUBMISSION_NEEDED: {
+            LoadStatus.INVOICE_READY,
             LoadStatus.SUBMITTED_TO_FACTORING,
-            LoadStatus.FUNDED,
-            LoadStatus.EXCEPTION,
+            LoadStatus.DOCS_NEEDS_ATTENTION,
             LoadStatus.ARCHIVED,
         },
-        LoadStatus.FUNDED: {
-            LoadStatus.WAITING_ON_FUNDING,
-            LoadStatus.PAID,
-            LoadStatus.EXCEPTION,
+        LoadStatus.ADVANCE_PAID: {
+            LoadStatus.RESERVE_PENDING,
+            LoadStatus.FULLY_PAID,
+            LoadStatus.SHORT_PAID,
+            LoadStatus.DISPUTED,
             LoadStatus.ARCHIVED,
         },
-        LoadStatus.PAID: {
-            LoadStatus.FUNDED,
+        LoadStatus.RESERVE_PENDING: {
+            LoadStatus.FULLY_PAID,
+            LoadStatus.SHORT_PAID,
+            LoadStatus.DISPUTED,
             LoadStatus.ARCHIVED,
         },
-        LoadStatus.EXCEPTION: {
-            LoadStatus.DOCS_RECEIVED,
-            LoadStatus.NEEDS_REVIEW,
-            LoadStatus.READY_TO_SUBMIT,
-            LoadStatus.SUBMITTED_TO_BROKER,
-            LoadStatus.WAITING_ON_BROKER,
-            LoadStatus.SUBMITTED_TO_FACTORING,
-            LoadStatus.WAITING_ON_FUNDING,
-            LoadStatus.FUNDED,
-            LoadStatus.PAID,
+        LoadStatus.SHORT_PAID: {
+            LoadStatus.DISPUTED,
+            LoadStatus.FULLY_PAID,
             LoadStatus.ARCHIVED,
         },
+        LoadStatus.DISPUTED: {
+            LoadStatus.RESUBMISSION_NEEDED,
+            LoadStatus.RESERVE_PENDING,
+            LoadStatus.SHORT_PAID,
+            LoadStatus.FULLY_PAID,
+            LoadStatus.ARCHIVED,
+        },
+        LoadStatus.FULLY_PAID: {LoadStatus.ARCHIVED},
         LoadStatus.ARCHIVED: set(),
     }
 

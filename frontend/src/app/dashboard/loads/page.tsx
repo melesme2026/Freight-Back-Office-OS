@@ -38,13 +38,16 @@ type LoadListItem = {
 
 type StatusFilter =
   | "all"
-  | "ready_to_submit"
+  | "invoice_ready"
   | "submitted_to_broker"
-  | "waiting_on_broker"
   | "submitted_to_factoring"
-  | "waiting_on_funding"
-  | "funded"
-  | "paid"
+  | "packet_rejected"
+  | "resubmission_needed"
+  | "reserve_pending"
+  | "advance_paid"
+  | "short_paid"
+  | "disputed"
+  | "fully_paid";
 
 function normalizeText(value: NullableString): string {
   return typeof value === "string" ? value.trim().toLowerCase() : "";
@@ -52,24 +55,26 @@ function normalizeText(value: NullableString): string {
 
 function statusBadge(status?: string | null) {
   switch ((status ?? "").toLowerCase()) {
-    case "needs_review":
+    case "docs_needs_attention":
       return "bg-amber-100 text-amber-800";
     case "submitted_to_broker":
       return "bg-blue-100 text-blue-800";
-    case "waiting_on_broker":
-      return "bg-sky-100 text-sky-800";
-    case "paid":
+    case "fully_paid":
       return "bg-purple-100 text-purple-800";
     case "submitted_to_factoring":
       return "bg-indigo-100 text-indigo-800";
-    case "ready_to_submit":
+    case "invoice_ready":
       return "bg-emerald-100 text-emerald-800";
-    case "waiting_on_funding":
+    case "reserve_pending":
       return "bg-violet-100 text-violet-800";
-    case "funded":
+    case "advance_paid":
       return "bg-violet-100 text-violet-800";
-    case "exception":
+    case "packet_rejected":
+    case "resubmission_needed":
       return "bg-rose-100 text-rose-800";
+    case "short_paid":
+    case "disputed":
+      return "bg-orange-100 text-orange-800";
     case "archived":
       return "bg-slate-200 text-slate-700";
     default:
@@ -192,13 +197,16 @@ function matchesSearch(load: LoadListItem, query: string): boolean {
 
 const STATUS_OPTIONS: Array<{ value: StatusFilter; label: string }> = [
   { value: "all", label: "All statuses" },
-  { value: "ready_to_submit", label: "Ready to Submit" },
+  { value: "invoice_ready", label: "Ready to Submit" },
   { value: "submitted_to_broker", label: "Submitted to Broker" },
-  { value: "waiting_on_broker", label: "Waiting on Broker" },
   { value: "submitted_to_factoring", label: "Submitted to Factoring" },
-  { value: "waiting_on_funding", label: "Waiting on Funding" },
-  { value: "funded", label: "Funded" },
-  { value: "paid", label: "Paid" },
+  { value: "packet_rejected", label: "Packet Rejected" },
+  { value: "resubmission_needed", label: "Resubmission Needed" },
+  { value: "advance_paid", label: "Advance Paid" },
+  { value: "reserve_pending", label: "Reserve Pending" },
+  { value: "short_paid", label: "Short Paid" },
+  { value: "disputed", label: "Disputed" },
+  { value: "fully_paid", label: "Fully Paid" },
 ];
 
 export default function LoadsPage() {
@@ -248,15 +256,15 @@ export default function LoadsPage() {
       (load) => normalizeText(load.status) !== "archived"
     ).length;
     const waiting = typedLoads.filter((load) =>
-      ["waiting_on_broker", "waiting_on_funding"].includes(normalizeText(load.status))
+      ["submitted_to_broker", "reserve_pending"].includes(normalizeText(load.status))
     ).length;
     const submittedToBroker = typedLoads.filter(
       (load) => normalizeText(load.status) === "submitted_to_broker"
     ).length;
     const followUp = typedLoads.filter(
-      (load) => normalizeText(load.status) === "ready_to_submit"
+      (load) => normalizeText(load.status) === "invoice_ready"
     ).length;
-    const paid = typedLoads.filter((load) => normalizeText(load.status) === "paid").length;
+    const paid = typedLoads.filter((load) => normalizeText(load.status) === "fully_paid").length;
     const missingDocs = typedLoads.filter((load) => docCount(load) < 3).length;
 
     return { total, active, waiting, submittedToBroker, followUp, paid, missingDocs };

@@ -93,8 +93,8 @@ class Load(UUIDPrimaryKeyMixin, TimestampMixin, Base):
             values_callable=lambda enum_cls: [member.value for member in enum_cls],
         ),
         nullable=False,
-        default=LoadStatus.NEW,
-        server_default=LoadStatus.NEW.value,
+        default=LoadStatus.BOOKED,
+        server_default=LoadStatus.BOOKED.value,
     )
     processing_status: Mapped[ProcessingStatus] = mapped_column(
         SqlEnum(

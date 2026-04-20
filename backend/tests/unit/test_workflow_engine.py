@@ -7,7 +7,7 @@ from app.services.workflow.transitions import LoadTransitionApplier
 
 class DummyLoad:
     def __init__(self) -> None:
-        self.status = LoadStatus.NEW
+        self.status = LoadStatus.BOOKED
         self.processing_status = "pending"
         self.submitted_at = None
         self.funded_at = None
@@ -18,8 +18,8 @@ def test_state_machine_allows_valid_transition() -> None:
     machine = LoadStateMachine()
 
     assert machine.can_transition(
-        current_status=LoadStatus.NEW,
-        new_status=LoadStatus.DOCS_RECEIVED,
+        current_status=LoadStatus.BOOKED,
+        new_status=LoadStatus.IN_TRANSIT,
     ) is True
 
 
@@ -27,8 +27,8 @@ def test_state_machine_blocks_invalid_transition() -> None:
     machine = LoadStateMachine()
 
     assert machine.can_transition(
-        current_status=LoadStatus.NEW,
-        new_status=LoadStatus.PAID,
+        current_status=LoadStatus.BOOKED,
+        new_status=LoadStatus.FULLY_PAID,
     ) is False
 
 
@@ -45,27 +45,27 @@ def test_transition_applier_sets_submitted_timestamp() -> None:
     assert updated.submitted_at is not None
 
 
-def test_transition_applier_sets_processing_completed_for_ready_to_submit() -> None:
+def test_transition_applier_sets_processing_completed_for_invoice_ready() -> None:
     load = DummyLoad()
     applier = LoadTransitionApplier()
 
     updated = applier.apply_status_change(
         load=load,
-        new_status=LoadStatus.READY_TO_SUBMIT,
+        new_status=LoadStatus.INVOICE_READY,
     )
 
-    assert updated.status == LoadStatus.READY_TO_SUBMIT
+    assert updated.status == LoadStatus.INVOICE_READY
     assert updated.processing_status == "completed"
 
 
-def test_transition_applier_sets_failed_for_exception() -> None:
+def test_transition_applier_sets_failed_for_docs_needs_attention() -> None:
     load = DummyLoad()
     applier = LoadTransitionApplier()
 
     updated = applier.apply_status_change(
         load=load,
-        new_status=LoadStatus.EXCEPTION,
+        new_status=LoadStatus.DOCS_NEEDS_ATTENTION,
     )
 
-    assert updated.status == LoadStatus.EXCEPTION
+    assert updated.status == LoadStatus.DOCS_NEEDS_ATTENTION
     assert updated.processing_status == "failed"

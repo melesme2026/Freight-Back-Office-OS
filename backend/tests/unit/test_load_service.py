@@ -18,7 +18,7 @@ def test_create_load_sets_defaults(db_session) -> None:
     )
 
     assert item.load_number == "LOAD-1001"
-    assert item.status == LoadStatus.NEW
+    assert item.status == LoadStatus.BOOKED
     assert item.documents_complete is False
     assert item.gross_amount == Decimal("1250.00")
 
@@ -41,7 +41,7 @@ def test_attach_document_flags_marks_docs_received(db_session) -> None:
     assert updated.has_bol is False
     assert updated.has_invoice is False
     assert updated.documents_complete is False
-    assert updated.status == LoadStatus.NEW
+    assert updated.status == LoadStatus.BOOKED
 
     updated = service.attach_document_flags(
         load_id=str(item.id),
