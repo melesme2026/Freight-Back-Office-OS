@@ -43,6 +43,15 @@ export type Load = {
   has_invoice?: boolean | null;
   documents_complete?: boolean | null;
   packet_readiness?: PacketReadiness | null;
+  operational?: {
+    queue?: string;
+    queues?: string[];
+    next_action?: { code?: string; label?: string };
+    is_overdue?: boolean;
+    days_in_state?: number | null;
+    priority_score?: number;
+    blockers?: string[];
+  } | null;
   notes?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
@@ -207,6 +216,7 @@ function normalizeLoad(item: unknown): Load | null {
     has_invoice: asOptionalBoolean(record.has_invoice),
     documents_complete: asOptionalBoolean(record.documents_complete),
     packet_readiness: (record.packet_readiness as PacketReadiness | null | undefined) ?? null,
+    operational: (record.operational as Load["operational"]) ?? null,
     notes: asString(record.notes),
     created_at:
       asString(record.created_at) ??

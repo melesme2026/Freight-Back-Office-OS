@@ -75,6 +75,15 @@ type Load = {
   factoring_provider?: string | null;
   is_factored?: boolean | null;
   packet_readiness?: PacketReadiness | null;
+  operational?: {
+    queue?: string;
+    queues?: string[];
+    next_action?: { code?: string; label?: string };
+    days_in_state?: number | null;
+    entered_state_at?: string | null;
+    is_overdue?: boolean;
+    blockers?: string[];
+  } | null;
 };
 
 type ReviewQueueItem = {
@@ -572,6 +581,7 @@ function normalizeLoad(payload: unknown): Load | null {
     ]),
     is_factored: getFirstOptionalBooleanField(record, ["is_factored", "factored"]),
     packet_readiness: (record?.packet_readiness as PacketReadiness | null | undefined) ?? null,
+    operational: (record?.operational as Load["operational"]) ?? null,
   };
 }
 
@@ -1854,6 +1864,57 @@ export default function LoadDetailPage() {
                     {formatDateTime(load.updated_at)}
                   </div>
                 </div>
+              </div>
+
+              <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div>
+                    <div className="text-xs uppercase tracking-wide text-slate-500">
+                      Operational Queue
+                    </div>
+                    <div className="mt-1 text-sm font-semibold text-slate-900">
+                      {(load.operational?.queue || "none").replaceAll("_", " ")}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs uppercase tracking-wide text-slate-500">
+                      Recommended Next Action
+                    </div>
+                    <div className="mt-1 text-sm font-semibold text-slate-900">
+                      {load.operational?.next_action?.label || "Monitor load"}
+                      {load.operational?.is_overdue ? (
+                        <span className="ml-2 rounded-md bg-rose-100 px-2 py-1 text-xs font-semibold text-rose-700">
+                          Overdue follow-up
+                        </span>
+                      ) : null}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs uppercase tracking-wide text-slate-500">
+                      Days in Current State
+                    </div>
+                    <div className="mt-1 text-sm font-semibold text-slate-900">
+                      {typeof load.operational?.days_in_state === "number"
+                        ? load.operational.days_in_state
+                        : "—"}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs uppercase tracking-wide text-slate-500">
+                      State Entered
+                    </div>
+                    <div className="mt-1 text-sm font-semibold text-slate-900">
+                      {formatDateTime(load.operational?.entered_state_at || null)}
+                    </div>
+                  </div>
+                </div>
+                {(load.operational?.blockers?.length ?? 0) > 0 ? (
+                  <ul className="mt-3 list-disc space-y-1 pl-5 text-xs text-rose-700">
+                    {load.operational?.blockers?.map((blocker) => (
+                      <li key={blocker}>{blocker}</li>
+                    ))}
+                  </ul>
+                ) : null}
               </div>
             </div>
 
