@@ -40,6 +40,24 @@ from app.utils.text_utils import slugify
 router = APIRouter()
 
 ACCESS_TOKEN_EXPIRES_IN_SECONDS = 60 * 60
+ALLOWED_INVITE_ROLES = {role.value for role in Role}
+
+INVITE_PERMISSION_MATRIX: dict[str, set[str]] = {
+    Role.OWNER.value: ALLOWED_INVITE_ROLES,
+    Role.ADMIN.value: {
+        Role.OPS_AGENT.value,
+        Role.BILLING_ADMIN.value,
+        Role.SUPPORT_AGENT.value,
+        Role.VIEWER.value,
+        Role.DRIVER.value,
+    },
+    Role.OPS_MANAGER.value: {
+        Role.OPS_AGENT.value,
+        Role.SUPPORT_AGENT.value,
+        Role.VIEWER.value,
+        Role.DRIVER.value,
+    },
+}
 
 
 class LoginRequestBody(BaseModel):
@@ -147,6 +165,16 @@ def _normalize_email(value: str) -> str:
     normalized = _normalize_required_text(value, "email").lower()
     if "@" not in normalized:
         raise ValidationError("Invalid email address", details={"email": value})
+    return normalized
+
+
+def _normalize_role(value: str) -> str:
+    normalized = _normalize_required_text(value, "role").lower()
+    if normalized not in ALLOWED_INVITE_ROLES:
+        raise ValidationError(
+            "Invalid role",
+            details={"role": value, "allowed_roles": sorted(ALLOWED_INVITE_ROLES)},
+        )
     return normalized
 
 
@@ -312,7 +340,7 @@ def invite_user(
     requester = token_service.get_current_staff_user(token)
 
     requester_role = str(getattr(requester.role, "value", requester.role)).lower()
-    if requester_role not in {"owner", "admin", "ops_manager"}:
+    if requester_role not in INVITE_PERMISSION_MATRIX:
         raise UnauthorizedError("Only organization admins/managers can invite users")
 
     organization_id = payload.organization_id or requester.organization_id
@@ -321,7 +349,12 @@ def invite_user(
 
     repo = StaffUserRepository(db)
     normalized_email = payload.email.strip().lower()
-    normalized_role = payload.role.strip().lower()
+    normalized_full_name = _normalize_required_text(payload.full_name, "full_name")
+    normalized_role = _normalize_role(payload.role)
+
+    allowed_target_roles = INVITE_PERMISSION_MATRIX.get(requester_role, set())
+    if normalized_role not in allowed_target_roles:
+        raise UnauthorizedError("Your role cannot invite users for the requested target role")
 
     if normalized_role == Role.DRIVER.value:
         driver_repo = DriverRepository(db)
@@ -342,7 +375,7 @@ def invite_user(
         item = StaffUser(
             organization_id=organization_id,
             email=normalized_email,
-            full_name=payload.full_name.strip(),
+            full_name=normalized_full_name,
             password_hash=hash_password("ChangeMe123!"),
             role=normalized_role,
             is_active=False,
@@ -350,6 +383,19 @@ def invite_user(
         )
         existing = repo.create(item)
         created_new_user = True
+    else:
+        existing_role = str(getattr(existing.role, "value", existing.role)).lower()
+        if existing_role != normalized_role:
+            raise ValidationError(
+                "An account with this email already exists with a different role",
+                details={
+                    "email": normalized_email,
+                    "existing_role": existing_role,
+                    "requested_role": normalized_role,
+                },
+            )
+        if str(existing.organization_id) != str(organization_id):
+            raise UnauthorizedError("Cannot invite users for another organization")
 
     if created_new_user:
         db.commit()
@@ -369,7 +415,7 @@ def invite_user(
         to_email=normalized_email,
         subject="Freight Back Office OS — Account Activation",
         body_text=(
-            f"Hello {payload.full_name.strip()},\n\n"
+            f"Hello {normalized_full_name},\n\n"
             "You have been invited to Freight Back Office OS.\n"
             f"Activate your account using this link:\n{activation_url}\n\n"
             "If you did not expect this invite, contact your dispatcher/admin."
@@ -405,6 +451,10 @@ def activate_account(
     user = token_service.staff_user_repo.get_by_id(user_id, include_related=True)
     if user is None:
         raise UnauthorizedError("Invalid activation token")
+
+    token_organization_id = token_payload.get("organization_id")
+    if str(token_organization_id) != str(user.organization_id):
+        raise UnauthorizedError("Activation token organization does not match user organization")
 
     user.password_hash = hash_password(payload.password)
     user.is_active = True
@@ -487,6 +537,10 @@ def reset_password(
     user = token_service.staff_user_repo.get_by_id(user_id, include_related=True)
     if user is None:
         raise UnauthorizedError("Invalid reset token")
+
+    token_organization_id = token_payload.get("organization_id")
+    if str(token_organization_id) != str(user.organization_id):
+        raise UnauthorizedError("Reset token organization does not match user organization")
 
     user.password_hash = hash_password(payload.new_password)
     db.add(user)
