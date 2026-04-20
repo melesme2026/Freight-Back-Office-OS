@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.core.exceptions import NotFoundError, ValidationError
 from app.domain.enums.audit_actor_type import AuditActorType
 from app.domain.enums.load_status import LoadStatus
+from app.services.loads.packet_readiness import calculate_packet_readiness
 from app.domain.models.load import Load
 from app.repositories.load_repo import LoadRepository
 from app.repositories.validation_repo import ValidationRepository
@@ -328,21 +329,20 @@ class WorkflowEngine:
             LoadStatus.FUNDED,
             LoadStatus.PAID,
         }:
-            missing_docs: list[str] = []
-            if not bool(load.has_ratecon):
-                missing_docs.append("rate_confirmation")
-            if not bool(load.has_bol):
-                missing_docs.append("bill_of_lading")
-            if not bool(load.has_invoice):
-                missing_docs.append("invoice")
-            if missing_docs:
+            document_types = [
+                document.document_type for document in (load.documents or []) if document.document_type
+            ]
+            readiness = calculate_packet_readiness(document_types=document_types)
+            missing_submission_docs = readiness["missing_required_documents"]["submission"]
+            if missing_submission_docs:
                 raise ValidationError(
-                    "Load cannot transition to broker/factoring stages until all required documents are present",
+                    "Load cannot transition to broker/factoring stages until all required submission documents are present",
                     details={
                         "load_id": str(load.id),
                         "current_status": str(current_status),
                         "target_status": str(target_status),
-                        "missing_documents": missing_docs,
+                        "missing_documents": missing_submission_docs,
+                        "readiness_state": readiness["readiness_state"],
                     },
                 )
 

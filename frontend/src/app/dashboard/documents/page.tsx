@@ -210,6 +210,33 @@ function normalizeDocumentTypeLabel(value?: string | null) {
     case "proof-of-delivery":
     case "proof of delivery":
       return "Proof of Delivery";
+    case "lumper_receipt":
+    case "lumper receipt":
+      return "Lumper Receipt";
+    case "detention_support":
+    case "detention support":
+      return "Detention Support";
+    case "scale_ticket":
+    case "scale ticket":
+      return "Scale Ticket";
+    case "accessorial_support":
+    case "accessorial support":
+      return "Accessorial Support";
+    case "payment_remittance":
+    case "payment remittance":
+      return "Payment Remittance";
+    case "notice_of_assignment":
+    case "notice of assignment":
+      return "Notice of Assignment";
+    case "w9":
+    case "w-9":
+      return "W-9";
+    case "certificate_of_insurance":
+    case "certificate of insurance":
+      return "Certificate of Insurance";
+    case "damage_claim_photo":
+    case "damage claim photo":
+      return "Damage Claim Photo";
     case "unknown":
       return "Unknown";
     default:

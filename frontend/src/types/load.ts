@@ -1,3 +1,16 @@
+export type PacketReadiness = {
+  readiness_state?: string | null;
+  ready_for_invoice?: boolean | null;
+  ready_to_submit?: boolean | null;
+  present_documents?: string[] | null;
+  missing_required_documents?: {
+    invoice?: string[] | null;
+    submission?: string[] | null;
+  } | null;
+  blockers?: string[] | null;
+  notes?: string[] | null;
+};
+
 export type LoadStatus =
   | "new"
   | "docs_received"
@@ -45,6 +58,7 @@ export type Load = {
   currency_code?: string | null;
 
   documents_complete?: boolean | null;
+  packet_readiness?: PacketReadiness | null;
   has_ratecon?: boolean | null;
   has_bol?: boolean | null;
   has_invoice?: boolean | null;

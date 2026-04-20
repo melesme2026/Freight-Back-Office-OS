@@ -4,6 +4,15 @@ export type DocumentType =
   | "bill_of_lading"
   | "proof_of_delivery"
   | "invoice"
+  | "lumper_receipt"
+  | "detention_support"
+  | "scale_ticket"
+  | "accessorial_support"
+  | "payment_remittance"
+  | "notice_of_assignment"
+  | "w9"
+  | "certificate_of_insurance"
+  | "damage_claim_photo"
   | "other";
 
 export type ProcessingStatus =

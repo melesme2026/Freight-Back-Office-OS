@@ -5,6 +5,19 @@ import { useCallback, useEffect, useState } from "react";
 import { apiClient } from "@/lib/api-client";
 import { getAccessToken, getOrganizationId } from "@/lib/auth";
 
+export type PacketReadiness = {
+  readiness_state?: string | null;
+  ready_for_invoice?: boolean | null;
+  ready_to_submit?: boolean | null;
+  present_documents?: string[] | null;
+  missing_required_documents?: {
+    invoice?: string[] | null;
+    submission?: string[] | null;
+  } | null;
+  blockers?: string[] | null;
+  notes?: string[] | null;
+};
+
 export type Load = {
   id: string;
   load_number: string | null;
@@ -29,6 +42,7 @@ export type Load = {
   has_bol?: boolean | null;
   has_invoice?: boolean | null;
   documents_complete?: boolean | null;
+  packet_readiness?: PacketReadiness | null;
   notes?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
@@ -192,6 +206,7 @@ function normalizeLoad(item: unknown): Load | null {
     has_bol: asOptionalBoolean(record.has_bol),
     has_invoice: asOptionalBoolean(record.has_invoice),
     documents_complete: asOptionalBoolean(record.documents_complete),
+    packet_readiness: (record.packet_readiness as PacketReadiness | null | undefined) ?? null,
     notes: asString(record.notes),
     created_at:
       asString(record.created_at) ??
