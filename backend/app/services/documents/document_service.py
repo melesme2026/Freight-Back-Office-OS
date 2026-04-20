@@ -13,6 +13,7 @@ from app.domain.enums.processing_status import ProcessingStatus
 from app.domain.models.load_document import LoadDocument
 from app.repositories.document_repo import DocumentRepository
 from app.repositories.load_repo import LoadRepository
+from app.services.loads.packet_readiness import calculate_packet_readiness
 
 
 class DocumentService:
@@ -312,18 +313,13 @@ class DocumentService:
             include_related=False,
         )
 
-        has_ratecon = any(
-            document.document_type == DocumentType.RATE_CONFIRMATION for document in documents
-        )
-        has_bol = any(
-            document.document_type == DocumentType.BILL_OF_LADING for document in documents
-        )
-        has_invoice = any(document.document_type == DocumentType.INVOICE for document in documents)
+        present_document_types = [document.document_type for document in documents]
+        readiness = calculate_packet_readiness(document_types=present_document_types)
 
-        load.has_ratecon = has_ratecon
-        load.has_bol = has_bol
-        load.has_invoice = has_invoice
-        load.documents_complete = bool(has_ratecon and has_bol and has_invoice)
+        load.has_ratecon = DocumentType.RATE_CONFIRMATION in present_document_types
+        load.has_bol = DocumentType.BILL_OF_LADING in present_document_types
+        load.has_invoice = DocumentType.INVOICE in present_document_types
+        load.documents_complete = bool(readiness["ready_to_submit"])
 
         self.load_repo.update(load)
 
@@ -363,6 +359,25 @@ class DocumentService:
             "proof-of-delivery": DocumentType.PROOF_OF_DELIVERY,
             "pod": DocumentType.PROOF_OF_DELIVERY,
             "invoice": DocumentType.INVOICE,
+            "lumper receipt": DocumentType.LUMPER_RECEIPT,
+            "lumper_receipt": DocumentType.LUMPER_RECEIPT,
+            "detention support": DocumentType.DETENTION_SUPPORT,
+            "detention_support": DocumentType.DETENTION_SUPPORT,
+            "scale ticket": DocumentType.SCALE_TICKET,
+            "scale_ticket": DocumentType.SCALE_TICKET,
+            "accessorial support": DocumentType.ACCESSORIAL_SUPPORT,
+            "accessorial_support": DocumentType.ACCESSORIAL_SUPPORT,
+            "payment remittance": DocumentType.PAYMENT_REMITTANCE,
+            "payment_remittance": DocumentType.PAYMENT_REMITTANCE,
+            "notice of assignment": DocumentType.NOTICE_OF_ASSIGNMENT,
+            "notice_of_assignment": DocumentType.NOTICE_OF_ASSIGNMENT,
+            "w9": DocumentType.W9,
+            "w-9": DocumentType.W9,
+            "certificate of insurance": DocumentType.CERTIFICATE_OF_INSURANCE,
+            "certificate_of_insurance": DocumentType.CERTIFICATE_OF_INSURANCE,
+            "damage claim photo": DocumentType.DAMAGE_CLAIM_PHOTO,
+            "damage_claim_photo": DocumentType.DAMAGE_CLAIM_PHOTO,
+            "other": DocumentType.OTHER,
         }
 
         if normalized in aliases:

@@ -248,7 +248,7 @@ class LoadService:
             else:
                 setattr(load, field, value)
 
-        load.documents_complete = bool(load.has_ratecon and load.has_bol and load.has_invoice)
+        load.documents_complete = bool(load.has_ratecon and load.has_invoice)
 
         if load.status != status_before:
             self._sync_status_timestamps(load, old_status=status_before, new_status=load.status)
@@ -272,7 +272,7 @@ class LoadService:
         if has_invoice is not None:
             load.has_invoice = bool(has_invoice)
 
-        load.documents_complete = bool(load.has_ratecon and load.has_bol and load.has_invoice)
+        load.documents_complete = bool(load.has_ratecon and load.has_invoice)
         if load.documents_complete and load.status == LoadStatus.NEW:
             self._sync_status_timestamps(
                 load,

@@ -21,6 +21,20 @@ type LoadStatus =
   | "exception"
   | "archived";
 
+type PacketReadiness = {
+  readiness_state?: string | null;
+  ready_for_invoice?: boolean | null;
+  ready_to_submit?: boolean | null;
+  present_documents?: string[] | null;
+  missing_required_documents?: {
+    invoice?: string[] | null;
+    submission?: string[] | null;
+  } | null;
+  missing_recommended_documents?: string[] | null;
+  blockers?: string[] | null;
+  notes?: string[] | null;
+};
+
 type Load = {
   id: string;
   load_number: string | null;
@@ -56,6 +70,7 @@ type Load = {
   amount_received?: number | string | null;
   factoring_provider?: string | null;
   is_factored?: boolean | null;
+  packet_readiness?: PacketReadiness | null;
 };
 
 type ReviewQueueItem = {
@@ -119,13 +134,7 @@ type LoadDocument = {
   updated_at?: string | null;
 };
 
-type UploadDocumentType =
-  | ""
-  | "ratecon"
-  | "bol"
-  | "invoice"
-  | "pod"
-  | "unknown";
+type UploadDocumentType = "" | "rate_confirmation" | "bill_of_lading" | "proof_of_delivery" | "invoice" | "lumper_receipt" | "detention_support" | "scale_ticket" | "accessorial_support" | "damage_claim_photo" | "other" | "unknown";
 
 type OperationalChecklistState = "complete" | "current" | "pending" | "blocked";
 
@@ -166,11 +175,17 @@ const UPLOAD_DOCUMENT_TYPE_OPTIONS: Array<{
   label: string;
 }> = [
   { value: "", label: "Auto / Unknown" },
-  { value: "ratecon", label: "Rate Confirmation" },
-  { value: "bol", label: "Bill of Lading" },
+  { value: "rate_confirmation", label: "Rate Confirmation" },
+  { value: "bill_of_lading", label: "Bill of Lading" },
+  { value: "proof_of_delivery", label: "Proof of Delivery" },
   { value: "invoice", label: "Invoice" },
-  { value: "pod", label: "Proof of Delivery" },
-  { value: "unknown", label: "Other / Unknown" },
+  { value: "lumper_receipt", label: "Lumper Receipt" },
+  { value: "detention_support", label: "Detention Support" },
+  { value: "scale_ticket", label: "Scale Ticket" },
+  { value: "accessorial_support", label: "Accessorial Support" },
+  { value: "damage_claim_photo", label: "Damage Claim Photo" },
+  { value: "other", label: "Other" },
+  { value: "unknown", label: "Unknown" },
 ];
 
 const MANUAL_STATUS_OPTIONS: Array<{ value: LoadStatus; label: string }> = [
@@ -533,6 +548,7 @@ function normalizeLoad(payload: unknown): Load | null {
       "factoring_company_name",
     ]),
     is_factored: getFirstOptionalBooleanField(record, ["is_factored", "factored"]),
+    packet_readiness: (record?.packet_readiness as PacketReadiness | null | undefined) ?? null,
   };
 }
 
@@ -657,6 +673,21 @@ function normalizeDocumentTypeLabel(value?: string | null) {
     case "proof-of-delivery":
     case "proof of delivery":
       return "Proof of Delivery";
+    case "lumper_receipt":
+    case "lumper receipt":
+      return "Lumper Receipt";
+    case "detention_support":
+    case "detention support":
+      return "Detention Support";
+    case "scale_ticket":
+    case "scale ticket":
+      return "Scale Ticket";
+    case "accessorial_support":
+    case "accessorial support":
+      return "Accessorial Support";
+    case "damage_claim_photo":
+    case "damage claim photo":
+      return "Damage Claim Photo";
     case "unknown":
       return "Unknown";
     default:
@@ -919,10 +950,13 @@ export default function LoadDetailPage() {
   }, [load, loadDocuments]);
 
   const requiredDocsReceivedCount = useMemo(() => {
-    return [documentPresence.hasRateCon, documentPresence.hasBol, documentPresence.hasInvoice].filter(
-      Boolean
-    ).length;
-  }, [documentPresence]);
+    const submissionMissingCount = load?.packet_readiness?.missing_required_documents?.submission?.length;
+    if (typeof submissionMissingCount === "number") {
+      return Math.max(0, 3 - submissionMissingCount);
+    }
+
+    return [documentPresence.hasRateCon, documentPresence.hasInvoice].filter(Boolean).length;
+  }, [documentPresence, load?.packet_readiness]);
 
   const documentChecklist = useMemo(
     () => [
@@ -931,15 +965,21 @@ export default function LoadDetailPage() {
         status: documentPresence.hasRateCon ? "received" : "missing",
       },
       {
-        name: "Bill of Lading",
-        status: documentPresence.hasBol ? "received" : "missing",
+        name: "Proof of Delivery",
+        status: load?.packet_readiness?.present_documents?.includes("proof_of_delivery")
+          ? "received"
+          : "missing",
       },
       {
         name: "Invoice",
         status: documentPresence.hasInvoice ? "received" : "missing",
       },
+      {
+        name: "Bill of Lading (recommended)",
+        status: documentPresence.hasBol ? "received" : "recommended",
+      },
     ],
-    [documentPresence]
+    [documentPresence, load?.packet_readiness]
   );
 
   const validationIssues = useMemo(() => {
@@ -956,8 +996,9 @@ export default function LoadDetailPage() {
     if (!documentPresence.hasRateCon) {
       issues.set("rate confirmation missing", "Rate confirmation missing");
     }
-    if (!documentPresence.hasBol) {
-      issues.set("bill of lading missing", "Bill of lading missing");
+    const missingSubmission = load?.packet_readiness?.missing_required_documents?.submission ?? [];
+    if (missingSubmission.includes("proof_of_delivery")) {
+      issues.set("proof of delivery missing", "Proof of delivery missing");
     }
 
     return Array.from(issues.values());
@@ -996,7 +1037,7 @@ export default function LoadDetailPage() {
         nextStatus === "waiting_on_funding" ||
         nextStatus === "funded" ||
         nextStatus === "paid") &&
-      requiredDocsReceivedCount < 3
+      Boolean(load?.packet_readiness) ? load?.packet_readiness?.ready_to_submit !== true : requiredDocsReceivedCount < 2
     ) {
       return "All required documents must be present before submission readiness.";
     }
@@ -1042,7 +1083,7 @@ export default function LoadDetailPage() {
     const brokerEmailAvailable =
       typeof load.broker_email_raw === "string" && load.broker_email_raw.trim().length > 0;
 
-    const documentsReady = requiredDocsReceivedCount === 3;
+    const documentsReady = load?.packet_readiness?.ready_to_submit === true || requiredDocsReceivedCount >= 2;
     const validationReady = totalOpenIssues === 0;
     const packageReady = documentsReady && validationReady;
     const submissionCompleted =
@@ -1940,7 +1981,9 @@ export default function LoadDetailPage() {
                       className={`rounded-full px-3 py-1 text-xs font-semibold ${
                         document.status === "received"
                           ? "bg-emerald-100 text-emerald-800"
-                          : "bg-rose-100 text-rose-800"
+                          : document.status === "recommended"
+                            ? "bg-amber-100 text-amber-800"
+                            : "bg-rose-100 text-rose-800"
                       }`}
                     >
                       {document.status}

@@ -15,9 +15,11 @@ from sqlalchemy.orm import Session
 from app.core.dependencies import get_db_session
 from app.core.security import get_current_token_payload
 from app.core.exceptions import UnauthorizedError, ValidationError
+from app.domain.enums.document_type import DocumentType
 from app.domain.enums.load_status import LoadStatus
 from app.schemas.common import ApiResponse
 from app.services.loads.load_service import LoadService
+from app.services.loads.packet_readiness import calculate_packet_readiness
 from app.services.workflow.workflow_engine import WorkflowEngine
 
 
@@ -203,6 +205,28 @@ def _parse_load_status(value: str) -> LoadStatus:
     )
 
 
+
+
+def _build_load_packet_readiness(item: Any) -> dict[str, Any]:
+    documents = getattr(item, "documents", None)
+
+    document_types = []
+    if isinstance(documents, list):
+        for document in documents:
+            document_type = getattr(document, "document_type", None)
+            if document_type is not None:
+                document_types.append(document_type)
+
+    if not document_types:
+        if bool(getattr(item, "has_ratecon", False)):
+            document_types.append(DocumentType.RATE_CONFIRMATION)
+        if bool(getattr(item, "has_bol", False)):
+            document_types.append(DocumentType.BILL_OF_LADING)
+        if bool(getattr(item, "has_invoice", False)):
+            document_types.append(DocumentType.INVOICE)
+
+    return calculate_packet_readiness(document_types=document_types)
+
 def _serialize_load(item: Any, *, detailed: bool = False) -> dict[str, Any]:
     customer_account = getattr(item, "customer_account", None)
     driver = getattr(item, "driver", None)
@@ -211,6 +235,8 @@ def _serialize_load(item: Any, *, detailed: bool = False) -> dict[str, Any]:
     validation_issues = getattr(item, "validation_issues", None)
     documents = getattr(item, "documents", None)
     last_reviewed_by_user = getattr(item, "last_reviewed_by_user", None)
+
+    packet_readiness = _build_load_packet_readiness(item)
 
     payload = {
         "id": str(item.id),
@@ -238,6 +264,7 @@ def _serialize_load(item: Any, *, detailed: bool = False) -> dict[str, Any]:
         "has_ratecon": item.has_ratecon,
         "has_bol": item.has_bol,
         "has_invoice": item.has_invoice,
+        "packet_readiness": packet_readiness,
         "created_at": _to_iso_or_none(item.created_at),
         "updated_at": _to_iso_or_none(item.updated_at),
     }

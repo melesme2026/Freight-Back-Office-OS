@@ -74,7 +74,7 @@ export default function DriverUploadsPage() {
           <p className="text-sm font-medium text-brand-700">Driver Portal / Uploads</p>
           <h1 className="text-3xl font-bold tracking-tight text-slate-950">Upload Documents</h1>
           <p className="mt-2 text-sm text-slate-600">
-            Upload a BOL, POD, or other document and optionally link it to one of your loads.
+            Upload rate confirmations, PODs, invoices, and supporting paperwork, then optionally link each file to a load.
           </p>
           <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
             <p className="font-semibold text-slate-900">How uploads work in V1</p>
@@ -110,8 +110,15 @@ export default function DriverUploadsPage() {
                 onChange={(event) => setDocumentType(event.target.value)}
                 className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
               >
-                <option value="bol">BOL</option>
-                <option value="pod">POD</option>
+                <option value="rate_confirmation">Rate Confirmation</option>
+                <option value="proof_of_delivery">Proof of Delivery</option>
+                <option value="bill_of_lading">Bill of Lading</option>
+                <option value="invoice">Invoice</option>
+                <option value="lumper_receipt">Lumper Receipt</option>
+                <option value="detention_support">Detention Support</option>
+                <option value="scale_ticket">Scale Ticket</option>
+                <option value="accessorial_support">Accessorial Support</option>
+                <option value="damage_claim_photo">Damage Claim Photo</option>
                 <option value="other">Other</option>
               </select>
             </div>

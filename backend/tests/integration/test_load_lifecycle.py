@@ -5,6 +5,7 @@ import pytest
 from app.core.exceptions import InvalidTransitionError, ValidationError
 from app.domain.enums.load_status import LoadStatus
 from app.services.loads.load_service import LoadService
+from app.services.documents.document_service import DocumentService
 from app.services.workflow.workflow_engine import WorkflowEngine
 
 
@@ -88,12 +89,19 @@ def test_broker_factoring_workflow_requires_docs_and_no_blocking_issues(db_sessi
             new_status=LoadStatus.SUBMITTED_TO_BROKER,
         )
 
-    load_service.attach_document_flags(
-        load_id=str(load.id),
-        has_ratecon=True,
-        has_bol=True,
-        has_invoice=True,
-    )
+    document_service = DocumentService(db_session)
+    for index, document_type in enumerate(["rate_confirmation", "proof_of_delivery", "invoice"], start=1):
+        document_service.create_document(
+            organization_id="00000000-0000-0000-0000-000000000631",
+            customer_account_id="00000000-0000-0000-0000-000000000632",
+            storage_key=f"uploads/lifecycle-actions-{index}.pdf",
+            source_channel="manual",
+            load_id=str(load.id),
+            document_type=document_type,
+            original_filename=f"lifecycle-actions-{index}.pdf",
+            mime_type="application/pdf",
+            file_size_bytes=1100 + index,
+        )
     workflow_engine.transition_load(
         load_id=str(load.id),
         new_status=LoadStatus.SUBMITTED_TO_BROKER,
@@ -133,12 +141,19 @@ def test_operational_actions_publish_required_events(db_session) -> None:
         driver_id="00000000-0000-0000-0000-000000000633",
         load_number="LIFE-1004",
     )
-    load_service.attach_document_flags(
-        load_id=str(load.id),
-        has_ratecon=True,
-        has_bol=True,
-        has_invoice=True,
-    )
+    document_service = DocumentService(db_session)
+    for index, document_type in enumerate(["rate_confirmation", "proof_of_delivery", "invoice"], start=1):
+        document_service.create_document(
+            organization_id="00000000-0000-0000-0000-000000000621",
+            customer_account_id="00000000-0000-0000-0000-000000000622",
+            storage_key=f"uploads/lifecycle-required-{index}.pdf",
+            source_channel="manual",
+            load_id=str(load.id),
+            document_type=document_type,
+            original_filename=f"lifecycle-required-{index}.pdf",
+            mime_type="application/pdf",
+            file_size_bytes=1100 + index,
+        )
 
     workflow_engine.transition_load(
         load_id=str(load.id),
