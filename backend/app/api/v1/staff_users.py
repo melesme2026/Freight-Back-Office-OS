@@ -9,7 +9,9 @@ from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_db_session
-from app.core.exceptions import NotFoundError, ValidationError
+from app.core.exceptions import NotFoundError, UnauthorizedError, ValidationError
+from app.core.security import get_current_token_payload
+from app.domain.enums.role import Role
 from app.core.security import hash_password
 from app.domain.models.staff_user import StaffUser
 from app.repositories.staff_user_repo import StaffUserRepository
@@ -17,6 +19,35 @@ from app.schemas.common import ApiResponse
 
 
 router = APIRouter()
+
+ALLOWED_DIRECT_CREATE_ROLES = {
+    Role.OPS_AGENT.value,
+    Role.BILLING_ADMIN.value,
+    Role.SUPPORT_AGENT.value,
+    Role.VIEWER.value,
+}
+
+
+def _normalize_token_organization_id(token_payload: dict[str, Any]) -> uuid.UUID:
+    raw_organization_id = token_payload.get("organization_id")
+    try:
+        return uuid.UUID(str(raw_organization_id))
+    except (TypeError, ValueError) as exc:
+        raise UnauthorizedError("Token organization_id is invalid") from exc
+
+
+def _normalize_token_role(token_payload: dict[str, Any]) -> str:
+    role_value = str(token_payload.get("role", "")).strip().lower()
+    if not role_value:
+        raise UnauthorizedError("Token role is missing")
+    return role_value
+
+
+def _require_staff_admin_role(token_payload: dict[str, Any]) -> str:
+    token_role = _normalize_token_role(token_payload)
+    if token_role not in {Role.OWNER.value, Role.ADMIN.value}:
+        raise UnauthorizedError("Only owner/admin can manage staff users")
+    return token_role
 
 
 class StaffUserCreateRequest(BaseModel):
@@ -113,14 +144,26 @@ def _get_staff_user_or_404(
 @router.post("/staff-users", response_model=ApiResponse)
 def create_staff_user(
     payload: StaffUserCreateRequest,
+    token_payload: dict[str, Any] = Depends(get_current_token_payload),
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
+    _require_staff_admin_role(token_payload)
+
+    token_organization_id = _normalize_token_organization_id(token_payload)
+    if payload.organization_id != token_organization_id:
+        raise UnauthorizedError("organization_id does not match authenticated organization")
+
     repo = StaffUserRepository(db)
 
     normalized_email = _normalize_email(payload.email)
     normalized_full_name = _normalize_required_text(payload.full_name, "full_name")
     normalized_password = _normalize_required_text(payload.password, "password")
-    normalized_role = _normalize_required_text(payload.role, "role")
+    normalized_role = _normalize_required_text(payload.role, "role").lower()
+
+    if normalized_role not in ALLOWED_DIRECT_CREATE_ROLES:
+        raise UnauthorizedError(
+            "Direct staff creation is restricted to non-privileged office roles; use invites for other roles"
+        )
 
     existing = repo.get_by_email(
         organization_id=payload.organization_id,
@@ -163,11 +206,20 @@ def list_staff_users(
     search: str | None = None,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=25, ge=1, le=200),
+    token_payload: dict[str, Any] = Depends(get_current_token_payload),
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
+    _require_staff_admin_role(token_payload)
+
     repo = StaffUserRepository(db)
+    token_organization_id = _normalize_token_organization_id(token_payload)
+
+    if organization_id is not None and organization_id != token_organization_id:
+        raise UnauthorizedError("organization_id does not match authenticated organization")
+
+    effective_organization_id = organization_id or token_organization_id
     items, total = repo.list(
-        organization_id=organization_id,
+        organization_id=effective_organization_id,
         role=_normalize_optional_text(role),
         is_active=is_active,
         search=_normalize_optional_text(search),
@@ -190,10 +242,16 @@ def list_staff_users(
 @router.get("/staff-users/{staff_user_id}", response_model=ApiResponse)
 def get_staff_user(
     staff_user_id: uuid.UUID,
+    token_payload: dict[str, Any] = Depends(get_current_token_payload),
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
+    _require_staff_admin_role(token_payload)
+
     repo = StaffUserRepository(db)
     item = _get_staff_user_or_404(repo, staff_user_id)
+    token_organization_id = _normalize_token_organization_id(token_payload)
+    if item.organization_id != token_organization_id:
+        raise UnauthorizedError("Staff user is not in authenticated organization")
 
     return ApiResponse(
         data=_serialize_staff_user(item),
@@ -206,10 +264,16 @@ def get_staff_user(
 def update_staff_user(
     staff_user_id: uuid.UUID,
     payload: StaffUserUpdateRequest,
+    token_payload: dict[str, Any] = Depends(get_current_token_payload),
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
+    token_role = _require_staff_admin_role(token_payload)
+
     repo = StaffUserRepository(db)
     item = _get_staff_user_or_404(repo, staff_user_id)
+    token_organization_id = _normalize_token_organization_id(token_payload)
+    if item.organization_id != token_organization_id:
+        raise UnauthorizedError("Staff user is not in authenticated organization")
 
     if payload.email is not None:
         normalized_email = _normalize_email(payload.email)
@@ -237,7 +301,14 @@ def update_staff_user(
         )
 
     if payload.role is not None:
-        item.role = _normalize_required_text(payload.role, "role")
+        normalized_target_role = _normalize_required_text(payload.role, "role").lower()
+        if normalized_target_role == Role.OWNER.value and token_role != Role.OWNER.value:
+            raise UnauthorizedError("Only owner can assign owner role")
+        if normalized_target_role in {Role.ADMIN.value, Role.OPS_MANAGER.value} and token_role != Role.OWNER.value:
+            raise UnauthorizedError("Only owner can assign admin or ops manager roles")
+        if normalized_target_role == Role.DRIVER.value:
+            raise UnauthorizedError("Driver role must be onboarded through the invite flow")
+        item.role = normalized_target_role
 
     if payload.is_active is not None:
         item.is_active = payload.is_active

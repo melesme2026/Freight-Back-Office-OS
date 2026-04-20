@@ -114,12 +114,12 @@ export default function SignupPage() {
 
   return (
     <section className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-8 shadow-soft">
-      <h1 className="text-2xl font-bold text-slate-950">Create Staff Account</h1>
+      <h1 className="text-2xl font-bold text-slate-950">Create Organization Owner Account</h1>
       <p className="mt-2 text-sm text-slate-600">
-        Create your organization workspace and owner staff account.
+        Create your organization workspace and bootstrap owner account.
       </p>
       <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
-        Driver accounts are invite-only. Drivers cannot self-sign up from this page.
+        Public signup is limited to creating the first organization owner only. Staff and driver users must be invited by an existing admin team member.
       </div>
 
       <form className="mt-6 space-y-4" onSubmit={handleSubmit} noValidate>
