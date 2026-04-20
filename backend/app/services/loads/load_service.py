@@ -65,7 +65,7 @@ class LoadService:
                 else None
             ),
             source_channel=self._normalize_channel(source_channel),
-            status=LoadStatus.NEW,
+            status=LoadStatus.BOOKED,
             processing_status=ProcessingStatus.PENDING,
             load_number=self._clean_text(load_number),
             rate_confirmation_number=self._clean_text(rate_confirmation_number),
@@ -273,7 +273,7 @@ class LoadService:
             load.has_invoice = bool(has_invoice)
 
         load.documents_complete = bool(load.has_ratecon and load.has_invoice)
-        if load.documents_complete and load.status == LoadStatus.NEW:
+        if load.documents_complete and load.status == LoadStatus.BOOKED:
             self._sync_status_timestamps(
                 load,
                 old_status=load.status,
@@ -309,25 +309,19 @@ class LoadService:
 
         if new_status in {
             LoadStatus.SUBMITTED_TO_BROKER,
-            LoadStatus.WAITING_ON_BROKER,
             LoadStatus.SUBMITTED_TO_FACTORING,
-            LoadStatus.WAITING_ON_FUNDING,
         } and load.submitted_at is None:
             load.submitted_at = now
 
-        if new_status == LoadStatus.FUNDED:
+        if new_status == LoadStatus.ADVANCE_PAID and load.funded_at is None:
             if load.submitted_at is None:
                 load.submitted_at = now
-            if load.funded_at is None:
-                load.funded_at = now
+            load.funded_at = now
 
-        if new_status == LoadStatus.PAID:
+        if new_status in {LoadStatus.FULLY_PAID, LoadStatus.SHORT_PAID} and load.paid_at is None:
             if load.submitted_at is None:
                 load.submitted_at = now
-            if load.funded_at is None:
-                load.funded_at = now
-            if load.paid_at is None:
-                load.paid_at = now
+            load.paid_at = now
 
     def _normalize_currency(self, value: Any) -> str:
         normalized = str(value or "USD").strip().upper()
@@ -377,12 +371,25 @@ class LoadService:
         allow_none: bool = False,
     ) -> LoadStatus | None:
         if value is None:
-            return None if allow_none else LoadStatus.NEW
+            return None if allow_none else LoadStatus.BOOKED
 
         if isinstance(value, LoadStatus):
             return value
 
         normalized = str(value).strip().lower()
+
+        aliases: dict[str, LoadStatus] = {
+            "new": LoadStatus.BOOKED,
+            "needs_review": LoadStatus.DOCS_NEEDS_ATTENTION,
+            "ready_to_submit": LoadStatus.INVOICE_READY,
+            "waiting_on_broker": LoadStatus.SUBMITTED_TO_BROKER,
+            "waiting_on_funding": LoadStatus.RESERVE_PENDING,
+            "funded": LoadStatus.ADVANCE_PAID,
+            "paid": LoadStatus.FULLY_PAID,
+            "exception": LoadStatus.DOCS_NEEDS_ATTENTION,
+        }
+        if normalized in aliases:
+            return aliases[normalized]
 
         for status in LoadStatus:
             if normalized == str(status).lower():

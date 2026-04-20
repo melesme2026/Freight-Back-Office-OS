@@ -9,10 +9,10 @@ from sqlalchemy.orm import Session
 from app.core.exceptions import NotFoundError, ValidationError
 from app.domain.enums.audit_actor_type import AuditActorType
 from app.domain.enums.load_status import LoadStatus
-from app.services.loads.packet_readiness import calculate_packet_readiness
 from app.domain.models.load import Load
 from app.repositories.load_repo import LoadRepository
 from app.repositories.validation_repo import ValidationRepository
+from app.services.loads.packet_readiness import calculate_packet_readiness
 from app.services.notifications.notification_service import NotificationService
 from app.services.workflow.event_publisher import EventPublisher
 from app.services.workflow.state_machine import LoadStateMachine
@@ -58,7 +58,11 @@ class WorkflowEngine:
             new_status=target_status,
         )
 
-        self._assert_transition_preconditions(load=load, current_status=current_status, target_status=target_status)
+        self._assert_transition_preconditions(
+            load=load,
+            current_status=current_status,
+            target_status=target_status,
+        )
 
         old_status = current_status
         updated_load = self.transition_applier.apply_status_change(
@@ -110,63 +114,22 @@ class WorkflowEngine:
         normalized_action = self._normalize_action(action)
         normalized_notes = self._clean_text(notes)
 
-        if normalized_action == "mark_sent_to_broker":
-            result = self.transition_load(
+        if normalized_action == "submit_to_broker":
+            return self.transition_load(
                 load_id=load_id,
                 new_status=LoadStatus.SUBMITTED_TO_BROKER,
                 actor_staff_user_id=actor_staff_user_id,
                 actor_type=actor_type,
-                notes=normalized_notes or "Marked as sent to broker.",
+                notes=normalized_notes or "Submitted to broker for payment.",
             )
-            self._publish_operational_event(
-                load_id=load_id,
-                event_type="broker_contacted",
-                actor_staff_user_id=actor_staff_user_id,
-                actor_type=actor_type,
-                notes=normalized_notes,
-            )
-            self._update_operational_metadata(
-                load_id=load_id,
-                last_contacted=True,
-                follow_up_required=True if follow_up_required is None else follow_up_required,
-            )
-            return result
 
-        if normalized_action == "mark_waiting_on_broker":
-            result = self.transition_load(
-                load_id=load_id,
-                new_status=LoadStatus.WAITING_ON_BROKER,
-                actor_staff_user_id=actor_staff_user_id,
-                actor_type=actor_type,
-                notes=normalized_notes or "Marked as waiting on broker.",
-            )
-            self._update_operational_metadata(
-                load_id=load_id,
-                follow_up_required=True if follow_up_required is None else follow_up_required,
-            )
-            return result
-
-        if normalized_action == "mark_submitted_to_factoring":
+        if normalized_action == "submit_to_factoring":
             result = self.transition_load(
                 load_id=load_id,
                 new_status=LoadStatus.SUBMITTED_TO_FACTORING,
                 actor_staff_user_id=actor_staff_user_id,
                 actor_type=actor_type,
-                notes=normalized_notes or "Marked as submitted to factoring.",
-            )
-            self._publish_operational_event(
-                load_id=load_id,
-                event_type="broker_response_received",
-                actor_staff_user_id=actor_staff_user_id,
-                actor_type=actor_type,
-                notes=normalized_notes,
-            )
-            self._publish_operational_event(
-                load_id=load_id,
-                event_type="submitted_to_factoring",
-                actor_staff_user_id=actor_staff_user_id,
-                actor_type=actor_type,
-                notes=normalized_notes,
+                notes=normalized_notes or "Submitted packet to factoring.",
             )
             self._update_operational_metadata(
                 load_id=load_id,
@@ -174,25 +137,67 @@ class WorkflowEngine:
             )
             return result
 
-        result = self.transition_load(
+        if normalized_action == "mark_packet_rejected":
+            return self.transition_load(
+                load_id=load_id,
+                new_status=LoadStatus.PACKET_REJECTED,
+                actor_staff_user_id=actor_staff_user_id,
+                actor_type=actor_type,
+                notes=normalized_notes or "Packet rejected and requires corrections.",
+            )
+
+        if normalized_action == "mark_resubmission_needed":
+            return self.transition_load(
+                load_id=load_id,
+                new_status=LoadStatus.RESUBMISSION_NEEDED,
+                actor_staff_user_id=actor_staff_user_id,
+                actor_type=actor_type,
+                notes=normalized_notes or "Resubmission required due to missing/invalid documents.",
+            )
+
+        if normalized_action == "mark_advance_paid":
+            return self.transition_load(
+                load_id=load_id,
+                new_status=LoadStatus.ADVANCE_PAID,
+                actor_staff_user_id=actor_staff_user_id,
+                actor_type=actor_type,
+                notes=normalized_notes or "Factoring advance paid.",
+            )
+
+        if normalized_action == "mark_reserve_pending":
+            return self.transition_load(
+                load_id=load_id,
+                new_status=LoadStatus.RESERVE_PENDING,
+                actor_staff_user_id=actor_staff_user_id,
+                actor_type=actor_type,
+                notes=normalized_notes or "Reserve amount is pending release.",
+            )
+
+        if normalized_action == "mark_fully_paid":
+            return self.transition_load(
+                load_id=load_id,
+                new_status=LoadStatus.FULLY_PAID,
+                actor_staff_user_id=actor_staff_user_id,
+                actor_type=actor_type,
+                notes=normalized_notes or "Load marked fully paid.",
+            )
+
+        if normalized_action == "mark_short_paid":
+            return self.transition_load(
+                load_id=load_id,
+                new_status=LoadStatus.SHORT_PAID,
+                actor_staff_user_id=actor_staff_user_id,
+                actor_type=actor_type,
+                notes=normalized_notes or "Load marked short paid.",
+            )
+
+        return self.transition_load(
             load_id=load_id,
-            new_status=LoadStatus.FUNDED,
+            new_status=LoadStatus.DISPUTED,
             actor_staff_user_id=actor_staff_user_id,
             actor_type=actor_type,
-            notes=normalized_notes or "Marked as funded.",
+            notes=normalized_notes or "Load payment is in dispute.",
         )
-        self._publish_operational_event(
-            load_id=load_id,
-            event_type="funding_confirmed",
-            actor_staff_user_id=actor_staff_user_id,
-            actor_type=actor_type,
-            notes=normalized_notes,
-        )
-        self._update_operational_metadata(
-            load_id=load_id,
-            follow_up_required=False if follow_up_required is None else follow_up_required,
-        )
-        return result
 
     def _create_load_status_notification(
         self,
@@ -226,10 +231,21 @@ class WorkflowEngine:
 
         normalized = str(value).strip().lower()
 
+        aliases: dict[str, LoadStatus] = {
+            "new": LoadStatus.BOOKED,
+            "needs_review": LoadStatus.DOCS_NEEDS_ATTENTION,
+            "ready_to_submit": LoadStatus.INVOICE_READY,
+            "waiting_on_broker": LoadStatus.SUBMITTED_TO_BROKER,
+            "waiting_on_funding": LoadStatus.RESERVE_PENDING,
+            "funded": LoadStatus.ADVANCE_PAID,
+            "paid": LoadStatus.FULLY_PAID,
+            "exception": LoadStatus.DOCS_NEEDS_ATTENTION,
+        }
+        if normalized in aliases:
+            return aliases[normalized]
+
         for status in LoadStatus:
-            if normalized == status.value.lower():
-                return status
-            if normalized == status.name.lower():
+            if normalized == status.value.lower() or normalized == status.name.lower():
                 return status
 
         raise ValidationError(
@@ -279,10 +295,15 @@ class WorkflowEngine:
     def _normalize_action(value: str) -> str:
         normalized = str(value or "").strip().lower()
         allowed = {
-            "mark_sent_to_broker",
-            "mark_waiting_on_broker",
-            "mark_submitted_to_factoring",
-            "mark_funded",
+            "submit_to_broker",
+            "submit_to_factoring",
+            "mark_packet_rejected",
+            "mark_resubmission_needed",
+            "mark_advance_paid",
+            "mark_reserve_pending",
+            "mark_fully_paid",
+            "mark_short_paid",
+            "mark_disputed",
         }
         if normalized not in allowed:
             raise ValidationError(
@@ -299,17 +320,16 @@ class WorkflowEngine:
         target_status: LoadStatus,
     ) -> None:
         if target_status in {
-            LoadStatus.READY_TO_SUBMIT,
+            LoadStatus.INVOICE_READY,
             LoadStatus.SUBMITTED_TO_BROKER,
-            LoadStatus.WAITING_ON_BROKER,
             LoadStatus.SUBMITTED_TO_FACTORING,
-            LoadStatus.WAITING_ON_FUNDING,
-            LoadStatus.FUNDED,
-            LoadStatus.PAID,
+            LoadStatus.ADVANCE_PAID,
+            LoadStatus.RESERVE_PENDING,
+            LoadStatus.FULLY_PAID,
+            LoadStatus.SHORT_PAID,
+            LoadStatus.DISPUTED,
         }:
-            blocking_issue_count = self.validation_repo.count_blocking_unresolved_for_load(
-                load.id
-            )
+            blocking_issue_count = self.validation_repo.count_blocking_unresolved_for_load(load.id)
             if blocking_issue_count > 0:
                 raise ValidationError(
                     "Load cannot transition while unresolved blocking validation issues exist",
@@ -321,14 +341,7 @@ class WorkflowEngine:
                     },
                 )
 
-        if target_status in {
-            LoadStatus.SUBMITTED_TO_BROKER,
-            LoadStatus.WAITING_ON_BROKER,
-            LoadStatus.SUBMITTED_TO_FACTORING,
-            LoadStatus.WAITING_ON_FUNDING,
-            LoadStatus.FUNDED,
-            LoadStatus.PAID,
-        }:
+        if target_status in {LoadStatus.SUBMITTED_TO_BROKER, LoadStatus.SUBMITTED_TO_FACTORING}:
             document_types = [
                 document.document_type for document in (load.documents or []) if document.document_type
             ]
@@ -336,7 +349,7 @@ class WorkflowEngine:
             missing_submission_docs = readiness["missing_required_documents"]["submission"]
             if missing_submission_docs:
                 raise ValidationError(
-                    "Load cannot transition to broker/factoring stages until all required submission documents are present",
+                    "Load cannot be submitted until required submission documents are present",
                     details={
                         "load_id": str(load.id),
                         "current_status": str(current_status),
@@ -346,25 +359,54 @@ class WorkflowEngine:
                     },
                 )
 
-    def _publish_operational_event(
-        self,
-        *,
-        load_id: str,
-        event_type: str,
-        actor_staff_user_id: str | None,
-        actor_type: str | AuditActorType,
-        notes: str | None,
-    ) -> None:
-        load = self.get_load(load_id)
-        self.event_publisher.publish_load_event(
-            organization_id=str(load.organization_id),
-            load_id=str(load.id),
-            event_type=event_type,
-            old_status=str(load.status),
-            new_status=str(load.status),
-            event_payload={"notes": notes} if notes else None,
-            actor_staff_user_id=actor_staff_user_id,
-            actor_type=actor_type,
+        if target_status in {LoadStatus.SUBMITTED_TO_BROKER, LoadStatus.SUBMITTED_TO_FACTORING} and current_status not in {
+            LoadStatus.INVOICE_READY,
+            LoadStatus.RESUBMISSION_NEEDED,
+        }:
+            raise ValidationError(
+                "Load can only be submitted from invoice-ready or resubmission-needed stages",
+                details={
+                    "load_id": str(load.id),
+                    "current_status": str(current_status),
+                    "target_status": str(target_status),
+                },
+            )
+
+        if target_status in {LoadStatus.PACKET_REJECTED, LoadStatus.RESUBMISSION_NEEDED, LoadStatus.ADVANCE_PAID, LoadStatus.RESERVE_PENDING}:
+            if not self._has_factoring_path(load=load, current_status=current_status):
+                raise ValidationError(
+                    "Factoring lifecycle updates require a factoring submission path",
+                    details={
+                        "load_id": str(load.id),
+                        "current_status": str(current_status),
+                        "target_status": str(target_status),
+                    },
+                )
+
+        if target_status in {LoadStatus.FULLY_PAID, LoadStatus.SHORT_PAID, LoadStatus.DISPUTED} and load.submitted_at is None:
+            raise ValidationError(
+                "Payment/dispute states require prior broker/factoring submission",
+                details={
+                    "load_id": str(load.id),
+                    "current_status": str(current_status),
+                    "target_status": str(target_status),
+                },
+            )
+
+    @staticmethod
+    def _has_factoring_path(*, load: Load, current_status: LoadStatus) -> bool:
+        if current_status in {
+            LoadStatus.SUBMITTED_TO_FACTORING,
+            LoadStatus.PACKET_REJECTED,
+            LoadStatus.RESUBMISSION_NEEDED,
+            LoadStatus.ADVANCE_PAID,
+            LoadStatus.RESERVE_PENDING,
+        }:
+            return True
+
+        return any(
+            str(getattr(event, "new_status", "")).strip().lower() == LoadStatus.SUBMITTED_TO_FACTORING.value
+            for event in (load.workflow_events or [])
         )
 
     def _update_operational_metadata(

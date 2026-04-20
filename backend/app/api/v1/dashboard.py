@@ -58,7 +58,7 @@ def get_dashboard(
     loads_needing_review_stmt = _apply_optional_org_filter(
         select(func.count())
         .select_from(Load)
-        .where(Load.status == LoadStatus.NEEDS_REVIEW),
+        .where(Load.status == LoadStatus.DOCS_NEEDS_ATTENTION),
         organization_id=effective_org_id,
         model=Load,
     )
@@ -66,7 +66,7 @@ def get_dashboard(
     loads_ready_to_submit_stmt = _apply_optional_org_filter(
         select(func.count())
         .select_from(Load)
-        .where(Load.status == LoadStatus.READY_TO_SUBMIT),
+        .where(Load.status == LoadStatus.INVOICE_READY),
         organization_id=effective_org_id,
         model=Load,
     )
@@ -74,7 +74,7 @@ def get_dashboard(
     loads_paid_stmt = _apply_optional_org_filter(
         select(func.count())
         .select_from(Load)
-        .where(Load.status == LoadStatus.PAID),
+        .where(Load.status == LoadStatus.FULLY_PAID),
         organization_id=effective_org_id,
         model=Load,
     )
@@ -88,7 +88,7 @@ def get_dashboard(
     loads_waiting_on_broker_stmt = _apply_optional_org_filter(
         select(func.count())
         .select_from(Load)
-        .where(Load.status == LoadStatus.WAITING_ON_BROKER),
+        .where(Load.status == LoadStatus.SUBMITTED_TO_BROKER),
         organization_id=effective_org_id,
         model=Load,
     )
@@ -102,14 +102,14 @@ def get_dashboard(
     loads_waiting_on_funding_stmt = _apply_optional_org_filter(
         select(func.count())
         .select_from(Load)
-        .where(Load.status == LoadStatus.WAITING_ON_FUNDING),
+        .where(Load.status == LoadStatus.RESERVE_PENDING),
         organization_id=effective_org_id,
         model=Load,
     )
     loads_funded_stmt = _apply_optional_org_filter(
         select(func.count())
         .select_from(Load)
-        .where(Load.status == LoadStatus.FUNDED),
+        .where(Load.status == LoadStatus.ADVANCE_PAID),
         organization_id=effective_org_id,
         model=Load,
     )

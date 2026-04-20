@@ -8,17 +8,21 @@ import { getAccessToken, getOrganizationId } from "@/lib/auth";
 import { buildApiUrl as buildConfiguredApiUrl } from "@/lib/config";
 
 type LoadStatus =
-  | "new"
+  | "booked"
+  | "in_transit"
+  | "delivered"
   | "docs_received"
-  | "needs_review"
-  | "ready_to_submit"
+  | "docs_needs_attention"
+  | "invoice_ready"
   | "submitted_to_broker"
-  | "waiting_on_broker"
   | "submitted_to_factoring"
-  | "waiting_on_funding"
-  | "funded"
-  | "paid"
-  | "exception"
+  | "packet_rejected"
+  | "resubmission_needed"
+  | "reserve_pending"
+  | "advance_paid"
+  | "fully_paid"
+  | "short_paid"
+  | "disputed"
   | "archived";
 
 type PacketReadiness = {
@@ -103,10 +107,15 @@ type StatusTransitionResponse = {
 };
 
 type WorkflowAction =
-  | "mark_sent_to_broker"
-  | "mark_waiting_on_broker"
-  | "mark_submitted_to_factoring"
-  | "mark_funded";
+  | "submit_to_broker"
+  | "submit_to_factoring"
+  | "mark_packet_rejected"
+  | "mark_resubmission_needed"
+  | "mark_advance_paid"
+  | "mark_reserve_pending"
+  | "mark_fully_paid"
+  | "mark_short_paid"
+  | "mark_disputed";
 
 type MarkReviewedResponse = {
   id: string;
@@ -146,28 +155,37 @@ type OperationalChecklistItem = {
 };
 
 const NEXT_STATUS_MAP: Partial<Record<LoadStatus, LoadStatus>> = {
-  new: "docs_received",
-  docs_received: "needs_review",
-  needs_review: "ready_to_submit",
-  ready_to_submit: "submitted_to_broker",
-  submitted_to_broker: "waiting_on_broker",
-  waiting_on_broker: "submitted_to_factoring",
-  submitted_to_factoring: "waiting_on_funding",
-  waiting_on_funding: "funded",
-  funded: "paid",
+  booked: "in_transit",
+  in_transit: "delivered",
+  delivered: "docs_received",
+  docs_received: "invoice_ready",
+  docs_needs_attention: "docs_received",
+  invoice_ready: "submitted_to_broker",
+  submitted_to_broker: "fully_paid",
+  submitted_to_factoring: "reserve_pending",
+  packet_rejected: "resubmission_needed",
+  resubmission_needed: "submitted_to_factoring",
+  reserve_pending: "fully_paid",
+  advance_paid: "reserve_pending",
+  disputed: "resubmission_needed",
+  short_paid: "disputed",
 };
 
 const WORKFLOW_ORDER: LoadStatus[] = [
-  "new",
+  "booked",
+  "in_transit",
+  "delivered",
   "docs_received",
-  "needs_review",
-  "ready_to_submit",
+  "invoice_ready",
   "submitted_to_broker",
-  "waiting_on_broker",
   "submitted_to_factoring",
-  "waiting_on_funding",
-  "funded",
-  "paid",
+  "packet_rejected",
+  "resubmission_needed",
+  "advance_paid",
+  "reserve_pending",
+  "short_paid",
+  "disputed",
+  "fully_paid",
 ];
 
 const UPLOAD_DOCUMENT_TYPE_OPTIONS: Array<{
@@ -190,32 +208,33 @@ const UPLOAD_DOCUMENT_TYPE_OPTIONS: Array<{
 
 const MANUAL_STATUS_OPTIONS: Array<{ value: LoadStatus; label: string }> = [
   { value: "docs_received", label: "Docs Received" },
-  { value: "ready_to_submit", label: "Ready to Submit" },
-  { value: "waiting_on_funding", label: "Waiting on Funding" },
-  { value: "paid", label: "Paid" },
+  { value: "invoice_ready", label: "Ready to Submit" },
+  { value: "reserve_pending", label: "Waiting on Funding" },
+  { value: "fully_paid", label: "Paid" },
 ];
 
 function statusBadge(status: string) {
   switch (status) {
-    case "needs_review":
+    case "docs_needs_attention":
       return "bg-amber-100 text-amber-800";
-    case "ready_to_submit":
+    case "invoice_ready":
       return "bg-emerald-100 text-emerald-800";
     case "submitted_to_broker":
       return "bg-blue-100 text-blue-800";
-    case "waiting_on_broker":
-      return "bg-sky-100 text-sky-800";
+    case "packet_rejected":
+      return "bg-rose-100 text-rose-800";
     case "submitted_to_factoring":
       return "bg-indigo-100 text-indigo-800";
-    case "waiting_on_funding":
+    case "reserve_pending":
       return "bg-violet-100 text-violet-800";
-    case "paid":
+    case "fully_paid":
       return "bg-purple-100 text-purple-800";
     case "docs_received":
       return "bg-cyan-100 text-cyan-800";
-    case "funded":
+    case "advance_paid":
       return "bg-teal-100 text-teal-800";
-    case "exception":
+    case "short_paid":
+    case "disputed":
       return "bg-rose-100 text-rose-800";
     case "archived":
       return "bg-slate-200 text-slate-700";
@@ -456,21 +475,25 @@ function normalizeLoadStatus(value: unknown): LoadStatus {
   const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
 
   switch (normalized) {
-    case "new":
+    case "booked":
+    case "in_transit":
+    case "delivered":
     case "docs_received":
-    case "needs_review":
-    case "ready_to_submit":
+    case "docs_needs_attention":
+    case "invoice_ready":
     case "submitted_to_broker":
-    case "waiting_on_broker":
     case "submitted_to_factoring":
-    case "waiting_on_funding":
-    case "funded":
-    case "paid":
-    case "exception":
+    case "packet_rejected":
+    case "resubmission_needed":
+    case "reserve_pending":
+    case "advance_paid":
+    case "fully_paid":
+    case "short_paid":
+    case "disputed":
     case "archived":
       return normalized;
     default:
-      return "new";
+      return "booked";
   }
 }
 
@@ -722,20 +745,17 @@ function getOperationalDisplayValue(primary?: string | null, fallback?: string |
 }
 
 function getPaymentStageLabel(load: Load) {
-  if (load.status === "paid" || load.paid_at) {
+  if (load.status === "fully_paid" || load.paid_at) {
     return "Paid";
   }
-  if (load.status === "funded" || load.funded_at) {
+  if (load.status === "advance_paid" || load.funded_at) {
     return load.is_factored ? "Factored / Funded" : "Funded";
   }
-  if (load.status === "waiting_on_funding") {
+  if (load.status === "reserve_pending") {
     return "Waiting on Funding";
   }
   if (load.status === "submitted_to_factoring") {
     return "Submitted to Factoring";
-  }
-  if (load.status === "waiting_on_broker") {
-    return "Waiting on Broker";
   }
   if (load.status === "submitted_to_broker" || load.submitted_at) {
     return "Submitted to Broker";
@@ -1017,26 +1037,24 @@ export default function LoadDetailPage() {
     }
 
     if (
-      (nextStatus === "ready_to_submit" ||
+      (nextStatus === "invoice_ready" ||
         nextStatus === "submitted_to_broker" ||
-        nextStatus === "waiting_on_broker" ||
         nextStatus === "submitted_to_factoring" ||
-        nextStatus === "waiting_on_funding" ||
-        nextStatus === "funded" ||
-        nextStatus === "paid") &&
+        nextStatus === "reserve_pending" ||
+        nextStatus === "advance_paid" ||
+        nextStatus === "fully_paid") &&
       totalOpenIssues > 0
     ) {
       return "Resolve open validation issues before advancing this load.";
     }
 
     if (
-      (nextStatus === "ready_to_submit" ||
+      (nextStatus === "invoice_ready" ||
         nextStatus === "submitted_to_broker" ||
-        nextStatus === "waiting_on_broker" ||
         nextStatus === "submitted_to_factoring" ||
-        nextStatus === "waiting_on_funding" ||
-        nextStatus === "funded" ||
-        nextStatus === "paid") &&
+        nextStatus === "reserve_pending" ||
+        nextStatus === "advance_paid" ||
+        nextStatus === "fully_paid") &&
       Boolean(load?.packet_readiness) ? load?.packet_readiness?.ready_to_submit !== true : requiredDocsReceivedCount < 2
     ) {
       return "All required documents must be present before submission readiness.";
@@ -1088,14 +1106,13 @@ export default function LoadDetailPage() {
     const packageReady = documentsReady && validationReady;
     const submissionCompleted =
       load.status === "submitted_to_broker" ||
-      load.status === "waiting_on_broker" ||
       load.status === "submitted_to_factoring" ||
-      load.status === "waiting_on_funding" ||
-      load.status === "funded" ||
-      load.status === "paid" ||
+      load.status === "reserve_pending" ||
+      load.status === "advance_paid" ||
+      load.status === "fully_paid" ||
       Boolean(load.submitted_at);
-    const fundingCompleted = load.status === "funded" || load.status === "paid" || Boolean(load.funded_at);
-    const paymentCompleted = load.status === "paid" || Boolean(load.paid_at);
+    const fundingCompleted = load.status === "advance_paid" || load.status === "fully_paid" || Boolean(load.funded_at);
+    const paymentCompleted = load.status === "fully_paid" || Boolean(load.paid_at);
     const factoringEnabled =
       load.is_factored === true ||
       (typeof load.factoring_provider === "string" && load.factoring_provider.trim().length > 0);
@@ -1675,7 +1692,7 @@ export default function LoadDetailPage() {
           <div className="mt-3 grid gap-2 md:grid-cols-2">
             <button
               type="button"
-              onClick={() => void handleWorkflowAction("mark_sent_to_broker")}
+              onClick={() => void handleWorkflowAction("submit_to_broker")}
               disabled={isExecutingWorkflowAction}
               className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-left text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
             >
@@ -1683,15 +1700,15 @@ export default function LoadDetailPage() {
             </button>
             <button
               type="button"
-              onClick={() => void handleWorkflowAction("mark_waiting_on_broker")}
+              onClick={() => void handleWorkflowAction("mark_packet_rejected")}
               disabled={isExecutingWorkflowAction}
               className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-left text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              Mark as Waiting on Broker
+              Mark Packet Rejected
             </button>
             <button
               type="button"
-              onClick={() => void handleWorkflowAction("mark_submitted_to_factoring")}
+              onClick={() => void handleWorkflowAction("submit_to_factoring")}
               disabled={isExecutingWorkflowAction}
               className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-left text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
             >
@@ -1699,11 +1716,27 @@ export default function LoadDetailPage() {
             </button>
             <button
               type="button"
-              onClick={() => void handleWorkflowAction("mark_funded")}
+              onClick={() => void handleWorkflowAction("mark_advance_paid")}
               disabled={isExecutingWorkflowAction}
               className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-left text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
             >
               Mark as Funded
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleWorkflowAction("mark_reserve_pending")}
+              disabled={isExecutingWorkflowAction}
+              className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-left text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Mark Reserve Pending
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleWorkflowAction("mark_fully_paid")}
+              disabled={isExecutingWorkflowAction}
+              className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-left text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Mark Fully Paid
             </button>
           </div>
         </div>

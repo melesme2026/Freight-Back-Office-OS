@@ -20,42 +20,30 @@ class LoadTransitionApplier:
 
         if new_status in {
             LoadStatus.SUBMITTED_TO_BROKER,
-            LoadStatus.WAITING_ON_BROKER,
             LoadStatus.SUBMITTED_TO_FACTORING,
-            LoadStatus.WAITING_ON_FUNDING,
+        } and load.submitted_at is None:
+            load.submitted_at = now
+
+        if new_status == LoadStatus.ADVANCE_PAID and load.funded_at is None:
+            if load.submitted_at is None:
+                load.submitted_at = now
+            load.funded_at = now
+
+        if new_status in {LoadStatus.FULLY_PAID, LoadStatus.SHORT_PAID} and load.paid_at is None:
+            if load.submitted_at is None:
+                load.submitted_at = now
+            load.paid_at = now
+
+        if new_status in {
+            LoadStatus.BOOKED,
+            LoadStatus.IN_TRANSIT,
+            LoadStatus.DELIVERED,
+            LoadStatus.DOCS_RECEIVED,
         }:
-            if load.submitted_at is None:
-                load.submitted_at = now
-
-        elif new_status == LoadStatus.FUNDED:
-            if load.submitted_at is None:
-                load.submitted_at = now
-            if load.funded_at is None:
-                load.funded_at = now
-
-        elif new_status == LoadStatus.PAID:
-            if load.submitted_at is None:
-                load.submitted_at = now
-            if load.funded_at is None:
-                load.funded_at = now
-            if load.paid_at is None:
-                load.paid_at = now
-
-        if new_status in {LoadStatus.NEW, LoadStatus.DOCS_RECEIVED}:
             load.processing_status = ProcessingStatus.PENDING
-        elif new_status in {
-            LoadStatus.NEEDS_REVIEW,
-            LoadStatus.READY_TO_SUBMIT,
-            LoadStatus.SUBMITTED_TO_BROKER,
-            LoadStatus.WAITING_ON_BROKER,
-            LoadStatus.SUBMITTED_TO_FACTORING,
-            LoadStatus.WAITING_ON_FUNDING,
-            LoadStatus.FUNDED,
-            LoadStatus.PAID,
-            LoadStatus.ARCHIVED,
-        }:
-            load.processing_status = ProcessingStatus.COMPLETED
-        elif new_status == LoadStatus.EXCEPTION:
+        elif new_status == LoadStatus.DOCS_NEEDS_ATTENTION:
             load.processing_status = ProcessingStatus.FAILED
+        else:
+            load.processing_status = ProcessingStatus.COMPLETED
 
         return load

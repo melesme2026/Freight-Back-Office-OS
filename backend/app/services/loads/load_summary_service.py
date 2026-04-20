@@ -58,7 +58,7 @@ class LoadSummaryService:
             "warning_issue_count": warning_issue_count,
             "unresolved_issue_count": unresolved_issue_count,
             "is_ready_for_submission": (
-                normalized_status in {LoadStatus.READY_TO_SUBMIT}
+                normalized_status in {LoadStatus.INVOICE_READY}
                 and blocking_issue_count == 0
             ),
         }
@@ -77,17 +77,17 @@ class LoadSummaryService:
         normalized = str(value or "").strip().lower()
 
         aliases: dict[str, LoadStatus] = {
-            "new": LoadStatus.NEW,
+            "new": LoadStatus.BOOKED,
             "docs_received": LoadStatus.DOCS_RECEIVED,
-            "needs_review": LoadStatus.NEEDS_REVIEW,
-            "ready_to_submit": LoadStatus.READY_TO_SUBMIT,
+            "needs_review": LoadStatus.DOCS_NEEDS_ATTENTION,
+            "ready_to_submit": LoadStatus.INVOICE_READY,
             "submitted_to_broker": LoadStatus.SUBMITTED_TO_BROKER,
-            "waiting_on_broker": LoadStatus.WAITING_ON_BROKER,
+            "waiting_on_broker": LoadStatus.SUBMITTED_TO_BROKER,
             "submitted_to_factoring": LoadStatus.SUBMITTED_TO_FACTORING,
-            "waiting_on_funding": LoadStatus.WAITING_ON_FUNDING,
-            "funded": LoadStatus.FUNDED,
-            "paid": LoadStatus.PAID,
-            "exception": LoadStatus.EXCEPTION,
+            "waiting_on_funding": LoadStatus.RESERVE_PENDING,
+            "funded": LoadStatus.ADVANCE_PAID,
+            "paid": LoadStatus.FULLY_PAID,
+            "exception": LoadStatus.DOCS_NEEDS_ATTENTION,
             "archived": LoadStatus.ARCHIVED,
         }
 
