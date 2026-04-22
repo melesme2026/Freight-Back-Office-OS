@@ -327,6 +327,19 @@ function formatDateTime(value?: string | null) {
   return parsed.toLocaleString();
 }
 
+function startOfDay(value: Date): Date {
+  return new Date(value.getFullYear(), value.getMonth(), value.getDate());
+}
+
+function diffDaysFromToday(value?: string | null): number | null {
+  if (!value) return null;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  const today = startOfDay(new Date());
+  const target = startOfDay(parsed);
+  return Math.floor((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+}
+
 function formatFileSize(value?: number | null) {
   if (value === undefined || value === null || !Number.isFinite(value) || value < 0) {
     return "—";
@@ -1266,6 +1279,60 @@ export default function LoadDetailPage() {
     factorFollowUp: `Subject: Factor status request - Load ${load?.load_number ?? load?.id ?? ""}\n\nHello,\nPlease provide status for submitted/funded activity on load ${load?.load_number ?? load?.id ?? ""}, including reserve release timing.\n\nThank you.`,
     missingDocs: `Subject: Missing document request - Load ${load?.load_number ?? load?.id ?? ""}\n\nHello,\nThis load is waiting on missing paperwork needed to proceed to invoice/submission. Please send the required documents as soon as possible.\n\nThank you.`,
   }), [load?.id, load?.load_number]);
+
+  const followUpUrgency = useMemo(() => {
+    const daysUntil = diffDaysFromToday(load?.next_follow_up_at);
+    if (daysUntil === null) {
+      return { label: "Unplanned", helper: "No next follow-up date", tone: "default" as const, sortOrder: 4 };
+    }
+    if (daysUntil < 0) {
+      return { label: "Overdue", helper: `Follow-up overdue by ${Math.abs(daysUntil)} day${Math.abs(daysUntil) === 1 ? "" : "s"}`, tone: "danger" as const, sortOrder: 1 };
+    }
+    if (daysUntil === 0) {
+      return { label: "Due today", helper: "Follow-up due today", tone: "warning" as const, sortOrder: 2 };
+    }
+    return { label: "Upcoming", helper: `Next follow-up in ${daysUntil} day${daysUntil === 1 ? "" : "s"}`, tone: "default" as const, sortOrder: 3 };
+  }, [load?.next_follow_up_at]);
+
+  const followUpAgeSignals = useMemo(() => {
+    const signals: string[] = [];
+    const lastContactDelta = diffDaysFromToday(load?.last_contacted_at);
+    if (lastContactDelta !== null) {
+      signals.push(`Last contacted ${Math.abs(lastContactDelta)} day${Math.abs(lastContactDelta) === 1 ? "" : "s"} ago`);
+    }
+    const invoiceDelta = diffDaysFromToday(load?.submitted_at);
+    if (invoiceDelta !== null && invoiceDelta <= 0) {
+      signals.push(`Invoice sent ${Math.abs(invoiceDelta)} day${Math.abs(invoiceDelta) === 1 ? "" : "s"} ago`);
+    }
+    if (followUpUrgency.sortOrder <= 3) {
+      signals.push(followUpUrgency.helper);
+    }
+    return signals;
+  }, [load?.last_contacted_at, load?.submitted_at, followUpUrgency]);
+
+  const prioritizedTemplateButtons = useMemo(() => {
+    const hasMissingDocs = !documentPresence.hasInvoice || !documentPresence.hasRateCon || !documentPresence.hasBol;
+    const templateButtons = [
+      { key: "paymentReminder", label: "Copy Payment Reminder", value: followUpTemplates.paymentReminder, rank: 50 },
+      { key: "disputeFollowUp", label: "Copy Short-Pay / Dispute Follow-up", value: followUpTemplates.disputeFollowUp, rank: 50 },
+      { key: "factorFollowUp", label: "Copy Factor Follow-up", value: followUpTemplates.factorFollowUp, rank: 50 },
+      { key: "missingDocs", label: "Copy Missing Document Reminder", value: followUpTemplates.missingDocs, rank: 50 },
+    ];
+    if (load?.status === "short_paid" || load?.status === "disputed") {
+      const prioritized = templateButtons.find((template) => template.key === "disputeFollowUp");
+      if (prioritized) prioritized.rank = 1;
+    } else if (load?.status === "reserve_pending" || load?.status === "advance_paid" || load?.status === "submitted_to_factoring") {
+      const prioritized = templateButtons.find((template) => template.key === "factorFollowUp");
+      if (prioritized) prioritized.rank = 1;
+    } else if (hasMissingDocs || load?.status === "packet_rejected" || load?.status === "docs_needs_attention") {
+      const prioritized = templateButtons.find((template) => template.key === "missingDocs");
+      if (prioritized) prioritized.rank = 1;
+    } else if (load?.status === "submitted_to_broker" || followUpUrgency.sortOrder === 1) {
+      const prioritized = templateButtons.find((template) => template.key === "paymentReminder");
+      if (prioritized) prioritized.rank = 1;
+    }
+    return templateButtons.sort((a, b) => a.rank - b.rank || a.label.localeCompare(b.label));
+  }, [documentPresence.hasBol, documentPresence.hasInvoice, documentPresence.hasRateCon, followUpTemplates, load?.status, followUpUrgency.sortOrder]);
 
   async function copyTemplate(value: string) {
     try {
@@ -2373,6 +2440,14 @@ export default function LoadDetailPage() {
               <h2 className="mb-2 text-lg font-semibold text-slate-950">Next Action & Follow-up</h2>
               <p className="text-sm text-slate-600">{load.operational?.next_action?.label || "Follow up with broker"}</p>
               <p className="mt-2 text-xs text-slate-500">Why this action is needed: {followUpReason}</p>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <span className={`rounded-md px-2 py-1 text-xs font-semibold ${followUpUrgency.tone === "danger" ? "bg-rose-100 text-rose-700" : followUpUrgency.tone === "warning" ? "bg-amber-100 text-amber-700" : "bg-slate-100 text-slate-700"}`}>
+                  {followUpUrgency.label}
+                </span>
+                {followUpAgeSignals.map((signal) => (
+                  <span key={signal} className="rounded-md bg-slate-100 px-2 py-1 text-xs text-slate-700">{signal}</span>
+                ))}
+              </div>
 
               <div className="mt-4 space-y-3">
                 <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500">Assign Owner</label>
@@ -2393,10 +2468,12 @@ export default function LoadDetailPage() {
               </div>
 
               <div className="mt-4 grid gap-2">
-                <button type="button" onClick={() => void copyTemplate(followUpTemplates.paymentReminder)} className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:bg-slate-100">Copy Payment Reminder</button>
-                <button type="button" onClick={() => void copyTemplate(followUpTemplates.disputeFollowUp)} className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:bg-slate-100">Copy Short-Pay / Dispute Follow-up</button>
-                <button type="button" onClick={() => void copyTemplate(followUpTemplates.factorFollowUp)} className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:bg-slate-100">Copy Factor Follow-up</button>
-                <button type="button" onClick={() => void copyTemplate(followUpTemplates.missingDocs)} className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:bg-slate-100">Copy Missing Document Reminder</button>
+                {prioritizedTemplateButtons.map((template, index) => (
+                  <button key={template.key} type="button" onClick={() => void copyTemplate(template.value)} className={`rounded-xl border px-3 py-2 text-left text-xs font-semibold transition hover:bg-slate-100 ${index === 0 ? "border-brand-300 bg-brand-50 text-brand-800" : "border-slate-300 bg-white text-slate-700"}`}>
+                    {template.label}
+                    {index === 0 ? " · Recommended first" : ""}
+                  </button>
+                ))}
               </div>
             </div>
 

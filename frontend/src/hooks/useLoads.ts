@@ -43,6 +43,12 @@ export type Load = {
   has_invoice?: boolean | null;
   documents_complete?: boolean | null;
   packet_readiness?: PacketReadiness | null;
+  follow_up_required?: boolean | null;
+  next_follow_up_at?: string | null;
+  follow_up_owner_id?: string | null;
+  follow_up_owner_name?: string | null;
+  last_contacted_at?: string | null;
+  submitted_at?: string | null;
   operational?: {
     queue?: string;
     queues?: string[];
@@ -216,6 +222,15 @@ function normalizeLoad(item: unknown): Load | null {
     has_invoice: asOptionalBoolean(record.has_invoice),
     documents_complete: asOptionalBoolean(record.documents_complete),
     packet_readiness: (record.packet_readiness as PacketReadiness | null | undefined) ?? null,
+    follow_up_required: asOptionalBoolean(record.follow_up_required),
+    next_follow_up_at: asString(record.next_follow_up_at) ?? asString(record.nextFollowUpAt),
+    follow_up_owner_id:
+      asString(record.follow_up_owner_id) ?? asString(record.followUpOwnerId),
+    follow_up_owner_name:
+      asString(record.follow_up_owner_name) ?? asString(record.followUpOwnerName),
+    last_contacted_at:
+      asString(record.last_contacted_at) ?? asString(record.lastContactedAt),
+    submitted_at: asString(record.submitted_at) ?? asString(record.submittedAt),
     operational: (record.operational as Load["operational"]) ?? null,
     notes: asString(record.notes),
     created_at:
