@@ -71,6 +71,12 @@ class StaffUser(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     reviewed_loads: Mapped[list["Load"]] = relationship(
         back_populates="last_reviewed_by_user",
+        foreign_keys="Load.last_reviewed_by",
+        lazy="selectin",
+    )
+    follow_up_owned_loads: Mapped[list["Load"]] = relationship(
+        back_populates="follow_up_owner",
+        foreign_keys="Load.follow_up_owner_id",
         lazy="selectin",
     )
     validation_issues_resolved: Mapped[list["ValidationIssue"]] = relationship(
