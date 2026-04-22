@@ -225,6 +225,7 @@ class Load(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         lazy="selectin",
     )
     follow_up_owner: Mapped["StaffUser | None"] = relationship(
+        back_populates="follow_up_owned_loads",
         foreign_keys=[follow_up_owner_id],
         lazy="selectin",
     )
