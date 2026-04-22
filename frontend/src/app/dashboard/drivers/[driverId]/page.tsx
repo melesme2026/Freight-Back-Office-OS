@@ -557,7 +557,7 @@ export default function DriverDetailPage() {
             </h1>
             <p className="mt-2 text-sm leading-6 text-slate-600">
               Driver profile, contact details, account context, and operational
-              readiness for V1.
+              readiness for operations.
             </p>
           </div>
 
@@ -710,7 +710,7 @@ export default function DriverDetailPage() {
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                 <p className="text-sm text-slate-700">
                   Driver-specific recent load history is not yet wired from a
-                  dedicated backend relation endpoint. For V1, use the Loads
+                  dedicated backend relation endpoint. Use the Loads
                   workspace to review current freight activity.
                 </p>
               </div>

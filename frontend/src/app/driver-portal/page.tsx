@@ -226,7 +226,7 @@ export default function DriverPortalPage() {
             className="rounded-2xl border border-slate-200 bg-white p-5 shadow-soft"
           >
             <h2 className="text-base font-semibold text-slate-950">Loads</h2>
-            <p className="mt-2 text-sm text-slate-600">Driver-scoped load list preview.</p>
+            <p className="mt-2 text-sm text-slate-600">Driver-scoped load list and status tracking.</p>
           </Link>
           <Link
             href="/driver-portal/uploads"

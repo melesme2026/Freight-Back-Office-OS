@@ -403,7 +403,7 @@ export default function DocumentsPage() {
 
         <section className="mt-8 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-soft">
           <div className="border-b border-amber-200 bg-amber-50 px-5 py-3 text-xs text-amber-900">
-            OCR/extraction is running in beta mode and may return placeholder or incomplete field output for some documents.
+            OCR/extraction may return incomplete field output for some documents. Verify key values before submission.
           </div>
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-slate-200 text-sm">
@@ -431,7 +431,7 @@ export default function DocumentsPage() {
                 ) : documents.length === 0 ? (
                   <tr>
                     <td colSpan={9} className="px-5 py-10 text-center text-slate-500">
-                      No documents found. Upload from Driver Portal or seed demo records using{" "}
+                      No documents found. Upload from Driver Portal or import records using{" "}
                       <code className="rounded bg-slate-100 px-1 py-0.5">make seed-dev-data</code>.
                     </td>
                   </tr>
@@ -502,7 +502,7 @@ export default function DocumentsPage() {
         </section>
 
         <section className="mt-8 rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
-          <h2 className="text-lg font-semibold text-slate-950">V1 note</h2>
+          <h2 className="text-lg font-semibold text-slate-950">Workspace note</h2>
           <p className="mt-2 text-sm leading-6 text-slate-600">
             This page provides the main document operations workspace. Upload actions may
             continue from load detail where documents are linked directly to a load.

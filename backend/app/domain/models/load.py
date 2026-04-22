@@ -178,6 +178,15 @@ class Load(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         default=False,
         server_default="false",
     )
+    next_follow_up_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    follow_up_owner_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("staff_users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
 
     submitted_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
@@ -213,6 +222,10 @@ class Load(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     last_reviewed_by_user: Mapped["StaffUser | None"] = relationship(
         back_populates="reviewed_loads",
         foreign_keys=[last_reviewed_by],
+        lazy="selectin",
+    )
+    follow_up_owner: Mapped["StaffUser | None"] = relationship(
+        foreign_keys=[follow_up_owner_id],
         lazy="selectin",
     )
 
