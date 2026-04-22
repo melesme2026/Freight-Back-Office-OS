@@ -4,8 +4,12 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
 import { getDashboardMetrics, type DashboardMetrics } from "@/lib/dashboard";
+import { getAccessToken } from "@/lib/auth";
+import { useLoads, type Load } from "@/hooks/useLoads";
 
 type WorkMode = "dispatcher" | "billing" | "collections";
+type OwnershipFilter = "my_follow_ups" | "team_follow_ups" | "unassigned";
+type UrgencyLabel = "Overdue" | "Due today" | "Upcoming" | "Unplanned";
 
 const WORK_MODE_STORAGE_KEY = "dashboard_work_mode";
 
@@ -53,11 +57,58 @@ function MetricCard({ label, value, tone = "default" }: { label: string; value: 
   return <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-soft"><div className="text-sm text-slate-500">{label}</div><div className={`mt-2 text-3xl font-bold ${toneClass}`}>{value}</div></div>;
 }
 
+function parseUserIdFromToken(): string | null {
+  const token = getAccessToken();
+  if (!token) return null;
+  const parts = token.split(".");
+  if (parts.length < 2) return null;
+  try {
+    const base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const padded = `${base64}${"=".repeat((4 - (base64.length % 4)) % 4)}`;
+    const decoded = JSON.parse(atob(padded)) as Record<string, unknown>;
+    return typeof decoded.sub === "string" && decoded.sub.trim().length > 0 ? decoded.sub.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
+function toStartOfDay(value: Date): Date {
+  return new Date(value.getFullYear(), value.getMonth(), value.getDate());
+}
+
+function getUrgency(nextFollowUpAt?: string | null): { label: UrgencyLabel; order: number; tone: "danger" | "warning" | "default"; } {
+  if (!nextFollowUpAt) return { label: "Unplanned", order: 4, tone: "default" };
+  const parsed = new Date(nextFollowUpAt);
+  if (Number.isNaN(parsed.getTime())) return { label: "Unplanned", order: 4, tone: "default" };
+  const today = toStartOfDay(new Date());
+  const followUpDay = toStartOfDay(parsed);
+  const deltaDays = Math.floor((followUpDay.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+  if (deltaDays < 0) return { label: "Overdue", order: 1, tone: "danger" };
+  if (deltaDays === 0) return { label: "Due today", order: 2, tone: "warning" };
+  return { label: "Upcoming", order: 3, tone: "default" };
+}
+
+function isNeedsAttention(load: Load, workMode: WorkMode): boolean {
+  const urgency = getUrgency(load.next_follow_up_at);
+  const status = (load.status ?? "").toLowerCase();
+  const queue = (load.operational?.queue ?? "").toLowerCase();
+  const hasMissingDocs = load.has_ratecon !== true || load.has_bol !== true || load.has_invoice !== true;
+  if (urgency.order <= 2) return true;
+  if (["short_paid", "disputed", "reserve_pending", "advance_paid"].includes(status)) return true;
+  if (workMode === "collections" && ["submitted_to_broker", "submitted_to_factoring"].includes(status)) return true;
+  if (workMode === "billing" && (status === "invoice_ready" || hasMissingDocs)) return true;
+  if (workMode === "dispatcher" && (queue === "missing_documents" || queue === "docs_needs_attention" || hasMissingDocs)) return true;
+  return false;
+}
+
 export default function DashboardPage() {
   const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
+  const { loads } = useLoads();
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [workMode, setWorkMode] = useState<WorkMode>("dispatcher");
+  const [ownershipFilter, setOwnershipFilter] = useState<OwnershipFilter>("my_follow_ups");
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   useEffect(() => {
     const stored = window.localStorage.getItem(WORK_MODE_STORAGE_KEY);
@@ -69,6 +120,10 @@ export default function DashboardPage() {
   useEffect(() => {
     window.localStorage.setItem(WORK_MODE_STORAGE_KEY, workMode);
   }, [workMode]);
+
+  useEffect(() => {
+    setCurrentUserId(parseUserIdFromToken());
+  }, []);
 
   async function loadDashboard() {
     try {
@@ -116,6 +171,23 @@ export default function DashboardPage() {
     return [...OPERATIONAL_QUEUE_DEFS].sort((a, b) => (indexByKey.get(a.key) ?? 99) - (indexByKey.get(b.key) ?? 99));
   }, [workMode]);
 
+  const needsAttentionLoads = useMemo(() => {
+    return loads
+      .filter((load) => {
+        if (!isNeedsAttention(load, workMode)) return false;
+        if (ownershipFilter === "unassigned") return !load.follow_up_owner_id;
+        if (ownershipFilter === "my_follow_ups") return Boolean(load.follow_up_owner_id && currentUserId && load.follow_up_owner_id === currentUserId);
+        return Boolean(load.follow_up_owner_id);
+      })
+      .sort((a, b) => {
+        const urgencyA = getUrgency(a.next_follow_up_at);
+        const urgencyB = getUrgency(b.next_follow_up_at);
+        if (urgencyA.order !== urgencyB.order) return urgencyA.order - urgencyB.order;
+        return (b.operational?.priority_score ?? 0) - (a.operational?.priority_score ?? 0);
+      })
+      .slice(0, 8);
+  }, [loads, workMode, ownershipFilter, currentUserId]);
+
   return (
     <div className="px-6 py-10 text-slate-900"><div className="mx-auto max-w-7xl">
       <header className="mb-8 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
@@ -148,6 +220,47 @@ export default function DashboardPage() {
       </section>
 
       {errorMessage ? <div className="mb-6 rounded-2xl border border-rose-200 bg-rose-50 p-4"><div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between"><div className="text-sm text-rose-700">{errorMessage}</div><button type="button" onClick={() => void loadDashboard()} className="inline-flex items-center rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700">Retry</button></div></div> : null}
+
+      <section className={`mb-8 rounded-2xl border p-6 shadow-soft ${workMode === "collections" ? "border-rose-200 bg-rose-50/60" : "border-slate-200 bg-white"}`}>
+        <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-slate-950">Needs Attention</h2>
+            <p className="mt-1 text-sm text-slate-600">Start here for urgent follow-up and operational blockers.</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {([
+              { key: "my_follow_ups", label: "My follow-ups" },
+              { key: "team_follow_ups", label: "Team follow-ups" },
+              { key: "unassigned", label: "Unassigned" },
+            ] as const).map((option) => (
+              <button key={option.key} type="button" onClick={() => setOwnershipFilter(option.key)} className={`rounded-xl px-3 py-2 text-xs font-semibold transition ${ownershipFilter === option.key ? "bg-slate-900 text-white" : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-100"}`}>
+                {option.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="space-y-2">
+          {needsAttentionLoads.length === 0 ? (
+            <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">No high-signal items for the selected ownership view.</div>
+          ) : (
+            needsAttentionLoads.map((load) => {
+              const urgency = getUrgency(load.next_follow_up_at);
+              return (
+                <Link key={load.id} href={`/dashboard/loads/${load.id}`} className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 transition hover:border-brand-300">
+                  <div>
+                    <div className="text-sm font-semibold text-slate-900">Load {load.load_number ?? load.id.slice(0, 8)}</div>
+                    <div className="mt-1 text-xs text-slate-600">{load.operational?.next_action?.label ?? "Follow-up required"} · {(load.operational?.queue ?? "general").replaceAll("_", " ")}</div>
+                  </div>
+                  <div className="text-right">
+                    <span className={`rounded-md px-2 py-1 text-xs font-semibold ${urgency.tone === "danger" ? "bg-rose-100 text-rose-700" : urgency.tone === "warning" ? "bg-amber-100 text-amber-700" : "bg-slate-100 text-slate-700"}`}>{urgency.label}</span>
+                    <div className="mt-1 text-xs text-slate-500">{load.follow_up_owner_name ?? (load.follow_up_owner_id ? "Assigned" : "Unassigned")}</div>
+                  </div>
+                </Link>
+              );
+            })
+          )}
+        </div>
+      </section>
 
       <section className="mb-8 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <MetricCard label="Ready to Submit" value={loading ? "..." : metrics?.loads_ready_to_submit ?? 0} tone="warning" />
