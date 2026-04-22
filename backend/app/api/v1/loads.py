@@ -3,7 +3,7 @@ from __future__ import annotations
 import csv
 import io
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
@@ -93,6 +93,9 @@ class LoadWorkflowActionRequest(BaseModel):
     actor_staff_user_id: uuid.UUID | None = None
     actor_type: str = "system"
     follow_up_required: bool | None = None
+    next_follow_up_at: str | None = None
+    follow_up_owner_id: uuid.UUID | None = None
+    mark_contacted: bool | None = None
     notes: str | None = None
 
 
@@ -297,6 +300,11 @@ def _serialize_load(item: Any, *, detailed: bool = False) -> dict[str, Any]:
                 ),
                 "last_contacted_at": _to_iso_or_none(getattr(item, "last_contacted_at", None)),
                 "follow_up_required": bool(getattr(item, "follow_up_required", False)),
+                "next_follow_up_at": _to_iso_or_none(getattr(item, "next_follow_up_at", None)),
+                "follow_up_owner_id": _uuid_to_str(getattr(item, "follow_up_owner_id", None)),
+                "follow_up_owner_name": (
+                    getattr(getattr(item, "follow_up_owner", None), "full_name", None)
+                ),
                 "submitted_at": _to_iso_or_none(item.submitted_at),
                 "funded_at": _to_iso_or_none(item.funded_at),
                 "paid_at": _to_iso_or_none(item.paid_at),
@@ -562,6 +570,9 @@ def update_load(
         has_bol=payload.has_bol,
         has_invoice=payload.has_invoice,
         follow_up_required=payload.follow_up_required,
+        next_follow_up_at=_normalize_optional_text(payload.next_follow_up_at),
+        follow_up_owner_id=_uuid_to_str(payload.follow_up_owner_id),
+        last_contacted_at=datetime.now(timezone.utc) if payload.mark_contacted else None,
         notes=_normalize_optional_text(payload.notes),
     )
 
@@ -633,6 +644,8 @@ def execute_load_workflow_action(
         actor_staff_user_id=_uuid_to_str(payload.actor_staff_user_id),
         actor_type=_normalize_required_text(payload.actor_type, "actor_type"),
         follow_up_required=payload.follow_up_required,
+        next_follow_up_at=_normalize_optional_text(payload.next_follow_up_at),
+        follow_up_owner_id=_uuid_to_str(payload.follow_up_owner_id),
         notes=_normalize_optional_text(payload.notes),
     )
     db.commit()

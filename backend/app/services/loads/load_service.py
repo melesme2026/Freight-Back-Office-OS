@@ -180,6 +180,9 @@ class LoadService:
             "has_bol",
             "has_invoice",
             "follow_up_required",
+            "next_follow_up_at",
+            "follow_up_owner_id",
+            "last_contacted_at",
             "notes",
             "status",
             "processing_status",
@@ -245,6 +248,17 @@ class LoadService:
                 "follow_up_required",
             }:
                 setattr(load, field, bool(value))
+            elif field == "next_follow_up_at":
+                setattr(load, field, self._normalize_datetime(value, field_name=field, allow_none=True))
+            elif field == "last_contacted_at":
+                if value is None:
+                    continue
+                setattr(load, field, self._normalize_datetime(value, field_name=field, allow_none=True))
+            elif field == "follow_up_owner_id":
+                if value is None or self._clean_text(value) is None:
+                    setattr(load, field, None)
+                else:
+                    setattr(load, field, self._normalize_uuid(value, field_name=field))
             else:
                 setattr(load, field, value)
 
@@ -322,6 +336,29 @@ class LoadService:
             if load.submitted_at is None:
                 load.submitted_at = now
             load.paid_at = now
+
+
+    def _normalize_datetime(self, value: Any, *, field_name: str, allow_none: bool = False) -> datetime | None:
+        if value is None:
+            if allow_none:
+                return None
+            raise ValidationError(f"{field_name} is required", details={field_name: value})
+
+        if isinstance(value, datetime):
+            return value
+
+        if isinstance(value, str):
+            normalized = value.strip()
+            if not normalized:
+                if allow_none:
+                    return None
+                raise ValidationError(f"{field_name} is required", details={field_name: value})
+            try:
+                return datetime.fromisoformat(normalized.replace("Z", "+00:00"))
+            except ValueError as exc:
+                raise ValidationError(f"Invalid {field_name}", details={field_name: value}) from exc
+
+        raise ValidationError(f"Invalid {field_name}", details={field_name: value})
 
     def _normalize_currency(self, value: Any) -> str:
         normalized = str(value or "USD").strip().upper()

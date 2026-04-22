@@ -292,7 +292,7 @@ export default function DriverBillingPage() {
               </div>
             )}
             <p className="mt-4 text-xs text-slate-500">
-              Subscription records are organization-level in V1 ({subscriptions.length} currently visible), so this overview keeps that section informational.
+              Subscription records are organization-level ({subscriptions.length} currently visible), so this overview keeps that section informational.
             </p>
           </section>
         </div>

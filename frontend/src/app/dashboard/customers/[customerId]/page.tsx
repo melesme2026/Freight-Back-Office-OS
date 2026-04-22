@@ -474,7 +474,7 @@ export default function CustomerDetailPage() {
             </h1>
             <p className="mt-2 text-sm leading-6 text-slate-600">
               Customer account detail including contacts, readiness signals, and
-              V1 account metadata.
+              account metadata.
             </p>
           </div>
 
@@ -743,7 +743,7 @@ export default function CustomerDetailPage() {
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                 <p className="text-sm text-slate-700">
                   Customer-specific recent load activity is not yet wired from a
-                  dedicated backend relation endpoint. For V1, use the Loads
+                  dedicated backend relation endpoint. Use the Loads
                   workspace to review active freight activity tied to this
                   account.
                 </p>

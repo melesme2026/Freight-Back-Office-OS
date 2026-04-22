@@ -413,7 +413,7 @@ export default function SupportPage() {
         </section>
 
         <section className="mt-8 rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
-          <h2 className="text-lg font-semibold text-slate-950">V1 note</h2>
+          <h2 className="text-lg font-semibold text-slate-950">Workspace note</h2>
           <p className="mt-2 text-sm leading-6 text-slate-600">
             This page now reflects live backend support tickets. Creation, assignment,
             and richer ticket-detail workflows can be added next if the corresponding

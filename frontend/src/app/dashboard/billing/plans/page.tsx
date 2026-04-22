@@ -334,10 +334,10 @@ export default function BillingPlansPage() {
               type="button"
               disabled
               aria-disabled="true"
-              title="Intentionally unavailable in V1 release candidate."
+              title="Plan creation is disabled in this workspace."
               className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white opacity-60"
             >
-              New Plan (V1 unavailable)
+              New Plan (Unavailable)
             </button>
           </div>
         </div>

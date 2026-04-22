@@ -598,7 +598,7 @@ export default function DocumentDetailPage() {
               and preview content.
             </p>
             <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
-              Extraction/OCR processing in this release is beta-grade and may use placeholder output for some files.
+              Extraction/OCR may produce incomplete values for some files.
               Validate critical fields before operational decisions.
             </div>
           </div>

@@ -64,6 +64,9 @@ type Load = {
   last_reviewed_at?: string | null;
   last_contacted_at?: string | null;
   follow_up_required?: boolean | null;
+  next_follow_up_at?: string | null;
+  follow_up_owner_id?: string | null;
+  follow_up_owner_name?: string | null;
   submitted_at?: string | null;
   funded_at?: string | null;
   paid_at?: string | null;
@@ -161,6 +164,11 @@ type OperationalChecklistItem = {
   label: string;
   state: OperationalChecklistState;
   detail: string;
+};
+
+type StaffUserOption = {
+  id: string;
+  full_name: string;
 };
 
 const NEXT_STATUS_MAP: Partial<Record<LoadStatus, LoadStatus>> = {
@@ -563,6 +571,9 @@ function normalizeLoad(payload: unknown): Load | null {
     last_reviewed_at: getStringField(record, "last_reviewed_at"),
     last_contacted_at: getStringField(record, "last_contacted_at"),
     follow_up_required: getOptionalBooleanField(record, "follow_up_required"),
+    next_follow_up_at: getStringField(record, "next_follow_up_at"),
+    follow_up_owner_id: getStringField(record, "follow_up_owner_id"),
+    follow_up_owner_name: getStringField(record, "follow_up_owner_name"),
     submitted_at: getStringField(record, "submitted_at"),
     funded_at: getStringField(record, "funded_at"),
     paid_at: getStringField(record, "paid_at"),
@@ -817,6 +828,10 @@ export default function LoadDetailPage() {
     useState<UploadDocumentType>("");
   const [error, setError] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [staffUsers, setStaffUsers] = useState<StaffUserOption[]>([]);
+  const [followUpOwnerId, setFollowUpOwnerId] = useState("");
+  const [nextFollowUpDate, setNextFollowUpDate] = useState("");
+  const [isSavingFollowUp, setIsSavingFollowUp] = useState(false);
 
   const fetchLoad = useCallback(async (): Promise<Load | null> => {
     if (!loadId) {
@@ -941,6 +956,46 @@ export default function LoadDetailPage() {
   useEffect(() => {
     void fetchPageData();
   }, [fetchPageData]);
+
+  useEffect(() => {
+    if (!load) {
+      return;
+    }
+    setFollowUpOwnerId(load.follow_up_owner_id ?? "");
+    setNextFollowUpDate((load.next_follow_up_at ?? "").slice(0, 10));
+  }, [load?.follow_up_owner_id, load?.next_follow_up_at, load?.id]);
+
+  useEffect(() => {
+    let isMounted = true;
+    async function loadStaffUsers() {
+      const token = getAccessToken();
+      const organizationId = getOrganizationId();
+      if (!organizationId) {
+        return;
+      }
+      try {
+        const response = await apiClient.get<ApiResponse<unknown>>("/staff-users?page=1&page_size=200&is_active=true", {
+          token: token ?? undefined,
+          organizationId,
+        });
+        const items = Array.isArray(response.data) ? response.data : [];
+        const normalized = items
+          .map((item) => {
+            const record = asRecord(item);
+            const id = getStringField(record, "id");
+            const fullName = getStringField(record, "full_name");
+            if (!id || !fullName) return null;
+            return { id, full_name: fullName } satisfies StaffUserOption;
+          })
+          .filter((item): item is StaffUserOption => item !== null);
+        if (isMounted) setStaffUsers(normalized);
+      } catch {
+        if (isMounted) setStaffUsers([]);
+      }
+    }
+    void loadStaffUsers();
+    return () => { isMounted = false; };
+  }, []);
 
   const nextStatus = useMemo(() => {
     if (!load) {
@@ -1194,6 +1249,73 @@ export default function LoadDetailPage() {
     }
     return `Next action: ${nextItem.label}.`;
   }, [brokerFactoringWorkflow]);
+
+  const followUpReason = useMemo(() => {
+    if (!load) return "Review load status and packet readiness.";
+    if (load.status === "short_paid") return "Payment amount does not match expected settlement.";
+    if (load.status === "disputed") return "Dispute is open and waiting on broker/factor response.";
+    if (load.status === "reserve_pending") return "Advance paid but reserve release is still outstanding.";
+    if (load.status === "submitted_to_broker" && load.operational?.is_overdue) return "Broker payment response is overdue.";
+    if (!documentPresence.hasInvoice || !documentPresence.hasRateCon) return "Required billing documents are still missing.";
+    return "Load is in progress; keep follow-up cadence active until payment closes.";
+  }, [load, documentPresence.hasInvoice, documentPresence.hasRateCon]);
+
+  const followUpTemplates = useMemo(() => ({
+    paymentReminder: `Subject: Payment follow-up - Load ${load?.load_number ?? load?.id ?? ""}\n\nHello,\nThis is a payment follow-up for load ${load?.load_number ?? load?.id ?? ""}. Please confirm payment status and expected remittance date.\n\nThank you.`,
+    disputeFollowUp: `Subject: Short-pay/dispute follow-up - Load ${load?.load_number ?? load?.id ?? ""}\n\nHello,\nWe need an update on the short-pay/dispute for load ${load?.load_number ?? load?.id ?? ""}. Please share resolution details and expected adjustment timeline.\n\nThank you.`,
+    factorFollowUp: `Subject: Factor status request - Load ${load?.load_number ?? load?.id ?? ""}\n\nHello,\nPlease provide status for submitted/funded activity on load ${load?.load_number ?? load?.id ?? ""}, including reserve release timing.\n\nThank you.`,
+    missingDocs: `Subject: Missing document request - Load ${load?.load_number ?? load?.id ?? ""}\n\nHello,\nThis load is waiting on missing paperwork needed to proceed to invoice/submission. Please send the required documents as soon as possible.\n\nThank you.`,
+  }), [load?.id, load?.load_number]);
+
+  async function copyTemplate(value: string) {
+    try {
+      await navigator.clipboard.writeText(value);
+      setActionMessage("Template copied to clipboard.");
+    } catch {
+      setError("Unable to copy template. Please copy manually.");
+    }
+  }
+
+  async function handleSaveFollowUp() {
+    if (!load?.id || isSavingFollowUp) return;
+    try {
+      setIsSavingFollowUp(true);
+      setError(null);
+      setActionMessage(null);
+      const token = getAccessToken();
+      await apiClient.patch<ApiResponse<unknown>>(`/loads/${encodeURIComponent(load.id)}`, {
+        follow_up_required: true,
+        follow_up_owner_id: followUpOwnerId || null,
+        next_follow_up_at: nextFollowUpDate ? `${nextFollowUpDate}T09:00:00Z` : null,
+      }, { token: token ?? undefined });
+      await fetchPageData();
+      setActionMessage("Follow-up details updated.");
+    } catch (caught: unknown) {
+      setError(extractErrorMessage(caught, "Failed to save follow-up details."));
+    } finally {
+      setIsSavingFollowUp(false);
+    }
+  }
+
+  async function handleMarkContacted() {
+    if (!load?.id || isSavingFollowUp) return;
+    try {
+      setIsSavingFollowUp(true);
+      setError(null);
+      setActionMessage(null);
+      const token = getAccessToken();
+      await apiClient.patch<ApiResponse<unknown>>(`/loads/${encodeURIComponent(load.id)}`, {
+        mark_contacted: true,
+        follow_up_required: true,
+      }, { token: token ?? undefined });
+      await fetchPageData();
+      setActionMessage("Contact logged. Last contacted timestamp refreshed.");
+    } catch (caught: unknown) {
+      setError(extractErrorMessage(caught, "Failed to log contact."));
+    } finally {
+      setIsSavingFollowUp(false);
+    }
+  }
 
   async function handleMarkReviewed() {
     if (!load || !loadId || isMarkingReviewed) {
@@ -1689,7 +1811,7 @@ export default function LoadDetailPage() {
             </button>
           </div>
           <p className="mt-2 text-xs text-slate-500">
-            V1 quick controls support docs received and paid milestones.
+            Quick controls support document and payment milestone updates.
           </p>
         </div>
 
@@ -2061,7 +2183,7 @@ export default function LoadDetailPage() {
                 </div>
               </div>
               <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
-                Document OCR/extraction is in beta mode. Verify extracted values manually before submission/funding actions.
+                Document extraction may be incomplete for some files. Verify critical values before submission or funding actions.
               </div>
 
               <div className="mb-6 grid gap-3 sm:grid-cols-3">
@@ -2244,6 +2366,37 @@ export default function LoadDetailPage() {
                   <span>Open Issues</span>
                   <span className="font-semibold text-slate-900">{totalOpenIssues}</span>
                 </div>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
+              <h2 className="mb-2 text-lg font-semibold text-slate-950">Next Action & Follow-up</h2>
+              <p className="text-sm text-slate-600">{load.operational?.next_action?.label || "Follow up with broker"}</p>
+              <p className="mt-2 text-xs text-slate-500">Why this action is needed: {followUpReason}</p>
+
+              <div className="mt-4 space-y-3">
+                <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500">Assign Owner</label>
+                <select value={followUpOwnerId} onChange={(event) => setFollowUpOwnerId(event.target.value)} className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm">
+                  <option value="">Unassigned</option>
+                  {staffUsers.map((user) => (
+                    <option key={user.id} value={user.id}>{user.full_name}</option>
+                  ))}
+                </select>
+
+                <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500">Next Follow-up Date</label>
+                <input type="date" value={nextFollowUpDate} onChange={(event) => setNextFollowUpDate(event.target.value)} className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm" />
+
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <button type="button" onClick={() => void handleSaveFollowUp()} disabled={isSavingFollowUp} className="rounded-xl bg-brand-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:opacity-50">Save Follow-up</button>
+                  <button type="button" onClick={() => void handleMarkContacted()} disabled={isSavingFollowUp} className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:opacity-50">Mark Contacted</button>
+                </div>
+              </div>
+
+              <div className="mt-4 grid gap-2">
+                <button type="button" onClick={() => void copyTemplate(followUpTemplates.paymentReminder)} className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:bg-slate-100">Copy Payment Reminder</button>
+                <button type="button" onClick={() => void copyTemplate(followUpTemplates.disputeFollowUp)} className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:bg-slate-100">Copy Short-Pay / Dispute Follow-up</button>
+                <button type="button" onClick={() => void copyTemplate(followUpTemplates.factorFollowUp)} className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:bg-slate-100">Copy Factor Follow-up</button>
+                <button type="button" onClick={() => void copyTemplate(followUpTemplates.missingDocs)} className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:bg-slate-100">Copy Missing Document Reminder</button>
               </div>
             </div>
 

@@ -533,11 +533,9 @@ export default function BillingPage() {
             </div>
 
             <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
-              <h2 className="mb-4 text-lg font-semibold text-slate-950">Release Notes</h2>
+              <h2 className="mb-4 text-lg font-semibold text-slate-950">Billing scope</h2>
               <p className="text-sm leading-6 text-slate-600">
-                Billing V1 is focused on subscription structure, invoice generation, payment tracking,
-                and internal financial visibility. Advanced tax, discount, refund, and reconciliation
-                workflows should only be exposed once backend support is fully implemented.
+                Billing is focused on subscription structure, invoice generation, payment tracking, and financial visibility. Advanced tax, discount, refund, and reconciliation workflows remain controlled until corresponding backend support is enabled.
               </p>
             </div>
           </aside>

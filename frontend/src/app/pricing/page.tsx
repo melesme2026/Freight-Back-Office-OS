@@ -35,7 +35,7 @@ export default function PricingPage() {
       href: starter.href,
       cta: starter.configured ? "Start Starter" : "Setup required",
       external: starter.configured,
-      unavailableNote: starter.configured ? undefined : "Starter Stripe payment link is not configured yet.",
+      unavailableNote: starter.configured ? undefined : "Starter checkout link is not configured. Contact support to activate billing.",
     },
     {
       name: "Growth",
@@ -45,7 +45,7 @@ export default function PricingPage() {
       href: growth.href,
       cta: growth.configured ? "Start Growth" : "Setup required",
       external: growth.configured,
-      unavailableNote: growth.configured ? undefined : "Growth Stripe payment link is not configured yet.",
+      unavailableNote: growth.configured ? undefined : "Growth checkout link is not configured. Contact support to activate billing.",
     },
     {
       name: "Enterprise",
@@ -70,7 +70,7 @@ export default function PricingPage() {
             </Link>
           </div>
           <p className="text-sm font-medium text-brand-700">Pricing</p>
-          <h1 className="mt-2 text-4xl font-bold tracking-tight text-slate-950">Simple organization billing for V1</h1>
+          <h1 className="mt-2 text-4xl font-bold tracking-tight text-slate-950">Simple organization billing</h1>
           <p className="mt-4 text-sm leading-6 text-slate-600">
             Billing is organization-scoped. Admin teams subscribe or use manual activation while driver workflows remain operational.
           </p>

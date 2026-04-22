@@ -65,6 +65,8 @@ class LoadUpdate(BaseModel):
     has_bol: bool | None = None
     has_invoice: bool | None = None
     follow_up_required: bool | None = None
+    next_follow_up_at: datetime | None = None
+    follow_up_owner_id: str | None = None
     notes: str | None = None
 
 
@@ -107,6 +109,8 @@ class LoadRead(BaseModel):
     last_reviewed_at: datetime | None = None
     last_contacted_at: datetime | None = None
     follow_up_required: bool = False
+    next_follow_up_at: datetime | None = None
+    follow_up_owner_id: str | None = None
     submitted_at: datetime | None = None
     funded_at: datetime | None = None
     paid_at: datetime | None = None

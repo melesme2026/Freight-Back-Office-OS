@@ -77,7 +77,7 @@ export default function DriverUploadsPage() {
             Upload rate confirmations, PODs, invoices, and supporting paperwork, then optionally link each file to a load.
           </p>
           <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
-            <p className="font-semibold text-slate-900">How uploads work in V1</p>
+            <p className="font-semibold text-slate-900">How uploads work</p>
             <ol className="mt-2 list-decimal space-y-1 pl-4">
               <li>Select document type and file (PDF or image).</li>
               <li>Optionally select a load to attach the file immediately.</li>
