@@ -31,7 +31,7 @@ export default function PricingPage() {
       name: "Starter",
       price: "$49/mo",
       summary:
-        "1 organization, document uploads, load workflow tracking, invoice PDF generation, notifications, and billing-lite support.",
+        "For owner-led and small teams handling post-booking load intake, document collection, packet readiness, invoice preparation, and basic follow-up.",
       href: starter.href,
       cta: starter.configured ? "Start Starter" : "Setup required",
       external: starter.configured,
@@ -41,7 +41,7 @@ export default function PricingPage() {
       name: "Growth",
       price: "$99/mo",
       summary:
-        "Everything in Starter, better fit for active teams, higher operational capacity, and priority support.",
+        "For active dispatch and billing teams that need faster document throughput, stronger follow-up execution, and higher workflow capacity.",
       href: growth.href,
       cta: growth.configured ? "Start Growth" : "Setup required",
       external: growth.configured,
@@ -50,7 +50,7 @@ export default function PricingPage() {
     {
       name: "Enterprise",
       price: "Contact us",
-      summary: "Custom onboarding, custom pricing, and contact-led setup.",
+      summary: "Custom workflow design, onboarding support, and request-based integrations or factoring/back-office coordination.",
       href: `${appConfig.pricing.enterpriseContact}?intent=contact-sales`,
       cta: "Contact Sales",
       external: false,
@@ -70,9 +70,9 @@ export default function PricingPage() {
             </Link>
           </div>
           <p className="text-sm font-medium text-brand-700">Pricing</p>
-          <h1 className="mt-2 text-4xl font-bold tracking-tight text-slate-950">Simple organization billing</h1>
+          <h1 className="mt-2 text-4xl font-bold tracking-tight text-slate-950">Back-office plans built for freight teams</h1>
           <p className="mt-4 text-sm leading-6 text-slate-600">
-            Billing is organization-scoped. Admin teams subscribe or use manual activation while driver workflows remain operational.
+            Plans are designed for post-booking operations: document workflows, invoice readiness, settlement follow-up, and coordinated team/driver execution.
           </p>
         </div>
 

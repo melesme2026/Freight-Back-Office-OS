@@ -27,6 +27,14 @@ const normalizedApiBaseUrl = (() => {
   return trimTrailingSlashes(rawApiBaseUrl);
 })();
 
+const publicSignupEnabled = (() => {
+  const raw = normalizeOptionalText(process.env.NEXT_PUBLIC_PUBLIC_SIGNUP_ENABLED).toLowerCase();
+  if (!raw) {
+    return true;
+  }
+  return ["1", "true", "yes", "on"].includes(raw);
+})();
+
 const normalizedApiVersionPrefix = (() => {
   const source = rawApiVersionPrefix.length > 0 ? rawApiVersionPrefix : "/api/v1";
   const trimmed = trimLeadingAndTrailingSlashes(source);
@@ -40,6 +48,9 @@ export const appConfig = {
   defaultOrganizationId:
     normalizeOptionalText(process.env.NEXT_PUBLIC_ORGANIZATION_ID) ||
     "00000000-0000-0000-0000-000000000001",
+  auth: {
+    publicSignupEnabled,
+  },
   pricing: {
     starterLink:
       normalizeOptionalText(process.env.NEXT_PUBLIC_STRIPE_STARTER_LINK) ||

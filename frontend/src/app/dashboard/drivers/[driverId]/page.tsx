@@ -153,6 +153,7 @@ export default function DriverDetailPage() {
   const [activationToken, setActivationToken] = useState<string | null>(null);
   const [activationUrl, setActivationUrl] = useState<string | null>(null);
   const [inviteStatus, setInviteStatus] = useState<string | null>(null);
+  const [inviteEmailStatus, setInviteEmailStatus] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isTogglingActive, setIsTogglingActive] = useState(false);
@@ -301,6 +302,7 @@ export default function DriverDetailPage() {
       setActivationToken(null);
       setActivationUrl(null);
       setInviteStatus(null);
+      setInviteEmailStatus(null);
 
       const payload = await apiClient.post<{
         data?: { activation_token?: string; activation_url?: string; email_status?: string };
@@ -321,8 +323,10 @@ export default function DriverDetailPage() {
       const tokenValue = payload?.data?.activation_token?.trim();
       const activationUrlValue = payload?.data?.activation_url?.trim() || null;
       const emailStatus = payload?.data?.email_status?.trim() || "sent";
+      const inviteMessage = (payload?.data as { message?: string } | undefined)?.message?.trim();
 
-      setInviteStatus(`Invite processed. Email status: ${emailStatus}.`);
+      setInviteEmailStatus(emailStatus);
+      setInviteStatus(inviteMessage || `Invite processed. Email status: ${emailStatus}.`);
       setActivationUrl(activationUrlValue);
       setActivationToken(tokenValue || null);
     } catch (caught: unknown) {
@@ -333,6 +337,21 @@ export default function DriverDetailPage() {
       );
     } finally {
       setIsInviting(false);
+    }
+  }
+
+  async function copyActivationLink() {
+    const relativeLink = activationUrl || (activationToken ? `/activate-account?token=${encodeURIComponent(activationToken)}` : null);
+    if (!relativeLink) {
+      return;
+    }
+
+    const absoluteLink = relativeLink.startsWith("http") ? relativeLink : `${window.location.origin}${relativeLink}`;
+    try {
+      await navigator.clipboard.writeText(absoluteLink);
+      setInviteStatus("Activation link copied. Send it directly to the driver.");
+    } catch {
+      setInviteStatus("Copy failed. Use the activation link shown below.");
     }
   }
 
@@ -709,9 +728,7 @@ export default function DriverDetailPage() {
 
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                 <p className="text-sm text-slate-700">
-                  Driver-specific recent load history is not yet wired from a
-                  dedicated backend relation endpoint. Use the Loads
-                  workspace to review current freight activity.
+                  Review current and recent freight activity from the Loads workspace. Driver-specific activity will appear here as loads are assigned and documents are received.
                 </p>
               </div>
             </div>
@@ -737,9 +754,15 @@ export default function DriverDetailPage() {
                 </div>
               ) : null}
 
+              {inviteEmailStatus === "disabled" ? (
+                <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                  Email delivery is disabled. Copy the activation link and send it manually.
+                </div>
+              ) : null}
+
               {activationToken ? (
                 <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs text-emerald-800">
-                  <div className="font-semibold">Activation token generated</div>
+                  <div className="font-semibold">Activation link ready</div>
                   <div className="mt-1 break-all">{activationToken}</div>
                   <a
                     href={`/activate-account?token=${encodeURIComponent(activationToken)}`}
@@ -747,6 +770,9 @@ export default function DriverDetailPage() {
                   >
                     Open activation page →
                   </a>
+                  <button type="button" onClick={() => void copyActivationLink()} className="mt-2 inline-block font-semibold text-brand-700">
+                    Copy activation link
+                  </button>
                 </div>
               ) : null}
 
@@ -756,6 +782,9 @@ export default function DriverDetailPage() {
                   <a href={activationUrl} className="mt-1 inline-block font-semibold text-brand-700">
                     Open activation page →
                   </a>
+                  <button type="button" onClick={() => void copyActivationLink()} className="mt-2 inline-block font-semibold text-brand-700">
+                    Copy activation link
+                  </button>
                 </div>
               ) : null}
 

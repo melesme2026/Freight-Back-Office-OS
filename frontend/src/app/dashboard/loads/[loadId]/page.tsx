@@ -215,9 +215,9 @@ const UPLOAD_DOCUMENT_TYPE_OPTIONS: Array<{
   { value: "proof_of_delivery", label: "Proof of Delivery" },
   { value: "invoice", label: "Invoice" },
   { value: "lumper_receipt", label: "Lumper Receipt" },
-  { value: "detention_support", label: "Detention Support" },
+  { value: "detention_support", label: "Detention Approval" },
   { value: "scale_ticket", label: "Scale Ticket" },
-  { value: "accessorial_support", label: "Accessorial Support" },
+  { value: "accessorial_support", label: "Accessorial Approval" },
   { value: "damage_claim_photo", label: "Damage Claim Photo" },
   { value: "other", label: "Other" },
   { value: "unknown", label: "Unknown" },
@@ -2177,7 +2177,7 @@ export default function LoadDetailPage() {
                 <div>
                   <h2 className="text-lg font-semibold text-slate-950">Documents</h2>
                   <p className="mt-1 text-sm text-slate-600">
-                    Upload, review, and download load documents from a single place.
+                    Upload office documents, review driver uploads, and keep this load packet ready for invoicing and follow-up.
                   </p>
                 </div>
 
@@ -2243,8 +2243,7 @@ export default function LoadDetailPage() {
                     </span>
                   ) : (
                     <span>
-                      Supported uploads: PDF and common image formats. Documents will be attached
-                      directly to this load and available for download below.
+                      Supported uploads: PDF and common image formats. Core documents: Rate Confirmation, Bill of Lading, and POD/Delivery Receipt. Optional support docs: lumper, scale, detention/accessorial approvals, fuel/expense receipts, and other records. Freight invoice is generated from this load workflow when ready.
                     </span>
                   )}
                 </div>

@@ -200,6 +200,10 @@ def signup(
     payload: SignupRequestBody,
     db: Session = Depends(get_db_session),
 ) -> LoginResponse:
+    settings = get_settings()
+    if not settings.public_signup_enabled:
+        raise UnauthorizedError("Public organization signup is disabled. Contact support to request workspace access.")
+
     normalized_full_name = _normalize_required_text(payload.full_name, "full_name")
     normalized_email = _normalize_email(payload.email)
     normalized_org_name = _normalize_required_text(payload.organization_name, "organization_name")
@@ -411,24 +415,40 @@ def invite_user(
     settings = get_settings()
     activation_url = f"{settings.web_app_base_url.rstrip('/')}/activate-account?token={activation_token}"
     email_service = EmailService()
-    email_result = email_service.send_message(
-        to_email=normalized_email,
-        subject="Freight Back Office OS — Account Activation",
-        body_text=(
-            f"Hello {normalized_full_name},\n\n"
-            "You have been invited to Freight Back Office OS.\n"
-            f"Activate your account using this link:\n{activation_url}\n\n"
-            "If you did not expect this invite, contact your dispatcher/admin."
-        ),
-        metadata={"type": "auth_invite", "organization_id": str(organization_id)},
-    )
+    email_status = "unknown"
+    invite_message = "Invite generated."
+    email_error_message: str | None = None
+
+    try:
+        email_result = email_service.send_message(
+            to_email=normalized_email,
+            subject="Freight Back Office OS — Account Activation",
+            body_text=(
+                f"Hello {normalized_full_name},\n\n"
+                "You have been invited to Freight Back Office OS.\n"
+                f"Activate your account using this link:\n{activation_url}\n\n"
+                "If you did not expect this invite, contact your dispatcher/admin."
+            ),
+            metadata={"type": "auth_invite", "organization_id": str(organization_id)},
+        )
+        email_status = str(email_result.get("status", "unknown"))
+        invite_message = "Invite generated and email delivery was attempted."
+    except ValidationError as exc:
+        if str(exc) != "Email delivery is disabled in this environment":
+            raise
+        email_status = "disabled"
+        invite_message = "Email delivery is disabled. Copy the activation link and send it manually."
+        email_error_message = str(exc)
 
     response_data: dict[str, str | bool] = {
         "user_id": str(existing.id),
         "invite_sent": True,
-        "email_status": str(email_result.get("status", "unknown")),
+        "email_status": email_status,
+        "message": invite_message,
     }
-    if _should_expose_auth_tokens():
+    if email_error_message:
+        response_data["email_error"] = email_error_message
+    if _should_expose_auth_tokens() or email_status == "disabled":
         response_data["activation_url"] = activation_url
         response_data["activation_token"] = activation_token
 

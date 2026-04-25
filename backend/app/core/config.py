@@ -119,6 +119,7 @@ class Settings(BaseSettings):
     default_from_email: str = Field(default="no-reply@freightbackoffice.local")
     web_app_base_url: str = Field(default="http://localhost:3000")
     email_dev_allow_token_response: bool = Field(default=False)
+    public_signup_enabled: bool = Field(default=True)
     smtp_host: str | None = Field(default=None)
     smtp_port: int = Field(default=587, ge=1, le=65535)
     smtp_username: str | None = Field(default=None)
@@ -144,6 +145,7 @@ class Settings(BaseSettings):
         "whatsapp_enabled",
         "email_enabled",
         "email_dev_allow_token_response",
+        "public_signup_enabled",
         "smtp_use_tls",
         "smtp_use_ssl",
         "billing_enabled",
