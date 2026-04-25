@@ -18,6 +18,8 @@ from app.core.exceptions import UnauthorizedError, ValidationError
 from app.domain.enums.document_type import DocumentType
 from app.domain.enums.load_status import LoadStatus
 from app.schemas.common import ApiResponse
+from app.services.documents.document_service import DocumentService
+from app.services.documents.storage_service import StorageService
 from app.services.loads.load_service import LoadService
 from app.services.loads.operational_queue_service import OperationalQueueService
 from app.services.loads.packet_readiness import calculate_packet_readiness
@@ -395,6 +397,67 @@ def _build_simple_invoice_pdf(*, load: Any) -> bytes:
     return bytes(pdf)
 
 
+def _generate_and_persist_invoice_pdf(*, db: Session, load: Any) -> bytes:
+    pdf_bytes = _build_simple_invoice_pdf(load=load)
+    storage_service = StorageService()
+    document_service = DocumentService(db)
+
+    existing_invoice_documents, _ = document_service.list_documents(
+        load_id=str(load.id),
+        document_type=DocumentType.INVOICE,
+        page=1,
+        page_size=10,
+    )
+
+    if existing_invoice_documents:
+        invoice_document = existing_invoice_documents[0]
+        storage_key = getattr(invoice_document, "storage_key", None)
+        if storage_key:
+            storage_service.save_bytes(
+                relative_path=str(storage_key),
+                content=pdf_bytes,
+                overwrite=True,
+            )
+        else:
+            generated_storage_key = storage_service.save_bytes(
+                relative_path=f"pdfs/generated-invoices/{uuid.uuid4().hex}.pdf",
+                content=pdf_bytes,
+                overwrite=False,
+            )
+            invoice_document.storage_key = generated_storage_key
+            invoice_document.mime_type = "application/pdf"
+            invoice_document.file_size_bytes = len(pdf_bytes)
+            invoice_document.original_filename = f"invoice-{load.load_number or load.id}.pdf"
+            document_service.document_repo.update(invoice_document)
+
+        if str(getattr(invoice_document, "load_id", "")) != str(load.id):
+            document_service.attach_to_load(
+                document_id=str(invoice_document.id),
+                load_id=str(load.id),
+            )
+        return pdf_bytes
+
+    storage_key = storage_service.save_bytes(
+        relative_path=f"pdfs/generated-invoices/{uuid.uuid4().hex}.pdf",
+        content=pdf_bytes,
+        overwrite=False,
+    )
+    document_service.create_document(
+        organization_id=str(load.organization_id),
+        customer_account_id=str(load.customer_account_id),
+        driver_id=str(load.driver_id) if getattr(load, "driver_id", None) else None,
+        load_id=str(load.id),
+        document_type=DocumentType.INVOICE,
+        source_channel=getattr(load, "source_channel", "manual"),
+        storage_key=storage_key,
+        original_filename=f"invoice-{load.load_number or load.id}.pdf",
+        mime_type="application/pdf",
+        file_size_bytes=len(pdf_bytes),
+    )
+
+    return pdf_bytes
+
+
 @router.post("/loads", response_model=ApiResponse)
 def create_load(
     payload: LoadCreateRequest,
@@ -695,7 +758,7 @@ def download_load_invoice(
     service = LoadService(db)
     load = service.get_load(str(load_id))
     _authorize_load_access(item=load, token_payload=token_payload)
-    pdf_bytes = _build_simple_invoice_pdf(load=load)
+    pdf_bytes = _generate_and_persist_invoice_pdf(db=db, load=load)
     filename = f"invoice-{load.load_number or load.id}.pdf"
 
     return StreamingResponse(
