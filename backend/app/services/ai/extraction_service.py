@@ -7,6 +7,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import NotFoundError
+from app.domain.enums.document_type import DocumentType
 from app.domain.enums.processing_status import ProcessingStatus
 from app.domain.models.extracted_field import ExtractedField
 from app.repositories.document_repo import DocumentRepository
@@ -62,11 +63,18 @@ class ExtractionService:
             mime_type=document.mime_type,
         )
 
-        detected_type, classification_confidence = self.document_classifier.classify(
-            original_filename=document.original_filename,
-            mime_type=document.mime_type,
-            text_content=ocr_result.get("text"),
-        )
+        existing_document_type = getattr(document, "document_type", None)
+        should_classify = force or existing_document_type in {None, DocumentType.UNKNOWN}
+
+        if should_classify:
+            detected_type, classification_confidence = self.document_classifier.classify(
+                original_filename=document.original_filename,
+                mime_type=document.mime_type,
+                text_content=ocr_result.get("text"),
+            )
+        else:
+            detected_type = existing_document_type
+            classification_confidence = getattr(document, "classification_confidence", None)
 
         llm_fields = self.llm_service.extract_fields(
             document_type=str(detected_type),

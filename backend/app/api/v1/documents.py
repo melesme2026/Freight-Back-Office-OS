@@ -83,6 +83,12 @@ class LinkDocumentToLoadRequest(BaseModel):
     load_id: uuid.UUID
 
 
+class DocumentUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    document_type: str
+
+
 def _uuid_to_str(value: uuid.UUID | None) -> str | None:
     return str(value) if value is not None else None
 
@@ -639,6 +645,44 @@ def get_document(
     _authorize_document_mutation(item=item, token_payload=token_payload)
 
     return ApiResponse(data=_serialize_document(item), meta={}, error=None)
+
+
+@router.patch("/documents/{document_id}", response_model=ApiResponse)
+def update_document(
+    document_id: uuid.UUID,
+    payload: DocumentUpdateRequest,
+    token_payload: dict[str, Any] = Depends(get_current_token_payload),
+    db: Session = Depends(get_db_session),
+) -> ApiResponse:
+    service = DocumentService(db)
+    item = service.get_document_in_organization(
+        document_id=str(document_id),
+        organization_id=str(token_payload.get("organization_id")),
+    )
+    _authorize_document_mutation(item=item, token_payload=token_payload)
+    updated = service.update_document_type(
+        document_id=str(document_id),
+        document_type=_normalize_required_text(payload.document_type, "document_type"),
+    )
+    db.commit()
+    return ApiResponse(data=_serialize_document(updated), meta={"updated": True}, error=None)
+
+
+@router.delete("/documents/{document_id}", response_model=ApiResponse)
+def delete_document(
+    document_id: uuid.UUID,
+    token_payload: dict[str, Any] = Depends(get_current_token_payload),
+    db: Session = Depends(get_db_session),
+) -> ApiResponse:
+    service = DocumentService(db)
+    item = service.get_document_in_organization(
+        document_id=str(document_id),
+        organization_id=str(token_payload.get("organization_id")),
+    )
+    _authorize_document_mutation(item=item, token_payload=token_payload)
+    service.delete_document(document_id=str(document_id))
+    db.commit()
+    return ApiResponse(data={"id": str(document_id), "deleted": True}, meta={}, error=None)
 
 
 @router.post("/documents/{document_id}/extract", response_model=ApiResponse)

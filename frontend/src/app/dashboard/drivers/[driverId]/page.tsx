@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { apiClient } from "@/lib/api-client";
 import { getAccessToken, getOrganizationId } from "@/lib/auth";
+import { copyTextWithFallback } from "@/lib/clipboard";
 
 type DriverDetailView = {
   id: string;
@@ -347,12 +348,12 @@ export default function DriverDetailPage() {
     }
 
     const absoluteLink = relativeLink.startsWith("http") ? relativeLink : `${window.location.origin}${relativeLink}`;
-    try {
-      await navigator.clipboard.writeText(absoluteLink);
+    const copied = await copyTextWithFallback(absoluteLink);
+    if (copied) {
       setInviteStatus("Activation link copied. Send it directly to the driver.");
-    } catch {
-      setInviteStatus("Copy failed. Use the activation link shown below.");
+      return;
     }
+    setInviteStatus("Copy failed — select and copy the link manually.");
   }
 
   async function saveDriverEdits() {
@@ -763,7 +764,7 @@ export default function DriverDetailPage() {
               {activationToken ? (
                 <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs text-emerald-800">
                   <div className="font-semibold">Activation link ready</div>
-                  <div className="mt-1 break-all">{activationToken}</div>
+                  <div className="mt-1 break-all select-all">{activationToken}</div>
                   <a
                     href={`/activate-account?token=${encodeURIComponent(activationToken)}`}
                     className="mt-2 inline-block font-semibold text-brand-700"
@@ -779,7 +780,7 @@ export default function DriverDetailPage() {
               {!activationToken && activationUrl ? (
                 <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs text-emerald-800">
                   <div className="font-semibold">Activation link generated</div>
-                  <a href={activationUrl} className="mt-1 inline-block font-semibold text-brand-700">
+                  <a href={activationUrl} className="mt-1 inline-block break-all font-semibold text-brand-700">
                     Open activation page →
                   </a>
                   <button type="button" onClick={() => void copyActivationLink()} className="mt-2 inline-block font-semibold text-brand-700">

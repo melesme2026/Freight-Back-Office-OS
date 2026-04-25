@@ -80,3 +80,41 @@ def test_document_sync_marks_submission_ready_without_bol(db_session) -> None:
     assert refreshed.has_invoice is True
     assert refreshed.has_bol is False
     assert refreshed.documents_complete is True
+
+
+def test_update_document_type_alias_and_delete_resync_flags(db_session) -> None:
+    from app.services.loads.load_service import LoadService
+
+    load_service = LoadService(db_session)
+    document_service = DocumentService(db_session)
+
+    load = load_service.create_load(
+        organization_id="00000000-0000-0000-0000-000000000431",
+        customer_account_id="00000000-0000-0000-0000-000000000432",
+        driver_id="00000000-0000-0000-0000-000000000433",
+    )
+
+    document = document_service.create_document(
+        organization_id="00000000-0000-0000-0000-000000000431",
+        customer_account_id="00000000-0000-0000-0000-000000000432",
+        storage_key="uploads/editable-doc.pdf",
+        source_channel="manual",
+        load_id=str(load.id),
+        document_type="unknown",
+        original_filename="editable-doc.pdf",
+        mime_type="application/pdf",
+        file_size_bytes=1234,
+    )
+
+    updated = document_service.update_document_type(
+        document_id=str(document.id),
+        document_type="bill of lading",
+    )
+    refreshed = load_service.get_load(str(load.id))
+
+    assert str(updated.document_type) == "bill_of_lading"
+    assert refreshed.has_bol is True
+
+    document_service.delete_document(document_id=str(document.id))
+    refreshed_after_delete = load_service.get_load(str(load.id))
+    assert refreshed_after_delete.has_bol is False

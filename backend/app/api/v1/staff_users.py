@@ -70,6 +70,25 @@ class StaffUserUpdateRequest(BaseModel):
     is_active: bool | None = None
 
 
+def _normalize_role_value(value: object | None) -> str:
+    enum_value = getattr(value, "value", value)
+    return str(enum_value or "").strip().lower()
+
+
+def _count_org_admin_owners(repo: StaffUserRepository, organization_id: uuid.UUID) -> int:
+    members, _ = repo.list(
+        organization_id=organization_id,
+        page=1,
+        page_size=500,
+        include_related=False,
+    )
+    return sum(
+        1
+        for member in members
+        if _normalize_role_value(member.role) in {Role.OWNER.value, Role.ADMIN.value}
+    )
+
+
 def _normalize_required_text(value: str, field_name: str) -> str:
     normalized = value.strip()
     if not normalized:
@@ -274,6 +293,7 @@ def update_staff_user(
     token_organization_id = _normalize_token_organization_id(token_payload)
     if item.organization_id != token_organization_id:
         raise UnauthorizedError("Staff user is not in authenticated organization")
+    requester_id = str(token_payload.get("sub") or "").strip()
 
     if payload.email is not None:
         normalized_email = _normalize_email(payload.email)
@@ -308,9 +328,25 @@ def update_staff_user(
             raise UnauthorizedError("Only owner can assign admin or ops manager roles")
         if normalized_target_role == Role.DRIVER.value:
             raise UnauthorizedError("Driver role must be onboarded through the invite flow")
+        current_role = _normalize_role_value(item.role)
+        if (
+            current_role in {Role.OWNER.value, Role.ADMIN.value}
+            and normalized_target_role not in {Role.OWNER.value, Role.ADMIN.value}
+            and _count_org_admin_owners(repo, item.organization_id) <= 1
+        ):
+            raise ValidationError("Cannot remove the last owner/admin from the organization")
         item.role = normalized_target_role
 
     if payload.is_active is not None:
+        if str(item.id) == requester_id and payload.is_active is False:
+            raise ValidationError("You cannot disable your own account")
+        current_role = _normalize_role_value(item.role)
+        if (
+            payload.is_active is False
+            and current_role in {Role.OWNER.value, Role.ADMIN.value}
+            and _count_org_admin_owners(repo, item.organization_id) <= 1
+        ):
+            raise ValidationError("Cannot disable the last owner/admin in the organization")
         item.is_active = payload.is_active
 
     updated = repo.update(item)
@@ -321,3 +357,31 @@ def update_staff_user(
         meta={},
         error=None,
     )
+
+
+@router.delete("/staff-users/{staff_user_id}", response_model=ApiResponse)
+def delete_staff_user(
+    staff_user_id: uuid.UUID,
+    token_payload: dict[str, Any] = Depends(get_current_token_payload),
+    db: Session = Depends(get_db_session),
+) -> ApiResponse:
+    _require_staff_admin_role(token_payload)
+    repo = StaffUserRepository(db)
+    item = _get_staff_user_or_404(repo, staff_user_id)
+    token_organization_id = _normalize_token_organization_id(token_payload)
+    if item.organization_id != token_organization_id:
+        raise UnauthorizedError("Staff user is not in authenticated organization")
+
+    requester_id = str(token_payload.get("sub") or "").strip()
+    if str(item.id) == requester_id:
+        raise ValidationError("You cannot remove your own account")
+
+    target_role = _normalize_role_value(item.role)
+    if (
+        target_role in {Role.OWNER.value, Role.ADMIN.value}
+        and _count_org_admin_owners(repo, item.organization_id) <= 1
+    ):
+        raise ValidationError("Cannot remove the last owner/admin in the organization")
+
+    repo.delete(item)
+    return ApiResponse(data={"id": str(staff_user_id), "deleted": True}, meta={}, error=None)

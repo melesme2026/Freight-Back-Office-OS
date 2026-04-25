@@ -80,6 +80,7 @@ export default function NewLoadPage() {
   const [isLoadingBrokers, setIsLoadingBrokers] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   const typedCustomerAccounts = (customerAccounts ?? []) as CustomerAccountOption[];
   const typedDrivers = (drivers ?? []) as DriverOption[];
@@ -110,11 +111,12 @@ export default function NewLoadPage() {
       customerAccountId.trim().length > 0 &&
       driverId.trim().length > 0 &&
       loadNumber.trim().length > 0 &&
+      (brokerId.trim().length > 0 || brokerName.trim().length > 0 || brokerEmail.trim().length > 0) &&
       !isSubmitting &&
       !isLoadingCustomers &&
       !isLoadingDrivers &&
       isValidEmail(brokerEmail),
-    [organizationId, customerAccountId, driverId, loadNumber, isSubmitting, isLoadingCustomers, isLoadingDrivers, brokerEmail]
+    [organizationId, customerAccountId, driverId, loadNumber, brokerId, brokerName, brokerEmail, isSubmitting, isLoadingCustomers, isLoadingDrivers]
   );
 
   useEffect(() => {
@@ -169,6 +171,19 @@ export default function NewLoadPage() {
       setSubmitError("Organization context is missing. Please sign in again.");
       return;
     }
+    const nextErrors: Record<string, string> = {};
+    if (!customerAccountId.trim()) nextErrors.customer_account_id = "Customer account is required.";
+    if (!driverId.trim()) nextErrors.driver_id = "Driver is required.";
+    if (!loadNumber.trim()) nextErrors.load_number = "Load number is required.";
+    if (!brokerId.trim() && !brokerName.trim() && !brokerEmail.trim()) {
+      nextErrors.broker = "Broker selection or broker contact is required.";
+    }
+    if (Object.keys(nextErrors).length > 0) {
+      setFieldErrors(nextErrors);
+      setSubmitError("Please correct the highlighted fields.");
+      return;
+    }
+    setFieldErrors({});
 
     if (grossAmount.trim() && parsedAmount === null) {
       setSubmitError("Gross amount must be a valid number.");
@@ -239,6 +254,7 @@ export default function NewLoadPage() {
                     <option key={account.id} value={account.id}>{account.account_name}{account.account_code ? ` (${account.account_code})` : ""}</option>
                   ))}
                 </select>
+                {fieldErrors.customer_account_id ? <p className="mt-1 text-xs text-rose-700">{fieldErrors.customer_account_id}</p> : null}
               </div>
 
               <div>
@@ -249,11 +265,13 @@ export default function NewLoadPage() {
                     <option key={driver.id} value={driver.id}>{driver.full_name}{driver.phone ? ` • ${driver.phone}` : ""}</option>
                   ))}
                 </select>
+                {fieldErrors.driver_id ? <p className="mt-1 text-xs text-rose-700">{fieldErrors.driver_id}</p> : null}
               </div>
 
               <div>
                 <label className="mb-2 block text-sm font-semibold text-slate-800">Load Number *</label>
                 <input type="text" value={loadNumber} onChange={(event) => setLoadNumber(event.target.value)} placeholder="LD-100245" className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm" />
+                {fieldErrors.load_number ? <p className="mt-1 text-xs text-rose-700">{fieldErrors.load_number}</p> : null}
               </div>
 
               <div>
@@ -273,7 +291,7 @@ export default function NewLoadPage() {
                     setBrokerEmail(selected.email ?? "");
                   }
                 }} disabled={isLoadingBrokers} className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm">
-                  <option value="">{isLoadingBrokers ? "Loading brokers..." : "Select broker (optional)"}</option>
+                  <option value="">{isLoadingBrokers ? "Loading brokers..." : "Select existing broker (recommended)"}</option>
                   {filteredBrokers.map((broker) => (
                     <option key={broker.id} value={broker.id}>{broker.name}{broker.email ? ` • ${broker.email}` : ""}{broker.mc_number ? ` • MC ${broker.mc_number}` : ""}</option>
                   ))}
@@ -281,6 +299,8 @@ export default function NewLoadPage() {
                 <Link href="/dashboard/brokers" className="mt-2 inline-flex text-xs font-semibold text-brand-700 hover:text-brand-800">
                   Manage broker profiles →
                 </Link>
+                <p className="mt-1 text-xs text-slate-500">You can select a saved broker or enter broker email/name manually.</p>
+                {fieldErrors.broker ? <p className="mt-1 text-xs text-rose-700">{fieldErrors.broker}</p> : null}
               </div>
 
               <div>
