@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import logging
 from types import SimpleNamespace
 
 from app.api.v1.loads import _generate_and_persist_invoice_pdf, download_load_invoice
@@ -10,6 +12,13 @@ from app.services.documents.storage_service import StorageService
 from app.services.loads.load_service import LoadService
 from app.services.loads.operational_queue_service import OperationalQueueService
 from app.services.loads.packet_readiness import calculate_packet_readiness
+
+
+async def _read_streaming_response_bytes(response) -> bytes:
+    chunks: list[bytes] = []
+    async for chunk in response.body_iterator:
+        chunks.append(chunk)
+    return b"".join(chunks)
 
 
 def _create_ready_for_invoice_load(db_session):
@@ -65,6 +74,9 @@ def test_generate_invoice_creates_invoice_document(db_session) -> None:
     assert len(invoice_documents) == 1
     assert invoice_documents[0].load_id == load.id
     assert storage_service.read_bytes(relative_path=invoice_documents[0].storage_key) == pdf_bytes
+    assert b"Freight Invoice" in pdf_bytes
+    assert f"Load #: {load.load_number}".encode("latin-1") in pdf_bytes
+    assert b"Required Billing Packet Checklist" in pdf_bytes
 
 
 def test_generate_invoice_updates_has_invoice_and_readiness(db_session) -> None:
@@ -189,6 +201,39 @@ def test_download_invoice_route_persists_invoice_and_reuses_existing_document(db
     assert refreshed_load.has_invoice is True
     assert DocumentType.INVOICE.value not in readiness["missing_required_documents"]["submission"]
     assert after["next_action"]["code"] != "generate_invoice"
+
+
+def test_download_invoice_route_returns_professional_invoice_sections(db_session) -> None:
+    load = _create_ready_for_invoice_load(db_session)
+    token_payload = {
+        "organization_id": str(load.organization_id),
+        "role": "staff",
+    }
+
+    response = download_load_invoice(
+        load_id=load.id,
+        token_payload=token_payload,
+        db=db_session,
+    )
+    pdf_bytes = asyncio.run(_read_streaming_response_bytes(response))
+
+    assert response.media_type == "application/pdf"
+    assert b"Freight Invoice" in pdf_bytes
+    assert b"Carrier / Remit-To" in pdf_bytes
+    assert b"Bill-To / Broker" in pdf_bytes
+    assert b"Shipment Details" in pdf_bytes
+    assert b"Charges" in pdf_bytes
+    assert b"Required Billing Packet Checklist" in pdf_bytes
+    assert b"Please remit payment according to the agreed terms." in pdf_bytes
+
+
+def test_generate_invoice_logs_template_selection(db_session, caplog) -> None:
+    load = _create_ready_for_invoice_load(db_session)
+    caplog.set_level(logging.INFO)
+
+    _generate_and_persist_invoice_pdf(db=db_session, load=load)
+
+    assert "USING TEMPLATE: _build_professional_invoice_pdf" in caplog.text
 
 
 def test_packet_readiness_uses_documents_table_not_flags(db_session) -> None:
