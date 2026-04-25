@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import io
+import logging
 import uuid
 from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
@@ -27,6 +28,7 @@ from app.services.workflow.workflow_engine import WorkflowEngine
 
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 class LoadCreateRequest(BaseModel):
@@ -213,7 +215,7 @@ def _parse_load_status(value: str) -> LoadStatus:
 
 
 
-def _build_load_packet_readiness(item: Any) -> dict[str, Any]:
+def _build_load_packet_readiness(item: Any, *, db: Session | None = None) -> dict[str, Any]:
     documents = getattr(item, "documents", None)
 
     document_types = []
@@ -223,17 +225,30 @@ def _build_load_packet_readiness(item: Any) -> dict[str, Any]:
             if document_type is not None:
                 document_types.append(document_type)
 
-    if not document_types:
-        if bool(getattr(item, "has_ratecon", False)):
-            document_types.append(DocumentType.RATE_CONFIRMATION)
-        if bool(getattr(item, "has_bol", False)):
-            document_types.append(DocumentType.BILL_OF_LADING)
-        if bool(getattr(item, "has_invoice", False)):
-            document_types.append(DocumentType.INVOICE)
+    readiness_source = "load.documents"
+    if not document_types and db is not None and getattr(item, "id", None):
+        document_service = DocumentService(db)
+        persisted_documents, _ = document_service.list_documents(
+            load_id=str(item.id),
+            page=1,
+            page_size=500,
+        )
+        for document in persisted_documents:
+            document_type = getattr(document, "document_type", None)
+            if document_type is not None:
+                document_types.append(document_type)
+        readiness_source = "documents_table"
+
+    logger.debug(
+        "Load packet readiness input: load_id=%s source=%s document_types=%s",
+        getattr(item, "id", None),
+        readiness_source,
+        [getattr(document_type, "value", str(document_type)) for document_type in document_types],
+    )
 
     return calculate_packet_readiness(document_types=document_types)
 
-def _serialize_load(item: Any, *, detailed: bool = False) -> dict[str, Any]:
+def _serialize_load(item: Any, *, detailed: bool = False, db: Session | None = None) -> dict[str, Any]:
     customer_account = getattr(item, "customer_account", None)
     driver = getattr(item, "driver", None)
     broker = getattr(item, "broker", None)
@@ -242,7 +257,7 @@ def _serialize_load(item: Any, *, detailed: bool = False) -> dict[str, Any]:
     documents = getattr(item, "documents", None)
     last_reviewed_by_user = getattr(item, "last_reviewed_by_user", None)
 
-    packet_readiness = _build_load_packet_readiness(item)
+    packet_readiness = _build_load_packet_readiness(item, db=db)
     operational = OperationalQueueService().evaluate_load(item)
 
     payload = {
@@ -430,11 +445,16 @@ def _generate_and_persist_invoice_pdf(*, db: Session, load: Any) -> bytes:
             invoice_document.original_filename = f"invoice-{load.load_number or load.id}.pdf"
             document_service.document_repo.update(invoice_document)
 
-        if str(getattr(invoice_document, "load_id", "")) != str(load.id):
-            document_service.attach_to_load(
-                document_id=str(invoice_document.id),
-                load_id=str(load.id),
-            )
+        document_service.attach_to_load(
+            document_id=str(invoice_document.id),
+            load_id=str(load.id),
+        )
+        logger.info(
+            "Generated invoice PDF reused existing document: load_id=%s document_id=%s document_type=%s",
+            load.id,
+            getattr(invoice_document, "id", None),
+            getattr(getattr(invoice_document, "document_type", None), "value", None),
+        )
         return pdf_bytes
 
     storage_key = storage_service.save_bytes(
@@ -442,7 +462,7 @@ def _generate_and_persist_invoice_pdf(*, db: Session, load: Any) -> bytes:
         content=pdf_bytes,
         overwrite=False,
     )
-    document_service.create_document(
+    invoice_document = document_service.create_document(
         organization_id=str(load.organization_id),
         customer_account_id=str(load.customer_account_id),
         driver_id=str(load.driver_id) if getattr(load, "driver_id", None) else None,
@@ -453,6 +473,12 @@ def _generate_and_persist_invoice_pdf(*, db: Session, load: Any) -> bytes:
         original_filename=f"invoice-{load.load_number or load.id}.pdf",
         mime_type="application/pdf",
         file_size_bytes=len(pdf_bytes),
+    )
+    logger.info(
+        "Generated invoice PDF created document: load_id=%s document_id=%s document_type=%s",
+        load.id,
+        getattr(invoice_document, "id", None),
+        getattr(getattr(invoice_document, "document_type", None), "value", None),
     )
 
     return pdf_bytes
@@ -511,7 +537,7 @@ def create_load(
     item = service.get_load(str(item.id))
 
     return ApiResponse(
-        data=_serialize_load(item, detailed=True),
+        data=_serialize_load(item, detailed=True, db=db),
         meta={},
         error=None,
     )
@@ -593,7 +619,7 @@ def list_loads(
         items = queue_filtered[start:end]
 
     return ApiResponse(
-        data=[_serialize_load(item, detailed=False) for item in items],
+        data=[_serialize_load(item, detailed=False, db=db) for item in items],
         meta={
             "page": page,
             "page_size": page_size,
@@ -614,7 +640,7 @@ def get_load(
     _authorize_load_access(item=item, token_payload=token_payload)
 
     return ApiResponse(
-        data=_serialize_load(item, detailed=True),
+        data=_serialize_load(item, detailed=True, db=db),
         meta={},
         error=None,
     )
@@ -666,7 +692,7 @@ def update_load(
     item = service.get_load(str(item.id))
 
     return ApiResponse(
-        data=_serialize_load(item, detailed=True),
+        data=_serialize_load(item, detailed=True, db=db),
         meta={},
         error=None,
     )
@@ -759,6 +785,7 @@ def download_load_invoice(
     load = service.get_load(str(load_id))
     _authorize_load_access(item=load, token_payload=token_payload)
     pdf_bytes = _generate_and_persist_invoice_pdf(db=db, load=load)
+    db.commit()
     filename = f"invoice-{load.load_number or load.id}.pdf"
 
     return StreamingResponse(
@@ -815,7 +842,7 @@ def export_loads_csv(
     ])
 
     for item in items:
-        row = _serialize_load(item, detailed=False)
+        row = _serialize_load(item, detailed=False, db=db)
         writer.writerow([
             row.get("id"),
             row.get("load_number"),
