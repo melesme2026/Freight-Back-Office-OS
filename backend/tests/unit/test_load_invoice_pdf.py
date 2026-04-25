@@ -58,6 +58,7 @@ def test_build_professional_invoice_pdf_contains_professional_sections() -> None
     assert b"[X] Proof of Delivery" in pdf_bytes
     assert b"[ ] Bill of Lading" in pdf_bytes
     assert b"Total Due" in pdf_bytes
+    assert b"Please remit payment according to the agreed terms." in pdf_bytes
 
 
 def test_build_professional_invoice_pdf_handles_missing_optional_fields_without_crashing() -> None:
@@ -87,5 +88,53 @@ def test_build_professional_invoice_pdf_handles_missing_optional_fields_without_
     pdf_bytes = _build_professional_invoice_pdf(load=load)
 
     assert isinstance(pdf_bytes, bytes)
-    assert str(customer_account_id).encode("latin-1") in pdf_bytes
+    assert b"Customer:" in pdf_bytes
     assert b"N/A" in pdf_bytes
+
+
+def test_build_professional_invoice_pdf_wraps_long_values_without_crashing() -> None:
+    load = SimpleNamespace(
+        id=uuid.uuid4(),
+        load_number="LD-1099",
+        invoice_number="INV-1099",
+        rate_confirmation_number="RC-1099-" + "X" * 80,
+        customer_account_id=uuid.uuid4(),
+        customer_account=SimpleNamespace(
+            account_name="Very Long Customer Name " * 6,
+            billing_email="billing-team-with-very-long-alias@very-long-customer-domain.example",
+        ),
+        organization=SimpleNamespace(
+            legal_name="Blue Sky Transport LLC",
+            name="Blue Sky Transport",
+            email="billing@bluesky.example",
+            phone="+1-555-111-2222",
+            billing_notes="ACH and remit to factoring partner reference " + "9" * 40,
+        ),
+        broker=SimpleNamespace(
+            name="Broker Name " * 6,
+            email="accounts-payable-with-extra-long-local-part@broker-domain-with-long-name.example",
+            mc_number="MC-778899",
+            payment_terms_days=30,
+        ),
+        driver=SimpleNamespace(full_name="Jane Driver"),
+        gross_amount="1500.00",
+        currency_code="USD",
+        pickup_location="Chicago, IL",
+        pickup_date="2026-04-01",
+        delivery_location="Atlanta, GA",
+        delivery_date="2026-04-03",
+        notes=("Long note ") * 80,
+        documents=[
+            SimpleNamespace(document_type=DocumentType.RATE_CONFIRMATION),
+            SimpleNamespace(document_type=DocumentType.PROOF_OF_DELIVERY),
+        ],
+    )
+
+    pdf_bytes = _build_professional_invoice_pdf(load=load)
+
+    assert isinstance(pdf_bytes, bytes)
+    assert len(pdf_bytes) > 0
+    assert b"Bill-To / Broker" in pdf_bytes
+    assert b"Shipment Details" in pdf_bytes
+    assert b"Load Ref:" in pdf_bytes
+    assert b"Notes:" in pdf_bytes

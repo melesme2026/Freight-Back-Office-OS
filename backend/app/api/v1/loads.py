@@ -441,7 +441,10 @@ def _build_professional_invoice_pdf(*, load: Any) -> bytes:
 
     # TODO: Add carrier street address, MC/DOT, and factoring remit notice fields when these are added to the domain.
     text_ops: list[str] = ["0.5 w", "0 0 0 RG"]
-    row_height = 16
+
+    section_padding_x = 14
+    section_padding_top = 16
+    line_gap = 14
 
     def add_text(x: int, y: int, text: str, *, font: str = "F1", size: int = 10) -> None:
         escaped = _escape_pdf_text(text)
@@ -450,56 +453,221 @@ def _build_professional_invoice_pdf(*, load: Any) -> bytes:
     def add_box(x: int, y: int, width: int, height: int) -> None:
         text_ops.append(f"{x} {y} {width} {height} re S")
 
-    add_box(36, 740, 540, 46)
-    add_text(48, 769, carrier_name, font="F2", size=14)
-    add_text(48, 751, "Freight Invoice", font="F2", size=13)
-    add_text(370, 769, f"Invoice #: {invoice_number}", size=10)
-    add_text(370, 754, f"Invoice Date: {invoice_date}", size=10)
-    add_text(370, 739, f"Load #: {load_number}", size=10)
+    def _wrap_text(value: str, *, max_chars: int, max_lines: int | None = None) -> list[str]:
+        normalized = str(value or "").replace("\r", " ").replace("\n", " ").strip()
+        if not normalized:
+            normalized = "N/A"
 
-    add_box(36, 620, 260, 112)
-    add_text(48, 716, "Carrier / Remit-To", font="F2", size=11)
-    add_text(48, 698, f"Carrier: {carrier_name}")
-    add_text(48, 682, f"Email: {carrier_email}")
-    add_text(48, 666, f"Phone: {carrier_phone}")
-    add_text(48, 650, "Address: N/A")
-    add_text(48, 634, "MC/DOT: N/A")
-    add_text(48, 618, f"Remit-To: {remit_to_instructions}")
+        words = normalized.split()
+        lines: list[str] = []
+        current_line = ""
 
-    add_box(316, 620, 260, 112)
-    add_text(328, 716, "Bill-To / Broker", font="F2", size=11)
-    add_text(328, 698, f"Customer: {customer_name}")
-    add_text(328, 682, f"Billing Email: {billing_email}")
-    add_text(328, 666, f"Broker: {broker_name}")
-    add_text(328, 650, f"Broker Email: {broker_email}")
-    add_text(328, 634, f"Broker MC: {broker_mc_number}")
-    add_text(328, 618, f"Payment Terms: {payment_terms}")
+        for word in words:
+            proposed = f"{current_line} {word}".strip()
+            if len(proposed) <= max_chars:
+                current_line = proposed
+                continue
 
-    add_box(36, 520, 540, 88)
-    add_text(48, 592, "Shipment Details", font="F2", size=11)
-    add_text(48, 574, f"Pickup: {_string_or_na(getattr(load, 'pickup_location', None))}")
-    add_text(48, 558, f"Pickup Date: {pickup_date}")
-    add_text(48, 542, f"Delivery: {_string_or_na(getattr(load, 'delivery_location', None))}")
-    add_text(48, 526, f"Delivery Date: {delivery_date}")
-    add_text(300, 574, f"Driver: {_string_or_na(getattr(driver, 'full_name', None))}")
-    add_text(300, 558, f"Load Ref: {load_reference}")
-    add_text(300, 542, f"Notes: {_string_or_na(getattr(load, 'notes', None))}")
+            if current_line:
+                lines.append(current_line)
+                current_line = ""
 
-    add_box(36, 430, 540, 78)
-    add_text(48, 492, "Charges", font="F2", size=11)
-    add_text(48, 474, "Line Item")
-    add_text(280, 474, "Amount")
-    add_text(420, 474, "Currency")
-    text_ops.append("48 468 m 564 468 l S")
-    add_text(48, 452, "Linehaul / Freight Charge")
-    add_text(280, 452, gross_amount)
-    add_text(420, 452, currency_code)
-    text_ops.append("48 446 m 564 446 l S")
-    add_text(48, 434, "Total Due", font="F2", size=11)
-    add_text(420, 434, total_due, font="F2", size=11)
+            while len(word) > max_chars:
+                lines.append(word[: max_chars - 1] + "-")
+                word = word[max_chars - 1 :]
 
-    add_box(36, 292, 540, 128)
-    add_text(48, 404, "Required Billing Packet Checklist", font="F2", size=11)
+            current_line = word
+
+        if current_line:
+            lines.append(current_line)
+
+        if max_lines is not None and len(lines) > max_lines:
+            lines = lines[:max_lines]
+            if lines and len(lines[-1]) >= max_chars - 2:
+                lines[-1] = lines[-1][: max_chars - 3].rstrip() + "..."
+            elif lines:
+                lines[-1] = lines[-1].rstrip() + "..."
+
+        return lines or ["N/A"]
+
+    def add_wrapped_field(
+        *,
+        x: int,
+        y: int,
+        label: str,
+        value: str,
+        max_chars: int,
+        max_lines: int,
+    ) -> int:
+        wrapped_lines = _wrap_text(value, max_chars=max_chars, max_lines=max_lines)
+        add_text(x, y, f"{label}: {wrapped_lines[0]}")
+        y_cursor = y - line_gap
+        for line in wrapped_lines[1:]:
+            add_text(x + 16, y_cursor, line)
+            y_cursor -= line_gap
+        return y_cursor
+
+    # Header
+    add_box(36, 718, 540, 68)
+    add_text(50, 764, carrier_name, font="F2", size=14)
+    add_text(50, 746, "Freight Invoice", font="F2", size=12)
+    add_text(384, 764, f"Invoice #: {invoice_number}", size=10)
+    add_text(384, 746, f"Date: {invoice_date}", size=10)
+    add_text(384, 728, f"Load #: {load_number}", size=10)
+
+    # Carrier / Bill-to sections
+    section_y = 570
+    section_h = 136
+    left_x = 36
+    right_x = 316
+    section_w = 260
+
+    add_box(left_x, section_y, section_w, section_h)
+    add_box(right_x, section_y, section_w, section_h)
+
+    left_top = section_y + section_h - section_padding_top
+    right_top = section_y + section_h - section_padding_top
+
+    add_text(left_x + section_padding_x, left_top, "Carrier / Remit-To", font="F2", size=11)
+    left_cursor = left_top - 20
+    left_cursor = add_wrapped_field(
+        x=left_x + section_padding_x,
+        y=left_cursor,
+        label="Carrier",
+        value=carrier_name,
+        max_chars=29,
+        max_lines=2,
+    )
+    left_cursor = add_wrapped_field(
+        x=left_x + section_padding_x,
+        y=left_cursor,
+        label="Email",
+        value=carrier_email,
+        max_chars=31,
+        max_lines=2,
+    )
+    left_cursor = add_wrapped_field(
+        x=left_x + section_padding_x,
+        y=left_cursor,
+        label="Phone",
+        value=carrier_phone,
+        max_chars=31,
+        max_lines=1,
+    )
+    add_wrapped_field(
+        x=left_x + section_padding_x,
+        y=left_cursor,
+        label="Remit",
+        value=remit_to_instructions,
+        max_chars=29,
+        max_lines=2,
+    )
+
+    add_text(right_x + section_padding_x, right_top, "Bill-To / Broker", font="F2", size=11)
+    right_cursor = right_top - 20
+    right_cursor = add_wrapped_field(
+        x=right_x + section_padding_x,
+        y=right_cursor,
+        label="Customer",
+        value=customer_name,
+        max_chars=27,
+        max_lines=2,
+    )
+    right_cursor = add_wrapped_field(
+        x=right_x + section_padding_x,
+        y=right_cursor,
+        label="Billing Email",
+        value=billing_email,
+        max_chars=29,
+        max_lines=2,
+    )
+    right_cursor = add_wrapped_field(
+        x=right_x + section_padding_x,
+        y=right_cursor,
+        label="Broker",
+        value=broker_name,
+        max_chars=29,
+        max_lines=1,
+    )
+    right_cursor = add_wrapped_field(
+        x=right_x + section_padding_x,
+        y=right_cursor,
+        label="Broker Email",
+        value=broker_email,
+        max_chars=29,
+        max_lines=1,
+    )
+    add_wrapped_field(
+        x=right_x + section_padding_x,
+        y=right_cursor,
+        label="Terms",
+        value=payment_terms,
+        max_chars=29,
+        max_lines=1,
+    )
+
+    # Shipment details
+    add_box(36, 436, 540, 118)
+    shipment_top = 436 + 118 - section_padding_top
+    add_text(50, shipment_top, "Shipment Details", font="F2", size=11)
+    add_wrapped_field(
+        x=50,
+        y=shipment_top - 20,
+        label="Pickup",
+        value=_string_or_na(getattr(load, "pickup_location", None)),
+        max_chars=33,
+        max_lines=2,
+    )
+    add_text(50, shipment_top - 50, f"Pickup Date: {pickup_date}")
+    add_wrapped_field(
+        x=50,
+        y=shipment_top - 66,
+        label="Delivery",
+        value=_string_or_na(getattr(load, "delivery_location", None)),
+        max_chars=33,
+        max_lines=2,
+    )
+    add_text(50, shipment_top - 96, f"Delivery Date: {delivery_date}")
+
+    add_text(304, shipment_top - 20, f"Driver: {_string_or_na(getattr(driver, 'full_name', None))}")
+    add_wrapped_field(
+        x=304,
+        y=shipment_top - 36,
+        label="Load Ref",
+        value=load_reference,
+        max_chars=30,
+        max_lines=2,
+    )
+    add_wrapped_field(
+        x=304,
+        y=shipment_top - 64,
+        label="Notes",
+        value=_string_or_na(getattr(load, "notes", None)),
+        max_chars=30,
+        max_lines=2,
+    )
+
+    # Charges
+    add_box(36, 336, 540, 82)
+    add_text(50, 400, "Charges", font="F2", size=11)
+    add_text(50, 382, "Line Item")
+    add_text(286, 382, "Amount")
+    add_text(422, 382, "Currency")
+    text_ops.append("50 374 m 562 374 l S")
+    add_text(50, 356, "Linehaul / Freight Charge")
+    add_text(286, 356, gross_amount)
+    add_text(422, 356, currency_code)
+    text_ops.append("50 348 m 562 348 l S")
+    add_text(50, 338, "Total Due", font="F2", size=11)
+    add_text(422, 338, total_due, font="F2", size=12)
+
+    # Checklist
+    checklist_y = 186
+    checklist_h = 136
+    add_box(36, checklist_y, 540, checklist_h)
+    checklist_top = checklist_y + checklist_h - section_padding_top
+    add_text(50, checklist_top, "Required Billing Packet Checklist", font="F2", size=11)
+
     required_items = [
         _pdf_checkbox_label(
             "Rate Confirmation",
@@ -533,17 +701,21 @@ def _build_professional_invoice_pdf(*, load: Any) -> bytes:
             DocumentType.ACCESSORIAL_SUPPORT.value in present_document_values,
         ),
     ]
-    y_cursor = 386
-    for item in required_items:
-        add_text(48, y_cursor, item)
-        y_cursor -= row_height
-    for label, is_present in optional_items:
-        add_text(320, y_cursor + row_height * 4, _pdf_checkbox_label(label, checked=is_present))
-        y_cursor -= row_height
 
-    add_box(36, 230, 540, 50)
-    add_text(48, 262, "Please remit payment according to the agreed terms.", font="F2", size=11)
-    add_text(48, 246, f"Generated At: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}")
+    left_check_y = checklist_top - 22
+    for item in required_items:
+        add_text(50, left_check_y, item)
+        left_check_y -= line_gap
+
+    right_check_y = checklist_top - 22
+    for label, is_present in optional_items:
+        add_text(324, right_check_y, _pdf_checkbox_label(label, checked=is_present))
+        right_check_y -= line_gap
+
+    # Footer
+    add_box(36, 118, 540, 54)
+    add_text(50, 150, "Please remit payment according to the agreed terms.", font="F2", size=11)
+    add_text(50, 132, f"Generated At: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}")
 
     stream = "\n".join(text_ops).encode("latin-1", errors="replace")
 
@@ -576,15 +748,12 @@ def _build_professional_invoice_pdf(*, load: Any) -> bytes:
         pdf.extend(f"{offset:010} 00000 n \n".encode("ascii"))
     pdf.extend(
         (
-            "trailer\n"
-            f"<< /Size {len(objects) + 1} /Root 1 0 R >>\n"
-            "startxref\n"
-            f"{xref_position}\n"
-            "%%EOF\n"
+            f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\n"
+            f"startxref\n{xref_position}\n%%EOF"
         ).encode("ascii")
     )
-    return bytes(pdf)
 
+    return bytes(pdf)
 
 def _generate_and_persist_invoice_pdf(*, db: Session, load: Any) -> bytes:
     template_function_name = "_build_professional_invoice_pdf"
