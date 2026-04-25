@@ -343,43 +343,217 @@ def _escape_pdf_text(value: str) -> str:
     return value.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
 
 
-def _build_simple_invoice_pdf(*, load: Any) -> bytes:
-    customer_account = getattr(load, "customer_account", None)
-    customer_display_name = (
-        getattr(customer_account, "account_name", None)
-        or getattr(load, "customer_account_id", None)
-        or "N/A"
-    )
-    lines = [
-        "Freight Back Office OS Invoice",
-        "",
-        f"Load Number: {load.load_number or 'N/A'}",
-        f"Load ID: {load.id}",
-        f"Customer: {customer_display_name}",
-        f"Amount: {load.gross_amount or '0.00'} {load.currency_code or 'USD'}",
-        f"Pickup: {load.pickup_location or 'N/A'} ({load.pickup_date or 'N/A'})",
-        f"Delivery: {load.delivery_location or 'N/A'} ({load.delivery_date or 'N/A'})",
-        f"Generated At: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}",
-    ]
+def _format_invoice_date(value: object | None) -> str:
+    if value is None:
+        return "N/A"
+    if isinstance(value, datetime):
+        return value.date().isoformat()
+    if isinstance(value, date):
+        return value.isoformat()
+    isoformat = getattr(value, "isoformat", None)
+    if callable(isoformat):
+        try:
+            iso_value = isoformat()
+            return str(iso_value)[:10]
+        except Exception:  # pragma: no cover - defensive fallback for unknown objects
+            return str(value)
+    return str(value)
 
-    text_ops = ["BT", "/F1 12 Tf", "50 780 Td", "14 TL"]
-    first_line = True
-    for raw_line in lines:
-        if first_line:
-            text_ops.append(f"({_escape_pdf_text(raw_line)}) Tj")
-            first_line = False
-        else:
-            text_ops.append("T*")
-            text_ops.append(f"({_escape_pdf_text(raw_line)}) Tj")
-    text_ops.append("ET")
+
+def _string_or_na(value: object | None) -> str:
+    if value is None:
+        return "N/A"
+    normalized = str(value).strip()
+    return normalized or "N/A"
+
+
+def _format_money(value: object | None) -> str:
+    if value is None:
+        return "0.00"
+    try:
+        return f"{Decimal(str(value)).quantize(Decimal('0.01')):,.2f}"
+    except (InvalidOperation, ValueError, TypeError):
+        return str(value)
+
+
+def _pdf_checkbox_label(label: str, *, checked: bool) -> str:
+    return f"[{'X' if checked else ' '}] {label}"
+
+
+def _build_professional_invoice_pdf(*, load: Any) -> bytes:
+    organization = getattr(load, "organization", None)
+    customer_account = getattr(load, "customer_account", None)
+    broker = getattr(load, "broker", None)
+    driver = getattr(load, "driver", None)
+    documents = getattr(load, "documents", None) or []
+
+    present_document_values = {
+        getattr(getattr(document, "document_type", None), "value", str(getattr(document, "document_type", "")))
+        for document in documents
+        if getattr(document, "document_type", None) is not None
+    }
+
+    invoice_number = _string_or_na(getattr(load, "invoice_number", None))
+    invoice_date = _format_invoice_date(datetime.utcnow().date())
+    load_number = _string_or_na(getattr(load, "load_number", None))
+    load_reference = _string_or_na(getattr(load, "rate_confirmation_number", None))
+    if load_reference == "N/A":
+        load_reference = str(getattr(load, "id", "N/A"))
+
+    carrier_name = (
+        _string_or_na(getattr(organization, "legal_name", None))
+        if organization is not None
+        else "N/A"
+    )
+    if carrier_name == "N/A":
+        carrier_name = _string_or_na(getattr(organization, "name", None)) if organization is not None else "N/A"
+
+    carrier_email = _string_or_na(getattr(organization, "email", None))
+    carrier_phone = _string_or_na(getattr(organization, "phone", None))
+    remit_to_instructions = _string_or_na(getattr(organization, "billing_notes", None))
+
+    customer_account = getattr(load, "customer_account", None)
+    customer_name = (
+        _string_or_na(getattr(customer_account, "account_name", None))
+        if customer_account is not None
+        else _string_or_na(getattr(load, "customer_account_id", None))
+    )
+    billing_email = _string_or_na(getattr(customer_account, "billing_email", None))
+
+    broker_name = _string_or_na(getattr(broker, "name", None))
+    if broker_name == "N/A":
+        broker_name = _string_or_na(getattr(load, "broker_name_raw", None))
+    broker_email = _string_or_na(getattr(broker, "email", None))
+    if broker_email == "N/A":
+        broker_email = _string_or_na(getattr(load, "broker_email_raw", None))
+    broker_mc_number = _string_or_na(getattr(broker, "mc_number", None))
+    payment_terms = (
+        f"Net {getattr(broker, 'payment_terms_days')} days"
+        if getattr(broker, "payment_terms_days", None) is not None
+        else "N/A"
+    )
+
+    pickup_date = _format_invoice_date(getattr(load, "pickup_date", None))
+    delivery_date = _format_invoice_date(getattr(load, "delivery_date", None))
+    gross_amount = _format_money(getattr(load, "gross_amount", None))
+    currency_code = _string_or_na(getattr(load, "currency_code", None))
+    total_due = f"{gross_amount} {currency_code}"
+
+    # TODO: Add carrier street address, MC/DOT, and factoring remit notice fields when these are added to the domain.
+    text_ops: list[str] = ["0.5 w", "0 0 0 RG"]
+    row_height = 16
+
+    def add_text(x: int, y: int, text: str, *, font: str = "F1", size: int = 10) -> None:
+        escaped = _escape_pdf_text(text)
+        text_ops.extend(["BT", f"/{font} {size} Tf", f"{x} {y} Td", f"({escaped}) Tj", "ET"])
+
+    def add_box(x: int, y: int, width: int, height: int) -> None:
+        text_ops.append(f"{x} {y} {width} {height} re S")
+
+    add_box(36, 740, 540, 46)
+    add_text(48, 769, carrier_name, font="F2", size=14)
+    add_text(48, 751, "Freight Invoice", font="F2", size=13)
+    add_text(370, 769, f"Invoice #: {invoice_number}", size=10)
+    add_text(370, 754, f"Invoice Date: {invoice_date}", size=10)
+    add_text(370, 739, f"Load #: {load_number}", size=10)
+
+    add_box(36, 620, 260, 112)
+    add_text(48, 716, "Carrier / Remit-To", font="F2", size=11)
+    add_text(48, 698, f"Carrier: {carrier_name}")
+    add_text(48, 682, f"Email: {carrier_email}")
+    add_text(48, 666, f"Phone: {carrier_phone}")
+    add_text(48, 650, "Address: N/A")
+    add_text(48, 634, "MC/DOT: N/A")
+    add_text(48, 618, f"Remit-To: {remit_to_instructions}")
+
+    add_box(316, 620, 260, 112)
+    add_text(328, 716, "Bill-To / Broker", font="F2", size=11)
+    add_text(328, 698, f"Customer: {customer_name}")
+    add_text(328, 682, f"Billing Email: {billing_email}")
+    add_text(328, 666, f"Broker: {broker_name}")
+    add_text(328, 650, f"Broker Email: {broker_email}")
+    add_text(328, 634, f"Broker MC: {broker_mc_number}")
+    add_text(328, 618, f"Payment Terms: {payment_terms}")
+
+    add_box(36, 520, 540, 88)
+    add_text(48, 592, "Shipment Details", font="F2", size=11)
+    add_text(48, 574, f"Pickup: {_string_or_na(getattr(load, 'pickup_location', None))}")
+    add_text(48, 558, f"Pickup Date: {pickup_date}")
+    add_text(48, 542, f"Delivery: {_string_or_na(getattr(load, 'delivery_location', None))}")
+    add_text(48, 526, f"Delivery Date: {delivery_date}")
+    add_text(300, 574, f"Driver: {_string_or_na(getattr(driver, 'full_name', None))}")
+    add_text(300, 558, f"Load Ref: {load_reference}")
+    add_text(300, 542, f"Notes: {_string_or_na(getattr(load, 'notes', None))}")
+
+    add_box(36, 430, 540, 78)
+    add_text(48, 492, "Charges", font="F2", size=11)
+    add_text(48, 474, "Line Item")
+    add_text(280, 474, "Amount")
+    add_text(420, 474, "Currency")
+    text_ops.append("48 468 m 564 468 l S")
+    add_text(48, 452, "Linehaul / Freight Charge")
+    add_text(280, 452, gross_amount)
+    add_text(420, 452, currency_code)
+    text_ops.append("48 446 m 564 446 l S")
+    add_text(48, 434, "Total Due", font="F2", size=11)
+    add_text(420, 434, total_due, font="F2", size=11)
+
+    add_box(36, 292, 540, 128)
+    add_text(48, 404, "Required Billing Packet Checklist", font="F2", size=11)
+    required_items = [
+        _pdf_checkbox_label(
+            "Rate Confirmation",
+            checked=DocumentType.RATE_CONFIRMATION.value in present_document_values,
+        ),
+        _pdf_checkbox_label(
+            "Bill of Lading",
+            checked=DocumentType.BILL_OF_LADING.value in present_document_values,
+        ),
+        _pdf_checkbox_label(
+            "Proof of Delivery",
+            checked=DocumentType.PROOF_OF_DELIVERY.value in present_document_values,
+        ),
+        _pdf_checkbox_label("Invoice", checked=True),
+    ]
+    optional_items = [
+        (
+            "Lumper Receipt",
+            DocumentType.LUMPER_RECEIPT.value in present_document_values,
+        ),
+        (
+            "Scale Ticket",
+            DocumentType.SCALE_TICKET.value in present_document_values,
+        ),
+        (
+            "Detention Support",
+            DocumentType.DETENTION_SUPPORT.value in present_document_values,
+        ),
+        (
+            "Accessorial Support",
+            DocumentType.ACCESSORIAL_SUPPORT.value in present_document_values,
+        ),
+    ]
+    y_cursor = 386
+    for item in required_items:
+        add_text(48, y_cursor, item)
+        y_cursor -= row_height
+    for label, is_present in optional_items:
+        add_text(320, y_cursor + row_height * 4, _pdf_checkbox_label(label, checked=is_present))
+        y_cursor -= row_height
+
+    add_box(36, 230, 540, 50)
+    add_text(48, 262, "Please remit payment according to the agreed terms.", font="F2", size=11)
+    add_text(48, 246, f"Generated At: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}")
+
     stream = "\n".join(text_ops).encode("latin-1", errors="replace")
 
     objects: list[bytes] = [
         b"<< /Type /Catalog /Pages 2 0 R >>",
         b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
         b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
-        b"/Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
+        b"/Resources << /Font << /F1 4 0 R /F2 5 0 R >> >> /Contents 6 0 R >>",
         b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>",
         b"<< /Length "
         + str(len(stream)).encode("ascii")
         + b" >>\nstream\n"
@@ -413,7 +587,13 @@ def _build_simple_invoice_pdf(*, load: Any) -> bytes:
 
 
 def _generate_and_persist_invoice_pdf(*, db: Session, load: Any) -> bytes:
-    pdf_bytes = _build_simple_invoice_pdf(load=load)
+    template_function_name = "_build_professional_invoice_pdf"
+    logger.info(
+        "USING TEMPLATE: %s for load_id=%s",
+        template_function_name,
+        getattr(load, "id", None),
+    )
+    pdf_bytes = _build_professional_invoice_pdf(load=load)
     storage_service = StorageService()
     document_service = DocumentService(db)
 
