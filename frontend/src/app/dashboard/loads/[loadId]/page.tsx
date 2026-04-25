@@ -1562,7 +1562,14 @@ export default function LoadDetailPage() {
       const url = URL.createObjectURL(blob);
       window.open(url, "_blank", "noopener,noreferrer");
       window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
-      await fetchPageData();
+      const [refreshedLoad, refreshedReviewQueueItem, refreshedDocuments] = await Promise.all([
+        fetchLoad(),
+        fetchReviewQueueItem().catch(() => null),
+        fetchLoadDocuments({ silent: true }),
+      ]);
+      setLoad(refreshedLoad);
+      setReviewQueueItem(refreshedReviewQueueItem);
+      setLoadDocuments(refreshedDocuments);
       setActionMessage("Invoice generated successfully.");
     } catch (caught: unknown) {
       setError(extractErrorMessage(caught, "Failed to generate invoice."));
