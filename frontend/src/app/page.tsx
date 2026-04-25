@@ -51,8 +51,7 @@ export default function HomePage() {
           </h1>
 
           <p className="mt-5 text-lg leading-8 text-slate-600">
-            Freight Back Office OS unifies load lifecycle management, document intake and review,
-            invoicing, support, and operational execution for dispatch and back-office teams.
+            Freight Back Office OS helps teams run post-booking operations after freight is booked externally: manual load intake, assignment, document collection, invoice readiness, and settlement follow-up.
           </p>
 
           <div className="mt-8 flex flex-wrap gap-4">
@@ -60,7 +59,7 @@ export default function HomePage() {
               href="/signup"
               className="rounded-xl bg-brand-600 px-5 py-3 text-sm font-semibold text-white shadow-soft transition hover:bg-brand-700"
             >
-              Create Account
+              Create Workspace
             </Link>
 
             <Link

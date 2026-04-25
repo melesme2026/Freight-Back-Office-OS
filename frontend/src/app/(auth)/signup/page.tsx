@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { apiClient } from "@/lib/api-client";
 import { clearAuth, getAccessToken, getOrganizationId, getUserRole, setAuthSession } from "@/lib/auth";
 import { resolvePostLoginRoute } from "@/lib/rbac";
+import { appConfig } from "@/lib/config";
 import { AuthNavigationLinks } from "../auth-navigation-links";
 
 type SignupResponse = {
@@ -112,14 +113,37 @@ export default function SignupPage() {
     );
   }
 
+  if (!appConfig.auth.publicSignupEnabled) {
+    return (
+      <section className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-8 shadow-soft">
+        <h1 className="text-2xl font-bold text-slate-950">New workspace requests</h1>
+        <p className="mt-2 text-sm text-slate-600">
+          Public owner signup is currently disabled. Request access and our team will provision your organization workspace.
+        </p>
+        <a
+          href={appConfig.pricing.enterpriseContact}
+          className="mt-6 inline-flex w-full justify-center rounded-xl bg-brand-600 px-4 py-3 text-sm font-semibold text-white hover:bg-brand-700"
+        >
+          Request Access
+        </a>
+        <AuthNavigationLinks
+          secondaryLinks={[
+            { href: "/login", label: "Already invited? Sign in" },
+            { href: "/driver-login", label: "Driver sign in (invited accounts only)" },
+          ]}
+        />
+      </section>
+    );
+  }
+
   return (
     <section className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-8 shadow-soft">
-      <h1 className="text-2xl font-bold text-slate-950">Create Organization Owner Account</h1>
+      <h1 className="text-2xl font-bold text-slate-950">Create new organization workspace</h1>
       <p className="mt-2 text-sm text-slate-600">
-        Create your organization workspace and bootstrap owner account.
+        Set up your owner account for a new organization workspace. Staff and drivers are invite-only.
       </p>
       <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
-        Public signup is limited to creating the first organization owner only. Staff and driver users must be invited by an existing admin team member.
+        Public signup creates an owner account for a new organization only. Staff and driver accounts are invite-only from your operations team workspace.
       </div>
 
       <form className="mt-6 space-y-4" onSubmit={handleSubmit} noValidate>

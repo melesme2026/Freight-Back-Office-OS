@@ -742,10 +742,7 @@ export default function CustomerDetailPage() {
 
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                 <p className="text-sm text-slate-700">
-                  Customer-specific recent load activity is not yet wired from a
-                  dedicated backend relation endpoint. Use the Loads
-                  workspace to review active freight activity tied to this
-                  account.
+                  Review current and recent freight activity from the Loads workspace. Customer activity appears here as loads are assigned and documents are received.
                 </p>
               </div>
 

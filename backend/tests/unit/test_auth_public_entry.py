@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+from app.core.config import get_settings
 from app.domain.models.driver import Driver
 from app.domain.models.staff_user import StaffUser
 from app.domain.enums.role import Role
@@ -274,3 +276,74 @@ def test_activation_rejects_mismatched_organization_token(db_session) -> None:
         pass
     else:
         raise AssertionError("Expected UnauthorizedError for mismatched activation token organization")
+
+
+@pytest.fixture(autouse=True)
+def _reset_settings_cache() -> None:
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
+
+def test_public_signup_can_be_disabled(db_session, monkeypatch) -> None:
+    monkeypatch.setenv("PUBLIC_SIGNUP_ENABLED", "false")
+    get_settings.cache_clear()
+
+    with pytest.raises(UnauthorizedError):
+        signup(
+            SignupRequestBody(
+                full_name="Blocked Owner",
+                organization_name="Blocked Freight",
+                email="blocked@freight.com",
+                password="StrongPass123!",
+                confirm_password="StrongPass123!",
+            ),
+            db=db_session,
+        )
+
+
+def test_invite_returns_manual_link_when_email_disabled_outside_dev(db_session, monkeypatch) -> None:
+    monkeypatch.setenv("PUBLIC_SIGNUP_ENABLED", "true")
+    monkeypatch.setenv("EMAIL_ENABLED", "false")
+    monkeypatch.setenv("EMAIL_DEV_ALLOW_TOKEN_RESPONSE", "false")
+    monkeypatch.setenv("ENVIRONMENT", "staging")
+    monkeypatch.setenv("SECRET_KEY", "test-secret-key-that-is-long-enough-12345")
+    get_settings.cache_clear()
+
+    signup_response = signup(
+        SignupRequestBody(
+            full_name="Ops Owner",
+            organization_name="Manual Invite Freight",
+            email="owner@manualinvite.com",
+            password="StrongPass123!",
+            confirm_password="StrongPass123!",
+        ),
+        db=db_session,
+    )
+
+    organization_id = signup_response.data.user.organization_id
+    driver_profile = Driver(
+        organization_id=organization_id,
+        customer_account_id=None,
+        full_name="Manual Driver",
+        phone="+15551113333",
+        email="driver@manualinvite.com",
+        is_active=True,
+    )
+    db_session.add(driver_profile)
+    db_session.commit()
+
+    invite_response = invite_user(
+        InviteUserRequest(
+            email="driver@manualinvite.com",
+            full_name="Manual Driver",
+            role=Role.DRIVER.value,
+            organization_id=organization_id,
+        ),
+        token=signup_response.data.access_token,
+        db=db_session,
+    )
+
+    assert invite_response.data["email_status"] == "disabled"
+    assert "activation_url" in invite_response.data
+    assert invite_response.data["activation_url"]

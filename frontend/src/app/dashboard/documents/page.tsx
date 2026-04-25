@@ -431,8 +431,7 @@ export default function DocumentsPage() {
                 ) : documents.length === 0 ? (
                   <tr>
                     <td colSpan={9} className="px-5 py-10 text-center text-slate-500">
-                      No documents found. Upload from Driver Portal or import records using{" "}
-                      <code className="rounded bg-slate-100 px-1 py-0.5">make seed-dev-data</code>.
+                      No documents found yet. Upload from Load Detail to attach paperwork directly to a booked load, or upload from Driver Portal for driver-submitted documents.
                     </td>
                   </tr>
                 ) : (
@@ -504,8 +503,7 @@ export default function DocumentsPage() {
         <section className="mt-8 rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
           <h2 className="text-lg font-semibold text-slate-950">Workspace note</h2>
           <p className="mt-2 text-sm leading-6 text-slate-600">
-            This page provides the main document operations workspace. Upload actions may
-            continue from load detail where documents are linked directly to a load.
+            Use this workspace to monitor incoming paperwork across all loads. For office uploads, open a load detail page and upload documents directly into that load packet.
           </p>
         </section>
       </div>
