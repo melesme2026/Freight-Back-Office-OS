@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 
 import { apiClient } from "@/lib/api-client";
 import { getAccessToken, getOrganizationId } from "@/lib/auth";
+import { copyTextWithFallback } from "@/lib/clipboard";
 
 type StaffMember = {
   id: string;
@@ -12,6 +13,7 @@ type StaffMember = {
   role: string;
   is_active: boolean;
   last_login_at?: string | null;
+  created_at?: string | null;
 };
 
 type InviteResponse = {
@@ -42,6 +44,7 @@ export default function TeamPage() {
   const [staffMembers, setStaffMembers] = useState<StaffMember[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const [inviteName, setInviteName] = useState("");
   const [inviteEmail, setInviteEmail] = useState("");
@@ -49,6 +52,9 @@ export default function TeamPage() {
   const [isInviting, setIsInviting] = useState(false);
   const [inviteStatus, setInviteStatus] = useState<string | null>(null);
   const [activationUrl, setActivationUrl] = useState<string | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [updatingMemberId, setUpdatingMemberId] = useState<string | null>(null);
+  const [deletingMemberId, setDeletingMemberId] = useState<string | null>(null);
 
   const token = getAccessToken();
   const organizationId = getOrganizationId();
@@ -61,7 +67,7 @@ export default function TeamPage() {
     }
 
     try {
-      setIsLoading(true);
+      setIsLoading((previous) => previous || !isRefreshing);
       const payload = await apiClient.get<{ data?: StaffMember[] }>("/staff-users?page=1&page_size=200", {
         token,
         organizationId,
@@ -72,6 +78,7 @@ export default function TeamPage() {
       setErrorMessage(error instanceof Error ? error.message : "Unable to load team members.");
     } finally {
       setIsLoading(false);
+      setIsRefreshing(false);
     }
   }
 
@@ -79,6 +86,23 @@ export default function TeamPage() {
     void loadStaff();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    async function fetchCurrentUser() {
+      if (!token || !organizationId) return;
+      try {
+        const payload = await apiClient.get<{ data?: { id?: string } }>("/auth/me", {
+          token,
+          organizationId,
+        });
+        const id = payload?.data?.id;
+        setCurrentUserId(typeof id === "string" ? id : null);
+      } catch {
+        setCurrentUserId(null);
+      }
+    }
+    void fetchCurrentUser();
+  }, [organizationId, token]);
 
   async function handleInviteStaff(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -122,11 +146,84 @@ export default function TeamPage() {
 
   async function handleCopyActivationLink() {
     if (!activationUrl) return;
-    try {
-      await navigator.clipboard.writeText(activationUrl);
+    const copied = await copyTextWithFallback(activationUrl);
+    if (copied) {
       setInviteStatus("Activation link copied. Share it directly with the invited team member.");
-    } catch {
-      setInviteStatus("Activation link is shown below. Copy it manually.");
+      return;
+    }
+    setInviteStatus("Copy failed — select and copy the link manually.");
+  }
+
+  async function handleRoleChange(member: StaffMember, role: string) {
+    if (!token || !organizationId || member.role === role) return;
+    try {
+      setUpdatingMemberId(member.id);
+      await apiClient.patch(`/staff-users/${encodeURIComponent(member.id)}`, { role }, { token, organizationId });
+      setIsRefreshing(true);
+      await loadStaff();
+    } catch (error: unknown) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to update role.");
+    } finally {
+      setUpdatingMemberId(null);
+    }
+  }
+
+  async function handleToggleActive(member: StaffMember) {
+    if (!token || !organizationId) return;
+    try {
+      setUpdatingMemberId(member.id);
+      await apiClient.patch(
+        `/staff-users/${encodeURIComponent(member.id)}`,
+        { is_active: !member.is_active },
+        { token, organizationId }
+      );
+      setIsRefreshing(true);
+      await loadStaff();
+    } catch (error: unknown) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to update user status.");
+    } finally {
+      setUpdatingMemberId(null);
+    }
+  }
+
+  async function handleResendInvite(member: StaffMember) {
+    if (!token || !organizationId) return;
+    try {
+      setUpdatingMemberId(member.id);
+      const payload = await apiClient.post<InviteResponse>(
+        "/auth/invite-user",
+        {
+          full_name: member.full_name,
+          email: member.email,
+          role: member.role,
+          organization_id: organizationId,
+        },
+        { token, organizationId }
+      );
+      setActivationUrl(payload?.data?.activation_url?.trim() || null);
+      setInviteStatus("Invite link regenerated.");
+    } catch (error: unknown) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to regenerate invite.");
+    } finally {
+      setUpdatingMemberId(null);
+    }
+  }
+
+  async function handleDeleteMember(member: StaffMember) {
+    if (!token || !organizationId) return;
+    if (!window.confirm(`Remove ${member.full_name} from this team? This cannot be undone.`)) return;
+    try {
+      setDeletingMemberId(member.id);
+      await apiClient.delete(`/staff-users/${encodeURIComponent(member.id)}`, {
+        token,
+        organizationId,
+      });
+      setIsRefreshing(true);
+      await loadStaff();
+    } catch (error: unknown) {
+      setErrorMessage(error instanceof Error ? error.message : "Unable to remove staff member.");
+    } finally {
+      setDeletingMemberId(null);
     }
   }
 
@@ -195,7 +292,7 @@ export default function TeamPage() {
           {activationUrl ? (
             <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
               <p className="font-semibold">Manual activation link</p>
-              <p className="mt-1 break-all">{activationUrl}</p>
+              <p className="mt-1 break-all select-all">{activationUrl}</p>
               <button
                 type="button"
                 onClick={() => void handleCopyActivationLink()}
@@ -225,31 +322,73 @@ export default function TeamPage() {
                   <th className="px-6 py-3 font-semibold">Name</th>
                   <th className="px-6 py-3 font-semibold">Email</th>
                   <th className="px-6 py-3 font-semibold">Role</th>
-                  <th className="px-6 py-3 font-semibold">Activation</th>
+                  <th className="px-6 py-3 font-semibold">Status</th>
                   <th className="px-6 py-3 font-semibold">Last Login</th>
+                  <th className="px-6 py-3 font-semibold text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {isLoading ? (
                   <tr>
-                    <td colSpan={5} className="px-6 py-8 text-center text-slate-500">Loading team members...</td>
+                    <td colSpan={6} className="px-6 py-8 text-center text-slate-500">Loading team members...</td>
                   </tr>
                 ) : staffMembers.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-6 py-8 text-center text-slate-500">No staff users found yet.</td>
+                    <td colSpan={6} className="px-6 py-8 text-center text-slate-500">No staff users found yet.</td>
                   </tr>
                 ) : (
                   staffMembers.map((member) => (
                     <tr key={member.id}>
                       <td className="px-6 py-4 text-slate-900">{member.full_name}</td>
                       <td className="px-6 py-4 text-slate-700">{member.email}</td>
-                      <td className="px-6 py-4 text-slate-700">{member.role.replaceAll("_", " ")}</td>
+                      <td className="px-6 py-4 text-slate-700">
+                        <select
+                          value={member.role}
+                          disabled={updatingMemberId === member.id}
+                          onChange={(event) => void handleRoleChange(member, event.target.value)}
+                          className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs"
+                        >
+                          {STAFF_ROLES.map((role) => (
+                            <option key={role.value} value={role.value}>
+                              {role.label}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
                       <td className="px-6 py-4">
                         <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${member.is_active ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}`}>
-                          {member.is_active ? "Active" : "Pending activation"}
+                          {member.is_active ? "Active" : member.last_login_at ? "Disabled" : "Pending activation"}
                         </span>
                       </td>
                       <td className="px-6 py-4 text-slate-700">{formatDateTime(member.last_login_at)}</td>
+                      <td className="px-6 py-4">
+                        <div className="flex justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={() => void handleResendInvite(member)}
+                            disabled={updatingMemberId === member.id}
+                            className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700"
+                          >
+                            Resend invite
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void handleToggleActive(member)}
+                            disabled={updatingMemberId === member.id || currentUserId === member.id}
+                            className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 disabled:opacity-60"
+                          >
+                            {member.is_active ? "Disable" : "Enable"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void handleDeleteMember(member)}
+                            disabled={deletingMemberId === member.id || currentUserId === member.id}
+                            className="rounded-lg border border-rose-300 bg-rose-50 px-2 py-1 text-xs font-semibold text-rose-700 disabled:opacity-60"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      </td>
                     </tr>
                   ))
                 )}

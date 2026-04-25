@@ -255,6 +255,15 @@ class DocumentService:
         self._sync_load_document_flags(normalized_load_id)
         return self.document_repo.get_by_id(updated.id, include_related=True) or updated
 
+    def delete_document(self, *, document_id: str) -> None:
+        document = self.get_document(document_id)
+        load_id = str(document.load_id) if document.load_id else None
+        self.document_repo.delete(document)
+        self.db.flush()
+        self.db.expire_all()
+        if load_id:
+            self._sync_load_document_flags(load_id)
+
     # ---------------------------
     # DOWNLOAD HELPER
     # ---------------------------
@@ -363,12 +372,19 @@ class DocumentService:
             "lumper_receipt": DocumentType.LUMPER_RECEIPT,
             "detention support": DocumentType.DETENTION_SUPPORT,
             "detention_support": DocumentType.DETENTION_SUPPORT,
+            "detention approval": DocumentType.DETENTION_SUPPORT,
+            "detention_approval": DocumentType.DETENTION_SUPPORT,
             "scale ticket": DocumentType.SCALE_TICKET,
             "scale_ticket": DocumentType.SCALE_TICKET,
             "accessorial support": DocumentType.ACCESSORIAL_SUPPORT,
             "accessorial_support": DocumentType.ACCESSORIAL_SUPPORT,
+            "accessorial approval": DocumentType.ACCESSORIAL_SUPPORT,
+            "accessorial_approval": DocumentType.ACCESSORIAL_SUPPORT,
             "payment remittance": DocumentType.PAYMENT_REMITTANCE,
             "payment_remittance": DocumentType.PAYMENT_REMITTANCE,
+            "fuel/expense receipt": DocumentType.PAYMENT_REMITTANCE,
+            "fuel expense receipt": DocumentType.PAYMENT_REMITTANCE,
+            "fuel_expense_receipt": DocumentType.PAYMENT_REMITTANCE,
             "notice of assignment": DocumentType.NOTICE_OF_ASSIGNMENT,
             "notice_of_assignment": DocumentType.NOTICE_OF_ASSIGNMENT,
             "w9": DocumentType.W9,

@@ -327,12 +327,18 @@ def _escape_pdf_text(value: str) -> str:
 
 
 def _build_simple_invoice_pdf(*, load: Any) -> bytes:
+    customer_account = getattr(load, "customer_account", None)
+    customer_display_name = (
+        getattr(customer_account, "account_name", None)
+        or getattr(load, "customer_account_id", None)
+        or "N/A"
+    )
     lines = [
         "Freight Back Office OS Invoice",
         "",
         f"Load Number: {load.load_number or 'N/A'}",
         f"Load ID: {load.id}",
-        f"Customer: {load.customer_account_name or load.customer_account_id or 'N/A'}",
+        f"Customer: {customer_display_name}",
         f"Amount: {load.gross_amount or '0.00'} {load.currency_code or 'USD'}",
         f"Pickup: {load.pickup_location or 'N/A'} ({load.pickup_date or 'N/A'})",
         f"Delivery: {load.delivery_location or 'N/A'} ({load.delivery_date or 'N/A'})",
@@ -398,20 +404,37 @@ def create_load(
     token_org_id = token_payload.get("organization_id")
     if str(payload.organization_id) != str(token_org_id):
         raise UnauthorizedError("organization_id does not match authenticated organization")
+    normalized_load_number = _normalize_optional_text(payload.load_number)
+    normalized_broker_id = _uuid_to_str(payload.broker_id)
+    normalized_broker_name = _normalize_optional_text(payload.broker_name_raw)
+    normalized_broker_email = _normalize_email(payload.broker_email_raw)
+
+    if not normalized_load_number:
+        raise ValidationError("Load number is required", details={"load_number": payload.load_number})
+
+    if not normalized_broker_id and not normalized_broker_name and not normalized_broker_email:
+        raise ValidationError(
+            "Broker selection or broker contact is required",
+            details={
+                "broker_id": payload.broker_id,
+                "broker_name_raw": payload.broker_name_raw,
+                "broker_email_raw": payload.broker_email_raw,
+            },
+        )
 
     service = LoadService(db)
     item = service.create_load(
         organization_id=str(payload.organization_id),
         customer_account_id=str(payload.customer_account_id),
         driver_id=str(payload.driver_id),
-        broker_id=_uuid_to_str(payload.broker_id),
+        broker_id=normalized_broker_id,
         source_channel=_normalize_required_text(payload.source_channel, "source_channel"),
-        load_number=_normalize_optional_text(payload.load_number),
+        load_number=normalized_load_number,
         rate_confirmation_number=_normalize_optional_text(payload.rate_confirmation_number),
         bol_number=_normalize_optional_text(payload.bol_number),
         invoice_number=_normalize_optional_text(payload.invoice_number),
-        broker_name_raw=_normalize_optional_text(payload.broker_name_raw),
-        broker_email_raw=_normalize_email(payload.broker_email_raw),
+        broker_name_raw=normalized_broker_name,
+        broker_email_raw=normalized_broker_email,
         pickup_date=_normalize_optional_text(payload.pickup_date),
         delivery_date=_normalize_optional_text(payload.delivery_date),
         pickup_location=_normalize_optional_text(payload.pickup_location),

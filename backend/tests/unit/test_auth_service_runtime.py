@@ -3,6 +3,7 @@ from __future__ import annotations
 import uuid
 
 from app.core.security import decode_token, hash_password
+from app.core.exceptions import UnauthorizedError
 from app.domain.enums.role import Role
 from app.domain.enums.customer_account_status import CustomerAccountStatus
 from app.domain.models.customer_account import CustomerAccount
@@ -90,3 +91,39 @@ def test_staff_and_driver_authentication_runtime(db_session) -> None:
 
     assert payload["role"] == "driver"
     assert payload["driver_id"] == str(driver.id)
+
+
+def test_inactive_staff_user_cannot_authenticate(db_session) -> None:
+    organization_id = uuid.uuid4()
+    organization = Organization(
+        id=organization_id,
+        name="Inactive Org",
+        slug="inactive-org",
+        is_active=True,
+        billing_provider="none",
+        billing_status="trial",
+        plan_code="starter",
+    )
+    inactive_user = StaffUser(
+        id=uuid.uuid4(),
+        organization_id=organization_id,
+        email="inactive@runtime.org",
+        full_name="Inactive User",
+        password_hash=hash_password("Inactive123!"),
+        role=Role.OPS_AGENT,
+        is_active=False,
+    )
+    db_session.add_all([organization, inactive_user])
+    db_session.commit()
+
+    auth_service = AuthService(db_session)
+    try:
+        auth_service.authenticate_staff_user(
+            organization_id=organization_id,
+            email="inactive@runtime.org",
+            password="Inactive123!",
+        )
+    except UnauthorizedError as exc:
+        assert "inactive" in str(exc).lower()
+    else:
+        raise AssertionError("Expected inactive users to be blocked from authentication")

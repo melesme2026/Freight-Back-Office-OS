@@ -155,7 +155,7 @@ type LoadDocument = {
   updated_at?: string | null;
 };
 
-type UploadDocumentType = "" | "rate_confirmation" | "bill_of_lading" | "proof_of_delivery" | "invoice" | "lumper_receipt" | "detention_support" | "scale_ticket" | "accessorial_support" | "damage_claim_photo" | "other" | "unknown";
+type UploadDocumentType = "" | "rate_confirmation" | "bill_of_lading" | "proof_of_delivery" | "invoice" | "lumper_receipt" | "detention_support" | "scale_ticket" | "accessorial_support" | "payment_remittance" | "damage_claim_photo" | "other" | "unknown";
 
 type OperationalChecklistState = "complete" | "current" | "pending" | "blocked";
 
@@ -218,6 +218,7 @@ const UPLOAD_DOCUMENT_TYPE_OPTIONS: Array<{
   { value: "detention_support", label: "Detention Approval" },
   { value: "scale_ticket", label: "Scale Ticket" },
   { value: "accessorial_support", label: "Accessorial Approval" },
+  { value: "payment_remittance", label: "Fuel/Expense Receipt" },
   { value: "damage_claim_photo", label: "Damage Claim Photo" },
   { value: "other", label: "Other" },
   { value: "unknown", label: "Unknown" },
@@ -742,6 +743,9 @@ function normalizeDocumentTypeLabel(value?: string | null) {
     case "accessorial_support":
     case "accessorial support":
       return "Accessorial Support";
+    case "payment_remittance":
+    case "payment remittance":
+      return "Fuel/Expense Receipt";
     case "damage_claim_photo":
     case "damage claim photo":
       return "Damage Claim Photo";
@@ -837,6 +841,8 @@ export default function LoadDetailPage() {
   const [isDocumentsLoading, setIsDocumentsLoading] = useState<boolean>(false);
   const [isUploadingDocument, setIsUploadingDocument] = useState<boolean>(false);
   const [downloadingDocumentId, setDownloadingDocumentId] = useState<string | null>(null);
+  const [savingDocumentId, setSavingDocumentId] = useState<string | null>(null);
+  const [deletingDocumentId, setDeletingDocumentId] = useState<string | null>(null);
   const [selectedUploadDocumentType, setSelectedUploadDocumentType] =
     useState<UploadDocumentType>("");
   const [error, setError] = useState<string | null>(null);
@@ -1548,7 +1554,8 @@ export default function LoadDetailPage() {
       });
 
       if (!response.ok) {
-        throw new Error("Failed to generate invoice.");
+        const responseText = await response.text();
+        throw new Error(responseText || "Failed to generate invoice.");
       }
 
       const blob = await response.blob();
@@ -1592,7 +1599,7 @@ export default function LoadDetailPage() {
     try {
       setIsUploadingDocument(true);
       setError(null);
-      setActionMessage(null);
+      setActionMessage(`Uploading "${file.name}"...`);
 
       const token = getAccessToken();
 
@@ -1723,6 +1730,71 @@ export default function LoadDetailPage() {
       setActionMessage("Documents refreshed.");
     } catch (caught: unknown) {
       setError(extractErrorMessage(caught, "Failed to refresh documents."));
+    }
+  }
+
+  async function handleUpdateDocumentType(document: LoadDocument, nextType: UploadDocumentType) {
+    if (!document.id || savingDocumentId || !nextType) {
+      return;
+    }
+
+    try {
+      setSavingDocumentId(document.id);
+      setError(null);
+      setActionMessage(null);
+
+      const token = getAccessToken();
+      await apiClient.patch(
+        `/documents/${encodeURIComponent(document.id)}`,
+        { document_type: nextType },
+        { token: token ?? undefined }
+      );
+
+      const [updatedLoad, updatedDocuments] = await Promise.all([
+        fetchLoad(),
+        fetchLoadDocuments({ silent: true }),
+      ]);
+
+      setLoad(updatedLoad);
+      setLoadDocuments(updatedDocuments);
+      setActionMessage("Document type updated.");
+    } catch (caught: unknown) {
+      setError(extractErrorMessage(caught, "Failed to update document type."));
+    } finally {
+      setSavingDocumentId(null);
+    }
+  }
+
+  async function handleDeleteDocument(document: LoadDocument) {
+    if (!document.id || deletingDocumentId) {
+      return;
+    }
+
+    if (!window.confirm(`Delete ${getDocumentDisplayName(document)}?`)) {
+      return;
+    }
+
+    try {
+      setDeletingDocumentId(document.id);
+      setError(null);
+      setActionMessage(null);
+
+      const token = getAccessToken();
+      await apiClient.delete(`/documents/${encodeURIComponent(document.id)}`, {
+        token: token ?? undefined,
+      });
+
+      const [updatedLoad, updatedDocuments] = await Promise.all([
+        fetchLoad(),
+        fetchLoadDocuments({ silent: true }),
+      ]);
+      setLoad(updatedLoad);
+      setLoadDocuments(updatedDocuments);
+      setActionMessage("Document deleted.");
+    } catch (caught: unknown) {
+      setError(extractErrorMessage(caught, "Failed to delete document."));
+    } finally {
+      setDeletingDocumentId(null);
     }
   }
 
@@ -2301,9 +2373,23 @@ export default function LoadDetailPage() {
                         </div>
 
                         <div className="col-span-6 lg:col-span-2">
-                          <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
-                            {normalizeDocumentTypeLabel(document.document_type)}
-                          </span>
+                          <select
+                            value={(document.document_type as UploadDocumentType) || "unknown"}
+                            onChange={(event) =>
+                              void handleUpdateDocumentType(
+                                document,
+                                event.target.value as UploadDocumentType
+                              )
+                            }
+                            disabled={savingDocumentId === document.id}
+                            className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-700 disabled:opacity-60"
+                          >
+                            {UPLOAD_DOCUMENT_TYPE_OPTIONS.filter((option) => option.value !== "").map((option) => (
+                              <option key={option.value} value={option.value}>
+                                {option.label}
+                              </option>
+                            ))}
+                          </select>
                         </div>
 
                         <div className="col-span-6 lg:col-span-2">
@@ -2328,10 +2414,18 @@ export default function LoadDetailPage() {
                           <button
                             type="button"
                             onClick={() => void handleDownloadDocument(document)}
-                            disabled={downloadingDocumentId === document.id}
+                            disabled={downloadingDocumentId === document.id || deletingDocumentId === document.id}
                             className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
                           >
                             {downloadingDocumentId === document.id ? "Downloading..." : "Download"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void handleDeleteDocument(document)}
+                            disabled={deletingDocumentId === document.id}
+                            className="ml-2 rounded-xl border border-rose-300 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {deletingDocumentId === document.id ? "Deleting..." : "Delete"}
                           </button>
                         </div>
                       </div>
