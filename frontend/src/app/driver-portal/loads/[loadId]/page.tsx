@@ -65,6 +65,7 @@ export default function DriverLoadDetailPage() {
 
     return CHECKLIST.map((item) => ({ ...item, uploaded: present.includes(item.type) }));
   }, [loadData]);
+  const missingRequiredDocs = checklist.filter((item) => item.required && !item.uploaded);
 
   async function uploadDocument(documentType: string, event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -125,11 +126,20 @@ export default function DriverLoadDetailPage() {
         {successMessage ? <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{successMessage}</div> : null}
 
         <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-4">
-          <h2 className="text-lg font-semibold text-slate-900">Missing Documents</h2>
+          <h2 className="text-lg font-semibold text-slate-900">Document Uploads</h2>
+          <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            <p className="font-semibold">What is missing</p>
+            <p className="mt-1 text-xs">
+              {missingRequiredDocs.length === 0
+                ? "All required driver documents are uploaded."
+                : `Still needed: ${missingRequiredDocs.map((item) => labelForDocumentType(item.type)).join(", ")}.`}
+            </p>
+            <p className="mt-1 text-xs">Accepted files: PDF/JPG/PNG/WEBP/HEIC/HEIF/TIFF · Max file size: 15MB</p>
+          </div>
           <div className="mt-3 space-y-3">
             {checklist.map((item) => (
               <div key={item.type} className="rounded-xl border border-slate-200 p-3">
-                <div className="flex items-center justify-between gap-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <div className="font-medium text-slate-900">{labelForDocumentType(item.type)}</div>
                     <div className="text-xs text-slate-600">{item.required ? "Required" : "Optional"}</div>
@@ -138,7 +148,7 @@ export default function DriverLoadDetailPage() {
                 </div>
 
                 {!item.uploaded ? (
-                  <label className="mt-3 inline-flex cursor-pointer rounded-xl bg-brand-600 px-4 py-3 text-sm font-semibold text-white">
+                  <label className="mt-3 inline-flex w-full cursor-pointer items-center justify-center rounded-xl bg-brand-600 px-5 py-3 text-sm font-semibold text-white sm:w-auto">
                     {uploadingType === item.type ? "Uploading..." : `Upload ${labelForDocumentType(item.type)}`}
                     <input type="file" accept="application/pdf,image/*" className="hidden" onChange={(event) => void uploadDocument(item.type, event)} disabled={Boolean(uploadingType)} />
                   </label>

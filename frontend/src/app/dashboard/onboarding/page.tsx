@@ -318,9 +318,23 @@ export default function OnboardingPage() {
           <p className="text-sm font-medium text-brand-700">Dashboard / Onboarding</p>
           <h1 className="text-3xl font-bold tracking-tight text-slate-950">Onboarding Checklist</h1>
           <p className="mt-2 text-sm leading-6 text-slate-600">
-            Manage real onboarding checklist state per customer account.
+            Set up the carrier operation step-by-step before running your first live billing workflow.
           </p>
         </div>
+        <section className="mb-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-soft">
+          <h2 className="text-base font-semibold text-slate-950">Who is who in this workflow</h2>
+          <ul className="mt-3 space-y-2 text-sm text-slate-700">
+            <li><span className="font-semibold">Carrier</span> = your trucking business that hauls the load and gets paid.</li>
+            <li><span className="font-semibold">Driver</span> = the person hauling and uploading BOL/POD/supporting documents.</li>
+            <li><span className="font-semibold">Broker</span> = the company/contact that receives the invoice packet and pays.</li>
+          </ul>
+          <div className="mt-4 rounded-xl border border-brand-200 bg-brand-50 px-4 py-3 text-sm text-slate-700">
+            <p className="font-semibold text-slate-900">First test workflow</p>
+            <p className="mt-1">
+              Carrier profile → driver → broker → load → documents → invoice → submission packet → payment → dashboard visibility.
+            </p>
+          </div>
+        </section>
 
         {customerError ? (
           <div className="mb-6 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
