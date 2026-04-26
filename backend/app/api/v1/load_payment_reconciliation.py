@@ -115,9 +115,9 @@ def _serialize(record: Any) -> dict[str, Any]:
 
 def _authorize_payment_read(token_payload: dict[str, Any]) -> None:
     role = str(token_payload.get("role") or "").lower()
-    if role in {"owner", "admin", "ops", "ops_manager", "ops_agent", "billing", "billing_admin", "support", "support_agent", "viewer", "driver"}:
+    if role in {"owner", "admin", "ops", "ops_manager", "ops_agent", "billing", "billing_admin", "support", "support_agent", "viewer"}:
         return
-    raise ForbiddenError("You do not have permission to view payment reconciliation")
+    raise ForbiddenError("Drivers cannot access payment reconciliation")
 
 
 def _authorize_payment_write(token_payload: dict[str, Any]) -> None:

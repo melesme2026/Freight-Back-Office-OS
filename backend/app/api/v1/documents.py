@@ -42,6 +42,7 @@ ALLOWED_UPLOAD_MIME_TYPES = {
     "image/heif",
     "image/tiff",
 }
+MAX_UPLOAD_FILE_SIZE_BYTES = 15 * 1024 * 1024
 
 DEFAULT_LOAD_DOCUMENT_PAGE_SIZE = 100
 
@@ -219,6 +220,19 @@ def _serialize_document(item: Any) -> dict[str, Any]:
     }
 
 
+def _validate_upload_size(file_size_bytes: int | None) -> None:
+    if file_size_bytes is None:
+        return
+    if file_size_bytes > MAX_UPLOAD_FILE_SIZE_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=(
+                "File is too large. Maximum upload size is "
+                f"{MAX_UPLOAD_FILE_SIZE_BYTES // (1024 * 1024)}MB."
+            ),
+        )
+
+
 def _validate_upload_file(file: UploadFile) -> None:
     filename = _normalize_optional_text(file.filename)
     if not filename:
@@ -319,6 +333,7 @@ async def upload_document(
             )
 
         file_size_bytes = storage_result.get("size")
+        _validate_upload_size(file_size_bytes)
         storage_bucket = storage_result.get("bucket")
 
         service = DocumentService(db)
@@ -327,6 +342,7 @@ async def upload_document(
         server_uploaded_by_staff_user_id: str | None = None
         if token_role != "driver" and token_subject:
             server_uploaded_by_staff_user_id = token_subject
+
 
         item = service.create_document(
             organization_id=str(organization_id),
@@ -423,6 +439,8 @@ async def upload_driver_document(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Storage service did not return a storage key.",
             )
+
+        _validate_upload_size(storage_result.get("size"))
 
         service = DocumentService(db)
         item = service.create_document(
