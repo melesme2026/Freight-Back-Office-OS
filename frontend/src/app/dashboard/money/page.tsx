@@ -117,7 +117,7 @@ export default function MoneyDashboardPage() {
             <section className="grid gap-4 lg:grid-cols-2">
               <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-soft">
                 <h2 className="text-lg font-semibold">Payment Status Breakdown</h2>
-                {data.status_breakdown.length === 0 ? <p className="mt-3 text-sm text-slate-500">No status data available.</p> : (
+                {data.status_breakdown.length === 0 ? <p className="mt-3 text-sm text-slate-600">No payment status data yet. Record your first load payment to populate this breakdown.</p> : (
                   <div className="mt-3 overflow-x-auto"><table className="min-w-full text-sm"><thead><tr className="text-left text-slate-500"><th>Status</th><th>Count</th><th>Amount</th></tr></thead><tbody>{data.status_breakdown.map((row) => <tr key={row.status} className="border-t border-slate-100"><td className="py-2">{row.status.replaceAll("_", " ")}</td><td>{row.count}</td><td>{formatCurrency(row.amount)}</td></tr>)}</tbody></table></div>
                 )}
               </div>
@@ -135,7 +135,7 @@ export default function MoneyDashboardPage() {
 
             <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-soft">
               <h2 className="text-lg font-semibold">Recent Cash Activity</h2>
-              {filteredCashActivity.length === 0 ? <p className="mt-3 text-sm text-slate-500">No activity matches current filters.</p> : (
+              {filteredCashActivity.length === 0 ? <p className="mt-3 text-sm text-slate-600">{data.recent_cash_activity.length === 0 ? "No payment activity yet. Once you mark invoices as paid or partial, this table will show settlement history." : "No activity matches current filters."}</p> : (
                 <div className="mt-3 overflow-x-auto"><table className="min-w-full text-sm"><thead><tr className="text-left text-slate-500"><th>Load Number</th><th>Amount Received</th><th>Paid Date</th><th>Status</th><th>Channel</th></tr></thead><tbody>{filteredCashActivity.map((item, idx) => <tr key={`${item.load_number}-${idx}`} className="border-t border-slate-100"><td className="py-2">{item.load_number ?? "—"}</td><td>{formatCurrency(item.amount_received)}</td><td>{new Date(item.paid_date).toLocaleDateString()}</td><td>{item.payment_status.replaceAll("_", " ")}</td><td>{item.factoring_used ? "Factoring" : "Direct"}</td></tr>)}</tbody></table></div>
               )}
             </section>

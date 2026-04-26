@@ -25,6 +25,7 @@ function resolvePlanLink(link: string): { href: string; configured: boolean } {
 export default function PricingPage() {
   const starter = resolvePlanLink(appConfig.pricing.starterLink);
   const growth = resolvePlanLink(appConfig.pricing.growthLink);
+  const billingEnabled = starter.configured && growth.configured;
 
   const plans: Plan[] = [
     {
@@ -107,6 +108,15 @@ export default function PricingPage() {
             </article>
           ))}
         </section>
+
+        {!billingEnabled ? (
+          <section className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-5 text-amber-900">
+            <h2 className="text-base font-semibold">Subscription billing is not fully enabled yet.</h2>
+            <p className="mt-2 text-sm">
+              Pilot teams can review pricing here, but checkout links must be configured in environment variables before live subscription collection.
+            </p>
+          </section>
+        ) : null}
 
         <section className="mt-8 rounded-2xl border border-slate-200 bg-white p-6 text-center shadow-soft">
           <h2 className="text-lg font-semibold text-slate-900">Need a guided setup call?</h2>

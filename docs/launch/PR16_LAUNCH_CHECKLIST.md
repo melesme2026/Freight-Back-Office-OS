@@ -72,3 +72,6 @@ npm --prefix frontend run lint
 - Missing SMTP config: startup validation fails if sending enabled without required SMTP vars.
 - Missing packet docs: upload rate confirmation/BOL/POD/invoice before packet creation.
 - Migration not applied: run `alembic upgrade head` and restart services.
+
+## 11. Pilot onboarding guide
+- Use `docs/launch/PILOT_ONBOARDING_GUIDE.md` for first carrier setup, driver setup, first load workflow, first invoice workflow, packet send steps, payment tracking, and pilot troubleshooting.
