@@ -205,6 +205,15 @@ type PaymentReconciliationRecord = {
   dispute_reason?: string | null;
   notes?: string | null;
 };
+type FollowUpTask = {
+  id: string;
+  task_type?: string | null;
+  status?: string | null;
+  priority?: string | null;
+  title?: string | null;
+  recommended_action?: string | null;
+  due_at?: string | null;
+};
 
 type UploadDocumentType = "" | "rate_confirmation" | "bill_of_lading" | "proof_of_delivery" | "invoice" | "lumper_receipt" | "detention_support" | "scale_ticket" | "accessorial_support" | "payment_remittance" | "damage_claim_photo" | "other" | "unknown";
 
@@ -880,6 +889,21 @@ function normalizePaymentReconciliation(item: unknown): PaymentReconciliationRec
   };
 }
 
+function normalizeFollowUpTask(item: unknown): FollowUpTask | null {
+  const record = asRecord(item);
+  const id = getStringField(record, "id");
+  if (!id) return null;
+  return {
+    id,
+    task_type: getStringField(record, "task_type"),
+    status: getStringField(record, "status"),
+    priority: getStringField(record, "priority"),
+    title: getStringField(record, "title"),
+    recommended_action: getStringField(record, "recommended_action"),
+    due_at: getStringField(record, "due_at"),
+  };
+}
+
 function getLoadDisplayTitle(load: Load) {
   return load.load_number ?? load.id;
 }
@@ -969,6 +993,8 @@ export default function LoadDetailPage() {
   const [carrierProfile, setCarrierProfile] = useState<CarrierProfile | null>(null);
   const [paymentRecord, setPaymentRecord] = useState<PaymentReconciliationRecord | null>(null);
   const [isSavingPayment, setIsSavingPayment] = useState(false);
+  const [followUpTasks, setFollowUpTasks] = useState<FollowUpTask[]>([]);
+  const [isSavingFollowUpTask, setIsSavingFollowUpTask] = useState(false);
 
   const fetchLoad = useCallback(async (): Promise<Load | null> => {
     if (!loadId) {
@@ -1068,6 +1094,17 @@ export default function LoadDetailPage() {
       { token: token ?? undefined }
     );
     return normalizePaymentReconciliation(response.data);
+  }, [loadId]);
+
+  const fetchFollowUpTasks = useCallback(async (): Promise<FollowUpTask[]> => {
+    if (!loadId) return [];
+    const token = getAccessToken();
+    const response = await apiClient.get<ApiResponse<unknown>>(
+      `/follow-ups?load_id=${encodeURIComponent(loadId)}&status=open`,
+      { token: token ?? undefined }
+    );
+    const rows = Array.isArray(response.data) ? response.data : [];
+    return rows.map((item) => normalizeFollowUpTask(item)).filter((item): item is FollowUpTask => item !== null);
   }, [loadId]);
 
   async function handleCreateSubmissionPacket() {
@@ -1204,6 +1241,40 @@ export default function LoadDetailPage() {
     }
   }
 
+  async function handleGenerateFollowUps() {
+    if (!loadId) return;
+    try {
+      setIsSavingFollowUpTask(true);
+      const token = getAccessToken();
+      await apiClient.post(`/loads/${encodeURIComponent(loadId)}/follow-ups/generate`, {}, { token: token ?? undefined });
+      setFollowUpTasks(await fetchFollowUpTasks());
+      setActionMessage("Follow-up reminders refreshed.");
+    } catch (caught: unknown) {
+      setError(extractErrorMessage(caught, "Failed to generate follow-up reminders."));
+    } finally {
+      setIsSavingFollowUpTask(false);
+    }
+  }
+
+  async function handleFollowUpAction(taskId: string, action: "complete" | "cancel" | "snooze") {
+    try {
+      setIsSavingFollowUpTask(true);
+      const token = getAccessToken();
+      if (action === "snooze") {
+        const until = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString();
+        await apiClient.post(`/follow-ups/${encodeURIComponent(taskId)}/snooze`, { until }, { token: token ?? undefined });
+      } else {
+        await apiClient.post(`/follow-ups/${encodeURIComponent(taskId)}/${action}`, {}, { token: token ?? undefined });
+      }
+      setFollowUpTasks(await fetchFollowUpTasks());
+      setActionMessage("Follow-up updated.");
+    } catch (caught: unknown) {
+      setError(extractErrorMessage(caught, "Failed to update follow-up task."));
+    } finally {
+      setIsSavingFollowUpTask(false);
+    }
+  }
+
   const fetchCurrentStaffUserId = useCallback(async (): Promise<string> => {
     const token = getAccessToken();
     const response = await apiClient.get<ApiResponse<unknown>>("/auth/me", {
@@ -1237,6 +1308,7 @@ export default function LoadDetailPage() {
       void fetchSubmissionPackets().then((packets) => setSubmissionPackets(packets)).catch(() => setSubmissionPackets([]));
       void fetchCarrierProfile().then((profile) => setCarrierProfile(profile)).catch(() => setCarrierProfile(null));
       void fetchPaymentReconciliation().then((record) => setPaymentRecord(record)).catch(() => setPaymentRecord(null));
+      void fetchFollowUpTasks().then((tasks) => setFollowUpTasks(tasks)).catch(() => setFollowUpTasks([]));
 
       void fetchReviewQueueItem()
         .then((reviewItem) => {
@@ -1259,7 +1331,7 @@ export default function LoadDetailPage() {
       setIsLoading(false);
       setIsDocumentsLoading(false);
     }
-  }, [fetchCarrierProfile, fetchLoad, fetchPaymentReconciliation, fetchReviewQueueItem, fetchLoadDocuments, fetchSubmissionPackets, loadId]);
+  }, [fetchCarrierProfile, fetchLoad, fetchPaymentReconciliation, fetchFollowUpTasks, fetchReviewQueueItem, fetchLoadDocuments, fetchSubmissionPackets, loadId]);
 
   useEffect(() => {
     void fetchPageData();
@@ -2600,6 +2672,35 @@ export default function LoadDetailPage() {
                   </div>
                 ))}
                 {submissionPackets.length === 0 ? <div className="text-sm text-slate-500">No submission packets yet.</div> : null}
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-semibold text-slate-950">Follow-Up Automation</h2>
+                  <p className="mt-1 text-sm text-slate-600">Track internal reminders for packet acceptance, overdue payment, reserve pending, and payment exceptions.</p>
+                </div>
+                <button type="button" onClick={() => void handleGenerateFollowUps()} disabled={isSavingFollowUpTask} className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:opacity-50">
+                  {isSavingFollowUpTask ? "Working..." : "Generate follow-ups"}
+                </button>
+              </div>
+              <div className="space-y-3">
+                {followUpTasks.length === 0 ? <div className="text-sm text-slate-500">No open follow-up tasks for this load.</div> : null}
+                {followUpTasks.map((task) => (
+                  <div key={task.id} className="rounded-xl border border-slate-200 p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="text-sm font-semibold text-slate-900">{task.title ?? "Follow-up task"}</div>
+                      <div className="text-xs text-slate-500">{(task.priority ?? "normal").replaceAll("_", " ")} · due {formatDateTime(task.due_at)}</div>
+                    </div>
+                    <div className="mt-1 text-xs text-slate-600">{task.recommended_action ?? "Follow up with broker/factor."}</div>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <button type="button" onClick={() => void handleFollowUpAction(task.id, "complete")} className="rounded-lg border border-slate-300 px-3 py-1 text-xs">Complete</button>
+                      <button type="button" onClick={() => void handleFollowUpAction(task.id, "snooze")} className="rounded-lg border border-slate-300 px-3 py-1 text-xs">Snooze</button>
+                      <button type="button" onClick={() => void handleFollowUpAction(task.id, "cancel")} className="rounded-lg border border-slate-300 px-3 py-1 text-xs">Cancel</button>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
 

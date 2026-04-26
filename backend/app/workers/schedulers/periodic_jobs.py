@@ -23,4 +23,8 @@ celery_app.conf.beat_schedule = {
         "task": "app.workers.tasks.sync_payment_webhooks",
         "schedule": crontab(minute="*/15"),
     },
+    "daily-follow-up-generation": {
+        "task": "app.workers.tasks.daily_follow_up_generation",
+        "schedule": crontab(hour=7, minute=0),
+    },
 }

@@ -23,6 +23,7 @@ celery_app = Celery(
         "app.workers.tasks.mark_overdue_invoices",
         "app.workers.tasks.send_billing_reminders",
         "app.workers.tasks.sync_payment_webhooks",
+        "app.workers.tasks.daily_follow_up_generation",
     ],
 )
 

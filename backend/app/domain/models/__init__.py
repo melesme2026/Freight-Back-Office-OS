@@ -9,6 +9,7 @@ from app.domain.models.carrier_profile import CarrierProfile  # noqa: F401
 from app.domain.models.customer_account import CustomerAccount  # noqa: F401
 from app.domain.models.driver import Driver  # noqa: F401
 from app.domain.models.extracted_field import ExtractedField  # noqa: F401
+from app.domain.models.follow_up_task import FollowUpTask  # noqa: F401
 from app.domain.models.ledger_entry import LedgerEntry  # noqa: F401
 from app.domain.models.load import Load  # noqa: F401
 from app.domain.models.load_document import LoadDocument  # noqa: F401

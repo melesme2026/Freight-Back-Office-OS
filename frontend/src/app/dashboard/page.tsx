@@ -273,6 +273,19 @@ export default function DashboardPage() {
         <h2 className="text-lg font-semibold text-slate-950">Mode Priorities</h2>
         <p className="mt-1 text-sm text-slate-600">Focused KPI slices for the selected work mode.</p>
         <div className="mt-4 grid gap-4 md:grid-cols-3">{(loading ? [] : modeActionNow).map((item) => <div key={item.label}><MetricCard label={item.label} value={item.value} tone={item.tone as "default"|"warning"|"danger"|"success"} /><p className="mt-2 text-xs text-slate-600">{item.helper}</p></div>)}{loading ? <div className="text-sm text-slate-500">Loading priorities...</div> : null}</div>
+        <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-semibold text-slate-900">Open Follow-Ups</h3>
+              <p className="mt-1 text-xs text-slate-600">Overdue and urgent reminders to keep payment collections moving.</p>
+            </div>
+            <Link href="/dashboard/follow-ups" className="text-xs font-semibold text-brand-700 hover:underline">View follow-ups</Link>
+          </div>
+          <div className="mt-3 flex gap-3 text-xs">
+            <span className="rounded-md bg-rose-100 px-2 py-1 text-rose-700">Overdue: {metrics?.operational_queues?.payment_overdue ?? 0}</span>
+            <span className="rounded-md bg-amber-100 px-2 py-1 text-amber-700">Urgent: {metrics?.operational_queues?.disputed_or_short_paid ?? 0}</span>
+          </div>
+        </div>
       </section>
 
       <section className="mb-8 rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
