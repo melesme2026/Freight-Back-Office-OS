@@ -1,0 +1,20 @@
+[
+  {
+    "id": "20000000-0000-0000-0000-000000000001",
+    "organization_id": "00000000-0000-0000-0000-000000000001",
+    "customer_account_id": "10000000-0000-0000-0000-000000000001",
+    "full_name": "Driver One",
+    "phone": "+13135551234",
+    "email": "john.doe@example.com",
+    "is_active": true
+  },
+  {
+    "id": "20000000-0000-0000-0000-000000000002",
+    "organization_id": "00000000-0000-0000-0000-000000000001",
+    "customer_account_id": "10000000-0000-0000-0000-000000000002",
+    "full_name": "Driver Two",
+    "phone": "+13135559876",
+    "email": "driver.two@example.com",
+    "is_active": true
+  }
+]

@@ -7,8 +7,8 @@ import pytest
 from starlette.datastructures import UploadFile
 
 from app.api.v1.documents import upload_driver_document
-from app.api.v1.load_payment_reconciliation import _authorize_payment_read
-from app.api.v1.loads import _authorize_load_access, _authorize_submission_read
+from app.api.v1.load_payment_reconciliation import _authorize_payment_read, _authorize_payment_write
+from app.api.v1.loads import _authorize_load_access, _authorize_submission_download, _authorize_submission_read
 from app.core.exceptions import ForbiddenError, UnauthorizedError
 from app.domain.models.driver import Driver
 from app.services.loads.load_service import LoadService
@@ -109,9 +109,21 @@ def test_upload_restricted_to_assigned_load(db_session) -> None:
         )
 
 
-def test_driver_cannot_access_money_or_submission_endpoints() -> None:
+def test_driver_cannot_access_money_or_submission_endpoints(db_session) -> None:
     with pytest.raises(ForbiddenError):
         _authorize_payment_read({"role": "driver"})
 
     with pytest.raises(ForbiddenError):
+        _authorize_payment_write({"role": "driver"})
+
+    with pytest.raises(ForbiddenError):
         _authorize_submission_read({"role": "driver"})
+
+    load = _seed_load(
+        db_session,
+        organization_id="00000000-0000-0000-0000-000000010901",
+        driver_id="00000000-0000-0000-0000-000000010902",
+        load_number="LD-DRIVER-DENY",
+    )
+    with pytest.raises(ForbiddenError):
+        _authorize_submission_download(item=load, token_payload={"role": "driver"})

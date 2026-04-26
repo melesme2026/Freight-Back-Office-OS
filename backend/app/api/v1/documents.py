@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_db_session
 from app.core.exceptions import UnauthorizedError
+from app.core.config import get_settings
 from app.core.security import get_current_token_payload
 from app.domain.enums.channel import Channel
 from app.repositories.driver_repo import DriverRepository
@@ -42,7 +43,7 @@ ALLOWED_UPLOAD_MIME_TYPES = {
     "image/heif",
     "image/tiff",
 }
-MAX_UPLOAD_FILE_SIZE_BYTES = 15 * 1024 * 1024
+MAX_UPLOAD_FILE_SIZE_BYTES = get_settings().max_upload_file_size_mb * 1024 * 1024
 
 DEFAULT_LOAD_DOCUMENT_PAGE_SIZE = 100
 

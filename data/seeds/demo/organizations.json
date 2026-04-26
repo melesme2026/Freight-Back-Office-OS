@@ -1,0 +1,14 @@
+[
+  {
+    "id": "00000000-0000-0000-0000-000000000001",
+    "name": "Demo Freight Logistics",
+    "slug": "demo-freight-logistics",
+    "is_active": true,
+    "billing_provider": "none",
+    "billing_status": "trial",
+    "plan_code": "starter",
+    "stripe_customer_id": null,
+    "stripe_subscription_id": null,
+    "billing_notes": "Seeded local demo organization."
+  }
+]
