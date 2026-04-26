@@ -430,8 +430,12 @@ export default function DocumentsPage() {
                   </tr>
                 ) : documents.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="px-5 py-10 text-center text-slate-500">
-                      No documents found yet. Upload from Load Detail to attach paperwork directly to a booked load, or upload from Driver Portal for driver-submitted documents.
+                    <td colSpan={9} className="px-5 py-10 text-center text-slate-600">
+                      <div className="space-y-2">
+                        <p className="font-semibold text-slate-700">No documents yet.</p>
+                        <p>Upload BOL, rate con, or POD files from Load Detail (office workflow) or Driver Portal (driver workflow).</p>
+                        <p className="text-xs text-slate-500">After upload, verify extracted fields before creating invoices or packets.</p>
+                      </div>
                     </td>
                   </tr>
                 ) : (

@@ -203,8 +203,11 @@ export default function CustomersPage() {
                   </tr>
                 ) : normalizedCustomers.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-5 py-10 text-center text-slate-500">
-                      No customer accounts found.
+                    <td colSpan={6} className="px-5 py-10 text-center text-slate-600">
+                      <div className="space-y-2">
+                        <p className="font-semibold text-slate-700">No customer accounts yet.</p>
+                        <p>Create a customer account so onboarding, billing, and payment tracking have the right account scope.</p>
+                      </div>
                     </td>
                   </tr>
                 ) : (

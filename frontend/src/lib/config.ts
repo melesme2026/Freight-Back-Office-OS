@@ -53,11 +53,9 @@ export const appConfig = {
   },
   pricing: {
     starterLink:
-      normalizeOptionalText(process.env.NEXT_PUBLIC_STRIPE_STARTER_LINK) ||
-      "https://buy.stripe.com/fZu8wP1HIc6m48R0PA7Vm00",
+      normalizeOptionalText(process.env.NEXT_PUBLIC_STRIPE_STARTER_LINK),
     growthLink:
-      normalizeOptionalText(process.env.NEXT_PUBLIC_STRIPE_GROWTH_LINK) ||
-      "https://buy.stripe.com/fZu7sL1HI7Q6fRz7dY7Vm01",
+      normalizeOptionalText(process.env.NEXT_PUBLIC_STRIPE_GROWTH_LINK),
     enterpriseContact:
       normalizeOptionalText(process.env.NEXT_PUBLIC_ENTERPRISE_CONTACT) ||
       "/request-demo",

@@ -406,8 +406,11 @@ export default function BillingPage() {
               </p>
               {organizationBilling?.stripe_subscription_id ? (
                 <p className="mt-1 text-xs text-slate-500">
-                  Stripe subscription: {organizationBilling.stripe_subscription_id}
+                  Stripe subscription reference (display only): {organizationBilling.stripe_subscription_id}
                 </p>
+              ) : null}
+              {!organizationBilling?.stripe_subscription_id ? (
+                <p className="mt-2 text-xs text-amber-700">Subscription billing is not fully enabled yet.</p>
               ) : null}
             </div>
             <Link

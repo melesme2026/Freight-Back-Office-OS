@@ -278,6 +278,32 @@ export default function OnboardingPage() {
     { key: "go_live_ready", label: "Go-live ready" },
   ];
 
+  const pilotReadinessItems = useMemo(() => {
+    const documentsReady = Boolean(checklist?.documents_received);
+    const pricingReady = Boolean(checklist?.pricing_confirmed);
+    const paymentReady = Boolean(checklist?.payment_method_added);
+    const driverReady = Boolean(checklist?.driver_profiles_created);
+    const channelReady = Boolean(checklist?.channel_connected);
+    const goLiveReady = Boolean(checklist?.go_live_ready);
+
+    return [
+      { label: "Complete carrier profile", done: pricingReady || goLiveReady, href: "/dashboard/settings" },
+      { label: "Add driver", done: driverReady, href: "/dashboard/drivers/new" },
+      { label: "Add broker/customer", done: channelReady, href: "/dashboard/brokers/new" },
+      { label: "Create first load", done: goLiveReady || channelReady, href: "/dashboard/loads/new" },
+      { label: "Upload docs", done: documentsReady, href: "/dashboard/documents" },
+      { label: "Generate invoice", done: paymentReady || goLiveReady, href: "/dashboard/billing/invoices" },
+      { label: "Create packet", done: goLiveReady, href: "/dashboard/loads" },
+      { label: "Send packet", done: goLiveReady, href: "/dashboard/loads" },
+      { label: "Track payment", done: goLiveReady || paymentReady, href: "/dashboard/money" },
+    ];
+  }, [checklist]);
+
+  const pilotProgress = useMemo(() => {
+    const completed = pilotReadinessItems.filter((item) => item.done).length;
+    return Math.round((completed / pilotReadinessItems.length) * 100);
+  }, [pilotReadinessItems]);
+
   return (
     <main className="min-h-screen bg-slate-50 text-slate-900">
       <div className="mx-auto max-w-5xl px-6 py-10">
@@ -372,6 +398,30 @@ export default function OnboardingPage() {
 
         {!isChecklistLoading && checklist ? (
           <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
+            <div className="mb-6 rounded-2xl border border-brand-200 bg-brand-50 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <h2 className="text-lg font-semibold text-slate-950">Pilot onboarding progress</h2>
+                <span className="rounded-full bg-white px-3 py-1 text-sm font-semibold text-brand-700">
+                  {pilotProgress}% complete
+                </span>
+              </div>
+              <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-brand-100">
+                <div className="h-full rounded-full bg-brand-600 transition-all" style={{ width: `${pilotProgress}%` }} />
+              </div>
+              <ul className="mt-4 grid gap-2 text-sm text-slate-700 md:grid-cols-2">
+                {pilotReadinessItems.map((item) => (
+                  <li key={item.label} className="flex items-center justify-between gap-3 rounded-lg border border-white/70 bg-white px-3 py-2">
+                    <span className={item.done ? "text-emerald-700" : "text-slate-700"}>
+                      {item.done ? "✓ " : "○ "}
+                      {item.label}
+                    </span>
+                    <Link href={item.href} className="text-xs font-semibold text-brand-700 hover:text-brand-800">
+                      Open →
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
             <div className="grid gap-5 md:grid-cols-2">
               <div>
                 <label className="text-sm font-semibold text-slate-700" htmlFor="onboarding-status">

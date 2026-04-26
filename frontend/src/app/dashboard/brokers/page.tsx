@@ -92,7 +92,7 @@ export default function BrokersPage() {
                 {isLoading ? (
                   <tr><td colSpan={6} className="px-5 py-10 text-center text-slate-500">Loading brokers...</td></tr>
                 ) : brokers.length === 0 ? (
-                  <tr><td colSpan={6} className="px-5 py-10 text-center text-slate-500">No brokers found. Add one to improve load handoff workflows.</td></tr>
+                  <tr><td colSpan={6} className="px-5 py-10 text-center text-slate-600"><div className="space-y-2"><p className="font-semibold text-slate-700">No brokers yet.</p><p>Add a broker before creating production loads so rate confirmations and invoice recipients are clear.</p></div></td></tr>
                 ) : brokers.map((broker) => (
                   <tr key={broker.id} className="hover:bg-slate-50">
                     <td className="px-5 py-4">

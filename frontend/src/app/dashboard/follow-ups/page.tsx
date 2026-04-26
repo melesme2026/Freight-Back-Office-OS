@@ -107,7 +107,7 @@ export default function FollowUpsPage() {
         <div className="mt-6 overflow-hidden rounded-2xl border border-slate-200 bg-white">
           {loading ? <div className="p-4 text-sm text-slate-500">Loading follow-up tasks…</div> : null}
           {error ? <div className="border-b border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{error}</div> : null}
-          {!loading && filteredTasks.length === 0 ? <div className="p-4 text-sm text-slate-500">No follow-up tasks match current filters.</div> : null}
+          {!loading && filteredTasks.length === 0 ? <div className="p-4 text-sm text-slate-600">{tasks.length === 0 ? "No follow-ups yet. Create a load, upload docs, generate an invoice, then use follow-ups for overdue or reserve-pending actions." : "No follow-up tasks match current filters."}</div> : null}
           {!loading && filteredTasks.length > 0 ? (
             <div className="overflow-x-auto">
               <table className="min-w-full text-sm">

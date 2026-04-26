@@ -462,11 +462,15 @@ export default function LoadsPage() {
                   <tr>
                     <td
                       colSpan={7}
-                      className="px-5 py-8 text-center text-sm text-slate-500"
+                      className="px-5 py-8 text-center text-sm text-slate-600"
                     >
-                      {typedLoads.length === 0
-                        ? "No loads found. Create one with New Load or seed demo records using `make seed-dev-data`."
-                        : "No loads match the current search or filter."}
+                      {typedLoads.length === 0 ? (
+                        <div className="space-y-2">
+                          <p className="font-semibold text-slate-700">No loads yet.</p>
+                          <p>Create your first load, then upload docs, generate an invoice, and send a packet.</p>
+                          <p className="text-xs text-slate-500">Tip: start with “New Load”, then go to Documents and Billing.</p>
+                        </div>
+                      ) : "No loads match the current search or filter."}
                     </td>
                   </tr>
                 ) : (

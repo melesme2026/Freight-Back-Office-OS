@@ -146,9 +146,12 @@ export default function DriversPage() {
                   <tr>
                     <td
                       colSpan={5}
-                      className="px-5 py-10 text-center text-slate-500"
+                      className="px-5 py-10 text-center text-slate-600"
                     >
-                      No drivers found.
+                      <div className="space-y-2">
+                        <p className="font-semibold text-slate-700">No drivers yet.</p>
+                        <p>Add your first driver so you can assign loads and collect driver-submitted docs.</p>
+                      </div>
                     </td>
                   </tr>
                 ) : (
