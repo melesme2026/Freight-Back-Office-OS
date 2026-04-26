@@ -21,6 +21,7 @@ from app.api.v1.organizations import router as organizations_router
 from app.api.v1.payments import router as payments_router
 from app.api.v1.referrals import router as referrals_router
 from app.api.v1.review_queue import router as review_queue_router
+from app.api.v1.reports import router as reports_router
 from app.api.v1.service_plans import router as service_plans_router
 from app.api.v1.staff_users import router as staff_users_router
 from app.api.v1.subscriptions import router as subscriptions_router
@@ -69,6 +70,7 @@ api_router.include_router(payments_router, tags=["payments"], dependencies=prote
 api_router.include_router(billing_dashboard_router, tags=["billing-dashboard"], dependencies=protected_dependencies)
 
 # Dashboards
+api_router.include_router(reports_router, tags=["reports"], dependencies=protected_dependencies)
 api_router.include_router(dashboard_router, tags=["dashboard"], dependencies=protected_dependencies)
 
 # Webhooks
