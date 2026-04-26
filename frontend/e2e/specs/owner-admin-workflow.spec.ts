@@ -3,6 +3,7 @@ import path from "node:path";
 import { expect, test } from "@playwright/test";
 
 import { seed } from "../fixtures/test-data";
+import { loginAsOwner } from "../support/auth";
 import { mockApi } from "../support/mock-api";
 import { assertNoCriticalUiCorruption, attachRuntimeGuards } from "../support/test-guards";
 
@@ -10,16 +11,12 @@ test("owner/admin launch workflow including docs, invoice, packet, payments, and
   const assertClean = attachRuntimeGuards(page);
   await mockApi(page);
 
-  await page.goto("/login");
-  await page.locator("input[type='email']").fill(seed.owner.email);
-  await page.locator("input[type='password']").fill(seed.owner.password);
-  await page.getByRole("button", { name: "Sign in" }).click();
-  await expect(page).toHaveURL(/\/dashboard/);
+  await loginAsOwner(page);
 
   await page.goto("/dashboard/onboarding");
-  await expect(page.getByRole("heading", { name: /Onboarding/i })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /Onboarding Checklist/i })).toBeVisible();
   await page.goto("/dashboard/settings/carrier-profile");
-  await expect(page.getByText(/Carrier Profile|carrier/i)).toBeVisible();
+  await expect(page.getByRole("heading", { name: /Carrier Profile/i })).toBeVisible();
   await page.goto("/dashboard/drivers");
   await expect(page.getByRole("heading", { name: /Drivers/i })).toBeVisible();
   await page.goto("/dashboard/brokers");
