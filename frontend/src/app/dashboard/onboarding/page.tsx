@@ -1,5 +1,6 @@
 "use client";
 
+import type { Route } from "next";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
@@ -19,6 +20,12 @@ type OnboardingChecklist = {
   go_live_ready: boolean;
   completed_at: string | null;
   updated_at: string | null;
+};
+
+type PilotReadinessItem = {
+  label: string;
+  done: boolean;
+  href: Route;
 };
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -278,7 +285,7 @@ export default function OnboardingPage() {
     { key: "go_live_ready", label: "Go-live ready" },
   ];
 
-  const pilotReadinessItems = useMemo(() => {
+  const pilotReadinessItems = useMemo<PilotReadinessItem[]>(() => {
     const documentsReady = Boolean(checklist?.documents_received);
     const pricingReady = Boolean(checklist?.pricing_confirmed);
     const paymentReady = Boolean(checklist?.payment_method_added);
@@ -287,15 +294,15 @@ export default function OnboardingPage() {
     const goLiveReady = Boolean(checklist?.go_live_ready);
 
     return [
-      { label: "Complete carrier profile", done: pricingReady || goLiveReady, href: "/dashboard/settings" },
-      { label: "Add driver", done: driverReady, href: "/dashboard/drivers/new" },
-      { label: "Add broker/customer", done: channelReady, href: "/dashboard/brokers/new" },
-      { label: "Create first load", done: goLiveReady || channelReady, href: "/dashboard/loads/new" },
-      { label: "Upload docs", done: documentsReady, href: "/dashboard/documents" },
-      { label: "Generate invoice", done: paymentReady || goLiveReady, href: "/dashboard/billing/invoices" },
-      { label: "Create packet", done: goLiveReady, href: "/dashboard/loads" },
-      { label: "Send packet", done: goLiveReady, href: "/dashboard/loads" },
-      { label: "Track payment", done: goLiveReady || paymentReady, href: "/dashboard/money" },
+      { label: "Complete carrier profile", done: pricingReady || goLiveReady, href: "/dashboard/settings" as Route },
+      { label: "Add driver", done: driverReady, href: "/dashboard/drivers/new" as Route },
+      { label: "Add broker/customer", done: channelReady, href: "/dashboard/brokers/new" as Route },
+      { label: "Create first load", done: goLiveReady || channelReady, href: "/dashboard/loads/new" as Route },
+      { label: "Upload docs", done: documentsReady, href: "/dashboard/documents" as Route },
+      { label: "Generate invoice", done: paymentReady || goLiveReady, href: "/dashboard/billing/invoices" as Route },
+      { label: "Create packet", done: goLiveReady, href: "/dashboard/loads" as Route },
+      { label: "Send packet", done: goLiveReady, href: "/dashboard/loads" as Route },
+      { label: "Track payment", done: goLiveReady || paymentReady, href: "/dashboard/money" as Route },
     ];
   }, [checklist]);
 
