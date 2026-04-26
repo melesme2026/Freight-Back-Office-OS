@@ -53,6 +53,10 @@ export default function MoneyDashboardPage() {
       return true;
     });
   }, [channelFilter, data, overdueOnly, search, statusFilter]);
+  const maxStatusAmount = useMemo(() => {
+    if (!data || data.status_breakdown.length === 0) return 0;
+    return Math.max(...data.status_breakdown.map((row) => Number(row.amount ?? 0)));
+  }, [data]);
 
   if (isDriverRole(getUserRole())) {
     return <div className="p-6 text-sm text-rose-700">Drivers cannot access the Money Dashboard.</div>;
@@ -118,11 +122,43 @@ export default function MoneyDashboardPage() {
               <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-soft">
                 <h2 className="text-lg font-semibold">Payment Status Breakdown</h2>
                 {data.status_breakdown.length === 0 ? <p className="mt-3 text-sm text-slate-600">No payment status data yet. Record your first load payment to populate this breakdown.</p> : (
-                  <div className="mt-3 overflow-x-auto"><table className="min-w-full text-sm"><thead><tr className="text-left text-slate-500"><th>Status</th><th>Count</th><th>Amount</th></tr></thead><tbody>{data.status_breakdown.map((row) => <tr key={row.status} className="border-t border-slate-100"><td className="py-2">{row.status.replaceAll("_", " ")}</td><td>{row.count}</td><td>{formatCurrency(row.amount)}</td></tr>)}</tbody></table></div>
+                  <div className="mt-3 space-y-3">
+                    {data.status_breakdown.map((row) => {
+                      const amount = Number(row.amount ?? 0);
+                      const width = maxStatusAmount > 0 ? Math.max(8, Math.round((amount / maxStatusAmount) * 100)) : 0;
+                      return (
+                        <div key={row.status}>
+                          <div className="mb-1 flex items-center justify-between text-sm">
+                            <span className="capitalize text-slate-700">{row.status.replaceAll("_", " ")} ({row.count})</span>
+                            <span className="font-semibold text-slate-900">{formatCurrency(row.amount)}</span>
+                          </div>
+                          <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+                            <div className="h-full rounded-full bg-brand-500" style={{ width: `${width}%` }} />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 )}
               </div>
               <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-soft">
                 <h2 className="text-lg font-semibold">Factoring vs Direct</h2>
+                <div className="mt-3 overflow-hidden rounded-xl border border-slate-200">
+                  <div className="flex h-3">
+                    {(() => {
+                      const factored = Number(data.factoring_vs_direct.factored.amount ?? 0);
+                      const direct = Number(data.factoring_vs_direct.direct.amount ?? 0);
+                      const total = factored + direct;
+                      const factoredPct = total > 0 ? (factored / total) * 100 : 50;
+                      return (
+                        <>
+                          <div className="bg-brand-500" style={{ width: `${factoredPct}%` }} />
+                          <div className="bg-emerald-500" style={{ width: `${100 - factoredPct}%` }} />
+                        </>
+                      );
+                    })()}
+                  </div>
+                </div>
                 <div className="mt-3 space-y-1 text-sm text-slate-700">
                   <div>Factored loads: {data.factoring_vs_direct.factored.count} ({formatCurrency(data.factoring_vs_direct.factored.amount)})</div>
                   <div>Direct loads: {data.factoring_vs_direct.direct.count} ({formatCurrency(data.factoring_vs_direct.direct.amount)})</div>

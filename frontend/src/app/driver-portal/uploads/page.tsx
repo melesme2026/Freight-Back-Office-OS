@@ -16,6 +16,8 @@ export default function DriverUploadsPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const MAX_UPLOAD_MB = 15;
+  const acceptedTypes = "PDF, JPG, PNG, WEBP, HEIC, HEIF, TIFF";
 
   const loadOptions = useMemo(() => {
     return loads.map((load) => ({
@@ -83,6 +85,9 @@ export default function DriverUploadsPage() {
               <li>Optionally select a load to attach the file immediately.</li>
               <li>Submit and monitor processing from the staff Documents screen.</li>
             </ol>
+            <p className="mt-3 text-xs text-slate-600">
+              Accepted file types: {acceptedTypes}. Maximum file size: {MAX_UPLOAD_MB}MB.
+            </p>
           </div>
         </div>
 
@@ -100,6 +105,14 @@ export default function DriverUploadsPage() {
 
         <form onSubmit={(event) => void handleSubmit(event)} className="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
           <div className="grid gap-5">
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+              <p className="font-semibold">What is usually missing?</p>
+              <ul className="mt-1 list-disc pl-5 text-xs">
+                <li>After pickup: upload Bill of Lading.</li>
+                <li>After delivery: upload POD / delivery receipt.</li>
+                <li>If extra charges: upload lumper, scale, or accessorial proof.</li>
+              </ul>
+            </div>
             <div>
               <label htmlFor="upload-document-type" className="text-sm font-semibold text-slate-700">
                 Document type
@@ -165,14 +178,15 @@ export default function DriverUploadsPage() {
                 onChange={(event) => setFile(event.target.files?.[0] ?? null)}
                 className="mt-2 block w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
               />
+              <p className="mt-2 text-xs text-slate-500">Accepted: {acceptedTypes} · Max: {MAX_UPLOAD_MB}MB</p>
             </div>
 
             <button
               type="submit"
               disabled={isSubmitting}
-              className="inline-flex w-fit rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex w-full items-center justify-center rounded-xl bg-brand-600 px-5 py-3 text-base font-semibold text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60 sm:w-fit"
             >
-              {isSubmitting ? "Uploading..." : "Upload document"}
+              {isSubmitting ? "Uploading document..." : "Upload Document"}
             </button>
             <Link
               href="/driver-portal/loads"

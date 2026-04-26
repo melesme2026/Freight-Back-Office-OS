@@ -172,6 +172,7 @@ type SubmissionPacketEvent = {
   event_type?: string | null;
   message?: string | null;
   created_at?: string | null;
+  recipient?: string | null;
 };
 
 type SubmissionPacket = {
@@ -871,11 +872,14 @@ function normalizeSubmissionPacket(item: unknown): SubmissionPacket | null {
     }),
     events: eventsRaw.map((event) => {
       const eventRecord = asRecord(event);
+      const message = getStringField(eventRecord, "message");
+      const recipientMatch = message?.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
       return {
         id: getStringField(eventRecord, "id") ?? `generated-${Math.random()}`,
         event_type: getStringField(eventRecord, "event_type"),
-        message: getStringField(eventRecord, "message"),
+        message,
         created_at: getStringField(eventRecord, "created_at"),
+        recipient: getStringField(eventRecord, "recipient") ?? recipientMatch?.[0] ?? null,
       };
     }),
   };
@@ -1817,10 +1821,10 @@ export default function LoadDetailPage() {
   }, [load, documentPresence.hasInvoice, documentPresence.hasRateCon]);
 
   const followUpTemplates = useMemo(() => ({
+    packetSubmission: `Subject: Billing packet submitted - Load ${load?.load_number ?? load?.id ?? ""}\n\nHello,\nWe submitted the billing packet for load ${load?.load_number ?? load?.id ?? ""}. Please confirm receipt and expected processing date.\n\nThank you.`,
     paymentReminder: `Subject: Payment follow-up - Load ${load?.load_number ?? load?.id ?? ""}\n\nHello,\nThis is a payment follow-up for load ${load?.load_number ?? load?.id ?? ""}. Please confirm payment status and expected remittance date.\n\nThank you.`,
-    disputeFollowUp: `Subject: Short-pay/dispute follow-up - Load ${load?.load_number ?? load?.id ?? ""}\n\nHello,\nWe need an update on the short-pay/dispute for load ${load?.load_number ?? load?.id ?? ""}. Please share resolution details and expected adjustment timeline.\n\nThank you.`,
-    factorFollowUp: `Subject: Factor status request - Load ${load?.load_number ?? load?.id ?? ""}\n\nHello,\nPlease provide status for submitted/funded activity on load ${load?.load_number ?? load?.id ?? ""}, including reserve release timing.\n\nThank you.`,
-    missingDocs: `Subject: Missing document request - Load ${load?.load_number ?? load?.id ?? ""}\n\nHello,\nThis load is waiting on missing paperwork needed to proceed to invoice/submission. Please send the required documents as soon as possible.\n\nThank you.`,
+    reserveFollowUp: `Subject: Reserve release follow-up - Load ${load?.load_number ?? load?.id ?? ""}\n\nHello,\nPlease share reserve release status for load ${load?.load_number ?? load?.id ?? ""} and the expected release date.\n\nThank you.`,
+    disputeFollowUp: `Subject: Short-pay/dispute follow-up - Load ${load?.load_number ?? load?.id ?? ""}\n\nHello,\nWe need an update on the short-pay/dispute for load ${load?.load_number ?? load?.id ?? ""}. Please share the reason, adjustment amount, and resolution timeline.\n\nThank you.`,
   }), [load?.id, load?.load_number]);
 
   const followUpUrgency = useMemo(() => {
@@ -1856,19 +1860,19 @@ export default function LoadDetailPage() {
   const prioritizedTemplateButtons = useMemo(() => {
     const hasMissingDocs = !documentPresence.hasInvoice || !documentPresence.hasRateCon || !documentPresence.hasBol;
     const templateButtons = [
-      { key: "paymentReminder", label: "Copy Payment Reminder", value: followUpTemplates.paymentReminder, rank: 50 },
-      { key: "disputeFollowUp", label: "Copy Short-Pay / Dispute Follow-up", value: followUpTemplates.disputeFollowUp, rank: 50 },
-      { key: "factorFollowUp", label: "Copy Factor Follow-up", value: followUpTemplates.factorFollowUp, rank: 50 },
-      { key: "missingDocs", label: "Copy Missing Document Reminder", value: followUpTemplates.missingDocs, rank: 50 },
+      { key: "packetSubmission", label: "Copy Packet Submission Template", value: followUpTemplates.packetSubmission, rank: 50 },
+      { key: "paymentReminder", label: "Copy Payment Follow-up Template", value: followUpTemplates.paymentReminder, rank: 50 },
+      { key: "reserveFollowUp", label: "Copy Reserve Follow-up Template", value: followUpTemplates.reserveFollowUp, rank: 50 },
+      { key: "disputeFollowUp", label: "Copy Short-Pay / Dispute Template", value: followUpTemplates.disputeFollowUp, rank: 50 },
     ];
     if (load?.status === "short_paid" || load?.status === "disputed") {
       const prioritized = templateButtons.find((template) => template.key === "disputeFollowUp");
       if (prioritized) prioritized.rank = 1;
     } else if (load?.status === "reserve_pending" || load?.status === "advance_paid" || load?.status === "submitted_to_factoring") {
-      const prioritized = templateButtons.find((template) => template.key === "factorFollowUp");
+      const prioritized = templateButtons.find((template) => template.key === "reserveFollowUp");
       if (prioritized) prioritized.rank = 1;
     } else if (hasMissingDocs || load?.status === "packet_rejected" || load?.status === "docs_needs_attention") {
-      const prioritized = templateButtons.find((template) => template.key === "missingDocs");
+      const prioritized = templateButtons.find((template) => template.key === "packetSubmission");
       if (prioritized) prioritized.rank = 1;
     } else if (load?.status === "submitted_to_broker" || followUpUrgency.sortOrder === 1) {
       const prioritized = templateButtons.find((template) => template.key === "paymentReminder");
@@ -2801,7 +2805,7 @@ export default function LoadDetailPage() {
               <div className="mb-4 flex items-center justify-between gap-3">
                 <div>
                   <h2 className="text-lg font-semibold text-slate-950">Submission Packet</h2>
-                  <p className="mt-1 text-sm text-slate-600">Create billing packet, record packet as sent, and track acceptance or rejection evidence.</p>
+                  <p className="mt-1 text-sm text-slate-600">Build the broker/factor billing packet, send it, and track delivery outcomes.</p>
                 </div>
                 <button
                   type="button"
@@ -2809,7 +2813,7 @@ export default function LoadDetailPage() {
                   disabled={isSubmissionBusy}
                   className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:opacity-50"
                 >
-                  {isSubmissionBusy ? "Working..." : "Create billing packet"}
+                  {isSubmissionBusy ? "Working..." : "Create Packet"}
                 </button>
               </div>
               <div className="mb-4 text-sm text-slate-700">
@@ -2826,18 +2830,34 @@ export default function LoadDetailPage() {
                     <div className="mt-2 space-y-2">
                       <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Packet actions</div>
                       <div className="flex flex-wrap gap-2">
-                        <button type="button" onClick={() => void handleDownloadPacketZip(packet.id)} disabled={downloadingPacketId === packet.id} className="rounded-lg border border-slate-300 px-3 py-1 text-xs disabled:opacity-50">{downloadingPacketId === packet.id ? "Downloading..." : "Download ZIP"}</button>
-                        <button type="button" onClick={() => void handleCopySubmissionEmail()} className="rounded-lg border border-slate-300 px-3 py-1 text-xs">Copy Email</button>
-                        <button type="button" onClick={() => openSendPacketEmailModal(packet)} disabled={isSubmissionBusy} className="rounded-lg border border-slate-300 px-3 py-1 text-xs disabled:opacity-50">Send Email</button>
+                        <button title="Download a ZIP packet to send manually." type="button" onClick={() => void handleDownloadPacketZip(packet.id)} disabled={downloadingPacketId === packet.id} className="rounded-lg border border-slate-300 px-3 py-1 text-xs disabled:opacity-50">{downloadingPacketId === packet.id ? "Downloading..." : "Download Packet ZIP"}</button>
+                        <button title="Copy the packet submission email template." type="button" onClick={() => void handleCopySubmissionEmail()} className="rounded-lg border border-slate-300 px-3 py-1 text-xs">Copy Submission Email</button>
+                        <button title="Send packet email from this page when email is configured." type="button" onClick={() => openSendPacketEmailModal(packet)} disabled={isSubmissionBusy} className="rounded-lg border border-slate-300 px-3 py-1 text-xs disabled:opacity-50">Send Packet Email</button>
                       </div>
                       <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Status updates</div>
                       <div className="flex flex-wrap gap-2">
-                        <button type="button" onClick={() => void handleMarkPacket(packet.id, "mark-sent", { destination_type: "broker", destination_name: load.broker_name_raw ?? "Broker/AP", destination_email: load.broker_email_raw ?? null })} className="rounded-lg border border-slate-300 px-3 py-1 text-xs">Mark Sent</button>
+                        <button title="Use when packet was sent outside the app." type="button" onClick={() => void handleMarkPacket(packet.id, "mark-sent", { destination_type: "broker", destination_name: load.broker_name_raw ?? "Broker/AP", destination_email: load.broker_email_raw ?? null })} className="rounded-lg border border-slate-300 px-3 py-1 text-xs">Mark Packet Sent</button>
                         <button type="button" onClick={() => void handleMarkPacket(packet.id, "mark-accepted")} className="rounded-lg border border-slate-300 px-3 py-1 text-xs">Mark Accepted</button>
-                        <button type="button" onClick={() => void handleMarkPacket(packet.id, "mark-rejected", { reason: "Rejected by destination", resubmission_required: true })} className="rounded-lg border border-slate-300 px-3 py-1 text-xs">Mark Rejected</button>
+                        <button type="button" onClick={() => void handleMarkPacket(packet.id, "mark-rejected", { reason: "Rejected by destination", resubmission_required: true })} className="rounded-lg border border-slate-300 px-3 py-1 text-xs">Mark Needs Resubmission</button>
                       </div>
                     </div>
                     <div className="mt-2 text-xs text-slate-500">Included docs: {packet.documents.map((doc) => normalizeDocumentTypeLabel(doc.document_type)).join(", ") || "none"}</div>
+                    {packet.events.filter((event) => (event.event_type ?? "").startsWith("packet_email_")).length > 0 ? (
+                      <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                        <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Email delivery history</div>
+                        <div className="mt-2 space-y-1 text-xs text-slate-700">
+                          {packet.events
+                            .filter((event) => (event.event_type ?? "").startsWith("packet_email_"))
+                            .map((event) => (
+                              <div key={event.id} className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-1 last:border-b-0 last:pb-0">
+                                <span className="font-medium">{(event.event_type ?? "").replace("packet_email_", "").replaceAll("_", " ") || "send attempt"}</span>
+                                <span>{event.recipient ?? "recipient unavailable"}</span>
+                                <span className="text-slate-500">{formatDateTime(event.created_at)}</span>
+                              </div>
+                            ))}
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
                 ))}
                 {submissionPackets.length === 0 ? <div className="text-sm text-slate-500">No submission packets yet.</div> : null}
@@ -2847,11 +2867,11 @@ export default function LoadDetailPage() {
             <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
               <div className="mb-4 flex items-center justify-between gap-3">
                 <div>
-                  <h2 className="text-lg font-semibold text-slate-950">Follow-Up Automation</h2>
-                  <p className="mt-1 text-sm text-slate-600">Track internal reminders for packet acceptance, overdue payment, reserve pending, and payment exceptions.</p>
+                  <h2 className="text-lg font-semibold text-slate-950">Follow-Up Actions</h2>
+                  <p className="mt-1 text-sm text-slate-600">Track reminders for packet responses, overdue payment, reserve release, and disputes.</p>
                 </div>
                 <button type="button" onClick={() => void handleGenerateFollowUps()} disabled={isSavingFollowUpTask} className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:opacity-50">
-                  {isSavingFollowUpTask ? "Working..." : "Generate follow-ups"}
+                  {isSavingFollowUpTask ? "Working..." : "Generate Follow-Up Tasks"}
                 </button>
               </div>
               <div className="space-y-3">
@@ -2878,7 +2898,7 @@ export default function LoadDetailPage() {
                 <div>
                   <h2 className="text-lg font-semibold text-slate-950">Documents</h2>
                   <p className="mt-1 text-sm text-slate-600">
-                    Upload office documents, review driver uploads, and keep this load packet ready for invoicing and follow-up.
+                    Upload office documents, review driver uploads, and keep this load ready for invoice + submission.
                   </p>
                 </div>
 
@@ -2889,14 +2909,14 @@ export default function LoadDetailPage() {
                     disabled={isDocumentsLoading || isUploadingDocument}
                     className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    {isDocumentsLoading ? "Refreshing..." : "Refresh Documents"}
+                    {isDocumentsLoading ? "Refreshing..." : "Refresh"}
                   </button>
 
                   <button
                     type="button"
                     onClick={handleOpenFilePicker}
                     disabled={!canUploadDocuments || isUploadingDocument}
-                    className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="rounded-xl bg-brand-600 px-5 py-3 text-base font-semibold text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {isUploadingDocument ? "Uploading..." : "Upload Document"}
                   </button>
@@ -2949,6 +2969,15 @@ export default function LoadDetailPage() {
                   )}
                 </div>
               </div>
+              <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                <p className="font-semibold">What is missing right now</p>
+                <p className="mt-1 text-xs">
+                  {(load.packet_readiness?.missing_required_documents?.submission ?? []).length > 0
+                    ? (load.packet_readiness?.missing_required_documents?.submission ?? []).join(", ")
+                    : "No required submission documents are missing."}
+                </p>
+                <p className="mt-1 text-xs">Accepted types: PDF/JPG/PNG/WEBP/HEIC/HEIF/TIFF · Max size: 15MB</p>
+              </div>
               <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
                 Document extraction may be incomplete for some files. Verify critical values before submission or funding actions.
               </div>
@@ -2975,7 +3004,7 @@ export default function LoadDetailPage() {
                 ))}
               </div>
 
-              <div className="rounded-2xl border border-slate-200">
+              <div className="overflow-x-auto rounded-2xl border border-slate-200">
                 <div className="grid grid-cols-12 gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
                   <div className="col-span-12 lg:col-span-4">Document</div>
                   <div className="col-span-6 lg:col-span-2">Type</div>
@@ -3201,6 +3230,7 @@ export default function LoadDetailPage() {
 
             <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
               <h2 className="mb-4 text-lg font-semibold text-slate-950">Payment Reconciliation</h2>
+              <p className="mb-3 text-sm text-slate-600">Use these actions to track actual money movement for this load.</p>
               <div className="space-y-3 text-sm text-slate-700">
                 <div className="flex items-center justify-between gap-4"><span>Gross Amount</span><span className="font-medium text-slate-900">{formatCurrency(paymentRecord?.gross_amount, paymentRecord?.currency ?? load.currency_code ?? "USD")}</span></div>
                 <div className="flex items-center justify-between gap-4"><span>Expected Amount</span><span className="font-medium text-slate-900">{formatCurrency(paymentRecord?.expected_amount, paymentRecord?.currency ?? load.currency_code ?? "USD")}</span></div>
@@ -3218,14 +3248,14 @@ export default function LoadDetailPage() {
                 {paymentRecord?.dispute_reason ? <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800">{paymentRecord.dispute_reason}</div> : null}
               </div>
               <div className="mt-4 grid gap-2">
-                <button type="button" disabled={isSavingPayment} onClick={() => openPaymentActionModal("record_payment")} className="rounded-xl border border-slate-300 px-3 py-2 text-left text-xs font-semibold text-slate-700">Record payment</button>
-                <button type="button" disabled={isSavingPayment} onClick={() => openPaymentActionModal("mark_fully_paid")} className="rounded-xl border border-slate-300 px-3 py-2 text-left text-xs font-semibold text-slate-700">Mark fully paid</button>
+                <button type="button" disabled={isSavingPayment} onClick={() => openPaymentActionModal("record_payment")} className="rounded-xl border border-slate-300 px-3 py-2 text-left text-xs font-semibold text-slate-700">Record payment received</button>
+                <button type="button" disabled={isSavingPayment} onClick={() => openPaymentActionModal("mark_fully_paid")} className="rounded-xl border border-slate-300 px-3 py-2 text-left text-xs font-semibold text-slate-700">Mark load fully paid</button>
                 <button type="button" disabled={isSavingPayment} onClick={() => openPaymentActionModal("record_partial_payment")} className="rounded-xl border border-slate-300 px-3 py-2 text-left text-xs font-semibold text-slate-700">Record partial payment</button>
-                <button type="button" disabled={isSavingPayment} onClick={() => openPaymentActionModal("record_factoring_advance")} className="rounded-xl border border-slate-300 px-3 py-2 text-left text-xs font-semibold text-slate-700">Record advance from factor</button>
-                <button type="button" disabled={isSavingPayment} onClick={() => openPaymentActionModal("mark_reserve_pending")} className="rounded-xl border border-slate-300 px-3 py-2 text-left text-xs font-semibold text-slate-700">Mark reserve pending</button>
-                <button type="button" disabled={isSavingPayment} onClick={() => openPaymentActionModal("record_reserve_paid")} className="rounded-xl border border-slate-300 px-3 py-2 text-left text-xs font-semibold text-slate-700">Record reserve paid</button>
-                <button type="button" disabled={isSavingPayment} onClick={() => openPaymentActionModal("mark_short_paid")} className="rounded-xl border border-slate-300 px-3 py-2 text-left text-xs font-semibold text-slate-700">Mark short-paid</button>
-                <button type="button" disabled={isSavingPayment} onClick={() => openPaymentActionModal("flag_dispute")} className="rounded-xl border border-slate-300 px-3 py-2 text-left text-xs font-semibold text-slate-700">Flag dispute</button>
+                <button type="button" disabled={isSavingPayment} onClick={() => openPaymentActionModal("record_factoring_advance")} className="rounded-xl border border-slate-300 px-3 py-2 text-left text-xs font-semibold text-slate-700">Record factoring advance</button>
+                <button type="button" disabled={isSavingPayment} onClick={() => openPaymentActionModal("mark_reserve_pending")} className="rounded-xl border border-slate-300 px-3 py-2 text-left text-xs font-semibold text-slate-700">Mark reserve still pending</button>
+                <button type="button" disabled={isSavingPayment} onClick={() => openPaymentActionModal("record_reserve_paid")} className="rounded-xl border border-slate-300 px-3 py-2 text-left text-xs font-semibold text-slate-700">Record reserve release paid</button>
+                <button type="button" disabled={isSavingPayment} onClick={() => openPaymentActionModal("mark_short_paid")} className="rounded-xl border border-slate-300 px-3 py-2 text-left text-xs font-semibold text-slate-700">Mark short-pay received</button>
+                <button type="button" disabled={isSavingPayment} onClick={() => openPaymentActionModal("flag_dispute")} className="rounded-xl border border-slate-300 px-3 py-2 text-left text-xs font-semibold text-slate-700">Flag payment dispute</button>
               </div>
             </div>
 
