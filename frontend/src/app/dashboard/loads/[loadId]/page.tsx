@@ -215,6 +215,22 @@ type FollowUpTask = {
   due_at?: string | null;
 };
 
+type PaymentActionType =
+  | "record_payment"
+  | "mark_fully_paid"
+  | "record_partial_payment"
+  | "record_factoring_advance"
+  | "mark_reserve_pending"
+  | "record_reserve_paid"
+  | "mark_short_paid"
+  | "flag_dispute";
+
+type ModalState =
+  | { kind: "none" }
+  | { kind: "send_packet_email"; packet: SubmissionPacket; toEmail: string; subject: string; body: string }
+  | { kind: "payment_action"; action: PaymentActionType; values: Record<string, string> }
+  | { kind: "snooze_follow_up"; taskId: string; until: string };
+
 type UploadDocumentType = "" | "rate_confirmation" | "bill_of_lading" | "proof_of_delivery" | "invoice" | "lumper_receipt" | "detention_support" | "scale_ticket" | "accessorial_support" | "payment_remittance" | "damage_claim_photo" | "other" | "unknown";
 
 type OperationalChecklistState = "complete" | "current" | "pending" | "blocked";
@@ -957,6 +973,21 @@ function extractErrorMessage(caught: unknown, fallback: string) {
   return fallback;
 }
 
+function isValidEmail(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+}
+
+function isValidAmount(value: string) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0;
+}
+
+function isValidDate(value: string) {
+  if (!value.trim()) return false;
+  const parsed = new Date(value);
+  return !Number.isNaN(parsed.getTime());
+}
+
 export default function LoadDetailPage() {
   const router = useRouter();
   const params = useParams<{ loadId: string | string[] }>();
@@ -995,6 +1026,8 @@ export default function LoadDetailPage() {
   const [isSavingPayment, setIsSavingPayment] = useState(false);
   const [followUpTasks, setFollowUpTasks] = useState<FollowUpTask[]>([]);
   const [isSavingFollowUpTask, setIsSavingFollowUpTask] = useState(false);
+  const [modalState, setModalState] = useState<ModalState>({ kind: "none" });
+  const [modalError, setModalError] = useState<string | null>(null);
 
   const fetchLoad = useCallback(async (): Promise<Load | null> => {
     if (!loadId) {
@@ -1214,8 +1247,7 @@ export default function LoadDetailPage() {
     }
   }
 
-  async function handleSendPacketEmail(packet: SubmissionPacket) {
-    if (!loadId) return;
+  function openSendPacketEmailModal(packet: SubmissionPacket) {
     const defaultTo = (packet.destination_email || "").trim() || (load?.broker_email_raw || "").trim();
     const loadNumber = (load?.load_number || load?.id || loadId || "").trim();
     const invoiceNumber = (load?.invoice_number || "").trim() || `Load ${loadNumber}`;
@@ -1245,32 +1277,37 @@ export default function LoadDetailPage() {
       "Thank you,",
       carrierName,
     ].join("\n");
+    setModalError(null);
+    setModalState({
+      kind: "send_packet_email",
+      packet,
+      toEmail: defaultTo,
+      subject: defaultSubject,
+      body: defaultBody,
+    });
+  }
 
-    const toEmail = window.prompt("Send packet to email:", defaultTo);
-    if (!toEmail) return;
-    const subject = window.prompt("Email subject:", defaultSubject);
-    if (!subject) return;
-    const body = window.prompt("Email body:", defaultBody);
-    if (!body) return;
-
+  async function handleSendPacketEmail(packetId: string, toEmail: string, subject: string, body: string) {
+    if (!loadId) return;
     try {
       setIsSubmissionBusy(true);
       setError(null);
       const token = getAccessToken();
       await apiClient.post(
-        `/loads/${encodeURIComponent(loadId)}/submission-packets/${encodeURIComponent(packet.id)}/send-email`,
+        `/loads/${encodeURIComponent(loadId)}/submission-packets/${encodeURIComponent(packetId)}/send-email`,
         { to_email: toEmail, subject, body },
         { token: token ?? undefined }
       );
       setSubmissionPackets(await fetchSubmissionPackets());
       setLoad(await fetchLoad());
       setActionMessage("Packet email sent and logged.");
+      setModalState({ kind: "none" });
     } catch (caught: unknown) {
       const message = extractErrorMessage(caught, "Failed to send packet email.");
       if (message.toLowerCase().includes("disabled")) {
-        setError("Email sending is not enabled. Use Download Packet ZIP or Copy Submission Email.");
+        setModalError("Email sending is not enabled. Use Download Packet ZIP or Copy Submission Email.");
       } else {
-        setError(message);
+        setModalError(message);
       }
     } finally {
       setIsSubmissionBusy(false);
@@ -1319,23 +1356,99 @@ export default function LoadDetailPage() {
     }
   }
 
-  async function handleFollowUpAction(taskId: string, action: "complete" | "cancel" | "snooze") {
+  async function handleFollowUpAction(taskId: string, action: "complete" | "cancel" | "snooze", until?: string) {
     try {
       setIsSavingFollowUpTask(true);
       const token = getAccessToken();
       if (action === "snooze") {
-        const until = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString();
-        await apiClient.post(`/follow-ups/${encodeURIComponent(taskId)}/snooze`, { until }, { token: token ?? undefined });
+        const snoozeUntil = until ?? new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString();
+        await apiClient.post(`/follow-ups/${encodeURIComponent(taskId)}/snooze`, { until: snoozeUntil }, { token: token ?? undefined });
       } else {
         await apiClient.post(`/follow-ups/${encodeURIComponent(taskId)}/${action}`, {}, { token: token ?? undefined });
       }
       setFollowUpTasks(await fetchFollowUpTasks());
       setActionMessage("Follow-up updated.");
+      setModalState({ kind: "none" });
     } catch (caught: unknown) {
       setError(extractErrorMessage(caught, "Failed to update follow-up task."));
     } finally {
       setIsSavingFollowUpTask(false);
     }
+  }
+
+  function openPaymentActionModal(action: PaymentActionType) {
+    const baseExpected = String(paymentRecord?.expected_amount ?? paymentRecord?.amount_received ?? "0");
+    const baseReceived = String(paymentRecord?.amount_received ?? "0");
+    const baseAdvance = String(paymentRecord?.advance_amount ?? "0");
+    const baseReserve = String(paymentRecord?.reserve_amount ?? "0");
+    const baseReservePaid = String(paymentRecord?.reserve_paid_amount ?? "0");
+
+    const defaults: Record<PaymentActionType, Record<string, string>> = {
+      record_payment: { amount_received: baseReceived, paid_date: new Date().toISOString().slice(0, 10) },
+      mark_fully_paid: { amount: baseExpected, paid_date: new Date().toISOString().slice(0, 10) },
+      record_partial_payment: { amount: baseReceived, paid_date: new Date().toISOString().slice(0, 10) },
+      record_factoring_advance: { amount: baseAdvance, factor_name: paymentRecord?.factor_name ?? "", advance_date: new Date().toISOString().slice(0, 10) },
+      mark_reserve_pending: { reserve_amount: baseReserve },
+      record_reserve_paid: { amount: baseReservePaid, paid_date: new Date().toISOString().slice(0, 10) },
+      mark_short_paid: { received_amount: baseReceived, expected_amount: baseExpected, reason: paymentRecord?.notes ?? "" },
+      flag_dispute: { reason: paymentRecord?.dispute_reason ?? "" },
+    };
+
+    setModalError(null);
+    setModalState({ kind: "payment_action", action, values: defaults[action] });
+  }
+
+  async function submitPaymentAction(action: PaymentActionType, values: Record<string, string>) {
+    if (action === "record_payment") {
+      if (!isValidAmount(values.amount_received ?? "")) return setModalError("Enter a valid payment amount.");
+      if (!isValidDate(values.paid_date ?? "")) return setModalError("Enter a valid paid date.");
+      await handlePaymentAction("", { amount_received: values.amount_received, paid_date: values.paid_date });
+      setModalState({ kind: "none" });
+      return;
+    }
+    if (action === "mark_fully_paid") {
+      if (!isValidAmount(values.amount ?? "")) return setModalError("Enter a valid amount.");
+      if (!isValidDate(values.paid_date ?? "")) return setModalError("Enter a valid paid date.");
+      await handlePaymentAction("mark-paid", { amount: values.amount, paid_date: values.paid_date });
+      setModalState({ kind: "none" });
+      return;
+    }
+    if (action === "record_partial_payment") {
+      if (!isValidAmount(values.amount ?? "")) return setModalError("Enter a valid partial payment amount.");
+      if (!isValidDate(values.paid_date ?? "")) return setModalError("Enter a valid paid date.");
+      await handlePaymentAction("mark-partial-payment", { amount: values.amount, paid_date: values.paid_date });
+      setModalState({ kind: "none" });
+      return;
+    }
+    if (action === "record_factoring_advance") {
+      if (!isValidAmount(values.amount ?? "")) return setModalError("Enter a valid factoring advance amount.");
+      if (!isValidDate(values.advance_date ?? "")) return setModalError("Enter a valid advance date.");
+      await handlePaymentAction("mark-advance-paid", { amount: values.amount, factor_name: values.factor_name, advance_date: values.advance_date });
+      setModalState({ kind: "none" });
+      return;
+    }
+    if (action === "mark_reserve_pending") {
+      if (!isValidAmount(values.reserve_amount ?? "")) return setModalError("Enter a valid reserve amount.");
+      await handlePaymentAction("mark-reserve-pending", { reserve_amount: values.reserve_amount });
+      setModalState({ kind: "none" });
+      return;
+    }
+    if (action === "record_reserve_paid") {
+      if (!isValidAmount(values.amount ?? "")) return setModalError("Enter a valid reserve paid amount.");
+      if (!isValidDate(values.paid_date ?? "")) return setModalError("Enter a valid reserve paid date.");
+      await handlePaymentAction("mark-reserve-paid", { amount: values.amount, paid_date: values.paid_date });
+      setModalState({ kind: "none" });
+      return;
+    }
+    if (action === "mark_short_paid") {
+      if (!isValidAmount(values.received_amount ?? "") || !isValidAmount(values.expected_amount ?? "")) return setModalError("Enter valid expected and received amounts.");
+      await handlePaymentAction("mark-short-paid", { received_amount: values.received_amount, expected_amount: values.expected_amount, reason: values.reason });
+      setModalState({ kind: "none" });
+      return;
+    }
+    if ((values.reason ?? "").trim().length < 3) return setModalError("Provide a brief dispute reason.");
+    await handlePaymentAction("mark-disputed", { reason: values.reason });
+    setModalState({ kind: "none" });
   }
 
   const fetchCurrentStaffUserId = useCallback(async (): Promise<string> => {
@@ -2710,34 +2823,19 @@ export default function LoadDetailPage() {
                       <div className="text-xs text-slate-500">{packet.status ?? "draft"}</div>
                     </div>
                     <div className="mt-1 text-xs text-slate-500">Destination: {packet.destination_type ?? "—"} • Sent: {formatDateTime(packet.sent_at)}</div>
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      <button type="button" onClick={() => void handleMarkPacket(packet.id, "mark-sent", { destination_type: "broker", destination_name: load.broker_name_raw ?? "Broker/AP", destination_email: load.broker_email_raw ?? null })} className="rounded-lg border border-slate-300 px-3 py-1 text-xs">Record packet as sent</button>
-                      <button type="button" onClick={() => void handleMarkPacket(packet.id, "mark-sent", { destination_type: "factoring", destination_name: "Factoring" })} className="rounded-lg border border-slate-300 px-3 py-1 text-xs">Mark Sent to Factoring</button>
-                      <button type="button" onClick={() => void handleMarkPacket(packet.id, "mark-accepted")} className="rounded-lg border border-slate-300 px-3 py-1 text-xs">Record broker/factor acceptance</button>
-                      <button type="button" onClick={() => void handleMarkPacket(packet.id, "mark-rejected", { reason: "Rejected by destination", resubmission_required: true })} className="rounded-lg border border-slate-300 px-3 py-1 text-xs">Record rejection/resubmission</button>
-                      <button
-                        type="button"
-                        onClick={() => void handleDownloadPacketZip(packet.id)}
-                        disabled={downloadingPacketId === packet.id}
-                        className="rounded-lg border border-slate-300 px-3 py-1 text-xs disabled:opacity-50"
-                      >
-                        {downloadingPacketId === packet.id ? "Downloading..." : "Download Packet ZIP"}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void handleSendPacketEmail(packet)}
-                        disabled={isSubmissionBusy}
-                        className="rounded-lg border border-slate-300 px-3 py-1 text-xs disabled:opacity-50"
-                      >
-                        Send Packet Email
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void handleCopySubmissionEmail()}
-                        className="rounded-lg border border-slate-300 px-3 py-1 text-xs"
-                      >
-                        Copy Submission Email
-                      </button>
+                    <div className="mt-2 space-y-2">
+                      <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Packet actions</div>
+                      <div className="flex flex-wrap gap-2">
+                        <button type="button" onClick={() => void handleDownloadPacketZip(packet.id)} disabled={downloadingPacketId === packet.id} className="rounded-lg border border-slate-300 px-3 py-1 text-xs disabled:opacity-50">{downloadingPacketId === packet.id ? "Downloading..." : "Download ZIP"}</button>
+                        <button type="button" onClick={() => void handleCopySubmissionEmail()} className="rounded-lg border border-slate-300 px-3 py-1 text-xs">Copy Email</button>
+                        <button type="button" onClick={() => openSendPacketEmailModal(packet)} disabled={isSubmissionBusy} className="rounded-lg border border-slate-300 px-3 py-1 text-xs disabled:opacity-50">Send Email</button>
+                      </div>
+                      <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Status updates</div>
+                      <div className="flex flex-wrap gap-2">
+                        <button type="button" onClick={() => void handleMarkPacket(packet.id, "mark-sent", { destination_type: "broker", destination_name: load.broker_name_raw ?? "Broker/AP", destination_email: load.broker_email_raw ?? null })} className="rounded-lg border border-slate-300 px-3 py-1 text-xs">Mark Sent</button>
+                        <button type="button" onClick={() => void handleMarkPacket(packet.id, "mark-accepted")} className="rounded-lg border border-slate-300 px-3 py-1 text-xs">Mark Accepted</button>
+                        <button type="button" onClick={() => void handleMarkPacket(packet.id, "mark-rejected", { reason: "Rejected by destination", resubmission_required: true })} className="rounded-lg border border-slate-300 px-3 py-1 text-xs">Mark Rejected</button>
+                      </div>
                     </div>
                     <div className="mt-2 text-xs text-slate-500">Included docs: {packet.documents.map((doc) => normalizeDocumentTypeLabel(doc.document_type)).join(", ") || "none"}</div>
                   </div>
@@ -2767,7 +2865,7 @@ export default function LoadDetailPage() {
                     <div className="mt-1 text-xs text-slate-600">{task.recommended_action ?? "Follow up with broker/factor."}</div>
                     <div className="mt-2 flex flex-wrap gap-2">
                       <button type="button" onClick={() => void handleFollowUpAction(task.id, "complete")} className="rounded-lg border border-slate-300 px-3 py-1 text-xs">Complete</button>
-                      <button type="button" onClick={() => void handleFollowUpAction(task.id, "snooze")} className="rounded-lg border border-slate-300 px-3 py-1 text-xs">Snooze</button>
+                      <button type="button" onClick={() => { setModalError(null); setModalState({ kind: "snooze_follow_up", taskId: task.id, until: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10) }); }} className="rounded-lg border border-slate-300 px-3 py-1 text-xs">Snooze</button>
                       <button type="button" onClick={() => void handleFollowUpAction(task.id, "cancel")} className="rounded-lg border border-slate-300 px-3 py-1 text-xs">Cancel</button>
                     </div>
                   </div>
@@ -3120,14 +3218,14 @@ export default function LoadDetailPage() {
                 {paymentRecord?.dispute_reason ? <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800">{paymentRecord.dispute_reason}</div> : null}
               </div>
               <div className="mt-4 grid gap-2">
-                <button type="button" disabled={isSavingPayment} onClick={() => { const amount = window.prompt("Record payment amount received", paymentRecord?.amount_received ?? "0"); if (amount) void handlePaymentAction("", { amount_received: amount }); }} className="rounded-xl border border-slate-300 px-3 py-2 text-left text-xs font-semibold text-slate-700">Record payment</button>
-                <button type="button" disabled={isSavingPayment} onClick={() => { const amount = window.prompt("Mark fully paid amount", paymentRecord?.expected_amount ?? paymentRecord?.amount_received ?? "0"); if (amount) void handlePaymentAction("mark-paid", { amount }); }} className="rounded-xl border border-slate-300 px-3 py-2 text-left text-xs font-semibold text-slate-700">Mark fully paid</button>
-                <button type="button" disabled={isSavingPayment} onClick={() => { const amount = window.prompt("Record partial payment amount", paymentRecord?.amount_received ?? "0"); if (amount) void handlePaymentAction("mark-partial-payment", { amount }); }} className="rounded-xl border border-slate-300 px-3 py-2 text-left text-xs font-semibold text-slate-700">Record partial payment</button>
-                <button type="button" disabled={isSavingPayment} onClick={() => { const amount = window.prompt("Record advance from factor", paymentRecord?.advance_amount ?? "0"); const factor_name = window.prompt("Factor name", paymentRecord?.factor_name ?? ""); if (amount) void handlePaymentAction("mark-advance-paid", { amount, factor_name }); }} className="rounded-xl border border-slate-300 px-3 py-2 text-left text-xs font-semibold text-slate-700">Record advance from factor</button>
-                <button type="button" disabled={isSavingPayment} onClick={() => { const reserve_amount = window.prompt("Mark reserve pending amount", paymentRecord?.reserve_amount ?? "0"); if (reserve_amount) void handlePaymentAction("mark-reserve-pending", { reserve_amount }); }} className="rounded-xl border border-slate-300 px-3 py-2 text-left text-xs font-semibold text-slate-700">Mark reserve pending</button>
-                <button type="button" disabled={isSavingPayment} onClick={() => { const amount = window.prompt("Record reserve paid amount", paymentRecord?.reserve_paid_amount ?? "0"); if (amount) void handlePaymentAction("mark-reserve-paid", { amount }); }} className="rounded-xl border border-slate-300 px-3 py-2 text-left text-xs font-semibold text-slate-700">Record reserve paid</button>
-                <button type="button" disabled={isSavingPayment} onClick={() => { const received_amount = window.prompt("Mark short-paid received amount", paymentRecord?.amount_received ?? "0"); const expected_amount = window.prompt("Expected amount", paymentRecord?.expected_amount ?? "0"); const reason = window.prompt("Reason", paymentRecord?.notes ?? ""); if (received_amount && expected_amount) void handlePaymentAction("mark-short-paid", { received_amount, expected_amount, reason }); }} className="rounded-xl border border-slate-300 px-3 py-2 text-left text-xs font-semibold text-slate-700">Mark short-paid</button>
-                <button type="button" disabled={isSavingPayment} onClick={() => { const reason = window.prompt("Flag dispute reason", paymentRecord?.dispute_reason ?? ""); if (reason) void handlePaymentAction("mark-disputed", { reason }); }} className="rounded-xl border border-slate-300 px-3 py-2 text-left text-xs font-semibold text-slate-700">Flag dispute</button>
+                <button type="button" disabled={isSavingPayment} onClick={() => openPaymentActionModal("record_payment")} className="rounded-xl border border-slate-300 px-3 py-2 text-left text-xs font-semibold text-slate-700">Record payment</button>
+                <button type="button" disabled={isSavingPayment} onClick={() => openPaymentActionModal("mark_fully_paid")} className="rounded-xl border border-slate-300 px-3 py-2 text-left text-xs font-semibold text-slate-700">Mark fully paid</button>
+                <button type="button" disabled={isSavingPayment} onClick={() => openPaymentActionModal("record_partial_payment")} className="rounded-xl border border-slate-300 px-3 py-2 text-left text-xs font-semibold text-slate-700">Record partial payment</button>
+                <button type="button" disabled={isSavingPayment} onClick={() => openPaymentActionModal("record_factoring_advance")} className="rounded-xl border border-slate-300 px-3 py-2 text-left text-xs font-semibold text-slate-700">Record advance from factor</button>
+                <button type="button" disabled={isSavingPayment} onClick={() => openPaymentActionModal("mark_reserve_pending")} className="rounded-xl border border-slate-300 px-3 py-2 text-left text-xs font-semibold text-slate-700">Mark reserve pending</button>
+                <button type="button" disabled={isSavingPayment} onClick={() => openPaymentActionModal("record_reserve_paid")} className="rounded-xl border border-slate-300 px-3 py-2 text-left text-xs font-semibold text-slate-700">Record reserve paid</button>
+                <button type="button" disabled={isSavingPayment} onClick={() => openPaymentActionModal("mark_short_paid")} className="rounded-xl border border-slate-300 px-3 py-2 text-left text-xs font-semibold text-slate-700">Mark short-paid</button>
+                <button type="button" disabled={isSavingPayment} onClick={() => openPaymentActionModal("flag_dispute")} className="rounded-xl border border-slate-300 px-3 py-2 text-left text-xs font-semibold text-slate-700">Flag dispute</button>
               </div>
             </div>
 
@@ -3234,6 +3332,63 @@ export default function LoadDetailPage() {
           </aside>
         </div>
       </div>
+      {modalState.kind !== "none" ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
+          <div className="w-full max-w-xl rounded-2xl border border-slate-200 bg-white p-5 shadow-soft">
+            {modalState.kind === "send_packet_email" ? (
+              <>
+                <h3 className="text-lg font-semibold text-slate-950">Send Packet Email</h3>
+                <div className="mt-4 space-y-3">
+                  <input className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" value={modalState.toEmail} onChange={(event) => { setModalError(null); setModalState({ ...modalState, toEmail: event.target.value }); }} placeholder="Recipient email" />
+                  <input className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" value={modalState.subject} onChange={(event) => { setModalError(null); setModalState({ ...modalState, subject: event.target.value }); }} placeholder="Subject" />
+                  <textarea className="min-h-40 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" value={modalState.body} onChange={(event) => { setModalError(null); setModalState({ ...modalState, body: event.target.value }); }} placeholder="Email body" />
+                </div>
+                {modalError ? <div className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{modalError}</div> : null}
+                <div className="mt-4 flex justify-end gap-2">
+                  <button type="button" className="rounded-xl border border-slate-300 px-3 py-2 text-sm" onClick={() => setModalState({ kind: "none" })}>Cancel</button>
+                  <button type="button" disabled={isSubmissionBusy} className="rounded-xl bg-brand-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50" onClick={() => {
+                    if (!isValidEmail(modalState.toEmail)) return setModalError("Enter a valid recipient email.");
+                    if (modalState.subject.trim().length < 3) return setModalError("Email subject is required.");
+                    if (modalState.body.trim().length < 3) return setModalError("Email body is required.");
+                    void handleSendPacketEmail(modalState.packet.id, modalState.toEmail.trim(), modalState.subject.trim(), modalState.body.trim());
+                  }}>{isSubmissionBusy ? "Sending..." : "Send Email"}</button>
+                </div>
+              </>
+            ) : null}
+            {modalState.kind === "payment_action" ? (
+              <>
+                <h3 className="text-lg font-semibold text-slate-950">Payment Action</h3>
+                <div className="mt-4 grid gap-3">
+                  {Object.entries(modalState.values).map(([key, value]) => (
+                    <input key={key} type={key.includes("date") ? "date" : "text"} className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" value={value} onChange={(event) => { setModalError(null); setModalState({ ...modalState, values: { ...modalState.values, [key]: event.target.value } }); }} placeholder={key.replaceAll("_", " ")} />
+                  ))}
+                </div>
+                {modalError ? <div className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{modalError}</div> : null}
+                <div className="mt-4 flex justify-end gap-2">
+                  <button type="button" className="rounded-xl border border-slate-300 px-3 py-2 text-sm" onClick={() => setModalState({ kind: "none" })}>Cancel</button>
+                  <button type="button" disabled={isSavingPayment} className="rounded-xl bg-brand-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50" onClick={() => void submitPaymentAction(modalState.action, modalState.values)}>{isSavingPayment ? "Saving..." : "Save"}</button>
+                </div>
+              </>
+            ) : null}
+            {modalState.kind === "snooze_follow_up" ? (
+              <>
+                <h3 className="text-lg font-semibold text-slate-950">Snooze Follow-Up</h3>
+                <div className="mt-4">
+                  <input type="date" className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" value={modalState.until} onChange={(event) => { setModalError(null); setModalState({ ...modalState, until: event.target.value }); }} />
+                </div>
+                {modalError ? <div className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{modalError}</div> : null}
+                <div className="mt-4 flex justify-end gap-2">
+                  <button type="button" className="rounded-xl border border-slate-300 px-3 py-2 text-sm" onClick={() => setModalState({ kind: "none" })}>Cancel</button>
+                  <button type="button" disabled={isSavingFollowUpTask} className="rounded-xl bg-brand-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50" onClick={() => {
+                    if (!isValidDate(modalState.until)) return setModalError("Select a valid snooze date.");
+                    void handleFollowUpAction(modalState.taskId, "snooze", new Date(`${modalState.until}T12:00:00Z`).toISOString());
+                  }}>{isSavingFollowUpTask ? "Saving..." : "Snooze"}</button>
+                </div>
+              </>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
     </main>
   );
 }
