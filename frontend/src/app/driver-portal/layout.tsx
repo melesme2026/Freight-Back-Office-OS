@@ -12,7 +12,6 @@ const DRIVER_NAV = [
   { href: "/driver-portal/loads", label: "Loads" },
   { href: "/driver-portal/uploads", label: "Uploads" },
   { href: "/driver-portal/support", label: "Support" },
-  { href: "/driver-portal/billing", label: "Billing" },
 ] as const;
 
 function isActive(pathname: string, href: string): boolean {
@@ -43,8 +42,13 @@ export default function DriverPortalLayout({
 
     if (!canAccessDriverPortal(userRole)) {
       router.replace("/dashboard");
+      return;
     }
-  }, [accessToken, organizationId, userRole, router]);
+
+    if (pathname.startsWith("/driver-portal/billing")) {
+      router.replace("/driver-portal/loads");
+    }
+  }, [accessToken, organizationId, userRole, pathname, router]);
 
   function handleLogout() {
     clearAuth();

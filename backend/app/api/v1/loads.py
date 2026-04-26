@@ -288,6 +288,12 @@ class SubmissionPacketSendEmailRequest(BaseModel):
     body: str | None = None
 
 
+def _authorize_submission_read(token_payload: dict[str, Any]) -> None:
+    role = str(token_payload.get("role") or "").lower()
+    if role == "driver":
+        raise ForbiddenError("Drivers cannot access submission packets")
+
+
 def _authorize_submission_write(token_payload: dict[str, Any]) -> None:
     role = str(token_payload.get("role") or "").lower()
     if role in {"driver", "viewer", "support_agent", "support"}:
@@ -1098,6 +1104,53 @@ def create_load(
     )
 
 
+@router.get("/driver/loads", response_model=ApiResponse)
+def list_driver_loads(
+    *,
+    token_payload: dict[str, Any] = Depends(get_current_token_payload),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=25, ge=1, le=200),
+    db: Session = Depends(get_db_session),
+) -> ApiResponse:
+    token_role = str(token_payload.get("role") or "").lower()
+    token_driver_id = token_payload.get("driver_id")
+    token_org_id = token_payload.get("organization_id")
+
+    if token_role != "driver":
+        raise ForbiddenError("Only driver accounts can access driver loads")
+    if not token_driver_id:
+        raise UnauthorizedError("Driver token is missing driver_id")
+
+    service = LoadService(db)
+    items, total = service.list_loads(
+        organization_id=str(token_org_id),
+        driver_id=str(token_driver_id),
+        page=page,
+        page_size=page_size,
+    )
+    return ApiResponse(
+        data=[_serialize_load(item, detailed=False, db=db) for item in items],
+        meta={"page": page, "page_size": page_size, "total": total},
+        error=None,
+    )
+
+
+@router.get("/driver/loads/{load_id}", response_model=ApiResponse)
+def get_driver_load(
+    load_id: uuid.UUID,
+    token_payload: dict[str, Any] = Depends(get_current_token_payload),
+    db: Session = Depends(get_db_session),
+) -> ApiResponse:
+    token_role = str(token_payload.get("role") or "").lower()
+    if token_role != "driver":
+        raise ForbiddenError("Only driver accounts can access driver loads")
+
+    service = LoadService(db)
+    item = service.get_load(str(load_id))
+    _authorize_load_access(item=item, token_payload=token_payload)
+    return ApiResponse(data=_serialize_load(item, detailed=True, db=db), meta={}, error=None)
+
+
 @router.get("/loads", response_model=ApiResponse)
 def list_loads(
     *,
@@ -1336,6 +1389,7 @@ def list_submission_packets(
     token_payload: dict[str, Any] = Depends(get_current_token_payload),
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
+    _authorize_submission_read(token_payload)
     service = LoadService(db)
     load = service.get_load(str(load_id))
     _authorize_load_access(item=load, token_payload=token_payload)
@@ -1377,6 +1431,7 @@ def get_submission_packet(
     token_payload: dict[str, Any] = Depends(get_current_token_payload),
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
+    _authorize_submission_read(token_payload)
     service = LoadService(db)
     load = service.get_load(str(load_id))
     _authorize_load_access(item=load, token_payload=token_payload)
