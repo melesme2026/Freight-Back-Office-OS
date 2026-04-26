@@ -1,11 +1,16 @@
 from __future__ import annotations
 
+import io
+import zipfile
+from types import SimpleNamespace
+
 import pytest
 
-from app.api.v1.loads import _authorize_submission_write
+from app.api.v1.loads import _authorize_submission_download, _authorize_submission_write
 from app.core.exceptions import ForbiddenError, NotFoundError, ValidationError
 from app.domain.enums.document_type import DocumentType
 from app.services.documents.document_service import DocumentService
+from app.services.documents.storage_service import StorageService
 from app.services.loads.load_service import LoadService
 from app.services.loads.submission_packet_service import SubmissionPacketService
 
@@ -110,3 +115,94 @@ def test_cross_org_access_denied(db_session) -> None:
 def test_driver_cannot_create_or_mark_packets() -> None:
     with pytest.raises(ForbiddenError):
         _authorize_submission_write({"role": "driver"})
+
+
+def test_build_packet_zip_success(db_session) -> None:
+    load = _seed_load_with_docs(db_session, organization_id="00000000-0000-0000-0000-000000009941")
+    packet = SubmissionPacketService(db_session).create_packet_from_load(
+        str(load.id),
+        "00000000-0000-0000-0000-000000009941",
+        None,
+    )
+    storage = StorageService()
+    for packet_doc in packet.documents:
+        linked_document = packet_doc.document
+        storage.save_bytes(
+            relative_path=linked_document.storage_key,
+            content=f"file-{packet_doc.document_type}".encode("utf-8"),
+            overwrite=True,
+        )
+
+    zip_bytes, load_number = SubmissionPacketService(db_session).build_packet_zip(
+        packet_id=str(packet.id),
+        load_id=str(load.id),
+        org_id="00000000-0000-0000-0000-000000009941",
+    )
+
+    assert load_number == "LD-001"
+    assert zip_bytes
+
+
+def test_build_packet_zip_contains_expected_files(db_session) -> None:
+    load = _seed_load_with_docs(db_session, organization_id="00000000-0000-0000-0000-000000009951")
+    packet = SubmissionPacketService(db_session).create_packet_from_load(
+        str(load.id),
+        "00000000-0000-0000-0000-000000009951",
+        None,
+    )
+    storage = StorageService()
+    for packet_doc in packet.documents:
+        linked_document = packet_doc.document
+        storage.save_bytes(
+            relative_path=linked_document.storage_key,
+            content=b"packet-document",
+            overwrite=True,
+        )
+
+    zip_bytes, _ = SubmissionPacketService(db_session).build_packet_zip(
+        packet_id=str(packet.id),
+        load_id=str(load.id),
+        org_id="00000000-0000-0000-0000-000000009951",
+    )
+
+    with zipfile.ZipFile(io.BytesIO(zip_bytes)) as archive:
+        names = set(archive.namelist())
+    assert names == {
+        "invoice-LD-001.pdf",
+        "rate-confirmation-LD-001.pdf",
+        "pod-LD-001.pdf",
+        "bol-LD-001.pdf",
+    }
+
+
+def test_submission_packet_download_cross_org_access_denied() -> None:
+    with pytest.raises(ForbiddenError):
+        _authorize_submission_download(
+            item=SimpleNamespace(organization_id="00000000-0000-0000-0000-000000009961"),
+            token_payload={
+                "organization_id": "00000000-0000-0000-0000-000000009962",
+                "role": "owner",
+            },
+        )
+
+
+def test_submission_packet_download_driver_access_denied() -> None:
+    with pytest.raises(ForbiddenError):
+        _authorize_submission_download(
+            item=SimpleNamespace(organization_id="00000000-0000-0000-0000-000000009971"),
+            token_payload={
+                "organization_id": "00000000-0000-0000-0000-000000009971",
+                "role": "driver",
+            },
+        )
+
+
+def test_submission_packet_download_missing_packet_returns_not_found(db_session) -> None:
+    load = _seed_load_with_docs(db_session, organization_id="00000000-0000-0000-0000-000000009981")
+
+    with pytest.raises(NotFoundError):
+        SubmissionPacketService(db_session).build_packet_zip(
+            packet_id="00000000-0000-0000-0000-000000000001",
+            load_id=str(load.id),
+            org_id="00000000-0000-0000-0000-000000009981",
+        )

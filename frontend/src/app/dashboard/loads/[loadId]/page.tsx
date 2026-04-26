@@ -42,6 +42,7 @@ type PacketReadiness = {
 type Load = {
   id: string;
   load_number: string | null;
+  invoice_number?: string | null;
   status: LoadStatus;
   driver_id?: string | null;
   driver_name?: string | null;
@@ -87,6 +88,10 @@ type Load = {
     is_overdue?: boolean;
     blockers?: string[];
   } | null;
+};
+
+type CarrierProfile = {
+  legal_name: string | null;
 };
 
 type ReviewQueueItem = {
@@ -587,6 +592,7 @@ function normalizeLoad(payload: unknown): Load | null {
   return {
     id,
     load_number: getStringField(record, "load_number"),
+    invoice_number: getStringField(record, "invoice_number"),
     status: normalizeLoadStatus(record?.status),
     driver_id: getStringField(record, "driver_id"),
     driver_name: getFirstStringField(record, ["driver_name", "driver_display_name"]),
@@ -916,6 +922,8 @@ export default function LoadDetailPage() {
   const [isSavingFollowUp, setIsSavingFollowUp] = useState(false);
   const [submissionPackets, setSubmissionPackets] = useState<SubmissionPacket[]>([]);
   const [isSubmissionBusy, setIsSubmissionBusy] = useState(false);
+  const [downloadingPacketId, setDownloadingPacketId] = useState<string | null>(null);
+  const [carrierProfile, setCarrierProfile] = useState<CarrierProfile | null>(null);
 
   const fetchLoad = useCallback(async (): Promise<Load | null> => {
     if (!loadId) {
@@ -996,6 +1004,17 @@ export default function LoadDetailPage() {
       .filter((item): item is SubmissionPacket => item !== null);
   }, [loadId]);
 
+  const fetchCarrierProfile = useCallback(async (): Promise<CarrierProfile | null> => {
+    const token = getAccessToken();
+    const response = await apiClient.get<ApiResponse<unknown>>("/carrier-profile", {
+      token: token ?? undefined,
+    });
+    const record = asRecord(response.data);
+    return {
+      legal_name: getStringField(record, "legal_name"),
+    };
+  }, []);
+
   async function handleCreateSubmissionPacket() {
     if (!loadId) return;
     try {
@@ -1024,6 +1043,82 @@ export default function LoadDetailPage() {
       setError(extractErrorMessage(caught, "Failed to update packet submission status."));
     } finally {
       setIsSubmissionBusy(false);
+    }
+  }
+
+  async function handleDownloadPacketZip(packetId: string) {
+    if (!loadId || downloadingPacketId) return;
+
+    try {
+      setDownloadingPacketId(packetId);
+      setError(null);
+      const token = getAccessToken();
+      const response = await fetch(
+        buildConfiguredApiUrl(
+          `/loads/${encodeURIComponent(loadId)}/submission-packets/${encodeURIComponent(packetId)}/download`
+        ),
+        {
+          method: "GET",
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        }
+      );
+      if (!response.ok) {
+        throw new Error((await response.text()) || "Failed to download packet ZIP.");
+      }
+      const blob = await response.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+      const link = window.document.createElement("a");
+      link.href = blobUrl;
+      link.download = `packet-${load?.load_number ?? loadId}.zip`;
+      window.document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(blobUrl);
+      setActionMessage("Packet ZIP downloaded.");
+    } catch (caught: unknown) {
+      setError(extractErrorMessage(caught, "Failed to download packet ZIP."));
+    } finally {
+      setDownloadingPacketId(null);
+    }
+  }
+
+  async function handleCopySubmissionEmail() {
+    const loadNumber = (load?.load_number || load?.id || loadId || "").trim();
+    if (!loadNumber) return;
+    const invoiceNumber = (load?.invoice_number || "").trim() || `Load ${loadNumber}`;
+    const carrierName = (carrierProfile?.legal_name || "Carrier").trim();
+    const amountValue = load?.gross_amount ?? "0.00";
+    const amountText = `${String(amountValue)} ${load?.currency_code ?? "USD"}`;
+    const subject = `Invoice Packet for Load ${loadNumber} / Invoice ${invoiceNumber}`;
+    const body = [
+      "Hello,",
+      "",
+      `Please find the billing packet for Load ${loadNumber} ready for review.`,
+      "",
+      "Included documents:",
+      "- Invoice",
+      "- Rate Confirmation",
+      "- Proof of Delivery",
+      "- Bill of Lading (if included)",
+      "",
+      `Carrier: ${carrierName}`,
+      `Invoice Number: ${invoiceNumber}`,
+      `Invoice Amount: ${amountText}`,
+      `Pickup: ${load?.pickup_location ?? "N/A"}`,
+      `Delivery: ${load?.delivery_location ?? "N/A"}`,
+      "",
+      "Please confirm receipt and advise if any additional documentation is required.",
+      "",
+      "Thank you,",
+      carrierName,
+    ].join("\n");
+
+    try {
+      await navigator.clipboard.writeText(`Subject: ${subject}\n\n${body}`);
+      setActionMessage("Email copied to clipboard");
+      setError(null);
+    } catch {
+      setError("Unable to copy email. Please copy manually.");
     }
   }
 
@@ -1058,6 +1153,7 @@ export default function LoadDetailPage() {
       const loadData = await fetchLoad();
       setLoad(loadData);
       void fetchSubmissionPackets().then((packets) => setSubmissionPackets(packets)).catch(() => setSubmissionPackets([]));
+      void fetchCarrierProfile().then((profile) => setCarrierProfile(profile)).catch(() => setCarrierProfile(null));
 
       void fetchReviewQueueItem()
         .then((reviewItem) => {
@@ -1080,7 +1176,7 @@ export default function LoadDetailPage() {
       setIsLoading(false);
       setIsDocumentsLoading(false);
     }
-  }, [fetchLoad, fetchReviewQueueItem, fetchLoadDocuments, fetchSubmissionPackets, loadId]);
+  }, [fetchCarrierProfile, fetchLoad, fetchReviewQueueItem, fetchLoadDocuments, fetchSubmissionPackets, loadId]);
 
   useEffect(() => {
     void fetchPageData();
@@ -2401,6 +2497,21 @@ export default function LoadDetailPage() {
                       <button type="button" onClick={() => void handleMarkPacket(packet.id, "mark-sent", { destination_type: "factoring", destination_name: "Factoring" })} className="rounded-lg border border-slate-300 px-3 py-1 text-xs">Mark Sent to Factoring</button>
                       <button type="button" onClick={() => void handleMarkPacket(packet.id, "mark-accepted")} className="rounded-lg border border-slate-300 px-3 py-1 text-xs">Record broker/factor acceptance</button>
                       <button type="button" onClick={() => void handleMarkPacket(packet.id, "mark-rejected", { reason: "Rejected by destination", resubmission_required: true })} className="rounded-lg border border-slate-300 px-3 py-1 text-xs">Record rejection/resubmission</button>
+                      <button
+                        type="button"
+                        onClick={() => void handleDownloadPacketZip(packet.id)}
+                        disabled={downloadingPacketId === packet.id}
+                        className="rounded-lg border border-slate-300 px-3 py-1 text-xs disabled:opacity-50"
+                      >
+                        {downloadingPacketId === packet.id ? "Downloading..." : "Download Packet ZIP"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleCopySubmissionEmail()}
+                        className="rounded-lg border border-slate-300 px-3 py-1 text-xs"
+                      >
+                        Copy Submission Email
+                      </button>
                     </div>
                     <div className="mt-2 text-xs text-slate-500">Included docs: {packet.documents.map((doc) => normalizeDocumentTypeLabel(doc.document_type)).join(", ") || "none"}</div>
                   </div>

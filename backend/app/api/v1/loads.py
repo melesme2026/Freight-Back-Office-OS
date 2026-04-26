@@ -280,6 +280,16 @@ def _authorize_submission_write(token_payload: dict[str, Any]) -> None:
         raise ForbiddenError("You do not have permission to modify submission packets")
 
 
+def _authorize_submission_download(*, item: Any, token_payload: dict[str, Any]) -> None:
+    token_org_id = token_payload.get("organization_id")
+    if str(getattr(item, "organization_id", "")) != str(token_org_id):
+        raise ForbiddenError("Load is not in authenticated organization")
+
+    role = str(token_payload.get("role") or "").lower()
+    if role not in {"owner", "admin", "ops", "billing"}:
+        raise ForbiddenError("You do not have permission to download submission packets")
+
+
 def _serialize_submission_packet(packet: Any) -> dict[str, Any]:
     return {
         "id": _uuid_to_str(getattr(packet, "id", None)),
@@ -1327,6 +1337,29 @@ def get_submission_packet(
     packet_service = SubmissionPacketService(db)
     packet = packet_service.get_packet(str(packet_id), str(load_id), str(load.organization_id))
     return ApiResponse(data=_serialize_submission_packet(packet), meta={}, error=None)
+
+
+@router.get("/loads/{load_id}/submission-packets/{packet_id}/download")
+def download_submission_packet_zip(
+    load_id: uuid.UUID,
+    packet_id: uuid.UUID,
+    token_payload: dict[str, Any] = Depends(get_current_token_payload),
+    db: Session = Depends(get_db_session),
+) -> StreamingResponse:
+    service = LoadService(db)
+    load = service.get_load(str(load_id))
+    _authorize_submission_download(item=load, token_payload=token_payload)
+
+    zip_bytes, load_number = SubmissionPacketService(db).build_packet_zip(
+        packet_id=str(packet_id),
+        load_id=str(load_id),
+        org_id=str(load.organization_id),
+    )
+    return StreamingResponse(
+        io.BytesIO(zip_bytes),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="packet-{load_number}.zip"'},
+    )
 
 
 @router.post("/loads/{load_id}/submission-packets/{packet_id}/mark-sent", response_model=ApiResponse)

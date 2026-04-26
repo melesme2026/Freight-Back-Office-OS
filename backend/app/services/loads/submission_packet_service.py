@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import io
+import zipfile
 import uuid
 from datetime import datetime, timezone
 from typing import Any
@@ -15,12 +17,25 @@ from app.domain.models.load_document import LoadDocument
 from app.domain.models.submission_event import SubmissionEvent
 from app.domain.models.submission_packet import SubmissionPacket
 from app.domain.models.submission_packet_document import SubmissionPacketDocument
+from app.services.documents.storage_service import StorageService
 from app.services.loads.load_service import LoadService
 
 REQUIRED_DOC_TYPES = {
     DocumentType.INVOICE.value,
     DocumentType.RATE_CONFIRMATION.value,
     DocumentType.PROOF_OF_DELIVERY.value,
+}
+PACKET_DOWNLOAD_DOC_TYPES = (
+    DocumentType.INVOICE.value,
+    DocumentType.RATE_CONFIRMATION.value,
+    DocumentType.PROOF_OF_DELIVERY.value,
+    DocumentType.BILL_OF_LADING.value,
+)
+PACKET_FILENAME_PREFIXES = {
+    DocumentType.INVOICE.value: "invoice",
+    DocumentType.RATE_CONFIRMATION.value: "rate-confirmation",
+    DocumentType.PROOF_OF_DELIVERY.value: "pod",
+    DocumentType.BILL_OF_LADING.value: "bol",
 }
 
 
@@ -159,6 +174,57 @@ class SubmissionPacketService:
         self.db.flush()
         self.db.expire_all()
         return self.get_packet(packet_id, load_id, org_id)
+
+    def build_packet_zip(self, *, packet_id: str, load_id: str, org_id: str) -> tuple[bytes, str]:
+        packet = self.get_packet(packet_id, load_id, org_id)
+        load = self._get_load(load_id=load_id, org_id=org_id)
+        load_number = self._clean(load.load_number) or str(load.id)
+
+        packet_documents = list(getattr(packet, "documents", None) or [])
+        docs_by_type: dict[str, SubmissionPacketDocument] = {}
+        for doc in packet_documents:
+            doc_type = self._clean(getattr(doc, "document_type", None))
+            if not doc_type or doc_type in docs_by_type:
+                continue
+            docs_by_type[doc_type] = doc
+
+        required = (
+            DocumentType.INVOICE.value,
+            DocumentType.RATE_CONFIRMATION.value,
+            DocumentType.PROOF_OF_DELIVERY.value,
+        )
+        missing_required = [doc_type for doc_type in required if doc_type not in docs_by_type]
+        if missing_required:
+            raise ValidationError(
+                "Submission packet is missing required snapshot documents",
+                details={"missing_documents": missing_required, "packet_id": packet_id},
+            )
+
+        storage_service = StorageService()
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as archive:
+            for doc_type in PACKET_DOWNLOAD_DOC_TYPES:
+                packet_doc = docs_by_type.get(doc_type)
+                if packet_doc is None:
+                    continue
+                linked_doc = getattr(packet_doc, "document", None)
+                storage_key = self._clean(getattr(linked_doc, "storage_key", None))
+                if not storage_key:
+                    raise ValidationError(
+                        "Submission packet snapshot document is missing storage metadata",
+                        details={"packet_id": packet_id, "document_type": doc_type},
+                    )
+                if not storage_service.exists(relative_path=storage_key):
+                    raise ValidationError(
+                        "Submission packet snapshot document file is missing",
+                        details={"packet_id": packet_id, "document_type": doc_type, "storage_key": storage_key},
+                    )
+                archive.writestr(
+                    f"{PACKET_FILENAME_PREFIXES[doc_type]}-{load_number}.pdf",
+                    storage_service.read_bytes(relative_path=storage_key),
+                )
+
+        return zip_buffer.getvalue(), load_number
 
     def _add_event(
         self,
