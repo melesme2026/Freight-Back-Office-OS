@@ -6,7 +6,8 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.exceptions import UnauthorizedError, ValidationError
+from app.core.exceptions import AppError, UnauthorizedError
+from app.domain.models.organization import Organization
 from app.core.security import create_access_token, verify_password
 from app.domain.models.staff_user import StaffUser
 from app.repositories.driver_repo import DriverRepository
@@ -57,19 +58,34 @@ class AuthService:
             return organization_id
 
         normalized_email = email.strip().lower()
-        stmt = select(StaffUser.organization_id).where(StaffUser.email == normalized_email).distinct()
-        organization_ids = list(self.db.scalars(stmt).all())
+        stmt = (
+            select(StaffUser.organization_id, StaffUser.role, Organization.name)
+            .join(Organization, StaffUser.organization_id == Organization.id)
+            .where(StaffUser.email == normalized_email)
+            .distinct()
+        )
+        organization_records = list(self.db.execute(stmt).all())
 
-        if not organization_ids:
+        if not organization_records:
             raise UnauthorizedError("Invalid email or password")
 
-        if len(organization_ids) > 1:
-            raise ValidationError(
-                "Multiple organizations are associated with this email. Use advanced login with organization_id.",
-                details={"email": normalized_email, "organization_count": len(organization_ids)},
+        if len(organization_records) > 1:
+            organizations = [
+                {
+                    "organization_id": str(record.organization_id),
+                    "organization_name": record.name,
+                    "role": str(getattr(record.role, "value", record.role)).lower(),
+                }
+                for record in organization_records
+            ]
+            raise AppError(
+                "This email is linked to multiple workspaces. Select the workspace you want to access.",
+                code="multiple_organizations",
+                status_code=422,
+                details={"email": normalized_email, "organization_count": len(organizations), "organizations": organizations},
             )
 
-        return organization_ids[0]
+        return organization_records[0].organization_id
 
     def build_access_token(self, user: StaffUser) -> str:
         role_value = str(getattr(user.role, "value", user.role)).lower()

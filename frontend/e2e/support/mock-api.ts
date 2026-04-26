@@ -39,20 +39,39 @@ export async function mockApi(page: Page) {
     const method = req.method();
 
     if (path === "/auth/login" && method === "POST") {
-      const body = req.postDataJSON() as { email?: string; password?: string };
+      const body = req.postDataJSON() as { email?: string; password?: string; organization_id?: string };
       if (body?.password !== seed.owner.password) {
         return route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ error: { message: "Invalid credentials" } }) });
       }
-      const role = body.email === seed.driver.email ? "driver" : "owner";
+      if (body?.email === "multi@example.com" && !body.organization_id) {
+        return route.fulfill({
+          status: 422,
+          contentType: "application/json",
+          body: JSON.stringify({
+            error: {
+              code: "multiple_organizations",
+              message: "This email is linked to multiple workspaces. Select the workspace you want to access.",
+              details: {
+                organizations: [
+                  { organization_id: "00000000-0000-0000-0000-00000000a111", organization_name: "Adwa Express LLC", role: "owner" },
+                  { organization_id: "00000000-0000-0000-0000-00000000b222", organization_name: "Adwa Driver Ops", role: "driver" },
+                ],
+              },
+            },
+          }),
+        });
+      }
+      const role = body.email === seed.driver.email || body.organization_id === "00000000-0000-0000-0000-00000000b222" ? "driver" : "owner";
+      const organizationId = body.organization_id ?? seed.organizationId;
       const expiresAtEpoch = Math.floor(Date.now() / 1000) + 60 * 60;
       const accessToken = buildToken({
         sub: body?.email ?? "e2e-user",
         exp: expiresAtEpoch,
         role,
-        organization_id: seed.organizationId,
+        organization_id: organizationId,
         ...(role === "driver" ? { driver_id: seed.driver.id } : {}),
       });
-      return ok(route, { access_token: accessToken, token_type: "Bearer", user: { role, organization_id: seed.organizationId } });
+      return ok(route, { access_token: accessToken, token_type: "Bearer", user: { role, organization_id: organizationId } });
     }
 
     if (path === "/auth/signup" && method === "POST") {
