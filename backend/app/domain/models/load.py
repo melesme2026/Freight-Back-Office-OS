@@ -23,6 +23,7 @@ if TYPE_CHECKING:
     from app.domain.models.driver import Driver
     from app.domain.models.extracted_field import ExtractedField
     from app.domain.models.load_document import LoadDocument
+    from app.domain.models.load_payment_record import LoadPaymentRecord
     from app.domain.models.notification import Notification
     from app.domain.models.organization import Organization
     from app.domain.models.staff_user import StaffUser
@@ -259,6 +260,12 @@ class Load(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     usage_records: Mapped[list["UsageRecord"]] = relationship(
         back_populates="load",
+        lazy="selectin",
+    )
+    payment_record: Mapped["LoadPaymentRecord | None"] = relationship(
+        back_populates="load",
+        uselist=False,
+        cascade="all, delete-orphan",
         lazy="selectin",
     )
 

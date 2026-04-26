@@ -187,6 +187,25 @@ type SubmissionPacket = {
   events: SubmissionPacketEvent[];
 };
 
+type PaymentReconciliationRecord = {
+  id: string;
+  gross_amount?: string | null;
+  expected_amount?: string | null;
+  amount_received?: string | null;
+  currency?: string | null;
+  payment_status?: string | null;
+  paid_date?: string | null;
+  factoring_used?: boolean | null;
+  factor_name?: string | null;
+  advance_amount?: string | null;
+  advance_date?: string | null;
+  reserve_amount?: string | null;
+  reserve_paid_amount?: string | null;
+  short_paid_amount?: string | null;
+  dispute_reason?: string | null;
+  notes?: string | null;
+};
+
 type UploadDocumentType = "" | "rate_confirmation" | "bill_of_lading" | "proof_of_delivery" | "invoice" | "lumper_receipt" | "detention_support" | "scale_ticket" | "accessorial_support" | "payment_remittance" | "damage_claim_photo" | "other" | "unknown";
 
 type OperationalChecklistState = "complete" | "current" | "pending" | "blocked";
@@ -837,6 +856,30 @@ function normalizeSubmissionPacket(item: unknown): SubmissionPacket | null {
   };
 }
 
+function normalizePaymentReconciliation(item: unknown): PaymentReconciliationRecord | null {
+  const record = asRecord(item);
+  const id = getStringField(record, "id");
+  if (!id) return null;
+  return {
+    id,
+    gross_amount: getStringField(record, "gross_amount"),
+    expected_amount: getStringField(record, "expected_amount"),
+    amount_received: getStringField(record, "amount_received"),
+    currency: getStringField(record, "currency"),
+    payment_status: getStringField(record, "payment_status"),
+    paid_date: getStringField(record, "paid_date"),
+    factoring_used: getOptionalBooleanField(record, "factoring_used"),
+    factor_name: getStringField(record, "factor_name"),
+    advance_amount: getStringField(record, "advance_amount"),
+    advance_date: getStringField(record, "advance_date"),
+    reserve_amount: getStringField(record, "reserve_amount"),
+    reserve_paid_amount: getStringField(record, "reserve_paid_amount"),
+    short_paid_amount: getStringField(record, "short_paid_amount"),
+    dispute_reason: getStringField(record, "dispute_reason"),
+    notes: getStringField(record, "notes"),
+  };
+}
+
 function getLoadDisplayTitle(load: Load) {
   return load.load_number ?? load.id;
 }
@@ -924,6 +967,8 @@ export default function LoadDetailPage() {
   const [isSubmissionBusy, setIsSubmissionBusy] = useState(false);
   const [downloadingPacketId, setDownloadingPacketId] = useState<string | null>(null);
   const [carrierProfile, setCarrierProfile] = useState<CarrierProfile | null>(null);
+  const [paymentRecord, setPaymentRecord] = useState<PaymentReconciliationRecord | null>(null);
+  const [isSavingPayment, setIsSavingPayment] = useState(false);
 
   const fetchLoad = useCallback(async (): Promise<Load | null> => {
     if (!loadId) {
@@ -1014,6 +1059,16 @@ export default function LoadDetailPage() {
       legal_name: getStringField(record, "legal_name"),
     };
   }, []);
+
+  const fetchPaymentReconciliation = useCallback(async (): Promise<PaymentReconciliationRecord | null> => {
+    if (!loadId) return null;
+    const token = getAccessToken();
+    const response = await apiClient.get<ApiResponse<unknown>>(
+      `/loads/${encodeURIComponent(loadId)}/payment-reconciliation/`,
+      { token: token ?? undefined }
+    );
+    return normalizePaymentReconciliation(response.data);
+  }, [loadId]);
 
   async function handleCreateSubmissionPacket() {
     if (!loadId) return;
@@ -1122,6 +1177,33 @@ export default function LoadDetailPage() {
     }
   }
 
+  async function handlePaymentAction(path: string, payload: Record<string, unknown>) {
+    if (!loadId) return;
+    try {
+      setIsSavingPayment(true);
+      setError(null);
+      const token = getAccessToken();
+      const response =
+        path.trim().length === 0
+          ? await apiClient.patch<ApiResponse<unknown>>(
+              `/loads/${encodeURIComponent(loadId)}/payment-reconciliation/`,
+              payload,
+              { token: token ?? undefined }
+            )
+          : await apiClient.post<ApiResponse<unknown>>(
+              `/loads/${encodeURIComponent(loadId)}/payment-reconciliation/${path}`,
+              payload,
+              { token: token ?? undefined }
+            );
+      setPaymentRecord(normalizePaymentReconciliation(response.data));
+      setActionMessage("Payment reconciliation updated.");
+    } catch (caught: unknown) {
+      setError(extractErrorMessage(caught, "Failed to update payment reconciliation."));
+    } finally {
+      setIsSavingPayment(false);
+    }
+  }
+
   const fetchCurrentStaffUserId = useCallback(async (): Promise<string> => {
     const token = getAccessToken();
     const response = await apiClient.get<ApiResponse<unknown>>("/auth/me", {
@@ -1154,6 +1236,7 @@ export default function LoadDetailPage() {
       setLoad(loadData);
       void fetchSubmissionPackets().then((packets) => setSubmissionPackets(packets)).catch(() => setSubmissionPackets([]));
       void fetchCarrierProfile().then((profile) => setCarrierProfile(profile)).catch(() => setCarrierProfile(null));
+      void fetchPaymentReconciliation().then((record) => setPaymentRecord(record)).catch(() => setPaymentRecord(null));
 
       void fetchReviewQueueItem()
         .then((reviewItem) => {
@@ -1176,7 +1259,7 @@ export default function LoadDetailPage() {
       setIsLoading(false);
       setIsDocumentsLoading(false);
     }
-  }, [fetchCarrierProfile, fetchLoad, fetchReviewQueueItem, fetchLoadDocuments, fetchSubmissionPackets, loadId]);
+  }, [fetchCarrierProfile, fetchLoad, fetchPaymentReconciliation, fetchReviewQueueItem, fetchLoadDocuments, fetchSubmissionPackets, loadId]);
 
   useEffect(() => {
     void fetchPageData();
@@ -2843,6 +2926,36 @@ export default function LoadDetailPage() {
                     {index === 0 ? " · Recommended first" : ""}
                   </button>
                 ))}
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
+              <h2 className="mb-4 text-lg font-semibold text-slate-950">Payment Reconciliation</h2>
+              <div className="space-y-3 text-sm text-slate-700">
+                <div className="flex items-center justify-between gap-4"><span>Gross Amount</span><span className="font-medium text-slate-900">{formatCurrency(paymentRecord?.gross_amount, paymentRecord?.currency ?? load.currency_code ?? "USD")}</span></div>
+                <div className="flex items-center justify-between gap-4"><span>Expected Amount</span><span className="font-medium text-slate-900">{formatCurrency(paymentRecord?.expected_amount, paymentRecord?.currency ?? load.currency_code ?? "USD")}</span></div>
+                <div className="flex items-center justify-between gap-4"><span>Amount Received</span><span className="font-medium text-slate-900">{formatCurrency(paymentRecord?.amount_received, paymentRecord?.currency ?? load.currency_code ?? "USD")}</span></div>
+                <div className="flex items-center justify-between gap-4"><span>Payment Status</span><span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-700">{(paymentRecord?.payment_status ?? "not_submitted").replaceAll("_", " ")}</span></div>
+                <div className="flex items-center justify-between gap-4"><span>Paid Date</span><span className="font-medium text-slate-900">{formatDateTime(paymentRecord?.paid_date)}</span></div>
+                {paymentRecord?.factoring_used ? (
+                  <>
+                    <div className="flex items-center justify-between gap-4"><span>Advance</span><span className="font-medium text-slate-900">{formatCurrency(paymentRecord?.advance_amount, paymentRecord?.currency ?? load.currency_code ?? "USD")} · {formatDateTime(paymentRecord?.advance_date)}</span></div>
+                    <div className="flex items-center justify-between gap-4"><span>Reserve Amount</span><span className="font-medium text-slate-900">{formatCurrency(paymentRecord?.reserve_amount, paymentRecord?.currency ?? load.currency_code ?? "USD")}</span></div>
+                    <div className="flex items-center justify-between gap-4"><span>Reserve Paid</span><span className="font-medium text-slate-900">{formatCurrency(paymentRecord?.reserve_paid_amount, paymentRecord?.currency ?? load.currency_code ?? "USD")}</span></div>
+                  </>
+                ) : null}
+                {paymentRecord?.short_paid_amount ? <div className="flex items-center justify-between gap-4"><span>Short-paid Amount</span><span className="font-medium text-rose-700">{formatCurrency(paymentRecord.short_paid_amount, paymentRecord?.currency ?? load.currency_code ?? "USD")}</span></div> : null}
+                {paymentRecord?.dispute_reason ? <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800">{paymentRecord.dispute_reason}</div> : null}
+              </div>
+              <div className="mt-4 grid gap-2">
+                <button type="button" disabled={isSavingPayment} onClick={() => { const amount = window.prompt("Record payment amount received", paymentRecord?.amount_received ?? "0"); if (amount) void handlePaymentAction("", { amount_received: amount }); }} className="rounded-xl border border-slate-300 px-3 py-2 text-left text-xs font-semibold text-slate-700">Record payment</button>
+                <button type="button" disabled={isSavingPayment} onClick={() => { const amount = window.prompt("Mark fully paid amount", paymentRecord?.expected_amount ?? paymentRecord?.amount_received ?? "0"); if (amount) void handlePaymentAction("mark-paid", { amount }); }} className="rounded-xl border border-slate-300 px-3 py-2 text-left text-xs font-semibold text-slate-700">Mark fully paid</button>
+                <button type="button" disabled={isSavingPayment} onClick={() => { const amount = window.prompt("Record partial payment amount", paymentRecord?.amount_received ?? "0"); if (amount) void handlePaymentAction("mark-partial-payment", { amount }); }} className="rounded-xl border border-slate-300 px-3 py-2 text-left text-xs font-semibold text-slate-700">Record partial payment</button>
+                <button type="button" disabled={isSavingPayment} onClick={() => { const amount = window.prompt("Record advance from factor", paymentRecord?.advance_amount ?? "0"); const factor_name = window.prompt("Factor name", paymentRecord?.factor_name ?? ""); if (amount) void handlePaymentAction("mark-advance-paid", { amount, factor_name }); }} className="rounded-xl border border-slate-300 px-3 py-2 text-left text-xs font-semibold text-slate-700">Record advance from factor</button>
+                <button type="button" disabled={isSavingPayment} onClick={() => { const reserve_amount = window.prompt("Mark reserve pending amount", paymentRecord?.reserve_amount ?? "0"); if (reserve_amount) void handlePaymentAction("mark-reserve-pending", { reserve_amount }); }} className="rounded-xl border border-slate-300 px-3 py-2 text-left text-xs font-semibold text-slate-700">Mark reserve pending</button>
+                <button type="button" disabled={isSavingPayment} onClick={() => { const amount = window.prompt("Record reserve paid amount", paymentRecord?.reserve_paid_amount ?? "0"); if (amount) void handlePaymentAction("mark-reserve-paid", { amount }); }} className="rounded-xl border border-slate-300 px-3 py-2 text-left text-xs font-semibold text-slate-700">Record reserve paid</button>
+                <button type="button" disabled={isSavingPayment} onClick={() => { const received_amount = window.prompt("Mark short-paid received amount", paymentRecord?.amount_received ?? "0"); const expected_amount = window.prompt("Expected amount", paymentRecord?.expected_amount ?? "0"); const reason = window.prompt("Reason", paymentRecord?.notes ?? ""); if (received_amount && expected_amount) void handlePaymentAction("mark-short-paid", { received_amount, expected_amount, reason }); }} className="rounded-xl border border-slate-300 px-3 py-2 text-left text-xs font-semibold text-slate-700">Mark short-paid</button>
+                <button type="button" disabled={isSavingPayment} onClick={() => { const reason = window.prompt("Flag dispute reason", paymentRecord?.dispute_reason ?? ""); if (reason) void handlePaymentAction("mark-disputed", { reason }); }} className="rounded-xl border border-slate-300 px-3 py-2 text-left text-xs font-semibold text-slate-700">Flag dispute</button>
               </div>
             </div>
 
