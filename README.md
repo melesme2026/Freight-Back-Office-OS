@@ -289,3 +289,26 @@ This is intentional at this stage.
 ## License
 
 Proprietary and private internal project unless explicitly relicensed.
+
+
+## Launch Hardening Runbook (PR16)
+
+- Launch checklist: `docs/launch/PR16_LAUNCH_CHECKLIST.md`
+- Readiness endpoint: `/api/v1/health/readiness` (alias: `/api/v1/health/ready`)
+- Seed modes:
+  - `SEED_MODE=demo` for local/demo data only.
+  - `SEED_MODE=minimal` for production-safe baseline (no fake business records).
+- Suggested deployment sequence:
+  1. `git pull`
+  2. `docker-compose down`
+  3. `docker-compose up -d --build`
+  4. `cd backend && alembic upgrade head`
+  5. `pytest backend/tests/integration/test_launch_smoke_flow.py -q`
+  6. `npm --prefix frontend run typecheck && npm --prefix frontend run lint`
+
+Common failures:
+- Missing carrier profile before invoice generation.
+- Email sending disabled (`EMAIL_SENDING_ENABLED=false`).
+- SMTP config missing while email sending is enabled.
+- Missing packet docs (rate con/BOL/POD/invoice).
+- Alembic migrations not applied.

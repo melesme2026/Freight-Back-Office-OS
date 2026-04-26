@@ -3,6 +3,7 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
+from urllib.parse import urlparse
 
 from pydantic import AliasChoices, Field, computed_field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -137,6 +138,10 @@ class Settings(BaseSettings):
     stripe_webhook_secret: str | None = Field(default=None)
 
     healthcheck_timeout_seconds: int = Field(default=5, ge=1)
+    seed_mode: Literal["demo", "minimal"] = Field(default="demo")
+    max_upload_file_size_mb: int = Field(default=15, ge=1, le=100)
+    frontend_api_url: str | None = Field(default=None)
+    public_backend_url: str | None = Field(default=None)
 
     @field_validator(
         "debug",
@@ -212,6 +217,7 @@ class Settings(BaseSettings):
         "openai_model",
         "default_from_email",
         "web_app_base_url",
+        "seed_mode",
         mode="before",
     )
     @classmethod
@@ -241,6 +247,8 @@ class Settings(BaseSettings):
         "smtp_host",
         "smtp_username",
         "smtp_password",
+        "frontend_api_url",
+        "public_backend_url",
         mode="before",
     )
     @classmethod
@@ -342,6 +350,14 @@ class Settings(BaseSettings):
             )
         if self.email_enabled and self.email_provider == "smtp" and not self.smtp_host:
             raise ValueError("smtp_host must be configured when email_enabled=True and email_provider='smtp'")
+
+        if self.email_sending_enabled and self.email_provider == "smtp":
+            if not self.smtp_host:
+                raise ValueError("smtp_host must be configured when EMAIL_SENDING_ENABLED=true")
+            if not self.smtp_username or not self.smtp_password:
+                raise ValueError("smtp_username and smtp_password are required when EMAIL_SENDING_ENABLED=true")
+            if not self.email_from_address:
+                raise ValueError("email_from_address is required when EMAIL_SENDING_ENABLED=true")
 
         if self.billing_enabled and self.payment_provider == "none":
             raise ValueError(
@@ -500,6 +516,14 @@ class Settings(BaseSettings):
 
             if not self.cors_allowed_origins:
                 raise ValueError("cors_allowed_origins must not be empty in production")
+            if not self.database_url_override:
+                raise ValueError("DATABASE_URL must be configured via DATABASE_URL_OVERRIDE in production")
+            if not self.frontend_api_url:
+                raise ValueError("frontend_api_url must be configured in production")
+
+            parsed_web = urlparse(self.web_app_base_url)
+            if not parsed_web.scheme or not parsed_web.netloc:
+                raise ValueError("web_app_base_url must be a fully-qualified URL in production")
 
         if not self.is_local and self.secret_key == _DEFAULT_SECRET_KEY:
             raise ValueError("secret_key must be changed outside local environment")

@@ -9,6 +9,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.core.exceptions import ValidationError
 from app.core.security import hash_password
 from app.domain.models.broker import Broker
@@ -19,15 +20,15 @@ from app.domain.models.service_plan import ServicePlan
 from app.domain.models.staff_user import StaffUser
 
 
-SEED_DIR = Path(__file__).resolve().parents[3] / "data" / "seeds"
+SEED_ROOT_DIR = Path(__file__).resolve().parents[3] / "data" / "seeds"
 
 SeedModel = type[Any]
 SeedNormalizer = Callable[[dict[str, Any]], dict[str, Any]]
 
 _RUNTIME_STAFF_USER_PASSWORDS: dict[str, str] = {
-    "admin@adwafreight.com": "Admin123!",
-    "reviewer@adwafreight.com": "Reviewer123!",
-    "john.doe@example.com": "Driver123!",
+    "admin@demo.freight.local": "Admin123!",
+    "ops@demo.freight.local": "Ops123!",
+    "driver.one@example.com": "Driver123!",
 }
 
 SEED_SPECS: tuple[tuple[str, SeedModel, SeedNormalizer], ...] = (
@@ -40,8 +41,13 @@ SEED_SPECS: tuple[tuple[str, SeedModel, SeedNormalizer], ...] = (
 )
 
 
+def _resolve_seed_dir() -> Path:
+    settings = get_settings()
+    return SEED_ROOT_DIR / settings.seed_mode
+
+
 def _load_json(filename: str) -> list[dict[str, Any]]:
-    path = SEED_DIR / filename
+    path = _resolve_seed_dir() / filename
 
     if not path.exists():
         raise ValidationError(
