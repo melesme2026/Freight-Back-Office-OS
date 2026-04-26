@@ -88,7 +88,7 @@ export default function DriverLoginPage() {
           password,
           ...(normalizedOrganizationId ? { organization_id: normalizedOrganizationId } : {}),
         },
-        {}
+        { onUnauthorized: "throw" }
       );
 
       const accessToken = payload?.data?.access_token?.trim();

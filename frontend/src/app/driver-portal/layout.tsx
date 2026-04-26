@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { clearAuth, getAccessToken, getOrganizationId, getUserEmail, getUserRole } from "@/lib/auth";
 import { canAccessDriverPortal } from "@/lib/rbac";
@@ -28,19 +28,45 @@ export default function DriverPortalLayout({
 }>) {
   const router = useRouter();
   const pathname = usePathname();
-
-  const accessToken = getAccessToken();
-  const organizationId = getOrganizationId();
-  const userRole = getUserRole();
-  const userEmail = getUserEmail();
+  const [isHydrated, setIsHydrated] = useState(false);
 
   useEffect(() => {
-    if (!accessToken || !organizationId) {
+    setIsHydrated(true);
+  }, []);
+
+  const session = useMemo(() => {
+    if (!isHydrated) {
+      return {
+        accessToken: null as string | null,
+        organizationId: null as string | null,
+        userRole: null as string | null,
+        userEmail: null as string | null,
+      };
+    }
+
+    return {
+      accessToken: getAccessToken(),
+      organizationId: getOrganizationId(),
+      userRole: getUserRole(),
+      userEmail: getUserEmail(),
+    };
+  }, [isHydrated]);
+
+  const hasDriverAccess = Boolean(
+    session.accessToken && session.organizationId && canAccessDriverPortal(session.userRole)
+  );
+
+  useEffect(() => {
+    if (!isHydrated) {
+      return;
+    }
+
+    if (!session.accessToken || !session.organizationId) {
       router.replace("/driver-login");
       return;
     }
 
-    if (!canAccessDriverPortal(userRole)) {
+    if (!canAccessDriverPortal(session.userRole)) {
       router.replace("/dashboard");
       return;
     }
@@ -48,14 +74,14 @@ export default function DriverPortalLayout({
     if (pathname.startsWith("/driver-portal/billing")) {
       router.replace("/driver-portal/loads");
     }
-  }, [accessToken, organizationId, userRole, pathname, router]);
+  }, [isHydrated, pathname, router, session.accessToken, session.organizationId, session.userRole]);
 
   function handleLogout() {
     clearAuth();
     router.replace("/");
   }
 
-  if (!accessToken || !organizationId || !canAccessDriverPortal(userRole)) {
+  if (!isHydrated || !hasDriverAccess) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50 px-6">
         <div className="rounded-2xl border border-slate-200 bg-white px-6 py-5 text-sm text-slate-600 shadow-soft">
@@ -71,7 +97,7 @@ export default function DriverPortalLayout({
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
           <div>
             <div className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-700">Driver Portal</div>
-            <div className="text-sm text-slate-500">{userEmail ?? "Authenticated user"}</div>
+            <div className="text-sm text-slate-500">{session.userEmail ?? "Authenticated user"}</div>
             <Link
               href="/"
               className="mt-1 inline-flex text-xs font-semibold text-brand-700 hover:text-brand-800"
