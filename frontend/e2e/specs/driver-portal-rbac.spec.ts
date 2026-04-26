@@ -3,6 +3,7 @@ import path from "node:path";
 import { expect, test } from "@playwright/test";
 
 import { seed } from "../fixtures/test-data";
+import { loginAsDriver } from "../support/auth";
 import { mockApi } from "../support/mock-api";
 import { attachRuntimeGuards } from "../support/test-guards";
 
@@ -10,11 +11,7 @@ test("driver portal workflow + RBAC restrictions", async ({ page }) => {
   const assertClean = attachRuntimeGuards(page);
   await mockApi(page);
 
-  await page.goto("/driver-login");
-  await page.locator("input[type='email']").fill(seed.driver.email);
-  await page.locator("input[type='password']").fill(seed.driver.password);
-  await page.getByRole("button", { name: "Sign in" }).click();
-  await expect(page).toHaveURL(/\/driver-portal/);
+  await loginAsDriver(page);
 
   await page.goto("/driver-portal/loads");
   await expect(page.getByRole("heading", { name: "My Loads" })).toBeVisible();

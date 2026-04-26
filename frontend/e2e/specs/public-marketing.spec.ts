@@ -10,9 +10,9 @@ test("public pages and core nav route correctly", async ({ page }) => {
   await page.getByRole("link", { name: "View Pricing" }).click();
   await expect(page).toHaveURL(/\/pricing/);
   await expect(page.getByRole("heading", { name: /Back-office plans/i })).toBeVisible();
-  await expect(page.getByText("Starter")).toBeVisible();
-  await expect(page.getByText("Growth")).toBeVisible();
-  await expect(page.getByText("Enterprise")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Starter" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Growth" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Enterprise" })).toBeVisible();
 
   await page.getByRole("link", { name: "Request Demo" }).click();
   await expect(page).toHaveURL(/\/request-demo/);

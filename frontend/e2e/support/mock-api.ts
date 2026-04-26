@@ -16,6 +16,14 @@ function created(route: Route, data: unknown) {
   return route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ data }) });
 }
 
+function encodeJwtPart(value: Record<string, unknown>): string {
+  return Buffer.from(JSON.stringify(value)).toString("base64url");
+}
+
+function buildToken(claims: Record<string, unknown>): string {
+  return `${encodeJwtPart({ alg: "HS256", typ: "JWT" })}.${encodeJwtPart(claims)}.mock-signature`;
+}
+
 export async function mockApi(page: Page) {
   const state: MutableState = {
     invoiceCount: 0,
@@ -36,7 +44,15 @@ export async function mockApi(page: Page) {
         return route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ error: { message: "Invalid credentials" } }) });
       }
       const role = body.email === seed.driver.email ? "driver" : "owner";
-      return ok(route, { access_token: "header.payload.signature", token_type: "Bearer", user: { role, organization_id: seed.organizationId } });
+      const expiresAtEpoch = Math.floor(Date.now() / 1000) + 60 * 60;
+      const accessToken = buildToken({
+        sub: body?.email ?? "e2e-user",
+        exp: expiresAtEpoch,
+        role,
+        organization_id: seed.organizationId,
+        ...(role === "driver" ? { driver_id: seed.driver.id } : {}),
+      });
+      return ok(route, { access_token: accessToken, token_type: "Bearer", user: { role, organization_id: seed.organizationId } });
     }
 
     if (path === "/auth/signup" && method === "POST") {
@@ -44,7 +60,13 @@ export async function mockApi(page: Page) {
       if ((body?.organization_name ?? "").toLowerCase().includes("duplicate")) {
         return route.fulfill({ status: 409, contentType: "application/json", body: JSON.stringify({ error: { message: "Organization already exists" } }) });
       }
-      return created(route, { access_token: "header.payload.signature", token_type: "Bearer", user: { role: "owner", organization_id: seed.organizationId, email: body.email } });
+      const accessToken = buildToken({
+        sub: body?.email ?? "owner.e2e@example.com",
+        exp: Math.floor(Date.now() / 1000) + 60 * 60,
+        role: "owner",
+        organization_id: seed.organizationId,
+      });
+      return created(route, { access_token: accessToken, token_type: "Bearer", user: { role: "owner", organization_id: seed.organizationId, email: body.email } });
     }
 
     if (path.startsWith("/drivers") && method === "GET") {
@@ -57,6 +79,96 @@ export async function mockApi(page: Page) {
 
     if (path.startsWith("/customer-accounts") && method === "GET") {
       return ok(route, [{ id: seed.customer.id, account_name: seed.customer.account_name, status: "active" }]);
+    }
+
+    if (path.startsWith("/dashboard") && method === "GET") {
+      return ok(route, {
+        loads_total: 1,
+        loads_needing_review: 0,
+        loads_validated: 1,
+        loads_ready_to_submit: 1,
+        loads_submitted_to_broker: 0,
+        loads_waiting_on_broker: 0,
+        loads_submitted_to_factoring: 0,
+        loads_waiting_on_funding: 0,
+        loads_funded: 0,
+        loads_paid: 0,
+        documents_pending_processing: 0,
+        critical_validation_issues: 0,
+        operational_queues: { invoice_ready: 1 },
+        queue_load_examples: {},
+      });
+    }
+
+    if (path.startsWith("/onboarding/") && method === "GET") {
+      return ok(route, {
+        id: "onb-e2e-001",
+        customer_account_id: seed.customer.id,
+        status: "in_progress",
+        documents_received: true,
+        pricing_confirmed: true,
+        payment_method_added: false,
+        driver_profiles_created: true,
+        channel_connected: false,
+        go_live_ready: false,
+        completed_at: null,
+        updated_at: new Date().toISOString(),
+      });
+    }
+
+    if (path === "/auth/me" && method === "GET") {
+      return ok(route, { id: "staff-e2e-001", email: seed.owner.email, role: "owner" });
+    }
+
+    if (path.startsWith("/staff-users") && method === "GET") {
+      return ok(route, [{ id: "staff-e2e-001", full_name: "Owner E2E" }]);
+    }
+
+    if (path.includes("/review-queue/loads/") && path.endsWith("/context") && method === "GET") {
+      return ok(route, {
+        id: "rq-e2e-001",
+        load_id: seed.load.id,
+        can_generate_invoice: true,
+        can_create_packet: true,
+      });
+    }
+
+    if (path.includes("/loads/") && path.endsWith("/documents") && method === "GET") {
+      return ok(route, state.documents.map((doc, index) => ({ id: `doc-${index + 1}`, file_name: `${doc}.pdf`, document_type: doc })));
+    }
+
+    if (path.includes("/payment-reconciliation") && method === "GET") {
+      return ok(route, { expected_amount: 1000, amount_received: state.paidAmount, reserve_amount: 0, reserve_paid_amount: 0 });
+    }
+
+    if (path.includes("/payment-reconciliation") && ["POST", "PATCH"].includes(method)) {
+      const body = req.postDataJSON() as { amount?: string | number; amount_received?: string | number } | null;
+      const amount = Number(body?.amount_received ?? body?.amount ?? 0);
+      if (Number.isFinite(amount) && amount > 0) {
+        state.paidAmount = Math.min(1000, state.paidAmount + amount);
+      }
+      return ok(route, { expected_amount: 1000, amount_received: state.paidAmount, reserve_amount: 0, reserve_paid_amount: 0 });
+    }
+
+    if (path.startsWith("/follow-ups") && method === "GET") {
+      return ok(route, []);
+    }
+
+    if (path.startsWith("/follow-ups/") && method === "POST") {
+      return ok(route, { id: "fup-1", status: "open" });
+    }
+
+    if (path.includes("/follow-ups/generate") && method === "POST") {
+      return ok(route, []);
+    }
+
+    if (path === "/carrier-profile" && method === "GET") {
+      return ok(route, { legal_name: "Freight Back Office Carrier", mc_number: "MC-12345", dot_number: "DOT-12345" });
+    }
+
+    if (path === "/carrier-profile" && ["POST", "PUT", "PATCH"].includes(method)) {
+      const body = req.postDataJSON() as Record<string, unknown> | null;
+      return ok(route, body ?? {});
     }
 
     if (path.startsWith("/loads") && method === "GET" && !path.includes("driver")) {
@@ -112,8 +224,20 @@ export async function mockApi(page: Page) {
       return ok(route, packets);
     }
 
+    if (path.includes("/submission-packets/") && path.endsWith("/download") && method === "GET") {
+      return route.fulfill({ status: 200, contentType: "application/zip", body: "PK\x03\x04" });
+    }
+
     if (path.includes("/send-email") && method === "POST") {
       return route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: { message: "Email sending is not enabled" } }) });
+    }
+
+    if (path.includes("/loads/") && path.endsWith("/status") && method === "POST") {
+      return ok(route, { new_status: "invoice_ready" });
+    }
+
+    if (path.includes("/workflow-actions") && method === "POST") {
+      return ok(route, { new_status: "invoice_ready" });
     }
 
     if (path.includes("/payments") && method === "POST") {
@@ -133,16 +257,18 @@ export async function mockApi(page: Page) {
       return ok(route, [{ ...seed.load, status: "delivered", packet_readiness: { missing_required_documents: { submission: ["proof_of_delivery"] } } }]);
     }
 
-    if (path.startsWith("/money/dashboard") && method === "GET") {
+    if (path.startsWith("/reports/money-dashboard") && method === "GET") {
       return ok(route, {
         summary: { total_receivables: 1000, total_outstanding: Math.max(0, 1000 - state.paidAmount), total_received: state.paidAmount, overdue_amount: 0, reserve_pending_amount: 0, disputed_count: 0, short_paid_count: 0 },
+        aging_buckets: [],
         status_breakdown: [{ status: state.paidAmount >= 1000 ? "fully_paid" : "invoice_ready", count: 1, amount: 1000 }],
         factoring_vs_direct: { factored: { count: 0, amount: 0 }, direct: { count: 1, amount: 1000 }, advance_total: 0, reserve_pending_total: 0, direct_unpaid_total: Math.max(0, 1000 - state.paidAmount) },
+        needs_attention: { urgent_count: 0, overdue_followups_count: 0, top_items: [] },
         recent_cash_activity: [{ load_number: seed.load.load_number, amount_received: state.paidAmount, paid_date: new Date().toISOString(), payment_status: state.paidAmount >= 1000 ? "fully_paid" : "partial", factoring_used: false }],
       });
     }
 
-    if (path.startsWith("/billing/summary") && method === "GET") {
+    if (path.startsWith("/billing/dashboard") && method === "GET") {
       return ok(route, { active_subscriptions: 0, open_invoices: 0, past_due_invoices: 0, collected_this_month: 0, currency_code: "USD" });
     }
 
@@ -158,6 +284,14 @@ export async function mockApi(page: Page) {
       return ok(route, { id: seed.organizationId, billing_provider: "stripe", billing_status: "trial", plan_code: "starter" });
     }
 
-    return ok(route, []);
+    return route.fulfill({
+      status: 501,
+      contentType: "application/json",
+      body: JSON.stringify({
+        error: {
+          message: `E2E mock missing handler for ${method} ${path}`,
+        },
+      }),
+    });
   });
 }

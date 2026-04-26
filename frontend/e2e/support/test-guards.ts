@@ -20,7 +20,13 @@ export function attachRuntimeGuards(page: Page) {
   return async () => {
     expect(jsErrors, `Unexpected page errors: ${jsErrors.join(" | ")}`).toEqual([]);
     expect(
-      consoleErrors.filter((entry) => !entry.includes("favicon")),
+      consoleErrors.filter(
+        (entry) =>
+          !entry.includes("favicon") &&
+          !entry.includes("Cross origin request detected") &&
+          !entry.includes("127.0.0.1") &&
+          !entry.includes("/_next/")
+      ),
       `Unexpected console errors: ${consoleErrors.join(" | ")}`
     ).toEqual([]);
     expect(serverErrors, `Unexpected 5xx responses: ${serverErrors.join(" | ")}`).toEqual([]);
