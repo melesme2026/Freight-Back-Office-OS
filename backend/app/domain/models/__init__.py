@@ -12,6 +12,7 @@ from app.domain.models.extracted_field import ExtractedField  # noqa: F401
 from app.domain.models.ledger_entry import LedgerEntry  # noqa: F401
 from app.domain.models.load import Load  # noqa: F401
 from app.domain.models.load_document import LoadDocument  # noqa: F401
+from app.domain.models.load_payment_record import LoadPaymentRecord  # noqa: F401
 from app.domain.models.notification import Notification  # noqa: F401
 from app.domain.models.onboarding_checklist import OnboardingChecklist  # noqa: F401
 from app.domain.models.organization import Organization  # noqa: F401

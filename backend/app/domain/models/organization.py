@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from app.domain.models.driver import Driver
     from app.domain.models.ledger_entry import LedgerEntry
     from app.domain.models.load import Load
+    from app.domain.models.load_payment_record import LoadPaymentRecord
     from app.domain.models.load_document import LoadDocument
     from app.domain.models.notification import Notification
     from app.domain.models.payment import Payment
@@ -141,6 +142,10 @@ class Organization(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     loads: Mapped[list["Load"]] = relationship(
         back_populates="organization",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
+    load_payment_records: Mapped[list["LoadPaymentRecord"]] = relationship(
         cascade="all, delete-orphan",
         lazy="selectin",
     )
