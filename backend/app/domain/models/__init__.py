@@ -5,6 +5,7 @@ from app.domain.models.audit_log import AuditLog  # noqa: F401
 from app.domain.models.billing_invoice import BillingInvoice  # noqa: F401
 from app.domain.models.billing_invoice_line import BillingInvoiceLine  # noqa: F401
 from app.domain.models.broker import Broker  # noqa: F401
+from app.domain.models.carrier_profile import CarrierProfile  # noqa: F401
 from app.domain.models.customer_account import CustomerAccount  # noqa: F401
 from app.domain.models.driver import Driver  # noqa: F401
 from app.domain.models.extracted_field import ExtractedField  # noqa: F401

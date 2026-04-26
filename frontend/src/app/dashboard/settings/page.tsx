@@ -175,6 +175,7 @@ export default function SettingsPage() {
         <div className="mb-8">
           <p className="text-sm font-medium text-brand-700">Dashboard / Settings</p>
           <h1 className="text-3xl font-bold tracking-tight text-slate-950">Organization Settings</h1>
+          <a href="/dashboard/settings/carrier-profile" className="mt-2 inline-block text-sm font-semibold text-brand-700 hover:underline">Manage Carrier Profile</a>
         </div>
 
         {errorMessage ? (

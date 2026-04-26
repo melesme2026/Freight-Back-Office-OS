@@ -42,7 +42,7 @@ def test_build_professional_invoice_pdf_contains_professional_sections() -> None
         ],
     )
 
-    pdf_bytes = _build_professional_invoice_pdf(load=load)
+    pdf_bytes = _build_professional_invoice_pdf(load=load, carrier_profile={"legal_name":"Blue Sky Transport LLC","email":"billing@bluesky.example","phone":"+1-555-111-2222","address":"100 Main St | Chicago, IL 60601 | USA","mc_number":"MC-778899","dot_number":"DOT-112233","remit_to":"Blue Sky Transport LLC | 100 Main St, Chicago, IL 60601 | ACH to account ending 2481"})
 
     assert isinstance(pdf_bytes, bytes)
     assert b"Freight Invoice" in pdf_bytes
@@ -85,7 +85,7 @@ def test_build_professional_invoice_pdf_handles_missing_optional_fields_without_
         broker_email_raw=None,
     )
 
-    pdf_bytes = _build_professional_invoice_pdf(load=load)
+    pdf_bytes = _build_professional_invoice_pdf(load=load, carrier_profile={"legal_name":"N/A Carrier","email":"N/A","phone":"N/A","address":"N/A","mc_number":"N/A","dot_number":"N/A","remit_to":"N/A"})
 
     assert isinstance(pdf_bytes, bytes)
     assert b"Customer:" in pdf_bytes
@@ -130,7 +130,7 @@ def test_build_professional_invoice_pdf_wraps_long_values_without_crashing() -> 
         ],
     )
 
-    pdf_bytes = _build_professional_invoice_pdf(load=load)
+    pdf_bytes = _build_professional_invoice_pdf(load=load, carrier_profile={"legal_name":"N/A Carrier","email":"N/A","phone":"N/A","address":"N/A","mc_number":"N/A","dot_number":"N/A","remit_to":"N/A"})
 
     assert isinstance(pdf_bytes, bytes)
     assert len(pdf_bytes) > 0

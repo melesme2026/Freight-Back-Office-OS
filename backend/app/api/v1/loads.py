@@ -21,6 +21,7 @@ from app.domain.enums.load_status import LoadStatus
 from app.schemas.common import ApiResponse
 from app.services.documents.document_service import DocumentService
 from app.services.documents.storage_service import StorageService
+from app.services.carrier_profile_service import CarrierProfileService
 from app.services.loads.load_service import LoadService
 from app.services.loads.operational_queue_service import OperationalQueueService
 from app.services.loads.packet_readiness import calculate_packet_readiness
@@ -380,7 +381,63 @@ def _pdf_checkbox_label(label: str, *, checked: bool) -> str:
     return f"[{'X' if checked else ' '}] {label}"
 
 
-def _build_professional_invoice_pdf(*, load: Any) -> bytes:
+def _build_carrier_profile_context(*, db: Session, load: Any) -> dict[str, str]:
+    profile = CarrierProfileService(db).get_by_org(getattr(load, "organization_id", None))
+    if profile is None:
+        raise ValidationError(
+            "Complete Carrier Profile before generating invoice",
+            details={
+                "organization_id": str(getattr(load, "organization_id", "")),
+                "code": "carrier_profile_required",
+            },
+        )
+
+    address_parts = [
+        profile.address_line1,
+        profile.address_line2,
+        f"{profile.city}, {profile.state} {profile.zip}",
+        profile.country,
+    ]
+    remit_parts = [profile.remit_to_name, profile.remit_to_address, profile.remit_to_notes]
+
+    return {
+        "legal_name": profile.legal_name,
+        "email": profile.email,
+        "phone": profile.phone,
+        "mc_number": _string_or_na(profile.mc_number),
+        "dot_number": _string_or_na(profile.dot_number),
+        "address": " | ".join([part for part in address_parts if part]),
+        "remit_to": " | ".join([part for part in remit_parts if part]),
+    }
+
+
+def _ensure_load_invoice_number(*, db: Session, load: Any) -> str:
+    existing = _normalize_optional_text(getattr(load, "invoice_number", None))
+    if existing:
+        return existing
+
+    year = datetime.utcnow().year
+    org_id = str(getattr(load, "organization_id"))
+    prefix = f"INV-{year}-"
+
+    loads, _ = LoadService(db).list_loads(organization_id=org_id, page=1, page_size=5000)
+    max_increment = 0
+    for item in loads:
+        number = _normalize_optional_text(getattr(item, "invoice_number", None))
+        if not number or not number.startswith(prefix):
+            continue
+        tail = number.removeprefix(prefix)
+        if tail.isdigit():
+            max_increment = max(max_increment, int(tail))
+
+    invoice_number = f"{prefix}{(max_increment + 1):05d}"
+    load.invoice_number = invoice_number
+    db.add(load)
+    db.flush()
+    return invoice_number
+
+
+def _build_professional_invoice_pdf(*, load: Any, carrier_profile: dict[str, str]) -> bytes:
     organization = getattr(load, "organization", None)
     customer_account = getattr(load, "customer_account", None)
     broker = getattr(load, "broker", None)
@@ -400,17 +457,13 @@ def _build_professional_invoice_pdf(*, load: Any) -> bytes:
     if load_reference == "N/A":
         load_reference = str(getattr(load, "id", "N/A"))
 
-    carrier_name = (
-        _string_or_na(getattr(organization, "legal_name", None))
-        if organization is not None
-        else "N/A"
-    )
-    if carrier_name == "N/A":
-        carrier_name = _string_or_na(getattr(organization, "name", None)) if organization is not None else "N/A"
-
-    carrier_email = _string_or_na(getattr(organization, "email", None))
-    carrier_phone = _string_or_na(getattr(organization, "phone", None))
-    remit_to_instructions = _string_or_na(getattr(organization, "billing_notes", None))
+    carrier_name = carrier_profile["legal_name"]
+    carrier_email = carrier_profile["email"]
+    carrier_phone = carrier_profile["phone"]
+    carrier_address = carrier_profile["address"]
+    carrier_mc_number = carrier_profile["mc_number"]
+    carrier_dot_number = carrier_profile["dot_number"]
+    remit_to_instructions = carrier_profile["remit_to"]
 
     customer_account = getattr(load, "customer_account", None)
     customer_name = (
@@ -439,7 +492,6 @@ def _build_professional_invoice_pdf(*, load: Any) -> bytes:
     currency_code = _string_or_na(getattr(load, "currency_code", None))
     total_due = f"{gross_amount} {currency_code}"
 
-    # TODO: Add carrier street address, MC/DOT, and factoring remit notice fields when these are added to the domain.
     text_ops: list[str] = ["0.5 w", "0 0 0 RG"]
 
     section_padding_x = 14
@@ -554,13 +606,37 @@ def _build_professional_invoice_pdf(*, load: Any) -> bytes:
         max_chars=31,
         max_lines=1,
     )
+    left_cursor = add_wrapped_field(
+        x=left_x + section_padding_x,
+        y=left_cursor,
+        label="Address",
+        value=carrier_address,
+        max_chars=29,
+        max_lines=3,
+    )
+    left_cursor = add_wrapped_field(
+        x=left_x + section_padding_x,
+        y=left_cursor,
+        label="MC",
+        value=carrier_mc_number,
+        max_chars=29,
+        max_lines=1,
+    )
+    left_cursor = add_wrapped_field(
+        x=left_x + section_padding_x,
+        y=left_cursor,
+        label="DOT",
+        value=carrier_dot_number,
+        max_chars=29,
+        max_lines=1,
+    )
     add_wrapped_field(
         x=left_x + section_padding_x,
         y=left_cursor,
         label="Remit",
         value=remit_to_instructions,
         max_chars=29,
-        max_lines=2,
+        max_lines=3,
     )
 
     add_text(right_x + section_padding_x, right_top, "Bill-To / Broker", font="F2", size=11)
@@ -762,7 +838,9 @@ def _generate_and_persist_invoice_pdf(*, db: Session, load: Any) -> bytes:
         template_function_name,
         getattr(load, "id", None),
     )
-    pdf_bytes = _build_professional_invoice_pdf(load=load)
+    carrier_profile = _build_carrier_profile_context(db=db, load=load)
+    _ensure_load_invoice_number(db=db, load=load)
+    pdf_bytes = _build_professional_invoice_pdf(load=load, carrier_profile=carrier_profile)
     storage_service = StorageService()
     document_service = DocumentService(db)
 
