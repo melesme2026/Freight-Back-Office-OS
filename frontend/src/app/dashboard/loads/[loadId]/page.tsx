@@ -155,6 +155,33 @@ type LoadDocument = {
   updated_at?: string | null;
 };
 
+type SubmissionPacketDocument = {
+  id: string;
+  document_id?: string | null;
+  document_type?: string | null;
+  filename_snapshot?: string | null;
+};
+
+type SubmissionPacketEvent = {
+  id: string;
+  event_type?: string | null;
+  message?: string | null;
+  created_at?: string | null;
+};
+
+type SubmissionPacket = {
+  id: string;
+  packet_reference?: string | null;
+  destination_type?: string | null;
+  destination_name?: string | null;
+  destination_email?: string | null;
+  status?: string | null;
+  created_at?: string | null;
+  sent_at?: string | null;
+  documents: SubmissionPacketDocument[];
+  events: SubmissionPacketEvent[];
+};
+
 type UploadDocumentType = "" | "rate_confirmation" | "bill_of_lading" | "proof_of_delivery" | "invoice" | "lumper_receipt" | "detention_support" | "scale_ticket" | "accessorial_support" | "payment_remittance" | "damage_claim_photo" | "other" | "unknown";
 
 type OperationalChecklistState = "complete" | "current" | "pending" | "blocked";
@@ -768,6 +795,42 @@ function matchesDocumentType(document: LoadDocument, aliases: string[]): boolean
   return aliases.includes(normalized);
 }
 
+function normalizeSubmissionPacket(item: unknown): SubmissionPacket | null {
+  const record = asRecord(item);
+  const id = getStringField(record, "id");
+  if (!id) return null;
+  const documentsRaw = Array.isArray(record?.documents) ? record.documents : [];
+  const eventsRaw = Array.isArray(record?.events) ? record.events : [];
+  return {
+    id,
+    packet_reference: getStringField(record, "packet_reference"),
+    destination_type: getStringField(record, "destination_type"),
+    destination_name: getStringField(record, "destination_name"),
+    destination_email: getStringField(record, "destination_email"),
+    status: getStringField(record, "status"),
+    created_at: getStringField(record, "created_at"),
+    sent_at: getStringField(record, "sent_at"),
+    documents: documentsRaw.map((doc) => {
+      const docRecord = asRecord(doc);
+      return {
+        id: getStringField(docRecord, "id") ?? `generated-${Math.random()}`,
+        document_id: getStringField(docRecord, "document_id"),
+        document_type: getStringField(docRecord, "document_type"),
+        filename_snapshot: getStringField(docRecord, "filename_snapshot"),
+      };
+    }),
+    events: eventsRaw.map((event) => {
+      const eventRecord = asRecord(event);
+      return {
+        id: getStringField(eventRecord, "id") ?? `generated-${Math.random()}`,
+        event_type: getStringField(eventRecord, "event_type"),
+        message: getStringField(eventRecord, "message"),
+        created_at: getStringField(eventRecord, "created_at"),
+      };
+    }),
+  };
+}
+
 function getLoadDisplayTitle(load: Load) {
   return load.load_number ?? load.id;
 }
@@ -851,6 +914,8 @@ export default function LoadDetailPage() {
   const [followUpOwnerId, setFollowUpOwnerId] = useState("");
   const [nextFollowUpDate, setNextFollowUpDate] = useState("");
   const [isSavingFollowUp, setIsSavingFollowUp] = useState(false);
+  const [submissionPackets, setSubmissionPackets] = useState<SubmissionPacket[]>([]);
+  const [isSubmissionBusy, setIsSubmissionBusy] = useState(false);
 
   const fetchLoad = useCallback(async (): Promise<Load | null> => {
     if (!loadId) {
@@ -918,6 +983,50 @@ export default function LoadDetailPage() {
     [loadId]
   );
 
+  const fetchSubmissionPackets = useCallback(async (): Promise<SubmissionPacket[]> => {
+    if (!loadId) return [];
+    const token = getAccessToken();
+    const response = await apiClient.get<ApiResponse<unknown>>(
+      `/loads/${encodeURIComponent(loadId)}/submission-packets`,
+      { token: token ?? undefined }
+    );
+    const rows = Array.isArray(response.data) ? response.data : [];
+    return rows
+      .map((item) => normalizeSubmissionPacket(item))
+      .filter((item): item is SubmissionPacket => item !== null);
+  }, [loadId]);
+
+  async function handleCreateSubmissionPacket() {
+    if (!loadId) return;
+    try {
+      setIsSubmissionBusy(true);
+      const token = getAccessToken();
+      await apiClient.post(`/loads/${encodeURIComponent(loadId)}/submission-packets`, {}, { token: token ?? undefined });
+      setSubmissionPackets(await fetchSubmissionPackets());
+      setActionMessage("Billing packet created.");
+    } catch (caught: unknown) {
+      setError(extractErrorMessage(caught, "Failed to create billing packet."));
+    } finally {
+      setIsSubmissionBusy(false);
+    }
+  }
+
+  async function handleMarkPacket(packetId: string, action: "mark-sent" | "mark-accepted" | "mark-rejected", payload?: Record<string, unknown>) {
+    if (!loadId) return;
+    try {
+      setIsSubmissionBusy(true);
+      const token = getAccessToken();
+      await apiClient.post(`/loads/${encodeURIComponent(loadId)}/submission-packets/${encodeURIComponent(packetId)}/${action}`, payload ?? {}, { token: token ?? undefined });
+      setSubmissionPackets(await fetchSubmissionPackets());
+      setLoad(await fetchLoad());
+      setActionMessage("Submission evidence updated.");
+    } catch (caught: unknown) {
+      setError(extractErrorMessage(caught, "Failed to update packet submission status."));
+    } finally {
+      setIsSubmissionBusy(false);
+    }
+  }
+
   const fetchCurrentStaffUserId = useCallback(async (): Promise<string> => {
     const token = getAccessToken();
     const response = await apiClient.get<ApiResponse<unknown>>("/auth/me", {
@@ -948,6 +1057,7 @@ export default function LoadDetailPage() {
 
       const loadData = await fetchLoad();
       setLoad(loadData);
+      void fetchSubmissionPackets().then((packets) => setSubmissionPackets(packets)).catch(() => setSubmissionPackets([]));
 
       void fetchReviewQueueItem()
         .then((reviewItem) => {
@@ -970,7 +1080,7 @@ export default function LoadDetailPage() {
       setIsLoading(false);
       setIsDocumentsLoading(false);
     }
-  }, [fetchLoad, fetchReviewQueueItem, fetchLoadDocuments, loadId]);
+  }, [fetchLoad, fetchReviewQueueItem, fetchLoadDocuments, fetchSubmissionPackets, loadId]);
 
   useEffect(() => {
     void fetchPageData();
@@ -2257,6 +2367,45 @@ export default function LoadDetailPage() {
                     </span>
                   </div>
                 ))}
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-semibold text-slate-950">Submission Packet</h2>
+                  <p className="mt-1 text-sm text-slate-600">Create billing packet, record packet as sent, and track acceptance or rejection evidence.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void handleCreateSubmissionPacket()}
+                  disabled={isSubmissionBusy}
+                  className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:opacity-50"
+                >
+                  {isSubmissionBusy ? "Working..." : "Create billing packet"}
+                </button>
+              </div>
+              <div className="mb-4 text-sm text-slate-700">
+                Required docs: Invoice, Rate Confirmation, Proof of Delivery. Missing: {(load.packet_readiness?.missing_required_documents?.submission ?? []).join(", ") || "none"}.
+              </div>
+              <div className="space-y-3">
+                {submissionPackets.map((packet) => (
+                  <div key={packet.id} className="rounded-xl border border-slate-200 p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="text-sm font-semibold text-slate-900">{packet.packet_reference ?? packet.id}</div>
+                      <div className="text-xs text-slate-500">{packet.status ?? "draft"}</div>
+                    </div>
+                    <div className="mt-1 text-xs text-slate-500">Destination: {packet.destination_type ?? "—"} • Sent: {formatDateTime(packet.sent_at)}</div>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <button type="button" onClick={() => void handleMarkPacket(packet.id, "mark-sent", { destination_type: "broker", destination_name: load.broker_name_raw ?? "Broker/AP", destination_email: load.broker_email_raw ?? null })} className="rounded-lg border border-slate-300 px-3 py-1 text-xs">Record packet as sent</button>
+                      <button type="button" onClick={() => void handleMarkPacket(packet.id, "mark-sent", { destination_type: "factoring", destination_name: "Factoring" })} className="rounded-lg border border-slate-300 px-3 py-1 text-xs">Mark Sent to Factoring</button>
+                      <button type="button" onClick={() => void handleMarkPacket(packet.id, "mark-accepted")} className="rounded-lg border border-slate-300 px-3 py-1 text-xs">Record broker/factor acceptance</button>
+                      <button type="button" onClick={() => void handleMarkPacket(packet.id, "mark-rejected", { reason: "Rejected by destination", resubmission_required: true })} className="rounded-lg border border-slate-300 px-3 py-1 text-xs">Record rejection/resubmission</button>
+                    </div>
+                    <div className="mt-2 text-xs text-slate-500">Included docs: {packet.documents.map((doc) => normalizeDocumentTypeLabel(doc.document_type)).join(", ") || "none"}</div>
+                  </div>
+                ))}
+                {submissionPackets.length === 0 ? <div className="text-sm text-slate-500">No submission packets yet.</div> : null}
               </div>
             </div>
 
