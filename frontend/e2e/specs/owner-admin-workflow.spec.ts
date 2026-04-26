@@ -14,15 +14,15 @@ test("owner/admin launch workflow including docs, invoice, packet, payments, and
   await loginAsOwner(page);
 
   await page.goto("/dashboard/onboarding");
-  await expect(page.getByRole("heading", { name: /Onboarding Checklist/i })).toBeVisible();
+  await expect(page.getByRole("main").getByRole("heading", { name: /^Onboarding Checklist$/i })).toBeVisible();
   await page.goto("/dashboard/settings/carrier-profile");
-  await expect(page.getByRole("heading", { name: /Carrier Profile/i })).toBeVisible();
+  await expect(page.getByRole("main").getByRole("heading", { name: /^Carrier Profile$/i })).toBeVisible();
   await page.goto("/dashboard/drivers");
-  await expect(page.getByRole("heading", { name: /Drivers/i })).toBeVisible();
+  await expect(page.getByRole("main").getByRole("heading", { name: /^Drivers$/ })).toBeVisible();
   await page.goto("/dashboard/brokers");
-  await expect(page.getByRole("heading", { name: /Brokers/i })).toBeVisible();
+  await expect(page.getByRole("main").getByRole("heading", { name: /^Brokers$/ })).toBeVisible();
   await page.goto("/dashboard/customers");
-  await expect(page.getByRole("heading", { name: /Customers/i })).toBeVisible();
+  await expect(page.getByRole("main").getByRole("heading", { name: /^Customers$/ })).toBeVisible();
 
   await page.goto(`/dashboard/loads/${seed.load.id}`);
   await expect(page.getByText(seed.load.load_number)).toBeVisible();
@@ -50,7 +50,7 @@ test("owner/admin launch workflow including docs, invoice, packet, payments, and
   await page.getByRole("button", { name: /Save payment/i }).click();
 
   await page.goto("/dashboard/money");
-  await expect(page.getByRole("heading", { name: "Money Dashboard" })).toBeVisible();
+  await expect(page.getByRole("main").getByRole("heading", { name: /^Money Dashboard$/ })).toBeVisible();
   await assertNoCriticalUiCorruption(page);
   await assertClean();
 });
