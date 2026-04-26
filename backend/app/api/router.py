@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends
 from app.api.v1.auth import router as auth_router
 from app.api.v1.billing_dashboard import router as billing_dashboard_router
 from app.api.v1.billing_invoices import router as billing_invoices_router
+from app.api.v1.carrier_profile import router as carrier_profile_router
 from app.api.v1.brokers import router as brokers_router
 from app.api.v1.customer_accounts import router as customer_accounts_router
 from app.api.v1.dashboard import router as dashboard_router
@@ -49,6 +50,7 @@ api_router.include_router(staff_users_router, tags=["staff-users"], dependencies
 # Operational entities
 api_router.include_router(drivers_router, tags=["drivers"], dependencies=protected_dependencies)
 api_router.include_router(brokers_router, tags=["brokers"], dependencies=protected_dependencies)
+api_router.include_router(carrier_profile_router, tags=["carrier-profile"], dependencies=protected_dependencies)
 api_router.include_router(loads_router, tags=["loads"], dependencies=protected_dependencies)
 api_router.include_router(documents_router, tags=["documents"], dependencies=protected_dependencies)
 api_router.include_router(review_queue_router, tags=["review-queue"], dependencies=protected_dependencies)

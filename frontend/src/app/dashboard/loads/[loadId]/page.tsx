@@ -1548,6 +1548,14 @@ export default function LoadDetailPage() {
       setActionMessage(null);
 
       const token = getAccessToken();
+      const carrierProfileResponse = await fetch(buildConfiguredApiUrl("/carrier-profile"), {
+        method: "GET",
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
+      if (!carrierProfileResponse.ok) {
+        throw new Error("Complete Carrier Profile before generating invoice");
+      }
+
       const response = await fetch(buildConfiguredApiUrl(`/loads/${encodeURIComponent(load.id)}/invoice`), {
         method: "GET",
         headers: token ? { Authorization: `Bearer ${token}` } : undefined,

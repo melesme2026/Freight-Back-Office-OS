@@ -9,6 +9,7 @@ from app.api.v1.loads import _build_load_packet_readiness
 from app.domain.enums.document_type import DocumentType
 from app.services.documents.document_service import DocumentService
 from app.services.documents.storage_service import StorageService
+from app.services.carrier_profile_service import CarrierProfileService
 from app.services.loads.load_service import LoadService
 from app.services.loads.operational_queue_service import OperationalQueueService
 from app.services.loads.packet_readiness import calculate_packet_readiness
@@ -30,6 +31,27 @@ def _create_ready_for_invoice_load(db_session):
         customer_account_id="00000000-0000-0000-0000-000000000452",
         driver_id="00000000-0000-0000-0000-000000000453",
         load_number="INV-451",
+    )
+
+
+    CarrierProfileService(db_session).upsert_profile(
+        str(load.organization_id),
+        {
+            "legal_name": "Blue Sky Transport LLC",
+            "address_line1": "100 Main St",
+            "address_line2": "Suite 200",
+            "city": "Chicago",
+            "state": "IL",
+            "zip": "60601",
+            "country": "USA",
+            "phone": "+1-555-111-2222",
+            "email": "billing@bluesky.example",
+            "mc_number": "MC-778899",
+            "dot_number": "DOT-112233",
+            "remit_to_name": "Blue Sky Transport LLC",
+            "remit_to_address": "100 Main St, Suite 200, Chicago, IL 60601",
+            "remit_to_notes": "ACH preferred",
+        },
     )
 
     for index, document_type in enumerate(

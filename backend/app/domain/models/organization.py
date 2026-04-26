@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from app.domain.models.audit_log import AuditLog
     from app.domain.models.billing_invoice import BillingInvoice
     from app.domain.models.broker import Broker
+    from app.domain.models.carrier_profile import CarrierProfile
     from app.domain.models.customer_account import CustomerAccount
     from app.domain.models.driver import Driver
     from app.domain.models.ledger_entry import LedgerEntry
@@ -130,6 +131,12 @@ class Organization(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     brokers: Mapped[list["Broker"]] = relationship(
         back_populates="organization",
         cascade="all, delete-orphan",
+        lazy="selectin",
+    )
+    carrier_profile: Mapped["CarrierProfile | None"] = relationship(
+        back_populates="organization",
+        cascade="all, delete-orphan",
+        uselist=False,
         lazy="selectin",
     )
     loads: Mapped[list["Load"]] = relationship(
