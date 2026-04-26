@@ -11,6 +11,27 @@ type RequestOptions = Omit<RequestInit, "body"> & {
   responseType?: "json" | "text" | "blob" | "response";
 };
 
+export class ApiClientError extends Error {
+  status: number;
+  code?: string;
+  details?: Record<string, unknown>;
+
+  constructor(
+    message: string,
+    options: {
+      status: number;
+      code?: string;
+      details?: Record<string, unknown>;
+    }
+  ) {
+    super(message);
+    this.name = "ApiClientError";
+    this.status = options.status;
+    this.code = options.code;
+    this.details = options.details;
+  }
+}
+
 const ACCESS_TOKEN_STORAGE_KEY = "fbos_access_token";
 const TOKEN_TYPE_STORAGE_KEY = "fbos_token_type";
 const ORGANIZATION_ID_STORAGE_KEY = "fbos_organization_id";
@@ -142,50 +163,52 @@ async function parseResponseBody<T>(
   return text as T;
 }
 
-async function buildErrorMessage(response: Response): Promise<string> {
-  const errorMessage = `API request failed (${response.status})`;
+async function buildError(response: Response): Promise<ApiClientError> {
+  const fallbackMessage = "Something went wrong. Please try again.";
 
   try {
     const contentType = response.headers.get("content-type") ?? "";
 
     if (contentType.toLowerCase().includes("application/json")) {
       const errorBody = (await parseJsonSafely<{
-        error?: { message?: string; details?: unknown };
+        error?: { code?: string; message?: string; details?: Record<string, unknown> };
         detail?: string | Array<unknown> | Record<string, unknown>;
         message?: string;
       }>(response)) as {
-        error?: { message?: string; details?: unknown };
+        error?: { code?: string; message?: string; details?: Record<string, unknown> };
         detail?: string | Array<unknown> | Record<string, unknown>;
         message?: string;
       };
 
       if (errorBody?.error?.message) {
-        return `${errorMessage}: ${errorBody.error.message}`;
+        return new ApiClientError(errorBody.error.message, {
+          status: response.status,
+          code: errorBody.error.code,
+          details: errorBody.error.details,
+        });
       }
 
       if (typeof errorBody?.detail === "string") {
-        return `${errorMessage}: ${errorBody.detail}`;
+        return new ApiClientError(errorBody.detail, { status: response.status });
       }
 
       if (errorBody?.detail !== undefined) {
-        return `${errorMessage}: ${JSON.stringify(errorBody.detail)}`;
+        return new ApiClientError(JSON.stringify(errorBody.detail), { status: response.status });
       }
 
       if (typeof errorBody?.message === "string" && errorBody.message.trim().length > 0) {
-        return `${errorMessage}: ${errorBody.message}`;
+        return new ApiClientError(errorBody.message, { status: response.status });
       }
-
-      return errorMessage;
+      return new ApiClientError(fallbackMessage, { status: response.status });
     }
 
     const text = await response.text();
     if (text.trim().length > 0) {
-      return `${errorMessage}: ${text}`;
+      return new ApiClientError(text, { status: response.status });
     }
-
-    return errorMessage;
+    return new ApiClientError(fallbackMessage, { status: response.status });
   } catch {
-    return errorMessage;
+    return new ApiClientError(fallbackMessage, { status: response.status });
   }
 }
 
@@ -241,7 +264,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
       window.location.replace(isDriverPortalRequest ? "/driver-login" : "/login");
     }
 
-    throw new Error(await buildErrorMessage(response));
+    throw await buildError(response);
   }
 
   return parseResponseBody<T>(response, responseType);

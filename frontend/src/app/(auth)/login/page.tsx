@@ -3,7 +3,7 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { apiClient } from "@/lib/api-client";
+import { ApiClientError, apiClient } from "@/lib/api-client";
 import { clearAuth, getAccessToken, getOrganizationId, getUserRole, setAuthSession } from "@/lib/auth";
 import { isDriverRole } from "@/lib/rbac";
 import { resolvePostLoginRoute } from "@/lib/rbac";
@@ -26,6 +26,12 @@ type LoginResponse = {
   } | null;
 };
 
+type LoginOrganizationOption = {
+  organization_id: string;
+  organization_name?: string;
+  role?: string;
+};
+
 function normalizeText(value: string): string {
   return value.trim();
 }
@@ -39,6 +45,16 @@ function isValidEmail(value: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized);
 }
 
+function getWorkspaceLabel(option: LoginOrganizationOption): string {
+  const explicitName = normalizeText(option.organization_name ?? "");
+  if (explicitName) {
+    return explicitName;
+  }
+  const organizationId = normalizeText(option.organization_id);
+  const suffix = organizationId.slice(-4);
+  return suffix ? `Workspace ending in ${suffix}` : "Workspace";
+}
+
 export default function LoginPage() {
   const router = useRouter();
 
@@ -49,6 +65,7 @@ export default function LoginPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isCheckingSession, setIsCheckingSession] = useState(true);
+  const [organizationOptions, setOrganizationOptions] = useState<LoginOrganizationOption[]>([]);
 
   // 🔥 Auto-redirect if already logged in
   useEffect(() => {
@@ -73,6 +90,71 @@ export default function LoginPage() {
 
   const normalizedEmail = useMemo(() => normalizeEmail(email), [email]);
 
+  async function loginWithOrganization(selectedOrganizationId?: string) {
+    const normalizedSelectedOrganizationId = normalizeText(selectedOrganizationId ?? normalizedOrganizationId);
+    setIsSubmitting(true);
+    setErrorMessage(null);
+
+    try {
+      clearAuth();
+
+      const payload = await apiClient.post<LoginResponse>(
+        "/auth/login",
+        {
+          email: normalizedEmail,
+          password,
+          ...(normalizedSelectedOrganizationId ? { organization_id: normalizedSelectedOrganizationId } : {}),
+        },
+        { onUnauthorized: "throw" }
+      );
+
+      const accessToken = payload?.data?.access_token?.trim();
+      const tokenType = payload?.data?.token_type?.trim() || "Bearer";
+      const userRole = payload?.data?.user?.role?.trim().toLowerCase() || null;
+      const resolvedOrganizationId = normalizeText(payload?.data?.user?.organization_id ?? "");
+
+      if (!accessToken) {
+        throw new Error("Login succeeded but no access token was returned.");
+      }
+      if (!resolvedOrganizationId) {
+        throw new Error("Login succeeded but no organization context was returned.");
+      }
+
+      if (isDriverRole(userRole)) {
+        throw new Error("This account is a driver account for the selected workspace. Use Driver Login instead.");
+      }
+
+      setAuthSession({
+        accessToken,
+        tokenType,
+        organizationId: resolvedOrganizationId,
+        userEmail: normalizedEmail,
+        userRole,
+      });
+
+      router.replace(resolvePostLoginRoute(userRole));
+      router.refresh();
+    } catch (error: unknown) {
+      if (error instanceof ApiClientError) {
+        if (error.code === "multiple_organizations") {
+          const organizations = Array.isArray(error.details?.organizations)
+            ? (error.details.organizations as LoginOrganizationOption[])
+            : [];
+          setOrganizationOptions(organizations);
+          setErrorMessage("This email is linked to multiple workspaces. Select the workspace you want to access.");
+        } else if (error.status === 401) {
+          setErrorMessage("Invalid email or password.");
+        } else {
+          setErrorMessage(error.message || "Unable to sign in. Please verify your credentials and try again.");
+        }
+      } else {
+        setErrorMessage("Unable to sign in. Please verify your credentials and try again.");
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -91,58 +173,8 @@ export default function LoginPage() {
       return;
     }
 
-    setIsSubmitting(true);
-    setErrorMessage(null);
-
-    try {
-      clearAuth();
-
-      const payload = await apiClient.post<LoginResponse>(
-        "/auth/login",
-        {
-          email: normalizedEmail,
-          password,
-          ...(normalizedOrganizationId ? { organization_id: normalizedOrganizationId } : {}),
-        },
-        { onUnauthorized: "throw" }
-      );
-
-      const accessToken = payload?.data?.access_token?.trim();
-      const tokenType = payload?.data?.token_type?.trim() || "Bearer";
-      const userRole = payload?.data?.user?.role?.trim().toLowerCase() || null;
-      const resolvedOrganizationId = normalizeText(payload?.data?.user?.organization_id ?? "");
-
-      if (!accessToken) {
-        throw new Error("Login succeeded but no access token was returned.");
-      }
-      if (!resolvedOrganizationId) {
-        throw new Error("Login succeeded but no organization context was returned.");
-      }
-
-      if (isDriverRole(userRole)) {
-        throw new Error("This account is a driver account. Please use Driver Login.");
-      }
-
-      setAuthSession({
-        accessToken,
-        tokenType,
-        organizationId: resolvedOrganizationId,
-        userEmail: normalizedEmail,
-        userRole,
-      });
-
-      router.replace(resolvePostLoginRoute(userRole));
-      router.refresh();
-    } catch (error: unknown) {
-      const message =
-        error instanceof Error && error.message
-          ? error.message
-          : "Unable to sign in. Please verify your credentials and try again.";
-
-      setErrorMessage(message);
-    } finally {
-      setIsSubmitting(false);
-    }
+    setOrganizationOptions([]);
+    await loginWithOrganization();
   }
 
   // 🔥 Prevent flicker while checking session
@@ -201,6 +233,38 @@ export default function LoginPage() {
           {errorMessage && (
             <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
               {errorMessage}
+            </div>
+          )}
+
+          {organizationOptions.length > 0 && (
+            <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+              <p className="mb-2 text-sm font-medium text-slate-800">
+                This email is linked to multiple workspaces. Select the workspace you want to access.
+              </p>
+              <div className="space-y-2">
+                {organizationOptions.map((option) => (
+                  <button
+                    key={option.organization_id}
+                    type="button"
+                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-left text-sm hover:border-brand-500"
+                    disabled={isSubmitting}
+                    onClick={async () => {
+                      setOrganizationId(option.organization_id);
+                      if (option.role === "driver") {
+                        setErrorMessage(
+                          "This account is a driver account for the selected workspace. Use Driver Login instead."
+                        );
+                        return;
+                      }
+                      setShowAdvancedLogin(true);
+                      setErrorMessage(null);
+                      await loginWithOrganization(option.organization_id);
+                    }}
+                  >
+                    {getWorkspaceLabel(option)}
+                  </button>
+                ))}
+              </div>
             </div>
           )}
 
