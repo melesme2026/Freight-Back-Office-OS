@@ -25,3 +25,6 @@ from app.domain.models.support_ticket import SupportTicket  # noqa: F401
 from app.domain.models.usage_record import UsageRecord  # noqa: F401
 from app.domain.models.validation_issue import ValidationIssue  # noqa: F401
 from app.domain.models.workflow_event import WorkflowEvent  # noqa: F401
+from app.domain.models.submission_event import SubmissionEvent  # noqa: F401
+from app.domain.models.submission_packet import SubmissionPacket  # noqa: F401
+from app.domain.models.submission_packet_document import SubmissionPacketDocument  # noqa: F401

@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_db_session
 from app.core.security import get_current_token_payload
-from app.core.exceptions import UnauthorizedError, ValidationError
+from app.core.exceptions import ForbiddenError, UnauthorizedError, ValidationError
 from app.domain.enums.document_type import DocumentType
 from app.domain.enums.load_status import LoadStatus
 from app.schemas.common import ApiResponse
@@ -25,6 +25,7 @@ from app.services.carrier_profile_service import CarrierProfileService
 from app.services.loads.load_service import LoadService
 from app.services.loads.operational_queue_service import OperationalQueueService
 from app.services.loads.packet_readiness import calculate_packet_readiness
+from app.services.loads.submission_packet_service import SubmissionPacketService
 from app.services.workflow.workflow_engine import WorkflowEngine
 
 
@@ -248,6 +249,76 @@ def _build_load_packet_readiness(item: Any, *, db: Session | None = None) -> dic
     )
 
     return calculate_packet_readiness(document_types=document_types)
+
+
+
+class SubmissionPacketCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    notes: str | None = None
+
+
+class SubmissionPacketMarkSentRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    destination_type: str
+    destination_name: str | None = None
+    destination_email: str | None = None
+    notes: str | None = None
+
+
+class SubmissionPacketMarkRejectedRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str
+    resubmission_required: bool = False
+
+
+def _authorize_submission_write(token_payload: dict[str, Any]) -> None:
+    role = str(token_payload.get("role") or "").lower()
+    if role in {"driver", "viewer", "support_agent"}:
+        raise ForbiddenError("You do not have permission to modify submission packets")
+
+
+def _serialize_submission_packet(packet: Any) -> dict[str, Any]:
+    return {
+        "id": _uuid_to_str(getattr(packet, "id", None)),
+        "organization_id": _uuid_to_str(getattr(packet, "organization_id", None)),
+        "load_id": _uuid_to_str(getattr(packet, "load_id", None)),
+        "packet_reference": getattr(packet, "packet_reference", None),
+        "destination_type": getattr(packet, "destination_type", None),
+        "destination_name": getattr(packet, "destination_name", None),
+        "destination_email": getattr(packet, "destination_email", None),
+        "status": getattr(packet, "status", None),
+        "notes": getattr(packet, "notes", None),
+        "created_by_staff_user_id": _uuid_to_str(getattr(packet, "created_by_staff_user_id", None)),
+        "sent_by_staff_user_id": _uuid_to_str(getattr(packet, "sent_by_staff_user_id", None)),
+        "sent_at": _to_iso_or_none(getattr(packet, "sent_at", None)),
+        "accepted_at": _to_iso_or_none(getattr(packet, "accepted_at", None)),
+        "rejected_at": _to_iso_or_none(getattr(packet, "rejected_at", None)),
+        "created_at": _to_iso_or_none(getattr(packet, "created_at", None)),
+        "updated_at": _to_iso_or_none(getattr(packet, "updated_at", None)),
+        "documents": [
+            {
+                "id": _uuid_to_str(getattr(doc, "id", None)),
+                "document_id": _uuid_to_str(getattr(doc, "document_id", None)),
+                "document_type": getattr(doc, "document_type", None),
+                "filename_snapshot": getattr(doc, "filename_snapshot", None),
+                "created_at": _to_iso_or_none(getattr(doc, "created_at", None)),
+            }
+            for doc in (getattr(packet, "documents", None) or [])
+        ],
+        "events": [
+            {
+                "id": _uuid_to_str(getattr(event, "id", None)),
+                "event_type": getattr(event, "event_type", None),
+                "message": getattr(event, "message", None),
+                "created_by_staff_user_id": _uuid_to_str(getattr(event, "created_by_staff_user_id", None)),
+                "created_at": _to_iso_or_none(getattr(event, "created_at", None)),
+            }
+            for event in sorted((getattr(packet, "events", None) or []), key=lambda item: getattr(item, "created_at", datetime.min))
+        ],
+    }
 
 def _serialize_load(item: Any, *, detailed: bool = False, db: Session | None = None) -> dict[str, Any]:
     customer_account = getattr(item, "customer_account", None)
@@ -1200,6 +1271,138 @@ def execute_load_workflow_action(
         meta={},
         error=None,
     )
+
+
+@router.get("/loads/{load_id}/submission-packets", response_model=ApiResponse)
+def list_submission_packets(
+    load_id: uuid.UUID,
+    token_payload: dict[str, Any] = Depends(get_current_token_payload),
+    db: Session = Depends(get_db_session),
+) -> ApiResponse:
+    service = LoadService(db)
+    load = service.get_load(str(load_id))
+    _authorize_load_access(item=load, token_payload=token_payload)
+
+    packet_service = SubmissionPacketService(db)
+    packets = packet_service.list_packets(load_id=str(load_id), org_id=str(load.organization_id))
+    return ApiResponse(data=[_serialize_submission_packet(packet) for packet in packets], meta={}, error=None)
+
+
+@router.post("/loads/{load_id}/submission-packets", response_model=ApiResponse)
+def create_submission_packet(
+    load_id: uuid.UUID,
+    payload: SubmissionPacketCreateRequest,
+    token_payload: dict[str, Any] = Depends(get_current_token_payload),
+    db: Session = Depends(get_db_session),
+) -> ApiResponse:
+    _authorize_submission_write(token_payload)
+    service = LoadService(db)
+    load = service.get_load(str(load_id))
+    _authorize_load_access(item=load, token_payload=token_payload)
+
+    packet_service = SubmissionPacketService(db)
+    packet = packet_service.create_packet_from_load(
+        load_id=str(load_id),
+        org_id=str(load.organization_id),
+        actor=str(token_payload.get("staff_user_id")) if token_payload.get("staff_user_id") else None,
+    )
+    if payload.notes:
+        packet.notes = payload.notes.strip()
+
+    db.commit()
+    return ApiResponse(data=_serialize_submission_packet(packet), meta={}, error=None)
+
+
+@router.get("/loads/{load_id}/submission-packets/{packet_id}", response_model=ApiResponse)
+def get_submission_packet(
+    load_id: uuid.UUID,
+    packet_id: uuid.UUID,
+    token_payload: dict[str, Any] = Depends(get_current_token_payload),
+    db: Session = Depends(get_db_session),
+) -> ApiResponse:
+    service = LoadService(db)
+    load = service.get_load(str(load_id))
+    _authorize_load_access(item=load, token_payload=token_payload)
+
+    packet_service = SubmissionPacketService(db)
+    packet = packet_service.get_packet(str(packet_id), str(load_id), str(load.organization_id))
+    return ApiResponse(data=_serialize_submission_packet(packet), meta={}, error=None)
+
+
+@router.post("/loads/{load_id}/submission-packets/{packet_id}/mark-sent", response_model=ApiResponse)
+def mark_submission_packet_sent(
+    load_id: uuid.UUID,
+    packet_id: uuid.UUID,
+    payload: SubmissionPacketMarkSentRequest,
+    token_payload: dict[str, Any] = Depends(get_current_token_payload),
+    db: Session = Depends(get_db_session),
+) -> ApiResponse:
+    _authorize_submission_write(token_payload)
+    service = LoadService(db)
+    load = service.get_load(str(load_id))
+    _authorize_load_access(item=load, token_payload=token_payload)
+
+    packet_service = SubmissionPacketService(db)
+    packet = packet_service.mark_sent(
+        str(packet_id),
+        str(load_id),
+        str(load.organization_id),
+        {
+            "destination_type": payload.destination_type,
+            "destination_name": payload.destination_name,
+            "destination_email": payload.destination_email,
+        },
+        str(token_payload.get("staff_user_id")) if token_payload.get("staff_user_id") else None,
+    )
+    if payload.notes:
+        packet.notes = payload.notes.strip()
+    db.commit()
+    return ApiResponse(data=_serialize_submission_packet(packet), meta={}, error=None)
+
+
+@router.post("/loads/{load_id}/submission-packets/{packet_id}/mark-accepted", response_model=ApiResponse)
+def mark_submission_packet_accepted(
+    load_id: uuid.UUID,
+    packet_id: uuid.UUID,
+    token_payload: dict[str, Any] = Depends(get_current_token_payload),
+    db: Session = Depends(get_db_session),
+) -> ApiResponse:
+    _authorize_submission_write(token_payload)
+    service = LoadService(db)
+    load = service.get_load(str(load_id))
+    _authorize_load_access(item=load, token_payload=token_payload)
+    packet = SubmissionPacketService(db).mark_accepted(
+        str(packet_id),
+        str(load_id),
+        str(load.organization_id),
+        str(token_payload.get("staff_user_id")) if token_payload.get("staff_user_id") else None,
+    )
+    db.commit()
+    return ApiResponse(data=_serialize_submission_packet(packet), meta={}, error=None)
+
+
+@router.post("/loads/{load_id}/submission-packets/{packet_id}/mark-rejected", response_model=ApiResponse)
+def mark_submission_packet_rejected(
+    load_id: uuid.UUID,
+    packet_id: uuid.UUID,
+    payload: SubmissionPacketMarkRejectedRequest,
+    token_payload: dict[str, Any] = Depends(get_current_token_payload),
+    db: Session = Depends(get_db_session),
+) -> ApiResponse:
+    _authorize_submission_write(token_payload)
+    service = LoadService(db)
+    load = service.get_load(str(load_id))
+    _authorize_load_access(item=load, token_payload=token_payload)
+    packet = SubmissionPacketService(db).mark_rejected(
+        str(packet_id),
+        str(load_id),
+        str(load.organization_id),
+        payload.reason,
+        str(token_payload.get("staff_user_id")) if token_payload.get("staff_user_id") else None,
+        resubmission_required=payload.resubmission_required,
+    )
+    db.commit()
+    return ApiResponse(data=_serialize_submission_packet(packet), meta={}, error=None)
 
 
 @router.get("/loads/{load_id}/invoice")

@@ -116,6 +116,9 @@ def _import_all_models() -> None:
     from app.domain.models.referral import Referral  # noqa: F401
     from app.domain.models.service_plan import ServicePlan  # noqa: F401
     from app.domain.models.staff_user import StaffUser  # noqa: F401
+    from app.domain.models.submission_event import SubmissionEvent  # noqa: F401
+    from app.domain.models.submission_packet import SubmissionPacket  # noqa: F401
+    from app.domain.models.submission_packet_document import SubmissionPacketDocument  # noqa: F401
     from app.domain.models.subscription import Subscription  # noqa: F401
     from app.domain.models.support_ticket import SupportTicket  # noqa: F401
     from app.domain.models.usage_record import UsageRecord  # noqa: F401
