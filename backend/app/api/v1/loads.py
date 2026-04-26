@@ -11,14 +11,18 @@ from typing import Any
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_db_session
 from app.core.security import get_current_token_payload
-from app.core.exceptions import ForbiddenError, UnauthorizedError, ValidationError
+from app.core.exceptions import ConflictError, ForbiddenError, UnauthorizedError, ValidationError
+from app.domain.enums.follow_up_task import FollowUpTaskStatus, FollowUpTaskType
 from app.domain.enums.document_type import DocumentType
 from app.domain.enums.load_status import LoadStatus
+from app.domain.models.follow_up_task import FollowUpTask
 from app.schemas.common import ApiResponse
+from app.services.email.email_service import PacketEmailService
 from app.services.documents.document_service import DocumentService
 from app.services.documents.storage_service import StorageService
 from app.services.carrier_profile_service import CarrierProfileService
@@ -274,9 +278,19 @@ class SubmissionPacketMarkRejectedRequest(BaseModel):
     resubmission_required: bool = False
 
 
+class SubmissionPacketSendEmailRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    to_email: str
+    cc: list[str] | None = None
+    bcc: list[str] | None = None
+    subject: str | None = None
+    body: str | None = None
+
+
 def _authorize_submission_write(token_payload: dict[str, Any]) -> None:
     role = str(token_payload.get("role") or "").lower()
-    if role in {"driver", "viewer", "support_agent"}:
+    if role in {"driver", "viewer", "support_agent", "support"}:
         raise ForbiddenError("You do not have permission to modify submission packets")
 
 
@@ -329,6 +343,39 @@ def _serialize_submission_packet(packet: Any) -> dict[str, Any]:
             for event in sorted((getattr(packet, "events", None) or []), key=lambda item: getattr(item, "created_at", datetime.min))
         ],
     }
+
+
+def _build_default_packet_email(*, packet: Any, load: Any, carrier_name: str | None = None) -> tuple[str, str]:
+    load_number = _string_or_na(getattr(load, "load_number", None))
+    invoice_number = _string_or_na(getattr(load, "invoice_number", None))
+    amount = f"{_string_or_na(getattr(load, 'gross_amount', None))} {_string_or_na(getattr(load, 'currency_code', None))}"
+    subject = f"Invoice Packet for Load {load_number} / Invoice {invoice_number}"
+    sender_name = carrier_name or "Carrier"
+    body = "\n".join(
+        [
+            "Hello,",
+            "",
+            f"Please find the billing packet for Load {load_number} ready for review.",
+            "",
+            "Included documents:",
+            "- Invoice",
+            "- Rate Confirmation",
+            "- Proof of Delivery",
+            "- Bill of Lading (if included)",
+            "",
+            f"Carrier: {sender_name}",
+            f"Invoice Number: {invoice_number}",
+            f"Invoice Amount: {amount}",
+            f"Pickup: {_string_or_na(getattr(load, 'pickup_location', None))}",
+            f"Delivery: {_string_or_na(getattr(load, 'delivery_location', None))}",
+            "",
+            "Please confirm receipt and advise if any additional documentation is required.",
+            "",
+            "Thank you,",
+            sender_name,
+        ]
+    )
+    return subject, body
 
 def _serialize_load(item: Any, *, detailed: bool = False, db: Session | None = None) -> dict[str, Any]:
     customer_account = getattr(item, "customer_account", None)
@@ -1391,6 +1438,116 @@ def mark_submission_packet_sent(
         packet.notes = payload.notes.strip()
     db.commit()
     return ApiResponse(data=_serialize_submission_packet(packet), meta={}, error=None)
+
+
+@router.post("/loads/{load_id}/submission-packets/{packet_id}/send-email", response_model=ApiResponse)
+def send_submission_packet_email(
+    load_id: uuid.UUID,
+    packet_id: uuid.UUID,
+    payload: SubmissionPacketSendEmailRequest,
+    token_payload: dict[str, Any] = Depends(get_current_token_payload),
+    db: Session = Depends(get_db_session),
+) -> ApiResponse:
+    _authorize_submission_write(token_payload)
+    service = LoadService(db)
+    load = service.get_load(str(load_id))
+    _authorize_load_access(item=load, token_payload=token_payload)
+
+    packet_service = SubmissionPacketService(db)
+    packet = packet_service.get_packet(str(packet_id), str(load_id), str(load.organization_id))
+    actor_id = str(token_payload.get("staff_user_id")) if token_payload.get("staff_user_id") else None
+    normalized_to_email = _normalize_required_text(payload.to_email, "to_email").lower()
+    default_subject, default_body = _build_default_packet_email(packet=packet, load=load)
+    normalized_subject = _normalize_optional_text(payload.subject) or default_subject
+    normalized_body = _normalize_optional_text(payload.body) or default_body
+
+    packet_service._add_event(  # noqa: SLF001
+        str(load.organization_id),
+        str(load.id),
+        str(packet.id),
+        "packet_email_send_attempt",
+        f"Attempting packet email send to {normalized_to_email}.",
+        actor_id,
+    )
+    db.flush()
+
+    email_service = PacketEmailService()
+    zip_bytes, load_number = packet_service.build_packet_zip(
+        packet_id=str(packet.id),
+        load_id=str(load.id),
+        org_id=str(load.organization_id),
+    )
+    send_result = email_service.send_email_with_attachments(
+        to=normalized_to_email,
+        subject=normalized_subject,
+        body=normalized_body,
+        attachments=[
+            {
+                "filename": f"packet-{load_number}.zip",
+                "content_type": "application/zip",
+                "bytes": zip_bytes,
+            }
+        ],
+        cc=payload.cc,
+        bcc=payload.bcc,
+    )
+
+    if not bool(send_result.get("accepted")):
+        error_message = str(send_result.get("error_message") or "Failed to send packet email.")
+        packet_service._add_event(  # noqa: SLF001
+            str(load.organization_id),
+            str(load.id),
+            str(packet.id),
+            "packet_email_failed",
+            f"Packet email failed for {normalized_to_email}: {error_message}",
+            actor_id,
+        )
+        db.commit()
+        if "disabled" in error_message.lower():
+            raise ConflictError(error_message)
+        raise ValidationError(error_message)
+
+    provider = str(send_result.get("provider") or "smtp")
+    provider_message_id = _normalize_optional_text(str(send_result.get("provider_message_id") or ""))
+    success_message = f"Packet email sent to {normalized_to_email} via {provider}."
+    if provider_message_id:
+        success_message = f"{success_message} Provider message id: {provider_message_id}."
+    packet_service._add_event(  # noqa: SLF001
+        str(load.organization_id),
+        str(load.id),
+        str(packet.id),
+        "packet_email_sent",
+        success_message,
+        actor_id,
+    )
+
+    if not getattr(packet, "sent_at", None):
+        packet.sent_at = datetime.now(timezone.utc)
+    if not getattr(packet, "sent_by_staff_user_id", None):
+        packet.sent_by_staff_user_id = uuid.UUID(actor_id) if actor_id else None
+    packet.destination_email = normalized_to_email
+    packet.destination_type = packet.destination_type or "broker"
+    packet.destination_name = packet.destination_name or (getattr(load, "broker_name_raw", None) or "Broker/AP")
+    if (packet.status or "").lower() != "sent":
+        packet.status = "sent"
+
+    packet_follow_ups = list(
+        db.scalars(
+            select(FollowUpTask).where(
+                FollowUpTask.organization_id == load.organization_id,
+                FollowUpTask.load_id == load.id,
+                FollowUpTask.submission_packet_id == packet.id,
+                FollowUpTask.task_type == FollowUpTaskType.PACKET_FOLLOW_UP,
+                FollowUpTask.status.in_([FollowUpTaskStatus.OPEN, FollowUpTaskStatus.SNOOZED]),
+            )
+        ).all()
+    )
+    for task in packet_follow_ups:
+        task.status = FollowUpTaskStatus.CANCELED
+
+    db.commit()
+    refreshed_packet = packet_service.get_packet(str(packet_id), str(load_id), str(load.organization_id))
+    return ApiResponse(data=_serialize_submission_packet(refreshed_packet), meta={"email_send_result": send_result}, error=None)
 
 
 @router.post("/loads/{load_id}/submission-packets/{packet_id}/mark-accepted", response_model=ApiResponse)

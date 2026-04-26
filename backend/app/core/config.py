@@ -4,7 +4,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, computed_field, field_validator, model_validator
+from pydantic import AliasChoices, Field, computed_field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -117,6 +117,9 @@ class Settings(BaseSettings):
     email_enabled: bool = Field(default=False)
     email_provider: Literal["smtp", "ses", "sendgrid", "none"] = Field(default="none")
     default_from_email: str = Field(default="no-reply@freightbackoffice.local")
+    email_sending_enabled: bool = Field(default=False, validation_alias=AliasChoices("EMAIL_SENDING_ENABLED", "email_sending_enabled"))
+    email_from_address: str | None = Field(default=None, validation_alias=AliasChoices("EMAIL_FROM_ADDRESS", "email_from_address"))
+    email_from_name: str | None = Field(default=None, validation_alias=AliasChoices("EMAIL_FROM_NAME", "email_from_name"))
     web_app_base_url: str = Field(default="http://localhost:3000")
     email_dev_allow_token_response: bool = Field(default=False)
     public_signup_enabled: bool = Field(default=True)
@@ -126,6 +129,7 @@ class Settings(BaseSettings):
     smtp_password: str | None = Field(default=None)
     smtp_use_tls: bool = Field(default=True)
     smtp_use_ssl: bool = Field(default=False)
+    sendgrid_api_key: str | None = Field(default=None, validation_alias=AliasChoices("SENDGRID_API_KEY", "sendgrid_api_key"))
 
     billing_enabled: bool = Field(default=False)
     payment_provider: Literal["stripe", "manual", "none"] = Field(default="none")
@@ -144,6 +148,7 @@ class Settings(BaseSettings):
         "ai_enabled",
         "whatsapp_enabled",
         "email_enabled",
+        "email_sending_enabled",
         "email_dev_allow_token_response",
         "public_signup_enabled",
         "smtp_use_tls",

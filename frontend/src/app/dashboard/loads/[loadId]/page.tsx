@@ -1214,6 +1214,69 @@ export default function LoadDetailPage() {
     }
   }
 
+  async function handleSendPacketEmail(packet: SubmissionPacket) {
+    if (!loadId) return;
+    const defaultTo = (packet.destination_email || "").trim() || (load?.broker_email_raw || "").trim();
+    const loadNumber = (load?.load_number || load?.id || loadId || "").trim();
+    const invoiceNumber = (load?.invoice_number || "").trim() || `Load ${loadNumber}`;
+    const carrierName = (carrierProfile?.legal_name || "Carrier").trim();
+    const amountValue = load?.gross_amount ?? "0.00";
+    const amountText = `${String(amountValue)} ${load?.currency_code ?? "USD"}`;
+    const defaultSubject = `Invoice Packet for Load ${loadNumber} / Invoice ${invoiceNumber}`;
+    const defaultBody = [
+      "Hello,",
+      "",
+      `Please find the billing packet for Load ${loadNumber} ready for review.`,
+      "",
+      "Included documents:",
+      "- Invoice",
+      "- Rate Confirmation",
+      "- Proof of Delivery",
+      "- Bill of Lading (if included)",
+      "",
+      `Carrier: ${carrierName}`,
+      `Invoice Number: ${invoiceNumber}`,
+      `Invoice Amount: ${amountText}`,
+      `Pickup: ${load?.pickup_location ?? "N/A"}`,
+      `Delivery: ${load?.delivery_location ?? "N/A"}`,
+      "",
+      "Please confirm receipt and advise if any additional documentation is required.",
+      "",
+      "Thank you,",
+      carrierName,
+    ].join("\n");
+
+    const toEmail = window.prompt("Send packet to email:", defaultTo);
+    if (!toEmail) return;
+    const subject = window.prompt("Email subject:", defaultSubject);
+    if (!subject) return;
+    const body = window.prompt("Email body:", defaultBody);
+    if (!body) return;
+
+    try {
+      setIsSubmissionBusy(true);
+      setError(null);
+      const token = getAccessToken();
+      await apiClient.post(
+        `/loads/${encodeURIComponent(loadId)}/submission-packets/${encodeURIComponent(packet.id)}/send-email`,
+        { to_email: toEmail, subject, body },
+        { token: token ?? undefined }
+      );
+      setSubmissionPackets(await fetchSubmissionPackets());
+      setLoad(await fetchLoad());
+      setActionMessage("Packet email sent and logged.");
+    } catch (caught: unknown) {
+      const message = extractErrorMessage(caught, "Failed to send packet email.");
+      if (message.toLowerCase().includes("disabled")) {
+        setError("Email sending is not enabled. Use Download Packet ZIP or Copy Submission Email.");
+      } else {
+        setError(message);
+      }
+    } finally {
+      setIsSubmissionBusy(false);
+    }
+  }
+
   async function handlePaymentAction(path: string, payload: Record<string, unknown>) {
     if (!loadId) return;
     try {
@@ -2659,6 +2722,14 @@ export default function LoadDetailPage() {
                         className="rounded-lg border border-slate-300 px-3 py-1 text-xs disabled:opacity-50"
                       >
                         {downloadingPacketId === packet.id ? "Downloading..." : "Download Packet ZIP"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleSendPacketEmail(packet)}
+                        disabled={isSubmissionBusy}
+                        className="rounded-lg border border-slate-300 px-3 py-1 text-xs disabled:opacity-50"
+                      >
+                        Send Packet Email
                       </button>
                       <button
                         type="button"
