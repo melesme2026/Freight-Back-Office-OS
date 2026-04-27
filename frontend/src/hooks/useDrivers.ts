@@ -138,7 +138,8 @@ function normalizeDriversResponse(payload: unknown): Driver[] {
     .sort((a, b) => a.full_name.localeCompare(b.full_name));
 }
 
-export function useDrivers() {
+export function useDrivers(options?: { includeInactive?: boolean }) {
+  const includeInactive = options?.includeInactive ?? false;
   const [data, setData] = useState<Driver[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -165,7 +166,7 @@ export function useDrivers() {
       setIsLoading(true);
       setError(null);
 
-      const response = await apiClient.get<unknown>("/drivers?page=1&page_size=200", {
+      const response = await apiClient.get<unknown>(`/drivers?page=1&page_size=200${includeInactive ? "" : "&is_active=true"}`, {
         token: token ?? undefined,
         organizationId,
         signal: controller.signal,
@@ -193,7 +194,7 @@ export function useDrivers() {
         setIsLoading(false);
       }
     }
-  }, []);
+  }, [includeInactive]);
 
   useEffect(() => {
     isMountedRef.current = true;

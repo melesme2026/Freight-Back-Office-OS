@@ -129,7 +129,11 @@ export default function DriverLoginPage() {
           setOrganizationOptions(organizations);
           setErrorMessage("This email is linked to multiple workspaces. Choose which workspace to access.");
         } else if (error.status === 401) {
-          setErrorMessage("Invalid email or password.");
+          if (error.message.toLowerCase().includes("inactive")) {
+            setErrorMessage("This driver account is inactive. Contact your dispatcher.");
+          } else {
+            setErrorMessage("Invalid email or password.");
+          }
         } else {
           setErrorMessage(error.message || "Unable to sign in. Please verify your credentials and try again.");
         }

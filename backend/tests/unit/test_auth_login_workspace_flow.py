@@ -85,6 +85,34 @@ def test_single_workspace_driver_login_and_me_include_driver_context(db_session)
     assert me.data.driver_id == str(driver.id)
 
 
+def test_inactive_driver_login_is_blocked_with_friendly_message(db_session) -> None:
+    org_id = uuid.uuid4()
+    _seed_org(db_session, org_id, name="Inactive Driver Org", slug="inactive-driver-org")
+    _seed_user(db_session, org_id=org_id, email="inactive-driver@example.com", role=Role.DRIVER, password="Driver123!")
+    db_session.add(
+        Driver(
+            id=uuid.uuid4(),
+            organization_id=org_id,
+            customer_account_id=None,
+            full_name="Inactive Driver",
+            phone="+15550009999",
+            email="inactive-driver@example.com",
+            is_active=False,
+        )
+    )
+    db_session.commit()
+
+    with pytest.raises(AppError) as exc_info:
+        login(
+            LoginRequestBody(email="inactive-driver@example.com", password="Driver123!"),
+            db=db_session,
+            x_organization_id=None,
+        )
+
+    assert exc_info.value.status_code == 401
+    assert str(exc_info.value) == "This driver account is inactive. Contact your dispatcher."
+
+
 def test_multi_workspace_login_requires_explicit_organization_selection(db_session) -> None:
     org_a = uuid.uuid4()
     org_b = uuid.uuid4()

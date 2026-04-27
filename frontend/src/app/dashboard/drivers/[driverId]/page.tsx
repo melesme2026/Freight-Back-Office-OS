@@ -435,16 +435,25 @@ export default function DriverDetailPage() {
       setUpdateMessage(null);
 
       const nextIsActive = driver.status.toLowerCase() !== "active";
-      const payload = await apiClient.patch<unknown>(
-        `/drivers/${encodeURIComponent(driver.id)}`,
-        {
-          is_active: nextIsActive,
-        },
-        {
-          token,
-          organizationId,
-        }
-      );
+      const payload = nextIsActive
+        ? await apiClient.patch<unknown>(
+            `/drivers/${encodeURIComponent(driver.id)}/reactivate`,
+            undefined,
+            {
+              token,
+              organizationId,
+            }
+          )
+        : await apiClient.patch<unknown>(
+            `/drivers/${encodeURIComponent(driver.id)}`,
+            {
+              is_active: false,
+            },
+            {
+              token,
+              organizationId,
+            }
+          );
 
       const normalized = normalizeDriverDetail(payload, driver.id);
       if (!normalized) {
@@ -697,6 +706,11 @@ export default function DriverDetailPage() {
                   >
                     {isSaving ? "Saving..." : "Save Driver Changes"}
                   </button>
+                </div>
+              ) : null}
+              {driver.status.toLowerCase() !== "active" ? (
+                <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                  Inactive drivers cannot sign in, but historical loads and documents remain available.
                 </div>
               ) : null}
             </div>

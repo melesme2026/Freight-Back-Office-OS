@@ -44,6 +44,20 @@ class DriverRepository:
         email: str,
         include_related: bool = False,
     ) -> Driver | None:
+        matches = self.list_by_email(
+            organization_id=organization_id,
+            email=email,
+            include_related=include_related,
+        )
+        return matches[0] if matches else None
+
+    def list_by_email(
+        self,
+        *,
+        organization_id: uuid.UUID | str,
+        email: str,
+        include_related: bool = False,
+    ) -> list[Driver]:
         normalized_organization_id = self._normalize_uuid(
             organization_id,
             field_name="organization_id",
@@ -52,13 +66,14 @@ class DriverRepository:
 
         stmt = select(Driver).where(
             Driver.organization_id == normalized_organization_id,
-            Driver.email == normalized_email,
+            func.lower(Driver.email) == normalized_email,
         )
 
         if include_related:
             stmt = self._apply_related(stmt)
 
-        return self.db.scalar(stmt)
+        stmt = stmt.order_by(Driver.created_at.desc())
+        return list(self.db.scalars(stmt).all())
 
     def list(
         self,

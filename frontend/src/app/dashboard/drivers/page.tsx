@@ -17,7 +17,7 @@ function statusLabel(isActive: boolean): string {
 
 export default function DriversPage() {
   const router = useRouter();
-  const { drivers, isLoading, error, refetch } = useDrivers();
+  const { drivers, isLoading, error, refetch } = useDrivers({ includeInactive: true });
 
   const driverStats = useMemo(() => {
     const totalDrivers = drivers.length;
