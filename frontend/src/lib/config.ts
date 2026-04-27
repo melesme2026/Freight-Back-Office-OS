@@ -14,6 +14,11 @@ function isAbsoluteUrl(value: string): boolean {
   return /^https?:\/\//i.test(value);
 }
 
+function parseBillingMode(value: string | undefined): "pilot" | "live" {
+  const normalized = normalizeOptionalText(value).toLowerCase();
+  return normalized === "live" ? "live" : "pilot";
+}
+
 const rawApiBaseUrl = normalizeOptionalText(process.env.NEXT_PUBLIC_API_BASE_URL);
 const rawApiVersionPrefix = normalizeOptionalText(
   process.env.NEXT_PUBLIC_API_VERSION_PREFIX
@@ -41,6 +46,8 @@ const normalizedApiVersionPrefix = (() => {
   return trimmed.length > 0 ? `/${trimmed}` : "";
 })();
 
+const billingMode = parseBillingMode(process.env.NEXT_PUBLIC_BILLING_MODE);
+
 export const appConfig = {
   appName: "Freight Back Office OS",
   apiBaseUrl: normalizedApiBaseUrl,
@@ -50,6 +57,9 @@ export const appConfig = {
     "00000000-0000-0000-0000-000000000001",
   auth: {
     publicSignupEnabled,
+  },
+  billing: {
+    mode: billingMode,
   },
   pricing: {
     starterLink:

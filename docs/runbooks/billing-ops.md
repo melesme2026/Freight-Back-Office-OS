@@ -14,6 +14,37 @@ It is used by:
 
 ---
 
+## Billing mode configuration
+
+Use billing mode to control customer-facing checkout behavior.
+
+- `NEXT_PUBLIC_BILLING_MODE=pilot|live` controls frontend pricing and billing CTA behavior.
+- `APP_BILLING_MODE=pilot|live` is reserved for backend policy alignment.
+
+### Pilot mode (recommended for pilots)
+
+- Pricing page uses onboarding CTAs instead of charging immediately.
+- Billing pages show pilot access messaging.
+- No customer-facing setup/config errors should appear.
+
+### Live mode
+
+- Pricing page shows Stripe checkout buttons only when links are configured.
+- If a Stripe link is missing, UI falls back to “Contact support” instead of raw config errors.
+
+### Required env for live checkout links
+
+- `NEXT_PUBLIC_STRIPE_STARTER_LINK`
+- `NEXT_PUBLIC_STRIPE_GROWTH_LINK`
+- `NEXT_PUBLIC_ENTERPRISE_CONTACT`
+
+### Optional backend Stripe env (for API/webhook driven billing)
+
+- `STRIPE_SECRET_KEY`
+- `STRIPE_WEBHOOK_SECRET`
+
+---
+
 ## Billing components recap
 
 The billing system includes:
@@ -258,11 +289,3 @@ Future improvements
 ⸻
 
 Summary
-
-Billing operations are healthy when:
-	•	invoices generate correctly
-	•	payments update balances
-	•	overdue invoices are tracked
-	•	no mismatches exist
-
-This runbook ensures consistent financial handling and supports scaling into a real SaaS billing system.

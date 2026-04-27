@@ -71,6 +71,8 @@ services:
         value: none
       - key: BILLING_ENABLED
         value: "false"
+      - key: APP_BILLING_MODE
+        value: pilot
 
   - type: pserv
     name: fbos-web
@@ -86,6 +88,8 @@ services:
         value: ""
       - key: NEXT_PUBLIC_API_VERSION_PREFIX
         value: /api/v1
+      - key: NEXT_PUBLIC_BILLING_MODE
+        value: pilot
 
 databases:
   - name: fbos-postgres

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 
 import { apiClient } from "@/lib/api-client";
 import { getAccessToken, getOrganizationId } from "@/lib/auth";
+import { BillingModeNotice } from "@/components/billing/BillingModeNotice";
 
 type InvoiceListItem = {
   id: string;
@@ -397,6 +398,10 @@ export default function BillingInvoicesPage() {
             </button>
           </div>
         </div>
+
+        <section className="mb-6">
+          <BillingModeNotice />
+        </section>
 
         <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-soft">
           {isLoading ? (

@@ -2,20 +2,21 @@ import { expect, test } from "@playwright/test";
 
 import { mockApi } from "../support/mock-api";
 
-test("billing/pricing safety copy + invalid login", async ({ page }) => {
+test("pricing page hides developer setup copy in pilot mode", async ({ page }) => {
   await mockApi(page);
   await page.goto("/pricing");
-  const starterCheckoutLink = page.getByRole("link", { name: "Start Starter" });
-  const starterSetupRequiredLink = page.getByRole("link", { name: "Setup required" }).first();
-  if (await starterCheckoutLink.count()) {
-    await expect(starterCheckoutLink).toBeVisible();
-    await expect(starterCheckoutLink).toHaveAttribute("href", /^https?:\/\//);
-    await expect(starterCheckoutLink).toHaveAttribute("target", "_blank");
-    await expect(starterCheckoutLink).toHaveAttribute("rel", /noopener/);
-  } else {
-    await expect(page.getByText(/Subscription billing is not fully enabled/i)).toBeVisible();
-    await expect(starterSetupRequiredLink).toBeVisible();
-  }
+
+  await expect(page.getByText(/Pilot access: start using the platform now/i)).toBeVisible();
+  await expect(page.getByRole("link", { name: "Start using now" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Request onboarding" })).toBeVisible();
+
+  await expect(page.getByText(/Setup required/i)).toHaveCount(0);
+  await expect(page.getByText(/checkout link is not configured/i)).toHaveCount(0);
+  await expect(page.getByText(/Subscription billing is not fully enabled yet/i)).toHaveCount(0);
+});
+
+test("billing dashboard shows safe pilot billing state", async ({ page }) => {
+  await mockApi(page);
 
   await page.goto("/login");
   await page.locator("input[type='email']").fill("wrong@example.com");

@@ -5,6 +5,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { apiClient } from "@/lib/api-client";
 import { getAccessToken, getOrganizationId, getUserRole } from "@/lib/auth";
+import { appConfig } from "@/lib/config";
+import { BillingModeNotice } from "@/components/billing/BillingModeNotice";
 
 type BillingMetrics = {
   active_subscriptions?: number;
@@ -362,6 +364,12 @@ export default function BillingPage() {
           </div>
         </div>
 
+
+
+        <section className="mt-4">
+          <BillingModeNotice />
+        </section>
+
         {isLoading ? (
           <div className="mb-8 rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
             <div className="text-sm text-slate-600">Loading billing overview...</div>
@@ -409,8 +417,10 @@ export default function BillingPage() {
                   Stripe subscription reference (display only): {organizationBilling.stripe_subscription_id}
                 </p>
               ) : null}
-              {!organizationBilling?.stripe_subscription_id ? (
-                <p className="mt-2 text-xs text-amber-700">Subscription billing is not fully enabled yet.</p>
+              {appConfig.billing.mode === "pilot" ? (
+                <p className="mt-2 text-xs text-blue-700">You are currently in pilot access. Billing is activated after onboarding.</p>
+              ) : !organizationBilling?.stripe_subscription_id ? (
+                <p className="mt-2 text-xs text-slate-600">If plan checkout is unavailable, contact support to activate billing.</p>
               ) : null}
             </div>
             <Link
