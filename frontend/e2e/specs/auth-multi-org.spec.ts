@@ -12,7 +12,8 @@ test("staff login supports workspace selection for multi-org accounts", async ({
   await page.locator("input[type='password']").fill("Owner123!");
   await page.getByRole("button", { name: "Sign in" }).click();
 
-  await expect(page.getByText("This email is linked to multiple workspaces. Select the workspace you want to access.")).toBeVisible();
+  await expect(page.getByText("Select workspace")).toBeVisible();
+  await expect(page.getByText("This email is linked to multiple workspaces. Choose which workspace to access.")).toBeVisible();
   await page.getByRole("button", { name: "Adwa Express LLC" }).click();
 
   await expect(page).toHaveURL(/\/dashboard/);
@@ -24,7 +25,8 @@ test("driver login supports workspace selection for multi-org accounts", async (
   await page.locator("input[type='password']").fill("Owner123!");
   await page.getByRole("button", { name: "Sign in" }).click();
 
-  await expect(page.getByText("This email is linked to multiple workspaces. Select the workspace you want to access.")).toBeVisible();
+  await expect(page.getByText("Select workspace")).toBeVisible();
+  await expect(page.getByText("This email is linked to multiple workspaces. Choose which workspace to access.")).toBeVisible();
   await page.getByRole("button", { name: "Adwa Driver Ops" }).click();
 
   await expect(page).toHaveURL(/\/driver-portal/);
@@ -37,7 +39,7 @@ test("driver login shows friendly guidance for non-driver workspace", async ({ p
   await page.getByRole("button", { name: "Sign in" }).click();
 
   await page.getByRole("button", { name: "Adwa Express LLC" }).click();
-  await expect(page.getByText("This account is not a driver account for the selected workspace. Use Staff Login instead.")).toBeVisible();
+  await expect(page.getByText("This workspace is not a driver account. Use Staff Login.")).toBeVisible();
 });
 
 test("staff login shows friendly invalid credentials and no raw 422 text", async ({ page }) => {
@@ -49,4 +51,5 @@ test("staff login shows friendly invalid credentials and no raw 422 text", async
   await expect(page.getByText("Invalid email or password.")).toBeVisible();
   await expect(page.getByText("API request failed")).toHaveCount(0);
   await expect(page.getByText("422")).toHaveCount(0);
+  await expect(page.getByText("organization_id")).toHaveCount(0);
 });

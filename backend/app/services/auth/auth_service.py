@@ -87,6 +87,77 @@ class AuthService:
 
         return organization_records[0].organization_id
 
+    def authenticate_user_for_login(
+        self,
+        *,
+        email: str,
+        password: str,
+        organization_id: uuid.UUID | None = None,
+    ) -> StaffUser:
+        normalized_email = email.strip().lower()
+        stmt = (
+            select(StaffUser, Organization.name)
+            .join(Organization, StaffUser.organization_id == Organization.id)
+            .where(StaffUser.email == normalized_email, StaffUser.is_active.is_(True))
+        )
+        organization_records = list(self.db.execute(stmt).all())
+
+        if not organization_records:
+            raise UnauthorizedError("Invalid email or password")
+
+        if organization_id is not None:
+            selected = [record for record in organization_records if record.StaffUser.organization_id == organization_id]
+            if not selected:
+                raise AppError(
+                    "Invalid workspace selection.",
+                    code="invalid_organization_selection",
+                    status_code=422,
+                )
+            organization_records = selected
+
+        password_matches = [record for record in organization_records if verify_password(password, record.StaffUser.password_hash)]
+        if not password_matches:
+            raise UnauthorizedError("Invalid email or password")
+
+        if organization_id is None and len(password_matches) > 1:
+            organizations_by_id: dict[uuid.UUID, dict[str, object]] = {}
+            for record in password_matches:
+                org_id = record.StaffUser.organization_id
+                role_value = str(getattr(record.StaffUser.role, "value", record.StaffUser.role)).lower()
+                existing = organizations_by_id.get(org_id)
+                if existing is None:
+                    organizations_by_id[org_id] = {
+                        "organization_id": str(org_id),
+                        "organization_name": record.name,
+                        "roles": {role_value},
+                    }
+                else:
+                    roles = existing["roles"]
+                    assert isinstance(roles, set)
+                    roles.add(role_value)
+
+            organizations = []
+            for item in sorted(organizations_by_id.values(), key=lambda value: (str(value.get("organization_name") or "").lower(), str(value["organization_id"]))):
+                roles = sorted(item["roles"]) if isinstance(item["roles"], set) else []
+                organizations.append(
+                    {
+                        "organization_id": item["organization_id"],
+                        "organization_name": item.get("organization_name"),
+                        "role": "/".join(roles),
+                    }
+                )
+
+            raise AppError(
+                "This email is linked to multiple workspaces.",
+                code="multiple_organizations",
+                status_code=422,
+                details={"organizations": organizations},
+            )
+
+        user = password_matches[0].StaffUser
+        user.last_login_at = datetime.now(timezone.utc)
+        return self.staff_user_repo.update(user)
+
     def build_access_token(self, user: StaffUser) -> str:
         role_value = str(getattr(user.role, "value", user.role)).lower()
         additional_claims: dict[str, str] = {

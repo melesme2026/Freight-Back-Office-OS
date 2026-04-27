@@ -151,7 +151,6 @@ export default function DriverDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [isInviting, setIsInviting] = useState(false);
   const [inviteError, setInviteError] = useState<string | null>(null);
-  const [activationToken, setActivationToken] = useState<string | null>(null);
   const [activationUrl, setActivationUrl] = useState<string | null>(null);
   const [inviteStatus, setInviteStatus] = useState<string | null>(null);
   const [inviteEmailStatus, setInviteEmailStatus] = useState<string | null>(null);
@@ -300,7 +299,6 @@ export default function DriverDetailPage() {
     try {
       setIsInviting(true);
       setInviteError(null);
-      setActivationToken(null);
       setActivationUrl(null);
       setInviteStatus(null);
       setInviteEmailStatus(null);
@@ -321,15 +319,18 @@ export default function DriverDetailPage() {
         }
       );
 
-      const tokenValue = payload?.data?.activation_token?.trim();
       const activationUrlValue = payload?.data?.activation_url?.trim() || null;
       const emailStatus = payload?.data?.email_status?.trim() || "sent";
-      const inviteMessage = (payload?.data as { message?: string } | undefined)?.message?.trim();
+      const tokenValue = payload?.data?.activation_token?.trim();
+      const resolvedActivationUrl = activationUrlValue || (tokenValue ? `/activate-account?token=${encodeURIComponent(tokenValue)}` : null);
 
       setInviteEmailStatus(emailStatus);
-      setInviteStatus(inviteMessage || `Invite processed. Email status: ${emailStatus}.`);
-      setActivationUrl(activationUrlValue);
-      setActivationToken(tokenValue || null);
+      setInviteStatus(
+        emailStatus === "disabled"
+          ? "Activation link ready."
+          : `Invite sent to ${driver.email}.`
+      );
+      setActivationUrl(resolvedActivationUrl);
     } catch (caught: unknown) {
       setInviteError(
         caught instanceof Error
@@ -342,7 +343,7 @@ export default function DriverDetailPage() {
   }
 
   async function copyActivationLink() {
-    const relativeLink = activationUrl || (activationToken ? `/activate-account?token=${encodeURIComponent(activationToken)}` : null);
+    const relativeLink = activationUrl;
     if (!relativeLink) {
       return;
     }
@@ -350,7 +351,7 @@ export default function DriverDetailPage() {
     const absoluteLink = relativeLink.startsWith("http") ? relativeLink : `${window.location.origin}${relativeLink}`;
     const copied = await copyTextWithFallback(absoluteLink);
     if (copied) {
-      setInviteStatus("Activation link copied. Send it directly to the driver.");
+      setInviteStatus("Activation link copied.");
       return;
     }
     setInviteStatus("Copy failed — select and copy the link manually.");
@@ -761,31 +762,22 @@ export default function DriverDetailPage() {
                 </div>
               ) : null}
 
-              {activationToken ? (
-                <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs text-emerald-800">
-                  <div className="font-semibold">Activation link ready</div>
-                  <div className="mt-1 break-all select-all">{activationToken}</div>
-                  <a
-                    href={`/activate-account?token=${encodeURIComponent(activationToken)}`}
-                    className="mt-2 inline-block font-semibold text-brand-700"
-                  >
-                    Open activation page →
-                  </a>
-                  <button type="button" onClick={() => void copyActivationLink()} className="mt-2 inline-block font-semibold text-brand-700">
-                    Copy activation link
-                  </button>
-                </div>
-              ) : null}
-
-              {!activationToken && activationUrl ? (
+              {activationUrl ? (
                 <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs text-emerald-800">
                   <div className="font-semibold">Activation link generated</div>
-                  <a href={activationUrl} className="mt-1 inline-block break-all font-semibold text-brand-700">
-                    Open activation page →
-                  </a>
-                  <button type="button" onClick={() => void copyActivationLink()} className="mt-2 inline-block font-semibold text-brand-700">
-                    Copy activation link
-                  </button>
+                  <input
+                    readOnly
+                    value={activationUrl.startsWith("http") ? activationUrl : `${typeof window !== "undefined" ? window.location.origin : ""}${activationUrl}`}
+                    className="mt-2 w-full rounded-lg border border-emerald-300 bg-white px-3 py-2 text-xs text-slate-800"
+                  />
+                  <div className="mt-2 flex flex-wrap gap-3">
+                    <button type="button" onClick={() => void copyActivationLink()} className="font-semibold text-brand-700">
+                      Copy activation link
+                    </button>
+                    <a href={activationUrl} className="font-semibold text-brand-700">
+                      Open activation page
+                    </a>
+                  </div>
                 </div>
               ) : null}
 

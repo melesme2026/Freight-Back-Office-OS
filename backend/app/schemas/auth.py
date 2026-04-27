@@ -24,6 +24,7 @@ class StaffUserAuthView(BaseModel):
     full_name: str
     role: Role
     is_active: bool = True
+    driver_id: str | None = None
 
 
 class LoginRequest(BaseModel):

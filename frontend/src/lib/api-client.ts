@@ -172,13 +172,25 @@ async function buildError(response: Response): Promise<ApiClientError> {
     if (contentType.toLowerCase().includes("application/json")) {
       const errorBody = (await parseJsonSafely<{
         error?: { code?: string; message?: string; details?: Record<string, unknown> };
+        organizations?: Array<Record<string, unknown>>;
         detail?: string | Array<unknown> | Record<string, unknown>;
         message?: string;
       }>(response)) as {
         error?: { code?: string; message?: string; details?: Record<string, unknown> };
+        organizations?: Array<Record<string, unknown>>;
         detail?: string | Array<unknown> | Record<string, unknown>;
         message?: string;
       };
+
+      if (typeof errorBody?.error === "string" && typeof errorBody?.message === "string") {
+        return new ApiClientError(errorBody.message, {
+          status: response.status,
+          code: errorBody.error,
+          details: Array.isArray(errorBody.organizations)
+            ? { organizations: errorBody.organizations }
+            : undefined,
+        });
+      }
 
       if (errorBody?.error?.message) {
         return new ApiClientError(errorBody.error.message, {

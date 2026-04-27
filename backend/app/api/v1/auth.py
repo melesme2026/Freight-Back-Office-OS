@@ -4,12 +4,13 @@ import uuid
 from datetime import timedelta
 
 from fastapi import APIRouter, Depends, Header
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 from sqlalchemy import select
 
 from app.core.dependencies import get_db_session
-from app.core.exceptions import UnauthorizedError, ValidationError
+from app.core.exceptions import AppError, UnauthorizedError, ValidationError
 from app.core.config import get_settings
 from app.core.security import (
     create_action_token,
@@ -143,7 +144,7 @@ def _resolve_organization_id(
     return _parse_header_organization_id(x_organization_id)
 
 
-def _serialize_staff_user(user) -> StaffUserAuthView:
+def _serialize_staff_user(user, *, driver_id: str | None = None) -> StaffUserAuthView:
     return StaffUserAuthView(
         id=str(user.id),
         organization_id=str(user.organization_id),
@@ -151,6 +152,7 @@ def _serialize_staff_user(user) -> StaffUserAuthView:
         full_name=user.full_name,
         role=user.role,
         is_active=user.is_active,
+        driver_id=driver_id,
     )
 
 
@@ -272,15 +274,23 @@ def login(
     )
 
     auth_service = AuthService(db)
-    organization_id = auth_service.resolve_organization_id_for_login(
-        email=payload.email,
-        organization_id=hinted_organization_id,
-    )
-    user = auth_service.authenticate_staff_user(
-        organization_id=organization_id,
+    try:
+        user = auth_service.authenticate_user_for_login(
         email=payload.email,
         password=payload.password,
+        organization_id=hinted_organization_id,
     )
+    except AppError as exc:
+        if exc.code == "multiple_organizations":
+            return JSONResponse(
+                status_code=422,
+                content={
+                    "error": "multiple_organizations",
+                    "message": "This email is linked to multiple workspaces.",
+                    "organizations": exc.details.get("organizations", []),
+                },
+            )
+        raise
     access_token = auth_service.build_access_token(user)
 
     data = LoginResponseData(
@@ -298,13 +308,14 @@ def get_current_user(
     db: Session = Depends(get_db_session),
 ) -> CurrentUserResponse:
     token_service = TokenService(db)
+    payload = token_service.decode_access_token(token)
     user = token_service.get_current_staff_user(token)
 
     if user is None:
         raise UnauthorizedError("Unable to resolve current user")
 
     return CurrentUserResponse(
-        data=_serialize_staff_user(user),
+        data=_serialize_staff_user(user, driver_id=str(payload.get("driver_id")).strip() if payload.get("driver_id") else None),
         meta={},
         error=None,
     )
