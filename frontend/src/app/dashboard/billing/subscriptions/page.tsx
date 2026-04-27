@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 
 import { apiClient } from "@/lib/api-client";
 import { getAccessToken, getOrganizationId } from "@/lib/auth";
+import { BillingModeNotice } from "@/components/billing/BillingModeNotice";
+import { appConfig } from "@/lib/config";
 
 type SubscriptionListItem = {
   id: string;
@@ -338,6 +340,11 @@ export default function BillingSubscriptionsPage() {
   return (
     <main className="min-h-screen bg-slate-50 text-slate-900">
       <div className="mx-auto max-w-7xl px-6 py-10">
+        {appConfig.billing.mode === "pilot" ? (
+          <p className="mb-4 text-sm text-slate-600">
+            Subscription checkout is activated after onboarding while pilot access is enabled.
+          </p>
+        ) : null}
         <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="text-sm font-medium text-brand-700">
@@ -363,14 +370,18 @@ export default function BillingSubscriptionsPage() {
             <button
               type="button"
               onClick={() => void handleCreateSubscription()}
-              disabled={isCreating || isLoading}
+              disabled={isCreating || isLoading || appConfig.billing.mode === "pilot"}
               title="Create a minimal operational subscription."
               className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {isCreating ? "Creating..." : "New Subscription"}
+              {appConfig.billing.mode === "pilot" ? "New Subscription (Pilot disabled)" : isCreating ? "Creating..." : "New Subscription"}
             </button>
           </div>
         </div>
+
+        <section className="mb-6">
+          <BillingModeNotice />
+        </section>
 
         <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-soft">
           {isLoading ? (

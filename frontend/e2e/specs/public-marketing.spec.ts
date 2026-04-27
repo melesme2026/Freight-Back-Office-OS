@@ -5,16 +5,16 @@ import { assertNoCriticalUiCorruption, attachRuntimeGuards } from "../support/te
 test("public pages and core nav route correctly", async ({ page }) => {
   const assertClean = attachRuntimeGuards(page);
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: /Run freight operations/i })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /without spreadsheets, texts, or lost paperwork/i })).toBeVisible();
 
   await page.getByRole("link", { name: "View Pricing" }).click();
   await expect(page).toHaveURL(/\/pricing/);
-  await expect(page.getByRole("heading", { name: /Back-office plans/i })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /Simple freight back-office plans/i })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Starter" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Growth" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Enterprise" })).toBeVisible();
 
-  await page.getByRole("link", { name: "Request Demo" }).click();
+  await page.getByRole("link", { name: "Request onboarding" }).click();
   await expect(page).toHaveURL(/\/request-demo/);
   await expect(page.getByRole("heading", { name: /walkthrough/i })).toBeVisible();
 

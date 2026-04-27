@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 
 import { apiClient } from "@/lib/api-client";
 import { getAccessToken, getOrganizationId } from "@/lib/auth";
+import { BillingModeNotice } from "@/components/billing/BillingModeNotice";
 
 type PaymentListItem = {
   id: string;
@@ -369,6 +370,10 @@ export default function BillingPaymentsPage() {
             </button>
           </div>
         </div>
+
+        <section className="mb-6">
+          <BillingModeNotice />
+        </section>
 
         <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-soft">
           {isLoading ? (

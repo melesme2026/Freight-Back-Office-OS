@@ -11,13 +11,13 @@ type Plan = {
   href: string;
   cta: string;
   external?: boolean;
-  unavailableNote?: string;
+  subtitle: string;
 };
 
 function resolvePlanLink(link: string): { href: string; configured: boolean } {
   const trimmed = link.trim();
   if (!trimmed) {
-    return { href: "/dashboard/billing", configured: false };
+    return { href: "", configured: false };
   }
   return { href: trimmed, configured: true };
 }
@@ -25,33 +25,35 @@ function resolvePlanLink(link: string): { href: string; configured: boolean } {
 export default function PricingPage() {
   const starter = resolvePlanLink(appConfig.pricing.starterLink);
   const growth = resolvePlanLink(appConfig.pricing.growthLink);
-  const billingEnabled = starter.configured && growth.configured;
+  const isPilotMode = appConfig.billing.mode === "pilot";
 
   const plans: Plan[] = [
     {
       name: "Starter",
+      subtitle: "Owner-operators and dispatchers replacing manual workflows",
       price: "$49/mo",
       summary:
-        "For owner-led and small teams handling post-booking load intake, document collection, packet readiness, invoice preparation, and basic follow-up.",
-      href: starter.href,
-      cta: starter.configured ? "Start Starter" : "Setup required",
-      external: starter.configured,
-      unavailableNote: starter.configured ? undefined : "Starter checkout link is not configured. Contact support to activate billing.",
+        "For owner-operators and dispatchers replacing manual paperwork, texts, and email workflows.",
+      href: isPilotMode ? "/signup" : starter.href,
+      cta: isPilotMode ? "Start using now" : starter.configured ? "Start Starter" : "Contact support",
+      external: !isPilotMode && starter.configured,
     },
     {
       name: "Growth",
+      subtitle: "Dispatch teams managing multiple drivers",
       price: "$99/mo",
       summary:
-        "For active dispatch and billing teams that need faster document throughput, stronger follow-up execution, and higher workflow capacity.",
-      href: growth.href,
-      cta: growth.configured ? "Start Growth" : "Setup required",
-      external: growth.configured,
-      unavailableNote: growth.configured ? undefined : "Growth checkout link is not configured. Contact support to activate billing.",
+        "For dispatchers managing multiple drivers who need structured document flow, invoicing, payment visibility, and follow-up tracking.",
+      href: isPilotMode ? "/request-demo" : growth.href,
+      cta: isPilotMode ? "Request onboarding" : growth.configured ? "Start Growth" : "Contact support",
+      external: !isPilotMode && growth.configured,
     },
     {
       name: "Enterprise",
-      price: "Contact us",
-      summary: "Custom workflow design, onboarding support, and request-based integrations or factoring/back-office coordination.",
+      subtitle: "Small fleets and multi-role operations",
+      price: "Contact Sales",
+      summary:
+        "For fleets that need custom onboarding, workflow design, priority support, and future integrations.",
       href: `${appConfig.pricing.enterpriseContact}?intent=contact-sales`,
       cta: "Contact Sales",
       external: false,
@@ -71,68 +73,70 @@ export default function PricingPage() {
             </Link>
           </div>
           <p className="text-sm font-medium text-brand-700">Pricing</p>
-          <h1 className="mt-2 text-4xl font-bold tracking-tight text-slate-950">Back-office plans built for freight teams</h1>
+          <h1 className="mt-2 text-4xl font-bold tracking-tight text-slate-950">Simple freight back-office plans</h1>
           <p className="mt-4 text-sm leading-6 text-slate-600">
-            Plans are designed for post-booking operations: document workflows, invoice readiness, settlement follow-up, and coordinated team/driver execution.
+            Already running loads manually? Start with your next load and keep your current brokers,
+            dispatch flow, and drivers.
           </p>
         </div>
 
-        <section className="mt-10 grid gap-5 md:grid-cols-3">
-          {plans.map((plan) => (
-            <article key={plan.name} className="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
-              <h2 className="text-xl font-semibold text-slate-950">{plan.name}</h2>
-              <p className="mt-2 text-3xl font-bold text-slate-900">{plan.price}</p>
-              <p className="mt-3 text-sm leading-6 text-slate-600">{plan.summary}</p>
-
-              <a
-                href={plan.href}
-                target={plan.external ? "_blank" : undefined}
-                rel={plan.external ? "noopener noreferrer" : undefined}
-                className={`mt-6 inline-flex rounded-xl px-4 py-2 text-sm font-semibold transition ${
-                  plan.external
-                    ? "bg-brand-600 text-white hover:bg-brand-700"
-                    : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
-                }`}
-              >
-                {plan.cta}
-              </a>
-
-              {plan.unavailableNote ? (
-                <p className="mt-3 text-xs text-amber-700">{plan.unavailableNote}</p>
-              ) : null}
-              {plan.external ? (
-                <p className="mt-3 text-xs text-slate-500">
-                  Opens Stripe checkout in a new tab so you can keep this page open.
-                </p>
-              ) : null}
-            </article>
-          ))}
+        <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-5 text-sm text-slate-700 shadow-soft">
+          {isPilotMode ? (
+            <p>
+              Pilot access: start using the platform now. Billing is activated after onboarding.
+            </p>
+          ) : (
+            <p>
+              Live billing mode is enabled. Plan checkout opens Stripe in a new tab when configured.
+            </p>
+          )}
         </section>
 
-        {!billingEnabled ? (
-          <section className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-5 text-amber-900">
-            <h2 className="text-base font-semibold">Subscription billing is not fully enabled yet.</h2>
-            <p className="mt-2 text-sm">
-              Pilot teams can review pricing here, but checkout links must be configured in environment variables before live subscription collection.
-            </p>
-          </section>
-        ) : null}
+        <section className="mt-10 grid gap-5 md:grid-cols-3">
+          {plans.map((plan) => {
+            const isDisabledLive = !isPilotMode && !plan.external && plan.name !== "Enterprise" && plan.cta === "Contact support";
+            return (
+              <article key={plan.name} className="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
+                <h2 className="text-xl font-semibold text-slate-950">{plan.name}</h2>
+                <p className="mt-1 text-xs font-medium uppercase tracking-wide text-slate-500">{plan.subtitle}</p>
+                <p className="mt-2 text-3xl font-bold text-slate-900">{plan.price}</p>
+                <p className="mt-3 text-sm leading-6 text-slate-600">{plan.summary}</p>
+
+                <a
+                  href={plan.href || "/request-demo"}
+                  target={plan.external ? "_blank" : undefined}
+                  rel={plan.external ? "noopener noreferrer" : undefined}
+                  className={`mt-6 inline-flex rounded-xl px-4 py-2 text-sm font-semibold transition ${
+                    plan.external || isPilotMode
+                      ? "bg-brand-600 text-white hover:bg-brand-700"
+                      : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
+                  }`}
+                >
+                  {plan.cta}
+                </a>
+
+                {isDisabledLive ? (
+                  <p className="mt-3 text-xs text-slate-500">
+                    Checkout is unavailable right now. Contact support to activate this plan.
+                  </p>
+                ) : null}
+              </article>
+            );
+          })}
+        </section>
 
         <section className="mt-8 rounded-2xl border border-slate-200 bg-white p-6 text-center shadow-soft">
-          <h2 className="text-lg font-semibold text-slate-900">Need a guided setup call?</h2>
+          <h2 className="text-lg font-semibold text-slate-900">What happens after signup?</h2>
           <p className="mt-2 text-sm text-slate-600">
-            Use Request Demo for onboarding support or Contact Sales for enterprise rollout planning.
+            Add your next load, upload documents, generate the invoice, send the packet, and track payment follow-up from one workspace.
           </p>
           <div className="mt-4 flex flex-wrap justify-center gap-3">
-            <Link href="/request-demo" className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100">
-              Request Demo
+            <Link href="/signup" className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700">
+              Create workspace
             </Link>
-            <a
-              href={`${appConfig.pricing.enterpriseContact}?intent=contact-sales`}
-              className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
-            >
-              Contact Sales
-            </a>
+            <Link href="/request-demo" className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100">
+              Request onboarding
+            </Link>
           </div>
         </section>
       </div>
