@@ -2,8 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 
-import { apiClient } from "@/lib/api-client";
-import { getAccessToken, getOrganizationId } from "@/lib/auth";
+import { ApiClientError, apiClient } from "@/lib/api-client";
+import { getAccessToken, getDriverId, getOrganizationId } from "@/lib/auth";
 
 type SupportTicket = {
   id: string;
@@ -108,7 +108,7 @@ export default function DriverSupportPage() {
   const organizationId = getOrganizationId();
 
   const claims = useMemo(() => parseJwtClaims(token), [token]);
-  const driverId = claims?.driver_id ?? "";
+  const driverId = getDriverId() ?? claims?.driver_id ?? "";
   const driverEmail = claims?.email ?? "";
   const role = claims?.role ?? "";
 
@@ -141,13 +141,17 @@ export default function DriverSupportPage() {
         setIsLoading(true);
         setErrorMessage(null);
 
-        const payload = await apiClient.get<unknown>(
-          `/support/tickets?driver_id=${driverId}&page=1&page_size=50`,
-          {
+        const payload = await apiClient
+          .get<unknown>(`/support/tickets?driver_id=${driverId}&page=1&page_size=50`, {
             token: token ?? undefined,
             organizationId: organizationId ?? undefined,
-          }
-        );
+          })
+          .catch((error: unknown) => {
+            if (error instanceof ApiClientError && [404, 501].includes(error.status)) {
+              return { data: [] };
+            }
+            throw error;
+          });
 
         if (!mounted) return;
         setTickets(normalizeTickets(payload));

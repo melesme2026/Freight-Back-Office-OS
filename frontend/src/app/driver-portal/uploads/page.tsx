@@ -8,7 +8,7 @@ import { apiClient } from "@/lib/api-client";
 import { getAccessToken, getOrganizationId } from "@/lib/auth";
 
 export default function DriverUploadsPage() {
-  const { loads, isLoading: isLoadingLoads } = useLoads();
+  const { loads, isLoading: isLoadingLoads } = useLoads({ scope: "driver" });
 
   const [selectedLoadId, setSelectedLoadId] = useState("");
   const [documentType, setDocumentType] = useState("bol");

@@ -16,6 +16,7 @@ type LoginResponse = {
     user?: {
       role?: string;
       organization_id?: string;
+      driver_id?: string;
     };
   };
   message?: string;
@@ -114,7 +115,7 @@ export default function LoginPage() {
       }
 
       if (isDriverRole(userRole)) {
-        throw new Error("This workspace is a driver account. Use Driver Login.");
+        throw new Error("Use Driver Login");
       }
 
       setAuthSession({
@@ -123,6 +124,7 @@ export default function LoginPage() {
         organizationId: resolvedOrganizationId,
         userEmail: normalizedEmail,
         userRole,
+        driverId: null,
       });
 
       router.replace(resolvePostLoginRoute(userRole));
@@ -136,7 +138,7 @@ export default function LoginPage() {
           setOrganizationOptions(organizations);
           setErrorMessage("This email is linked to multiple workspaces. Choose which workspace to access.");
         } else if (error.status === 401) {
-          setErrorMessage("Invalid email or password.");
+          setErrorMessage("Invalid credentials");
         } else {
           setErrorMessage(error.message || "Unable to sign in. Please verify your credentials and try again.");
         }
@@ -244,7 +246,7 @@ export default function LoginPage() {
                     disabled={isSubmitting}
                     onClick={async () => {
                       if (option.role === "driver") {
-                        setErrorMessage("This workspace is a driver account. Use Driver Login.");
+                        setErrorMessage("Use Driver Login");
                         return;
                       }
                       setErrorMessage(null);

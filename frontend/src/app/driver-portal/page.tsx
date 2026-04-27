@@ -3,8 +3,8 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
-import { apiClient } from "@/lib/api-client";
-import { getAccessToken, getOrganizationId } from "@/lib/auth";
+import { ApiClientError, apiClient } from "@/lib/api-client";
+import { getAccessToken, getDriverId, getOrganizationId } from "@/lib/auth";
 
 type TokenClaims = {
   sub?: string;
@@ -96,7 +96,7 @@ export default function DriverPortalPage() {
   const organizationId = getOrganizationId();
 
   const claims = useMemo(() => parseJwtClaims(token), [token]);
-  const driverId = claims?.driver_id ?? "";
+  const driverId = getDriverId() ?? claims?.driver_id ?? "";
   const driverEmail = claims?.email ?? "";
   const role = claims?.role ?? "";
 
@@ -130,17 +130,21 @@ export default function DriverPortalPage() {
         setErrorMessage(null);
 
         const [loadsPayload, supportPayload] = await Promise.all([
-          apiClient.get<unknown>(`/loads?driver_id=${driverId}&page=1&page_size=1`, {
+          apiClient.get<unknown>(`/driver/loads?page=1&page_size=1`, {
             token: token ?? undefined,
             organizationId: organizationId ?? undefined,
           }),
-          apiClient.get<unknown>(
-            `/support/tickets?driver_id=${driverId}&status=open&page=1&page_size=1`,
-            {
+          apiClient
+            .get<unknown>(`/support/tickets?driver_id=${driverId}&status=open&page=1&page_size=1`, {
               token: token ?? undefined,
               organizationId: organizationId ?? undefined,
-            }
-          ),
+            })
+            .catch((error: unknown) => {
+              if (error instanceof ApiClientError && [404, 501].includes(error.status)) {
+                return { data: [] };
+              }
+              throw error;
+            }),
         ]);
 
         if (!mounted) {

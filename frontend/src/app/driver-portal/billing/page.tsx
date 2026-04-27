@@ -3,8 +3,8 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
-import { apiClient } from "@/lib/api-client";
-import { getAccessToken, getOrganizationId } from "@/lib/auth";
+import { ApiClientError, apiClient } from "@/lib/api-client";
+import { getAccessToken, getDriverId, getOrganizationId } from "@/lib/auth";
 
 type TokenClaims = {
   role?: string;
@@ -158,9 +158,10 @@ export default function DriverBillingPage() {
   const token = getAccessToken();
   const organizationId = getOrganizationId();
   const claims = useMemo(() => parseClaims(token), [token]);
+  const driverId = getDriverId() ?? claims.driver_id;
 
   useEffect(() => {
-    if (!token || !organizationId || !claims.driver_id) {
+    if (!token || !organizationId || !driverId) {
       setIsLoading(false);
       setErrorMessage("Missing driver billing context. Please sign in again.");
       return;
@@ -174,17 +175,32 @@ export default function DriverBillingPage() {
         setErrorMessage(null);
 
         const [invoicePayload, paymentPayload, subscriptionPayload] = await Promise.all([
-          apiClient.get(`/billing-invoices?driver_id=${claims.driver_id}&page=1&page_size=5`, {
+          apiClient.get(`/billing-invoices?driver_id=${driverId}&page=1&page_size=5`, {
             token: token ?? undefined,
             organizationId: organizationId ?? undefined,
+          }).catch((error: unknown) => {
+            if (error instanceof ApiClientError && [404, 501].includes(error.status)) {
+              return { data: [] };
+            }
+            throw error;
           }),
-          apiClient.get(`/payments?driver_id=${claims.driver_id}&page=1&page_size=5`, {
+          apiClient.get(`/payments?driver_id=${driverId}&page=1&page_size=5`, {
             token: token ?? undefined,
             organizationId: organizationId ?? undefined,
+          }).catch((error: unknown) => {
+            if (error instanceof ApiClientError && [404, 501].includes(error.status)) {
+              return { data: [] };
+            }
+            throw error;
           }),
           apiClient.get("/subscriptions?page=1&page_size=5", {
             token: token ?? undefined,
             organizationId: organizationId ?? undefined,
+          }).catch((error: unknown) => {
+            if (error instanceof ApiClientError && [404, 501].includes(error.status)) {
+              return { data: [] };
+            }
+            throw error;
           }),
         ]);
 
@@ -211,7 +227,7 @@ export default function DriverBillingPage() {
     return () => {
       mounted = false;
     };
-  }, [claims.driver_id, organizationId, token]);
+  }, [driverId, organizationId, token]);
 
   const openInvoices = invoices.filter((item) => (item.status ?? "").toLowerCase() !== "paid");
   const totalDue = openInvoices.reduce((sum, invoice) => sum + Number(invoice.amount_due ?? 0), 0);
