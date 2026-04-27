@@ -61,6 +61,18 @@ export async function mockApi(page: Page) {
           }),
         });
       }
+      if (body?.email === "multi@example.com" && body.organization_id === "00000000-0000-0000-0000-00000000c333") {
+        return route.fulfill({
+          status: 422,
+          contentType: "application/json",
+          body: JSON.stringify({
+            error: {
+              code: "invalid_organization_selection",
+              message: "Invalid workspace selection.",
+            },
+          }),
+        });
+      }
       const role = body.email === seed.driver.email || body.organization_id === "00000000-0000-0000-0000-00000000b222" ? "driver" : "owner";
       const organizationId = body.organization_id ?? seed.organizationId;
       const expiresAtEpoch = Math.floor(Date.now() / 1000) + 60 * 60;
@@ -136,7 +148,14 @@ export async function mockApi(page: Page) {
     }
 
     if (path === "/auth/me" && method === "GET") {
-      return ok(route, { id: "staff-e2e-001", email: seed.owner.email, role: "owner" });
+      return ok(route, { id: "staff-e2e-001", email: seed.owner.email, role: "owner", organization_id: seed.organizationId });
+    }
+
+    if (path === "/auth/invite-user" && method === "POST") {
+      return ok(route, {
+        email_status: "disabled",
+        activation_url: "/activate-account?token=manual-token-e2e",
+      });
     }
 
     if (path.startsWith("/staff-users") && method === "GET") {

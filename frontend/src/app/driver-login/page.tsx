@@ -53,8 +53,6 @@ export default function DriverLoginPage() {
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [organizationId, setOrganizationId] = useState("");
-  const [showAdvancedLogin, setShowAdvancedLogin] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isCheckingSession, setIsCheckingSession] = useState(true);
@@ -77,11 +75,10 @@ export default function DriverLoginPage() {
     }
   }, [router]);
 
-  const normalizedOrganizationId = useMemo(() => normalizeText(organizationId), [organizationId]);
   const normalizedEmail = useMemo(() => normalizeEmail(email), [email]);
 
   async function loginWithOrganization(selectedOrganizationId?: string) {
-    const normalizedSelectedOrganizationId = normalizeText(selectedOrganizationId ?? normalizedOrganizationId);
+    const normalizedSelectedOrganizationId = normalizeText(selectedOrganizationId ?? "");
     setIsSubmitting(true);
     setErrorMessage(null);
 
@@ -110,7 +107,7 @@ export default function DriverLoginPage() {
       }
 
       if (!isDriverRole(userRole)) {
-        throw new Error("This account is not a driver account for the selected workspace. Use Staff Login instead.");
+        throw new Error("This workspace is not a driver account. Use Staff Login.");
       }
 
       setAuthSession({
@@ -130,7 +127,7 @@ export default function DriverLoginPage() {
             ? (error.details.organizations as LoginOrganizationOption[])
             : [];
           setOrganizationOptions(organizations);
-          setErrorMessage("This email is linked to multiple workspaces. Select the workspace you want to access.");
+          setErrorMessage("This email is linked to multiple workspaces. Choose which workspace to access.");
         } else if (error.status === 401) {
           setErrorMessage("Invalid email or password.");
         } else {
@@ -197,8 +194,9 @@ export default function DriverLoginPage() {
 
           {organizationOptions.length > 0 && (
             <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
-              <p className="mb-2 text-sm font-medium text-slate-800">
-                This email is linked to multiple workspaces. Select the workspace you want to access.
+              <h2 className="mb-1 text-sm font-semibold text-slate-900">Select workspace</h2>
+              <p className="mb-2 text-sm text-slate-700">
+                This email is linked to multiple workspaces. Choose which workspace to access.
               </p>
               <div className="space-y-2">
                 {organizationOptions.map((option) => (
@@ -208,51 +206,36 @@ export default function DriverLoginPage() {
                     className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-left text-sm hover:border-brand-500"
                     disabled={isSubmitting}
                     onClick={async () => {
-                      setOrganizationId(option.organization_id);
                       if (option.role && option.role !== "driver") {
-                        setErrorMessage(
-                          "This account is not a driver account for the selected workspace. Use Staff Login instead."
-                        );
+                        setErrorMessage("This workspace is not a driver account. Use Staff Login.");
                         return;
                       }
-                      setShowAdvancedLogin(true);
                       setErrorMessage(null);
                       await loginWithOrganization(option.organization_id);
                     }}
                   >
-                    {getWorkspaceLabel(option)}
+                    <div className="font-semibold text-slate-900">{getWorkspaceLabel(option)}</div>
+                    <div className="text-xs text-slate-500">Role: {(option.role ?? "driver").toString()}</div>
                   </button>
                 ))}
               </div>
+              <button
+                type="button"
+                className="mt-3 text-xs font-semibold text-slate-700 underline"
+                onClick={() => {
+                  setOrganizationOptions([]);
+                  setErrorMessage(null);
+                }}
+                disabled={isSubmitting}
+              >
+                Back / Edit email
+              </button>
             </div>
           )}
 
           <button type="submit" disabled={isSubmitting} className="w-full rounded-xl bg-brand-600 px-4 py-3 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60">
             {isSubmitting ? "Signing in..." : "Sign in"}
           </button>
-
-          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-            <button
-              type="button"
-              className="text-xs font-semibold text-slate-700 hover:text-slate-900"
-              onClick={() => setShowAdvancedLogin((current) => !current)}
-            >
-              {showAdvancedLogin ? "Hide" : "Show"} Advanced / Admin login
-            </button>
-            {showAdvancedLogin ? (
-              <div className="mt-3">
-                <label className="mb-2 block text-xs font-medium text-slate-700">Organization ID override</label>
-                <input
-                  type="text"
-                  value={organizationId}
-                  onChange={(e) => setOrganizationId(e.target.value)}
-                  className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm"
-                  placeholder="Optional: only for multi-org/admin debugging"
-                  disabled={isSubmitting}
-                />
-              </div>
-            ) : null}
-          </div>
         </form>
         <AuthNavigationLinks
           secondaryLinks={[
