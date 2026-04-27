@@ -63,6 +63,10 @@ class StaffUser(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         DateTime(timezone=True),
         nullable=True,
     )
+    removed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
 
     organization: Mapped["Organization"] = relationship(
         back_populates="staff_users",

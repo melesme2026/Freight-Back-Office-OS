@@ -72,6 +72,7 @@ class StaffUserRepository:
         search: str | None = None,
         page: int = DEFAULT_PAGE,
         page_size: int = DEFAULT_PAGE_SIZE,
+        include_removed: bool = False,
         include_related: bool = False,
     ) -> tuple[list[StaffUser], int]:
         normalized_page = max(page, 1)
@@ -94,6 +95,10 @@ class StaffUserRepository:
         if normalized_organization_id is not None:
             stmt = stmt.where(StaffUser.organization_id == normalized_organization_id)
             count_stmt = count_stmt.where(StaffUser.organization_id == normalized_organization_id)
+
+        if not include_removed:
+            stmt = stmt.where(StaffUser.removed_at.is_(None))
+            count_stmt = count_stmt.where(StaffUser.removed_at.is_(None))
 
         if normalized_role is not None:
             stmt = stmt.where(StaffUser.role == normalized_role)
