@@ -42,7 +42,7 @@ test("owner/admin launch workflow including docs, invoice, packet, payments, and
   await expect(page.getByRole("button", { name: /Copy Submission Email/i })).toBeVisible();
 
   await page.getByRole("button", { name: /Send Email/i }).click();
-  await expect(page.getByText(/Email sending is not enabled/i)).toBeVisible();
+  await expect(page.getByText(/Packet email sent and logged/i)).toBeVisible();
 
   await page.getByRole("button", { name: /Record partial payment/i }).click();
   await page.getByRole("button", { name: /Save payment/i }).click();

@@ -798,7 +798,7 @@ export default function DriverDetailPage() {
               <button
                 type="button"
                 onClick={() => void inviteDriverToPortal()}
-                disabled={isInviting || !driver.email}
+                disabled={isInviting}
                 className="mt-4 rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:opacity-60"
               >
                 {isInviting ? "Generating invite..." : "Generate driver activation invite"}

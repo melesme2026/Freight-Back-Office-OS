@@ -13,6 +13,6 @@ test("mobile smoke: landing and driver load detail actions visible", async ({ pa
 
   await loginAsDriver(page);
   await page.goto(`/driver-portal/loads/${seed.load.id}`);
-  await expect(page.getByRole("heading", { name: /Load/ })).toBeVisible();
+  await expect(page.getByRole("main").getByRole("heading", { name: /Load/ })).toBeVisible();
   await expect(page.getByText(/Document Uploads/)).toBeVisible();
 });

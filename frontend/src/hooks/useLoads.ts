@@ -269,7 +269,8 @@ function normalizeLoadsResponse(payload: unknown): Load[] {
     .filter((item): item is Load => item !== null);
 }
 
-export function useLoads() {
+export function useLoads(options?: { scope?: "staff" | "driver" }) {
+  const scope = options?.scope ?? "staff";
   const [data, setData] = useState<Load[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -282,7 +283,7 @@ export function useLoads() {
       const token = getAccessToken();
       const organizationId = getOrganizationId();
 
-      const response = await apiClient.get<ApiResponse<unknown>>("/loads", {
+      const response = await apiClient.get<ApiResponse<unknown>>(scope === "driver" ? "/driver/loads" : "/loads", {
         token: token ?? undefined,
         organizationId: organizationId ?? undefined,
       });
@@ -295,7 +296,7 @@ export function useLoads() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [scope]);
 
   useEffect(() => {
     void fetchLoads();

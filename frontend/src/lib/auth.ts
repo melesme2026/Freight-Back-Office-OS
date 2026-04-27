@@ -3,6 +3,7 @@ const TOKEN_TYPE_KEY = "fbos_token_type";
 const ORGANIZATION_ID_KEY = "fbos_organization_id";
 const USER_EMAIL_KEY = "fbos_user_email";
 const USER_ROLE_KEY = "fbos_user_role";
+const DRIVER_ID_KEY = "fbos_driver_id";
 const JWT_EXPIRY_SKEW_SECONDS = 30;
 
 function isBrowser(): boolean {
@@ -122,12 +123,17 @@ export function getUserRole(): string | null {
   return getStorageItem(USER_ROLE_KEY);
 }
 
+export function getDriverId(): string | null {
+  return getStorageItem(DRIVER_ID_KEY);
+}
+
 export function getAuthSession(): {
   accessToken: string | null;
   tokenType: string;
   organizationId: string | null;
   userEmail: string | null;
   userRole: string | null;
+  driverId: string | null;
 } {
   return {
     accessToken: getAccessToken(),
@@ -135,6 +141,7 @@ export function getAuthSession(): {
     organizationId: getOrganizationId(),
     userEmail: getUserEmail(),
     userRole: getUserRole(),
+    driverId: getDriverId(),
   };
 }
 
@@ -158,12 +165,17 @@ export function setUserRole(role: string): void {
   setStorageItem(USER_ROLE_KEY, role);
 }
 
+export function setDriverId(driverId: string): void {
+  setStorageItem(DRIVER_ID_KEY, driverId);
+}
+
 export function setAuthSession(params: {
   accessToken?: string | null;
   tokenType?: string | null;
   organizationId?: string | null;
   userEmail?: string | null;
   userRole?: string | null;
+  driverId?: string | null;
 }): void {
   if (params.accessToken !== undefined) {
     if (params.accessToken === null) {
@@ -204,6 +216,14 @@ export function setAuthSession(params: {
       setStorageItem(USER_ROLE_KEY, params.userRole);
     }
   }
+
+  if (params.driverId !== undefined) {
+    if (params.driverId === null) {
+      removeStorageItem(DRIVER_ID_KEY);
+    } else {
+      setStorageItem(DRIVER_ID_KEY, params.driverId);
+    }
+  }
 }
 
 export function clearAuth(): void {
@@ -216,6 +236,7 @@ export function clearAuth(): void {
   removeStorageItem(ORGANIZATION_ID_KEY);
   removeStorageItem(USER_EMAIL_KEY);
   removeStorageItem(USER_ROLE_KEY);
+  removeStorageItem(DRIVER_ID_KEY);
 }
 
 export function clearAccessToken(): void {

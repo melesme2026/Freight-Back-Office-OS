@@ -158,6 +158,10 @@ export async function mockApi(page: Page) {
       });
     }
 
+    if (path === "/auth/activate-account" && method === "POST") {
+      return ok(route, { activated: true });
+    }
+
     if (path.startsWith("/staff-users") && method === "GET") {
       return ok(route, [{ id: "staff-e2e-001", full_name: "Owner E2E" }]);
     }
@@ -189,6 +193,10 @@ export async function mockApi(page: Page) {
     }
 
     if (path.startsWith("/follow-ups") && method === "GET") {
+      return ok(route, []);
+    }
+
+    if (path.startsWith("/support/tickets") && method === "GET") {
       return ok(route, []);
     }
 
@@ -267,7 +275,7 @@ export async function mockApi(page: Page) {
     }
 
     if (path.includes("/send-email") && method === "POST") {
-      return route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: { message: "Email sending is not enabled" } }) });
+      return ok(route, { status: "queued" });
     }
 
     if (path.includes("/loads/") && path.endsWith("/status") && method === "POST") {
@@ -286,6 +294,10 @@ export async function mockApi(page: Page) {
       }
       state.paidAmount += amount;
       return created(route, { id: `pay-${Date.now()}`, amount_received: amount });
+    }
+
+    if (path.startsWith("/payments") && method === "GET") {
+      return ok(route, []);
     }
 
     if (path.startsWith("/driver/loads") && method === "GET") {
@@ -312,6 +324,14 @@ export async function mockApi(page: Page) {
 
     if (path.startsWith("/billing/invoices") && method === "GET") {
       return ok(route, { items: state.invoiceCount > 0 ? [{ id: "inv-e2e-001", invoice_number: "INV-E2E-001", status: "open", total_amount: 1000, currency_code: "USD", customer_account_id: seed.customer.id }] : [] });
+    }
+
+    if (path.startsWith("/billing-invoices") && method === "GET") {
+      return ok(route, []);
+    }
+
+    if (path.startsWith("/subscriptions") && method === "GET") {
+      return ok(route, []);
     }
 
     if (path.startsWith("/organization/billing") && method === "GET") {

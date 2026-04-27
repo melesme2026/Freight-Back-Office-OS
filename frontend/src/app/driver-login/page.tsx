@@ -15,6 +15,7 @@ type LoginResponse = {
     user?: {
       role?: string;
       organization_id?: string;
+      driver_id?: string;
     };
   };
 };
@@ -98,6 +99,7 @@ export default function DriverLoginPage() {
       const tokenType = payload?.data?.token_type?.trim() || "Bearer";
       const userRole = payload?.data?.user?.role?.trim().toLowerCase() || null;
       const resolvedOrganizationId = normalizeText(payload?.data?.user?.organization_id ?? "");
+      const resolvedDriverId = normalizeText(payload?.data?.user?.driver_id ?? "");
 
       if (!accessToken) {
         throw new Error("Login succeeded but no access token was returned.");
@@ -107,7 +109,7 @@ export default function DriverLoginPage() {
       }
 
       if (!isDriverRole(userRole)) {
-        throw new Error("This workspace is not a driver account. Use Staff Login.");
+        throw new Error("Use Staff Login");
       }
 
       setAuthSession({
@@ -116,6 +118,7 @@ export default function DriverLoginPage() {
         organizationId: resolvedOrganizationId,
         userEmail: normalizedEmail,
         userRole,
+        driverId: resolvedDriverId || null,
       });
 
       router.replace("/driver-portal");
@@ -132,7 +135,7 @@ export default function DriverLoginPage() {
           if (error.message.toLowerCase().includes("inactive")) {
             setErrorMessage("This driver account is inactive. Contact your dispatcher.");
           } else {
-            setErrorMessage("Invalid email or password.");
+            setErrorMessage("Invalid credentials");
           }
         } else {
           setErrorMessage(error.message || "Unable to sign in. Please verify your credentials and try again.");
@@ -211,7 +214,7 @@ export default function DriverLoginPage() {
                     disabled={isSubmitting}
                     onClick={async () => {
                       if (option.role && option.role !== "driver") {
-                        setErrorMessage("This workspace is not a driver account. Use Staff Login.");
+                        setErrorMessage("Use Staff Login");
                         return;
                       }
                       setErrorMessage(null);
