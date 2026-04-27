@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy import inspect
 
 
 # revision identifiers, used by Alembic.
@@ -19,8 +20,21 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column("staff_users", sa.Column("removed_at", sa.DateTime(timezone=True), nullable=True))
+    bind = op.get_bind()
+    inspector = inspect(bind)
+    columns = [column["name"] for column in inspector.get_columns("staff_users")]
+
+    if "removed_at" not in columns:
+        op.add_column(
+            "staff_users",
+            sa.Column("removed_at", sa.DateTime(timezone=True), nullable=True),
+        )
 
 
 def downgrade() -> None:
-    op.drop_column("staff_users", "removed_at")
+    bind = op.get_bind()
+    inspector = inspect(bind)
+    columns = [column["name"] for column in inspector.get_columns("staff_users")]
+
+    if "removed_at" in columns:
+        op.drop_column("staff_users", "removed_at")
