@@ -3,8 +3,10 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
 import { apiClient } from "@/lib/api-client";
-import { getAccessToken, getOrganizationId } from "@/lib/auth";
+import { ApiClientError } from "@/lib/api-client";
+import { getAccessToken, getOrganizationId, getUserRole } from "@/lib/auth";
 import { copyTextWithFallback } from "@/lib/clipboard";
+import { canManageTeam, canModifyTeamMember } from "@/lib/rbac";
 
 type StaffMember = {
   id: string;
@@ -12,6 +14,8 @@ type StaffMember = {
   full_name: string;
   role: string;
   is_active: boolean;
+  status?: string;
+  removed_at?: string | null;
   last_login_at?: string | null;
   created_at?: string | null;
 };
@@ -55,13 +59,33 @@ export default function TeamPage() {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [updatingMemberId, setUpdatingMemberId] = useState<string | null>(null);
   const [deletingMemberId, setDeletingMemberId] = useState<string | null>(null);
+  const [removeCandidate, setRemoveCandidate] = useState<StaffMember | null>(null);
+  const [disableCandidate, setDisableCandidate] = useState<StaffMember | null>(null);
 
   const token = getAccessToken();
   const organizationId = getOrganizationId();
+  const currentUserRole = getUserRole();
+  const canCurrentUserManageTeam = canManageTeam(currentUserRole);
+
+  function toFriendlyError(error: unknown, fallback: string): string {
+    if (error instanceof ApiClientError) {
+      if (error.code === "final_admin_required") return "Workspace must keep at least one active owner/admin.";
+      if (error.code === "cannot_modify_owner") return "Owners cannot be modified by this action.";
+      if (error.code === "cannot_remove_self_as_final_admin") return "You cannot remove or disable yourself as the final owner/admin.";
+      if (error.code === "forbidden_action") return "You are not allowed to perform that team action.";
+      return error.message || fallback;
+    }
+    return error instanceof Error ? error.message : fallback;
+  }
 
   async function loadStaff() {
     if (!token || !organizationId) {
       setErrorMessage("Missing session context. Please sign in again.");
+      setIsLoading(false);
+      return;
+    }
+    if (!canCurrentUserManageTeam) {
+      setStaffMembers([]);
       setIsLoading(false);
       return;
     }
@@ -85,7 +109,7 @@ export default function TeamPage() {
   useEffect(() => {
     void loadStaff();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [canCurrentUserManageTeam]);
 
   useEffect(() => {
     async function fetchCurrentUser() {
@@ -138,7 +162,7 @@ export default function TeamPage() {
       setInviteEmail("");
       await loadStaff();
     } catch (error: unknown) {
-      setInviteStatus(error instanceof Error ? error.message : "Unable to send invite.");
+      setInviteStatus(toFriendlyError(error, "Unable to send invite."));
     } finally {
       setIsInviting(false);
     }
@@ -162,7 +186,7 @@ export default function TeamPage() {
       setIsRefreshing(true);
       await loadStaff();
     } catch (error: unknown) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to update role.");
+      setErrorMessage(toFriendlyError(error, "Unable to update role."));
     } finally {
       setUpdatingMemberId(null);
     }
@@ -179,8 +203,9 @@ export default function TeamPage() {
       );
       setIsRefreshing(true);
       await loadStaff();
+      setErrorMessage(null);
     } catch (error: unknown) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to update user status.");
+      setErrorMessage(toFriendlyError(error, "Unable to update user status."));
     } finally {
       setUpdatingMemberId(null);
     }
@@ -203,7 +228,7 @@ export default function TeamPage() {
       setActivationUrl(payload?.data?.activation_url?.trim() || null);
       setInviteStatus("Invite link regenerated.");
     } catch (error: unknown) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to regenerate invite.");
+      setErrorMessage(toFriendlyError(error, "Unable to regenerate invite."));
     } finally {
       setUpdatingMemberId(null);
     }
@@ -211,23 +236,26 @@ export default function TeamPage() {
 
   async function handleDeleteMember(member: StaffMember) {
     if (!token || !organizationId) return;
-    if (!window.confirm(`Remove ${member.full_name} from this team? This cannot be undone.`)) return;
     try {
       setDeletingMemberId(member.id);
-      await apiClient.delete(`/staff-users/${encodeURIComponent(member.id)}`, {
-        token,
-        organizationId,
-      });
+      await apiClient.patch(
+        `/staff-users/${encodeURIComponent(member.id)}/remove`,
+        { reason: "workspace_team_remove" },
+        { token, organizationId }
+      );
       setIsRefreshing(true);
       await loadStaff();
+      setErrorMessage(null);
     } catch (error: unknown) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to remove staff member.");
+      setErrorMessage(toFriendlyError(error, "Unable to remove staff member."));
     } finally {
       setDeletingMemberId(null);
+      setRemoveCandidate(null);
     }
   }
 
   const activeCount = useMemo(() => staffMembers.filter((member) => member.is_active).length, [staffMembers]);
+  const activeMembers = useMemo(() => staffMembers.filter((member) => !member.removed_at), [staffMembers]);
 
   return (
     <main className="min-h-screen bg-slate-50 text-slate-900">
@@ -240,6 +268,7 @@ export default function TeamPage() {
           </p>
         </div>
 
+        {canCurrentUserManageTeam ? (
         <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
           <h2 className="text-lg font-semibold text-slate-950">Invite staff member</h2>
           <p className="mt-1 text-sm text-slate-600">
@@ -303,6 +332,11 @@ export default function TeamPage() {
             </div>
           ) : null}
         </section>
+        ) : (
+          <section className="rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-600 shadow-soft">
+            Team lifecycle actions are managed by workspace owner/admin.
+          </section>
+        )}
 
         {errorMessage ? (
           <div className="mt-6 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
@@ -313,7 +347,7 @@ export default function TeamPage() {
         <section className="mt-6 rounded-2xl border border-slate-200 bg-white shadow-soft">
           <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
             <h2 className="text-lg font-semibold text-slate-950">Team members</h2>
-            <div className="text-xs text-slate-500">Active: {activeCount} / {staffMembers.length}</div>
+            <div className="text-xs text-slate-500">Active: {activeCount} / {activeMembers.length}</div>
           </div>
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-slate-200 text-sm">
@@ -332,19 +366,21 @@ export default function TeamPage() {
                   <tr>
                     <td colSpan={6} className="px-6 py-8 text-center text-slate-500">Loading team members...</td>
                   </tr>
-                ) : staffMembers.length === 0 ? (
+                ) : activeMembers.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="px-6 py-8 text-center text-slate-500">No staff users found yet.</td>
                   </tr>
                 ) : (
-                  staffMembers.map((member) => (
+                  activeMembers.map((member) => {
+                    const canModify = canCurrentUserManageTeam && canModifyTeamMember(currentUserRole, member.role);
+                    return (
                     <tr key={member.id}>
                       <td className="px-6 py-4 text-slate-900">{member.full_name}</td>
                       <td className="px-6 py-4 text-slate-700">{member.email}</td>
                       <td className="px-6 py-4 text-slate-700">
                         <select
                           value={member.role}
-                          disabled={updatingMemberId === member.id}
+                          disabled={updatingMemberId === member.id || !canCurrentUserManageTeam}
                           onChange={(event) => void handleRoleChange(member, event.target.value)}
                           className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs"
                         >
@@ -362,40 +398,76 @@ export default function TeamPage() {
                       </td>
                       <td className="px-6 py-4 text-slate-700">{formatDateTime(member.last_login_at)}</td>
                       <td className="px-6 py-4">
-                        <div className="flex justify-end gap-2">
+                        <div className="flex flex-wrap justify-end gap-2">
                           <button
                             type="button"
                             onClick={() => void handleResendInvite(member)}
-                            disabled={updatingMemberId === member.id}
+                            disabled={updatingMemberId === member.id || !canCurrentUserManageTeam}
                             className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700"
                           >
                             Resend invite
                           </button>
+                          {canModify ? (
                           <button
                             type="button"
-                            onClick={() => void handleToggleActive(member)}
+                            onClick={() => {
+                              if (member.is_active) {
+                                setDisableCandidate(member);
+                                return;
+                              }
+                              void handleToggleActive(member);
+                            }}
                             disabled={updatingMemberId === member.id || currentUserId === member.id}
                             className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700 disabled:opacity-60"
                           >
                             {member.is_active ? "Disable" : "Enable"}
                           </button>
+                          ) : null}
+                          {canModify ? (
                           <button
                             type="button"
-                            onClick={() => void handleDeleteMember(member)}
+                            onClick={() => setRemoveCandidate(member)}
                             disabled={deletingMemberId === member.id || currentUserId === member.id}
                             className="rounded-lg border border-rose-300 bg-rose-50 px-2 py-1 text-xs font-semibold text-rose-700 disabled:opacity-60"
                           >
                             Remove
                           </button>
+                          ) : (
+                            <span className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-xs text-slate-500">Managed by owner/admin</span>
+                          )}
                         </div>
                       </td>
                     </tr>
-                  ))
+                  )})
                 )}
               </tbody>
             </table>
           </div>
         </section>
+        {removeCandidate ? (
+          <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/50 p-4">
+            <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-soft">
+              <h3 className="text-lg font-semibold text-slate-950">Remove team member?</h3>
+              <p className="mt-2 text-sm text-slate-600">Remove this team member from the workspace? Their historical activity will remain for audit history.</p>
+              <div className="mt-4 flex justify-end gap-2">
+                <button type="button" onClick={() => setRemoveCandidate(null)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm">Cancel</button>
+                <button type="button" onClick={() => void handleDeleteMember(removeCandidate)} className="rounded-lg bg-rose-600 px-3 py-2 text-sm font-semibold text-white">{deletingMemberId === removeCandidate.id ? "Removing..." : "Confirm remove"}</button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+        {disableCandidate ? (
+          <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/50 p-4">
+            <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-soft">
+              <h3 className="text-lg font-semibold text-slate-950">Disable team member?</h3>
+              <p className="mt-2 text-sm text-slate-600">Disable this team member’s access? They will not be able to sign in until re-enabled.</p>
+              <div className="mt-4 flex justify-end gap-2">
+                <button type="button" onClick={() => setDisableCandidate(null)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm">Cancel</button>
+                <button type="button" onClick={() => { const target = disableCandidate; setDisableCandidate(null); void handleToggleActive(target); }} className="rounded-lg bg-amber-600 px-3 py-2 text-sm font-semibold text-white">Confirm disable</button>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </div>
     </main>
   );

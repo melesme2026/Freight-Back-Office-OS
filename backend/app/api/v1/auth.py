@@ -33,6 +33,8 @@ from app.domain.enums.role import Role
 from app.repositories.organization_repo import OrganizationRepository
 from app.repositories.driver_repo import DriverRepository
 from app.services.auth.auth_service import AuthService
+from app.services.auth.team_rbac import assert_can_manage_team, normalize_role
+from app.services.audit.audit_service import AuditService
 from app.services.auth.token_service import TokenService
 from app.services.notifications.email_service import EmailService
 from app.utils.text_utils import slugify
@@ -44,16 +46,19 @@ ACCESS_TOKEN_EXPIRES_IN_SECONDS = 60 * 60
 ALLOWED_INVITE_ROLES = {role.value for role in Role}
 
 INVITE_PERMISSION_MATRIX: dict[str, set[str]] = {
-    Role.OWNER.value: ALLOWED_INVITE_ROLES,
-    Role.ADMIN.value: {
+    Role.OWNER.value: {
+        Role.ADMIN.value,
+        Role.OPS_MANAGER.value,
         Role.OPS_AGENT.value,
         Role.BILLING_ADMIN.value,
         Role.SUPPORT_AGENT.value,
         Role.VIEWER.value,
         Role.DRIVER.value,
     },
-    Role.OPS_MANAGER.value: {
+    Role.ADMIN.value: {
         Role.OPS_AGENT.value,
+        Role.OPS_MANAGER.value,
+        Role.BILLING_ADMIN.value,
         Role.SUPPORT_AGENT.value,
         Role.VIEWER.value,
         Role.DRIVER.value,
@@ -354,9 +359,8 @@ def invite_user(
     token_service = TokenService(db)
     requester = token_service.get_current_staff_user(token)
 
-    requester_role = str(getattr(requester.role, "value", requester.role)).lower()
-    if requester_role not in INVITE_PERMISSION_MATRIX:
-        raise UnauthorizedError("Only organization admins/managers can invite users")
+    requester_role = normalize_role(requester.role)
+    assert_can_manage_team(requester_role)
 
     organization_id = payload.organization_id or requester.organization_id
     if str(organization_id) != str(requester.organization_id):
@@ -394,6 +398,7 @@ def invite_user(
             password_hash=hash_password("ChangeMe123!"),
             role=normalized_role,
             is_active=False,
+            removed_at=None,
             last_login_at=None,
         )
         existing = repo.create(item)
@@ -411,10 +416,14 @@ def invite_user(
             )
         if str(existing.organization_id) != str(organization_id):
             raise UnauthorizedError("Cannot invite users for another organization")
+        if existing.removed_at is not None:
+            existing.removed_at = None
+            existing.is_active = False
+            existing.full_name = normalized_full_name
+            db.add(existing)
 
-    if created_new_user:
-        db.commit()
-        db.refresh(existing)
+    db.commit()
+    db.refresh(existing)
 
     activation_token = create_action_token(
         str(existing.id),
@@ -462,6 +471,20 @@ def invite_user(
     if _should_expose_auth_tokens() or email_status == "disabled":
         response_data["activation_url"] = activation_url
         response_data["activation_token"] = activation_token
+
+    AuditService(db).log_event(
+        organization_id=str(organization_id),
+        actor_type="staff_user",
+        actor_id=str(requester.id),
+        entity_type="staff_user",
+        entity_id=str(existing.id),
+        action="staff_invited" if created_new_user else "staff_invite_resent",
+        metadata_json={
+            "email_status": email_status,
+            "created_new_user": created_new_user,
+            "role": normalized_role,
+        },
+    )
 
     return ApiResponse(
         data=response_data,
