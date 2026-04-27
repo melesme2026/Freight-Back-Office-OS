@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { FormEvent, useMemo, useState } from "react";
 
 import { useCustomerAccounts } from "@/hooks/useCustomerAccounts";
-import { apiClient } from "@/lib/api-client";
+import { ApiClientError, apiClient } from "@/lib/api-client";
 import { getAccessToken, getOrganizationId } from "@/lib/auth";
 
 type ApiError = {
@@ -85,6 +85,8 @@ export default function NewDriverPage() {
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [reactivationDriverId, setReactivationDriverId] = useState<string | null>(null);
+  const [isReactivating, setIsReactivating] = useState(false);
 
   const selectedCustomerAccount = useMemo(() => {
     return (
@@ -131,6 +133,7 @@ export default function NewDriverPage() {
     try {
       setIsSubmitting(true);
       setSubmitError(null);
+      setReactivationDriverId(null);
 
       const token = getAccessToken();
 
@@ -157,14 +160,49 @@ export default function NewDriverPage() {
 
       router.push("/dashboard/drivers");
     } catch (caught: unknown) {
-      const message =
-        caught instanceof Error
-          ? caught.message
-          : "Failed to create driver. Please verify the data and try again.";
-
-      setSubmitError(message);
+      if (caught instanceof ApiClientError) {
+        if (caught.code === "driver_reactivation_required") {
+          const driverIdFromError =
+            typeof caught.details?.driver_id === "string"
+              ? caught.details.driver_id.trim()
+              : "";
+          if (driverIdFromError) {
+            setReactivationDriverId(driverIdFromError);
+          }
+        }
+        setSubmitError(caught.message || "Failed to create driver.");
+      } else {
+        const message =
+          caught instanceof Error
+            ? caught.message
+            : "Failed to create driver. Please verify the data and try again.";
+        setSubmitError(message);
+      }
     } finally {
       setIsSubmitting(false);
+    }
+  }
+
+  async function reactivateExistingDriver() {
+    if (!reactivationDriverId) {
+      return;
+    }
+    const token = getAccessToken();
+    if (!token || !organizationId.trim()) {
+      setSubmitError("Organization context is missing. Please sign in again.");
+      return;
+    }
+    try {
+      setIsReactivating(true);
+      await apiClient.patch(`/drivers/${encodeURIComponent(reactivationDriverId)}/reactivate`, undefined, {
+        token,
+        organizationId: organizationId.trim(),
+      });
+      router.push(`/dashboard/drivers/${reactivationDriverId}`);
+    } catch (caught) {
+      setSubmitError(caught instanceof Error ? caught.message : "Unable to reactivate driver.");
+    } finally {
+      setIsReactivating(false);
     }
   }
 
@@ -196,6 +234,18 @@ export default function NewDriverPage() {
         {pageError ? (
           <div className="mb-6 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
             {pageError}
+            {reactivationDriverId ? (
+              <div className="mt-3">
+                <button
+                  type="button"
+                  onClick={() => void reactivateExistingDriver()}
+                  disabled={isReactivating}
+                  className="rounded-lg bg-rose-700 px-3 py-2 text-xs font-semibold text-white hover:bg-rose-800 disabled:opacity-60"
+                >
+                  {isReactivating ? "Reactivating..." : "Reactivate Existing Driver"}
+                </button>
+              </div>
+            ) : null}
           </div>
         ) : null}
 

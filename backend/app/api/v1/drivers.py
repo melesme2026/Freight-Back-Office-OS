@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_db_session
-from app.core.exceptions import NotFoundError, UnauthorizedError, ValidationError
+from app.core.exceptions import AppError, NotFoundError, UnauthorizedError, ValidationError
 from app.domain.models.driver import Driver
 from app.repositories.driver_repo import DriverRepository
 from app.schemas.common import ApiResponse
@@ -93,6 +93,29 @@ def _serialize_driver(item: Any) -> dict[str, Any]:
         "updated_at": _to_iso_or_none(item.updated_at),
     }
 
+def _email_conflict_state(
+    repo: DriverRepository,
+    *,
+    organization_id: uuid.UUID,
+    email: str | None,
+    excluding_driver_id: uuid.UUID | None = None,
+) -> tuple[Driver | None, Driver | None]:
+    normalized_email = _normalize_email(email)
+    if not normalized_email:
+        return None, None
+
+    existing = repo.list_by_email(
+        organization_id=organization_id,
+        email=normalized_email,
+        include_related=False,
+    )
+    if excluding_driver_id is not None:
+        existing = [driver for driver in existing if driver.id != excluding_driver_id]
+
+    active_driver = next((driver for driver in existing if driver.is_active), None)
+    inactive_driver = next((driver for driver in existing if not driver.is_active), None)
+    return active_driver, inactive_driver
+
 
 def _get_driver_or_404(repo: DriverRepository, driver_id: uuid.UUID) -> Driver:
     item = repo.get_by_id(driver_id, include_related=True)
@@ -115,6 +138,24 @@ def create_driver(
     token_org_id = token_payload.get("organization_id")
     if str(payload.organization_id) != str(token_org_id):
         raise UnauthorizedError("organization_id does not match authenticated organization")
+
+    active_driver, inactive_driver = _email_conflict_state(
+        repo,
+        organization_id=payload.organization_id,
+        email=payload.email,
+    )
+    if active_driver is not None:
+        raise ValidationError(
+            "A driver with this email already exists in this workspace.",
+            details={"email": payload.email, "conflict_type": "active_driver_email"},
+        )
+    if inactive_driver is not None:
+        raise AppError(
+            "A deactivated driver with this email already exists. Reactivate this driver instead?",
+            code="driver_reactivation_required",
+            status_code=409,
+            details={"driver_id": str(inactive_driver.id), "email": inactive_driver.email},
+        )
 
     item = Driver(
         organization_id=payload.organization_id,
@@ -213,6 +254,24 @@ def update_driver(
     if payload.phone is not None:
         item.phone = _normalize_required_text(payload.phone, field_name="phone")
     if payload.email is not None:
+        active_driver, inactive_driver = _email_conflict_state(
+            repo,
+            organization_id=item.organization_id,
+            email=payload.email,
+            excluding_driver_id=item.id,
+        )
+        if active_driver is not None:
+            raise ValidationError(
+                "A driver with this email already exists in this workspace.",
+                details={"email": payload.email, "conflict_type": "active_driver_email"},
+            )
+        if inactive_driver is not None:
+            raise AppError(
+                "A deactivated driver with this email already exists. Reactivate this driver instead?",
+                code="driver_reactivation_required",
+                status_code=409,
+                details={"driver_id": str(inactive_driver.id), "email": inactive_driver.email},
+            )
         item.email = _normalize_email(payload.email)
     if payload.is_active is not None:
         item.is_active = payload.is_active
@@ -226,3 +285,23 @@ def update_driver(
         meta={},
         error=None,
     )
+
+
+@router.patch("/drivers/{driver_id}/reactivate", response_model=ApiResponse)
+def reactivate_driver(
+    driver_id: uuid.UUID,
+    token_payload: dict[str, Any] = Depends(get_current_token_payload),
+    db: Session = Depends(get_db_session),
+) -> ApiResponse:
+    repo = DriverRepository(db)
+    item = _get_driver_or_404(repo, driver_id)
+    token_org_id = token_payload.get("organization_id")
+    if str(item.organization_id) != str(token_org_id):
+        raise UnauthorizedError("Driver is not in authenticated organization")
+
+    item.is_active = True
+    updated = repo.update(item)
+    db.commit()
+    updated = repo.get_by_id(updated.id, include_related=True) or updated
+
+    return ApiResponse(data=_serialize_driver(updated), meta={"reactivated": True}, error=None)

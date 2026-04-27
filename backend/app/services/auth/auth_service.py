@@ -119,6 +119,32 @@ class AuthService:
         if not password_matches:
             raise UnauthorizedError("Invalid email or password")
 
+        active_matches = []
+        inactive_driver_matches = []
+        for record in password_matches:
+            role_value = str(getattr(record.StaffUser.role, "value", record.StaffUser.role)).lower()
+            if role_value != "driver":
+                active_matches.append(record)
+                continue
+
+            driver = self.driver_repo.get_by_email(
+                organization_id=record.StaffUser.organization_id,
+                email=normalized_email,
+                include_related=False,
+            )
+            if driver is None:
+                raise UnauthorizedError("Driver account is not linked to a driver profile")
+            if not driver.is_active:
+                inactive_driver_matches.append(record)
+                continue
+            active_matches.append(record)
+
+        if not active_matches:
+            if inactive_driver_matches:
+                raise UnauthorizedError("This driver account is inactive. Contact your dispatcher.")
+            raise UnauthorizedError("Invalid email or password")
+        password_matches = active_matches
+
         if organization_id is None and len(password_matches) > 1:
             organizations_by_id: dict[uuid.UUID, dict[str, object]] = {}
             for record in password_matches:
@@ -174,6 +200,8 @@ class AuthService:
             )
             if driver is None:
                 raise UnauthorizedError("Driver account is not linked to a driver profile")
+            if not driver.is_active:
+                raise UnauthorizedError("This driver account is inactive. Contact your dispatcher.")
             additional_claims["driver_id"] = str(driver.id)
 
         return create_access_token(
