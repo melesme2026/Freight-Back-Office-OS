@@ -3454,7 +3454,7 @@ export default function LoadDetailPage() {
                 {modalError ? <div className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{modalError}</div> : null}
                 <div className="mt-4 flex justify-end gap-2">
                   <button type="button" className="rounded-xl border border-slate-300 px-3 py-2 text-sm" onClick={() => setModalState({ kind: "none" })}>Cancel</button>
-                  <button type="button" disabled={isSavingPayment} className="rounded-xl bg-brand-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50" onClick={() => void submitPaymentAction(modalState.action, modalState.values)}>{isSavingPayment ? "Saving..." : "Save"}</button>
+                  <button type="button" disabled={isSavingPayment} className="rounded-xl bg-brand-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50" onClick={() => void submitPaymentAction(modalState.action, modalState.values)}>{isSavingPayment ? "Saving..." : "Save payment"}</button>
                 </div>
               </>
             ) : null}
