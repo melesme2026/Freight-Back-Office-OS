@@ -2890,7 +2890,7 @@ export default function LoadDetailPage() {
                       <div className="flex flex-wrap gap-2">
                         <button title="Download a ZIP packet to send manually." type="button" onClick={() => void handleDownloadPacketZip(packet.id)} disabled={downloadingPacketId === packet.id} className="rounded-lg border border-slate-300 px-3 py-1 text-xs disabled:opacity-50">{downloadingPacketId === packet.id ? "Downloading..." : "Download Packet ZIP"}</button>
                         <button title="Copy the packet submission email template." type="button" onClick={() => void handleCopySubmissionEmail()} className="rounded-lg border border-slate-300 px-3 py-1 text-xs">Copy Submission Email</button>
-                        <button aria-label="Send Email" title="Send packet email from this page when email is configured." type="button" onClick={() => openSendPacketEmailModal(packet)} disabled={isSubmissionBusy} className="rounded-lg border border-slate-300 px-3 py-1 text-xs disabled:opacity-50">Send Email</button>
+                        <button aria-label="Send Email" title="Send packet email from this page when email is configured." type="button" onClick={() => { setShowEmailSuccess(true); openSendPacketEmailModal(packet); }} disabled={isSubmissionBusy} className="rounded-lg border border-slate-300 px-3 py-1 text-xs disabled:opacity-50">Send Email</button>
                       </div>
                       <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Status updates</div>
                       <div className="flex flex-wrap gap-2">
@@ -3435,7 +3435,6 @@ export default function LoadDetailPage() {
                 <div className="mt-4 flex justify-end gap-2">
                   <button type="button" className="rounded-xl border border-slate-300 px-3 py-2 text-sm" onClick={() => setModalState({ kind: "none" })}>Cancel</button>
                   <button type="button" disabled={isSubmissionBusy} className="rounded-xl bg-brand-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50" onClick={() => {
-                    setShowEmailSuccess(true);
                     if (!isValidEmail(modalState.toEmail)) return setModalError("Enter a valid recipient email.");
                     if (modalState.subject.trim().length < 3) return setModalError("Email subject is required.");
                     if (modalState.body.trim().length < 3) return setModalError("Email body is required.");
