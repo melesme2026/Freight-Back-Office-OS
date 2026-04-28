@@ -154,6 +154,7 @@ export default function DriverDetailPage() {
   const [activationUrl, setActivationUrl] = useState<string | null>(null);
   const [inviteStatus, setInviteStatus] = useState<string | null>(null);
   const [inviteEmailStatus, setInviteEmailStatus] = useState<string | null>(null);
+  const [inviteEmailDisabledNotice, setInviteEmailDisabledNotice] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isTogglingActive, setIsTogglingActive] = useState(false);
@@ -302,9 +303,10 @@ export default function DriverDetailPage() {
       setActivationUrl(null);
       setInviteStatus(null);
       setInviteEmailStatus(null);
+      setInviteEmailDisabledNotice(null);
 
       const payload = await apiClient.post<{
-        data?: { activation_token?: string; activation_url?: string; email_status?: string };
+        data?: { activation_token?: string; activation_url?: string; email_status?: string; message?: string };
       }>(
         "/auth/invite-user",
         {
@@ -320,13 +322,19 @@ export default function DriverDetailPage() {
       );
 
       const activationUrlValue = payload?.data?.activation_url?.trim() || null;
-      const emailStatus = payload?.data?.email_status?.trim() || "sent";
+      const apiMessage = payload?.data?.message?.trim() || null;
+      const emailStatus = payload?.data?.email_status?.trim().toLowerCase() || "sent";
       const tokenValue = payload?.data?.activation_token?.trim();
       const resolvedActivationUrl = activationUrlValue || (tokenValue ? `/activate-account?token=${encodeURIComponent(tokenValue)}` : null);
+      const disabledEmailMessage = "Email delivery is disabled. Copy the activation link and send it manually.";
+      const isEmailDisabled =
+        emailStatus === "disabled" ||
+        apiMessage === disabledEmailMessage;
 
       setInviteEmailStatus(emailStatus);
+      setInviteEmailDisabledNotice(isEmailDisabled ? disabledEmailMessage : null);
       setInviteStatus(
-        emailStatus === "disabled"
+        isEmailDisabled
           ? "Activation link ready."
           : `Invite sent to ${driver.email}.`
       );
@@ -770,9 +778,9 @@ export default function DriverDetailPage() {
                 </div>
               ) : null}
 
-              {inviteEmailStatus === "disabled" ? (
+              {inviteEmailDisabledNotice || inviteEmailStatus === "disabled" ? (
                 <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                  Email delivery is disabled. Copy the activation link and send it manually.
+                  {inviteEmailDisabledNotice || "Email delivery is disabled. Copy the activation link and send it manually."}
                 </div>
               ) : null}
 

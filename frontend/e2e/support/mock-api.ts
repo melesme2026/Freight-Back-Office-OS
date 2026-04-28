@@ -238,6 +238,7 @@ export async function mockApi(page: Page) {
           },
           amount_received: state.paidAmount,
           has_invoice: state.invoiceCount > 0,
+          invoice_number: state.invoiceCount > 0 ? "INV-E2E-001" : null,
         });
       }
       return ok(route, [{ ...seed.load, status: state.paidAmount >= 1000 ? "fully_paid" : "invoice_ready", driver_name: seed.driver.name }]);
@@ -258,6 +259,20 @@ export async function mockApi(page: Page) {
         state.invoiceCount += 1;
       }
       return created(route, { id: "inv-e2e-001", invoice_number: "INV-E2E-001" });
+    }
+
+    if (path === `/loads/${seed.load.id}/invoice` && method === "GET") {
+      if (state.invoiceCount === 0) {
+        state.invoiceCount += 1;
+      }
+      return route.fulfill({
+        status: 200,
+        contentType: "application/pdf",
+        headers: {
+          "content-disposition": 'attachment; filename="invoice-INV-E2E-001.pdf"',
+        },
+        body: "%PDF-1.4 mock-invoice",
+      });
     }
 
     if (path.includes("/submission-packets") && method === "POST") {

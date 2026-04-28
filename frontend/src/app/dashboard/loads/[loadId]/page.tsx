@@ -2636,6 +2636,15 @@ export default function LoadDetailPage() {
                 </div>
 
                 <div>
+                  <div className="text-xs uppercase tracking-wide text-slate-500">
+                    Invoice Number
+                  </div>
+                  <div className="mt-1 text-sm font-medium text-slate-900">
+                    {load.invoice_number ?? "—"}
+                  </div>
+                </div>
+
+                <div>
                   <div className="text-xs uppercase tracking-wide text-slate-500">Pickup</div>
                   <div className="mt-1 text-sm font-medium text-slate-900">
                     {load.pickup_location ?? "—"}
