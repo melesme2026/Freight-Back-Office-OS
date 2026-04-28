@@ -107,9 +107,7 @@ export default function CustomersPage() {
         <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
           <div>
             <p className="text-sm font-medium text-brand-700">Dashboard / Customers</p>
-            <h1 className="text-3xl font-bold tracking-tight text-slate-950">
-              Customer Accounts
-            </h1>
+            <h1 className="text-3xl font-bold tracking-tight text-slate-950">Customers</h1>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
               Manage freight customers, operational readiness, billing contacts, and account-level
               activity.

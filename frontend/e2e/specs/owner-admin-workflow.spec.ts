@@ -50,7 +50,7 @@ test("owner/admin launch workflow including docs, invoice, packet, payments, and
   await page.getByRole("button", { name: /Save payment/i }).click();
 
   await page.goto("/dashboard/money");
-  await expect(page.getByRole("main").getByRole("heading", { name: /^Money Dashboard$/ })).toBeVisible();
+  await expect(page.getByRole("main").getByRole("heading", { name: /^Money$/ })).toBeVisible();
   await assertNoCriticalUiCorruption(page);
   await assertClean();
 });

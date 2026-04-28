@@ -135,7 +135,7 @@ export default function PricingPage() {
               Create workspace
             </Link>
             <Link href="/request-demo" className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100">
-              Request onboarding
+              Talk to onboarding team
             </Link>
           </div>
         </section>
