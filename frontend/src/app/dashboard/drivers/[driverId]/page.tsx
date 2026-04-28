@@ -40,6 +40,15 @@ function asNullableString(value: unknown): string | null {
   return null;
 }
 
+function asInvitePayload(value: unknown): Record<string, unknown> | null {
+  const root = asRecord(value);
+  if (!root) {
+    return null;
+  }
+
+  return asRecord(root.data) ?? root;
+}
+
 function formatDateTime(value: string | null): string {
   if (!value) {
     return "—";
@@ -305,9 +314,7 @@ export default function DriverDetailPage() {
       setInviteEmailStatus(null);
       setInviteEmailDisabledNotice(null);
 
-      const payload = await apiClient.post<{
-        data?: { activation_token?: string; activation_url?: string; email_status?: string; message?: string };
-      }>(
+      const payload = await apiClient.post<unknown>(
         "/auth/invite-user",
         {
           email: driver.email,
@@ -321,15 +328,25 @@ export default function DriverDetailPage() {
         }
       );
 
-      const activationUrlValue = payload?.data?.activation_url?.trim() || null;
-      const apiMessage = payload?.data?.message?.trim() || null;
-      const emailStatus = payload?.data?.email_status?.trim().toLowerCase() || "sent";
-      const tokenValue = payload?.data?.activation_token?.trim();
+      const inviteData = asInvitePayload(payload);
+      const activationUrlValue =
+        asNullableString(inviteData?.activation_url) ??
+        asNullableString(inviteData?.manual_activation_url);
+      const apiMessage = asNullableString(inviteData?.message);
+      const emailStatusRaw =
+        asNullableString(inviteData?.email_status) ??
+        asNullableString(inviteData?.emailStatus) ??
+        "sent";
+      const emailStatus = emailStatusRaw.toLowerCase();
+      const tokenValue =
+        asNullableString(inviteData?.activation_token) ??
+        asNullableString(inviteData?.token);
       const resolvedActivationUrl = activationUrlValue || (tokenValue ? `/activate-account?token=${encodeURIComponent(tokenValue)}` : null);
       const disabledEmailMessage = "Email delivery is disabled. Copy the activation link and send it manually.";
       const isEmailDisabled =
         emailStatus === "disabled" ||
-        apiMessage === disabledEmailMessage;
+        apiMessage === disabledEmailMessage ||
+        activationUrlValue !== null;
 
       setInviteEmailStatus(emailStatus);
       setInviteEmailDisabledNotice(isEmailDisabled ? disabledEmailMessage : null);
