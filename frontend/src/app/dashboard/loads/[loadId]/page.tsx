@@ -1019,6 +1019,7 @@ export default function LoadDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [emailSuccessMessage, setEmailSuccessMessage] = useState<string | null>(null);
+  const emailSuccessRef = useRef(false);
   const [staffUsers, setStaffUsers] = useState<StaffUserOption[]>([]);
   const [followUpOwnerId, setFollowUpOwnerId] = useState("");
   const [nextFollowUpDate, setNextFollowUpDate] = useState("");
@@ -1318,7 +1319,10 @@ export default function LoadDetailPage() {
         )
       );
       setActionMessage("Packet email sent and logged");
-      setEmailSuccessMessage("Packet email sent and logged");
+      if (!emailSuccessRef.current) {
+        emailSuccessRef.current = true;
+        setEmailSuccessMessage("Packet email sent and logged");
+      }
       setModalState({ kind: "none" });
       setModalError(null);
       setError(null);
@@ -2466,6 +2470,23 @@ export default function LoadDetailPage() {
   return (
     <main className="min-h-screen bg-slate-50 text-slate-900">
       <div className="mx-auto max-w-7xl px-6 py-10">
+        {emailSuccessMessage && (
+          <div
+            role="alert"
+            style={{
+              marginBottom: "12px",
+              padding: "12px",
+              background: "#dcfce7",
+              border: "1px solid #22c55e",
+              color: "#166534",
+              borderRadius: "6px",
+              fontWeight: "500",
+            }}
+          >
+            Packet email sent and logged
+          </div>
+        )}
+
         <div className="mb-8 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <p className="text-sm font-medium text-brand-700">Dashboard / Loads / Detail</p>
@@ -2610,23 +2631,6 @@ export default function LoadDetailPage() {
             {actionMessage}
           </div>
         ) : null}
-
-        {emailSuccessMessage && (
-          <div
-            role="alert"
-            style={{
-              marginTop: "12px",
-              padding: "12px",
-              background: "#dcfce7",
-              border: "1px solid #22c55e",
-              color: "#166534",
-              borderRadius: "6px",
-              fontWeight: "500",
-            }}
-          >
-            {emailSuccessMessage}
-          </div>
-        )}
 
         {workflowBlockedReason ? (
           <div className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
