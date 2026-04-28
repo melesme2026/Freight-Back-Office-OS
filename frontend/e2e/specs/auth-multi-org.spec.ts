@@ -30,7 +30,7 @@ test("role mismatch messaging is friendly", async ({ page }) => {
   await page.locator("input[type='email']").fill(seed.driver.email);
   await page.locator("input[type='password']").fill(seed.driver.password);
   await page.getByRole("button", { name: "Sign in" }).click();
-  await expect(page.getByText("Use Driver Login")).toBeVisible();
+  await expect(page.getByText("Use Driver Login", { exact: true })).toBeVisible();
 
   await page.goto("/driver-login");
   await page.locator("input[type='email']").fill(seed.owner.email);
