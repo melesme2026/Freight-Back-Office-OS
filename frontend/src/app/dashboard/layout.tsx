@@ -3,7 +3,7 @@
 import Link from "next/link";
 import type { Route } from "next";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import {
   clearAuth,
@@ -51,6 +51,7 @@ export default function DashboardLayout({
 }>) {
   const pathname = usePathname();
   const router = useRouter();
+  const [mounted, setMounted] = useState(false);
 
   const accessToken = getAccessToken();
   const organizationId = getOrganizationId();
@@ -58,6 +59,14 @@ export default function DashboardLayout({
   const userEmail = getUserEmail();
 
   useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!mounted) {
+      return;
+    }
+
     if (!accessToken || !organizationId) {
       router.replace("/login");
       return;
@@ -66,7 +75,7 @@ export default function DashboardLayout({
     if (!canAccessDashboard(userRole)) {
       router.replace("/driver-portal");
     }
-  }, [accessToken, organizationId, userRole, router]);
+  }, [mounted, accessToken, organizationId, userRole, router]);
 
   const pageTitle = useMemo(() => {
     const activeItem = NAV_ITEMS.find((item) => isActivePath(pathname, item.href));
@@ -78,14 +87,12 @@ export default function DashboardLayout({
     router.replace("/");
   }
 
+  if (!mounted) {
+    return null;
+  }
+
   if (!accessToken || !organizationId || !canAccessDashboard(userRole)) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-50 px-6">
-        <div className="rounded-2xl border border-slate-200 bg-white px-6 py-5 text-sm text-slate-600 shadow-soft">
-          Redirecting...
-        </div>
-      </div>
-    );
+    return null;
   }
 
   return (
