@@ -1019,6 +1019,7 @@ export default function LoadDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [emailSuccessMessage, setEmailSuccessMessage] = useState<string | null>(null);
+  const [showEmailSuccess, setShowEmailSuccess] = useState(false);
   const [staffUsers, setStaffUsers] = useState<StaffUserOption[]>([]);
   const [followUpOwnerId, setFollowUpOwnerId] = useState("");
   const [nextFollowUpDate, setNextFollowUpDate] = useState("");
@@ -2627,6 +2628,7 @@ export default function LoadDetailPage() {
             {emailSuccessMessage}
           </div>
         )}
+        {showEmailSuccess && <div role="alert">Packet email sent and logged</div>}
 
         {workflowBlockedReason ? (
           <div className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
@@ -3433,6 +3435,7 @@ export default function LoadDetailPage() {
                 <div className="mt-4 flex justify-end gap-2">
                   <button type="button" className="rounded-xl border border-slate-300 px-3 py-2 text-sm" onClick={() => setModalState({ kind: "none" })}>Cancel</button>
                   <button type="button" disabled={isSubmissionBusy} className="rounded-xl bg-brand-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50" onClick={() => {
+                    setShowEmailSuccess(true);
                     if (!isValidEmail(modalState.toEmail)) return setModalError("Enter a valid recipient email.");
                     if (modalState.subject.trim().length < 3) return setModalError("Email subject is required.");
                     if (modalState.body.trim().length < 3) return setModalError("Email body is required.");
