@@ -100,6 +100,17 @@ export async function mockApi(page: Page) {
       return created(route, { access_token: accessToken, token_type: "Bearer", user: { role: "owner", organization_id: seed.organizationId, email: body.email } });
     }
 
+    if (path === `/drivers/${seed.driver.id}` && method === "GET") {
+      return ok(route, {
+        id: seed.driver.id,
+        full_name: seed.driver.name,
+        email: seed.driver.email,
+        phone: "555-0100",
+        is_active: true,
+        status: "active",
+      });
+    }
+
     if (path.startsWith("/drivers") && method === "GET") {
       return ok(route, [{ id: seed.driver.id, full_name: seed.driver.name, email: seed.driver.email, is_active: true }]);
     }
@@ -217,6 +228,20 @@ export async function mockApi(page: Page) {
       return ok(route, body ?? {});
     }
 
+    if (path === `/loads/${seed.load.id}/invoice` && method === "GET") {
+      if (state.invoiceCount === 0) {
+        state.invoiceCount += 1;
+      }
+      return route.fulfill({
+        status: 200,
+        contentType: "application/pdf",
+        headers: {
+          "content-disposition": 'attachment; filename="invoice-INV-E2E-001.pdf"',
+        },
+        body: "%PDF-1.4 mock-invoice",
+      });
+    }
+
     if (path.startsWith("/loads") && method === "GET" && !path.includes("driver")) {
       if (path === `/loads/${seed.load.id}`) {
         return ok(route, {
@@ -259,20 +284,6 @@ export async function mockApi(page: Page) {
         state.invoiceCount += 1;
       }
       return created(route, { id: "inv-e2e-001", invoice_number: "INV-E2E-001" });
-    }
-
-    if (path === `/loads/${seed.load.id}/invoice` && method === "GET") {
-      if (state.invoiceCount === 0) {
-        state.invoiceCount += 1;
-      }
-      return route.fulfill({
-        status: 200,
-        contentType: "application/pdf",
-        headers: {
-          "content-disposition": 'attachment; filename="invoice-INV-E2E-001.pdf"',
-        },
-        body: "%PDF-1.4 mock-invoice",
-      });
     }
 
     if (path.includes("/submission-packets") && method === "POST") {
