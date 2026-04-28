@@ -140,6 +140,8 @@ export default function DriverLoginPage() {
         } else {
           setErrorMessage(error.message || "Unable to sign in. Please verify your credentials and try again.");
         }
+      } else if (error instanceof Error && error.message === "Use Staff Login") {
+        setErrorMessage("Use Staff Login");
       } else {
         setErrorMessage("Unable to sign in. Please verify your credentials and try again.");
       }

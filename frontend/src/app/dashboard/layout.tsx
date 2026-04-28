@@ -147,7 +147,7 @@ export default function DashboardLayout({
                 <div className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-700">
                   Operations Workspace
                 </div>
-                <h1 className="mt-1 text-xl font-bold text-slate-950">{pageTitle}</h1>
+                <p className="mt-1 text-xl font-bold text-slate-950">{pageTitle}</p>
               </div>
 
               <div className="flex items-center gap-3">

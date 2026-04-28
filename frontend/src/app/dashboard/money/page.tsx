@@ -68,7 +68,7 @@ export default function MoneyDashboardPage() {
         <header className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="text-sm font-medium text-brand-700">Cash Visibility</p>
-            <h1 className="text-3xl font-bold text-slate-950">Money Dashboard</h1>
+            <h1 className="text-3xl font-bold text-slate-950">Money</h1>
           </div>
           <button type="button" onClick={() => window.location.reload()} className="rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700">Refresh</button>
         </header>

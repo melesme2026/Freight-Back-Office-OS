@@ -142,6 +142,8 @@ export default function LoginPage() {
         } else {
           setErrorMessage(error.message || "Unable to sign in. Please verify your credentials and try again.");
         }
+      } else if (error instanceof Error && error.message === "Use Driver Login") {
+        setErrorMessage("Use Driver Login");
       } else {
         setErrorMessage("Unable to sign in. Please verify your credentials and try again.");
       }
