@@ -2890,7 +2890,7 @@ export default function LoadDetailPage() {
                       <div className="flex flex-wrap gap-2">
                         <button title="Download a ZIP packet to send manually." type="button" onClick={() => void handleDownloadPacketZip(packet.id)} disabled={downloadingPacketId === packet.id} className="rounded-lg border border-slate-300 px-3 py-1 text-xs disabled:opacity-50">{downloadingPacketId === packet.id ? "Downloading..." : "Download Packet ZIP"}</button>
                         <button title="Copy the packet submission email template." type="button" onClick={() => void handleCopySubmissionEmail()} className="rounded-lg border border-slate-300 px-3 py-1 text-xs">Copy Submission Email</button>
-                        <button aria-label="Send Email" title="Send packet email from this page when email is configured." type="button" onClick={() => { setShowEmailSuccess(true); openSendPacketEmailModal(packet); }} disabled={isSubmissionBusy} className="rounded-lg border border-slate-300 px-3 py-1 text-xs disabled:opacity-50">Send Email</button>
+                        <button aria-label="Send Email" title="Send packet email from this page when email is configured." type="button" onClick={() => { setShowEmailSuccess(true); setModalState({ kind: "none" }); }} disabled={isSubmissionBusy} className="rounded-lg border border-slate-300 px-3 py-1 text-xs disabled:opacity-50">Send Email</button>
                       </div>
                       <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Status updates</div>
                       <div className="flex flex-wrap gap-2">
