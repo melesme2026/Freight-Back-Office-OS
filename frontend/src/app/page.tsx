@@ -80,12 +80,12 @@ export default function HomePage() {
             >
               Staff Login
             </Link>
-            <Link
+            <a
               href="/pricing"
               className="rounded-xl border border-brand-300 bg-brand-50 px-5 py-3 text-sm font-semibold text-brand-700 transition hover:bg-brand-100"
             >
               View Pricing
-            </Link>
+            </a>
           </div>
         </div>
 
