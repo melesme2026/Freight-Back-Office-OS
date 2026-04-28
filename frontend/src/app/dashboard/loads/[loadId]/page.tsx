@@ -2822,7 +2822,7 @@ export default function LoadDetailPage() {
                   disabled={isSubmissionBusy}
                   className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:opacity-50"
                 >
-                  {isSubmissionBusy ? "Working..." : "Create Packet"}
+                  {isSubmissionBusy ? "Working..." : "Create Submission Packet"}
                 </button>
               </div>
               <div className="mb-4 text-sm text-slate-700">
