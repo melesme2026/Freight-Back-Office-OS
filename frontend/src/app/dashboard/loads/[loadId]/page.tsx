@@ -1434,56 +1434,61 @@ export default function LoadDetailPage() {
   }
 
   async function submitPaymentAction(action: PaymentActionType, values: Record<string, string>) {
+    const closePaymentModal = () => {
+      setModalState({ kind: "none" });
+      setShowEmailSuccess(false);
+    };
+
     if (action === "record_payment") {
       if (!isValidAmount(values.amount_received ?? "")) return setModalError("Enter a valid payment amount.");
       if (!isValidDate(values.paid_date ?? "")) return setModalError("Enter a valid paid date.");
       await handlePaymentAction("", { amount_received: values.amount_received, paid_date: values.paid_date });
-      setModalState({ kind: "none" });
+      closePaymentModal();
       return;
     }
     if (action === "mark_fully_paid") {
       if (!isValidAmount(values.amount ?? "")) return setModalError("Enter a valid amount.");
       if (!isValidDate(values.paid_date ?? "")) return setModalError("Enter a valid paid date.");
       await handlePaymentAction("mark-paid", { amount: values.amount, paid_date: values.paid_date });
-      setModalState({ kind: "none" });
+      closePaymentModal();
       return;
     }
     if (action === "record_partial_payment") {
       if (!isValidAmount(values.amount ?? "")) return setModalError("Enter a valid partial payment amount.");
       if (!isValidDate(values.paid_date ?? "")) return setModalError("Enter a valid paid date.");
       await handlePaymentAction("mark-partial-payment", { amount: values.amount, paid_date: values.paid_date });
-      setModalState({ kind: "none" });
+      closePaymentModal();
       return;
     }
     if (action === "record_factoring_advance") {
       if (!isValidAmount(values.amount ?? "")) return setModalError("Enter a valid factoring advance amount.");
       if (!isValidDate(values.advance_date ?? "")) return setModalError("Enter a valid advance date.");
       await handlePaymentAction("mark-advance-paid", { amount: values.amount, factor_name: values.factor_name, advance_date: values.advance_date });
-      setModalState({ kind: "none" });
+      closePaymentModal();
       return;
     }
     if (action === "mark_reserve_pending") {
       if (!isValidAmount(values.reserve_amount ?? "")) return setModalError("Enter a valid reserve amount.");
       await handlePaymentAction("mark-reserve-pending", { reserve_amount: values.reserve_amount });
-      setModalState({ kind: "none" });
+      closePaymentModal();
       return;
     }
     if (action === "record_reserve_paid") {
       if (!isValidAmount(values.amount ?? "")) return setModalError("Enter a valid reserve paid amount.");
       if (!isValidDate(values.paid_date ?? "")) return setModalError("Enter a valid reserve paid date.");
       await handlePaymentAction("mark-reserve-paid", { amount: values.amount, paid_date: values.paid_date });
-      setModalState({ kind: "none" });
+      closePaymentModal();
       return;
     }
     if (action === "mark_short_paid") {
       if (!isValidAmount(values.received_amount ?? "") || !isValidAmount(values.expected_amount ?? "")) return setModalError("Enter valid expected and received amounts.");
       await handlePaymentAction("mark-short-paid", { received_amount: values.received_amount, expected_amount: values.expected_amount, reason: values.reason });
-      setModalState({ kind: "none" });
+      closePaymentModal();
       return;
     }
     if ((values.reason ?? "").trim().length < 3) return setModalError("Provide a brief dispute reason.");
     await handlePaymentAction("mark-disputed", { reason: values.reason });
-    setModalState({ kind: "none" });
+    closePaymentModal();
   }
 
   const fetchCurrentStaffUserId = useCallback(async (): Promise<string> => {
@@ -3307,7 +3312,7 @@ export default function LoadDetailPage() {
               </div>
               <div className="mt-4 grid gap-2">
                 <button type="button" disabled={isSavingPayment} onClick={() => openPaymentActionModal("record_payment")} className="rounded-xl border border-slate-300 px-3 py-2 text-left text-xs font-semibold text-slate-700">Record payment received</button>
-                <button type="button" disabled={isSavingPayment} onClick={() => openPaymentActionModal("mark_fully_paid")} className="rounded-xl border border-slate-300 px-3 py-2 text-left text-xs font-semibold text-slate-700">Mark load fully paid</button>
+                <button type="button" disabled={isSavingPayment} onClick={() => openPaymentActionModal("mark_fully_paid")} className="rounded-xl border border-slate-300 px-3 py-2 text-left text-xs font-semibold text-slate-700">Record full payment</button>
                 <button type="button" disabled={isSavingPayment} onClick={() => openPaymentActionModal("record_partial_payment")} className="rounded-xl border border-slate-300 px-3 py-2 text-left text-xs font-semibold text-slate-700">Record partial payment</button>
                 <button type="button" disabled={isSavingPayment} onClick={() => openPaymentActionModal("record_factoring_advance")} className="rounded-xl border border-slate-300 px-3 py-2 text-left text-xs font-semibold text-slate-700">Record factoring advance</button>
                 <button type="button" disabled={isSavingPayment} onClick={() => openPaymentActionModal("mark_reserve_pending")} className="rounded-xl border border-slate-300 px-3 py-2 text-left text-xs font-semibold text-slate-700">Mark reserve still pending</button>
