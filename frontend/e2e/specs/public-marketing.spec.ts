@@ -14,8 +14,10 @@ test("public pages and core nav route correctly", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Growth" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Enterprise" })).toBeVisible();
 
-  await page.getByRole("link", { name: "Request onboarding" }).click();
-  await expect(page).toHaveURL(/\/request-demo/);
+  await Promise.all([
+    page.waitForURL(/\/request-demo/),
+    page.getByRole("link", { name: "Request onboarding" }).first().click(),
+  ]);
   await expect(page.getByRole("heading", { name: /walkthrough/i })).toBeVisible();
 
   await page.goto("/");
