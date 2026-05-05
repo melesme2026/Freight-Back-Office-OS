@@ -30,3 +30,4 @@ from app.domain.models.workflow_event import WorkflowEvent  # noqa: F401
 from app.domain.models.submission_event import SubmissionEvent  # noqa: F401
 from app.domain.models.submission_packet import SubmissionPacket  # noqa: F401
 from app.domain.models.submission_packet_document import SubmissionPacketDocument  # noqa: F401
+from app.domain.models.demo_request import DemoRequest  # noqa: F401

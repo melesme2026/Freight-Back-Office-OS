@@ -145,18 +145,22 @@ def test_launch_smoke_owner_admin_and_driver_flow(db_session):
     dashboard = get_money_dashboard(token_payload=_staff_payload(org_id), db=db_session)
     assert "summary" in dashboard.data
 
-    driver_docs = asyncio.run(
-        upload_driver_document(
-            organization_id=org_id,
-            token_payload=_driver_payload(org_id, driver_id),
-            file=UploadFile(filename="driver-pod.pdf", file=BytesIO(b"driver-pod"), headers={"content-type": "application/pdf"}),
-            document_type="proof_of_delivery",
-            load_id=load.id,
-            replace="true",
-            db=db_session,
+    upload = UploadFile(filename="driver-pod.pdf", file=BytesIO(b"driver-pod"), headers={"content-type": "application/pdf"})
+    try:
+        driver_docs = asyncio.run(
+            upload_driver_document(
+                organization_id=org_id,
+                token_payload=_driver_payload(org_id, driver_id),
+                file=upload,
+                document_type="proof_of_delivery",
+                load_id=load.id,
+                replace="true",
+                db=db_session,
+            )
         )
-    )
-    assert driver_docs.meta["driver_upload"] is True
+        assert driver_docs.meta["driver_upload"] is True
+    finally:
+        asyncio.run(upload.close())
 
     # Driver sees own load and cannot see others
     own_items, own_total = LoadService(db_session).list_loads(organization_id=org_id, driver_id=driver_id, page=1, page_size=20)
