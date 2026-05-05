@@ -71,3 +71,54 @@ def test_invoice_generation_fails_when_carrier_profile_missing(db_session) -> No
         assert "Complete Carrier Profile before generating invoice" in str(exc)
     else:
         raise AssertionError("Expected ValidationError when carrier profile is missing")
+
+
+def test_invoice_generation_fails_with_structured_missing_fields_when_profile_incomplete(db_session) -> None:
+    load = _seed_load(db_session)
+    profile = CarrierProfileService(db_session).upsert_profile(
+        str(load.organization_id),
+        {
+            "legal_name": "Carrier Prime LLC",
+            "address_line1": "123 Main St",
+            "address_line2": "",
+            "city": "Dallas",
+            "state": "TX",
+            "zip": "75001",
+            "country": "USA",
+            "phone": "+1-555-333-2222",
+            "email": "billing@example.com",
+            "mc_number": "",
+            "dot_number": "",
+            "remit_to_name": "Carrier Prime LLC",
+            "remit_to_address": "123 Main St, Dallas, TX",
+            "remit_to_notes": "",
+        },
+    )
+    profile.address_line1 = ""
+    profile.city = " "
+    profile.state = ""
+    profile.zip = ""
+    profile.phone = ""
+    profile.email = ""
+    profile.remit_to_name = ""
+    profile.remit_to_address = ""
+    db_session.add(profile)
+    db_session.commit()
+
+    try:
+        _generate_and_persist_invoice_pdf(db=db_session, load=load)
+    except ValidationError as exc:
+        assert exc.details["code"] == "carrier_profile_incomplete"
+        assert exc.details["action_url"] == "/dashboard/settings/carrier-profile"
+        assert set(exc.details["missing_fields"]) == {
+            "address_line1",
+            "city",
+            "state",
+            "postal_code",
+            "phone",
+            "email",
+            "remit_to_name",
+            "remit_to_address",
+        }
+    else:
+        raise AssertionError("Expected ValidationError when carrier profile is incomplete")

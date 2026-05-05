@@ -517,12 +517,49 @@ def _pdf_checkbox_label(label: str, *, checked: bool) -> str:
 
 def _build_carrier_profile_context(*, db: Session, load: Any) -> dict[str, str]:
     profile = CarrierProfileService(db).get_by_org(getattr(load, "organization_id", None))
+    action_url = "/dashboard/settings/carrier-profile"
     if profile is None:
         raise ValidationError(
             "Complete Carrier Profile before generating invoice",
             details={
                 "organization_id": str(getattr(load, "organization_id", "")),
-                "code": "carrier_profile_required",
+                "code": "carrier_profile_incomplete",
+                "missing_fields": [
+                    "address_line1",
+                    "city",
+                    "state",
+                    "postal_code",
+                    "phone",
+                    "email",
+                    "remit_to_name",
+                    "remit_to_address",
+                ],
+                "action_url": action_url,
+            },
+        )
+
+    missing_fields: list[str] = []
+    required_fields = {
+        "address_line1": profile.address_line1,
+        "city": profile.city,
+        "state": profile.state,
+        "postal_code": profile.zip,
+        "phone": profile.phone,
+        "email": profile.email,
+        "remit_to_name": profile.remit_to_name,
+        "remit_to_address": profile.remit_to_address,
+    }
+    for field, value in required_fields.items():
+        if value is None or not str(value).strip():
+            missing_fields.append(field)
+    if missing_fields:
+        raise ValidationError(
+            "Complete Carrier Profile before generating invoice.",
+            details={
+                "organization_id": str(getattr(load, "organization_id", "")),
+                "code": "carrier_profile_incomplete",
+                "missing_fields": missing_fields,
+                "action_url": action_url,
             },
         )
 
@@ -1663,7 +1700,22 @@ def download_load_invoice(
     service = LoadService(db)
     load = service.get_load(str(load_id))
     _authorize_load_access(item=load, token_payload=token_payload)
-    pdf_bytes = _generate_and_persist_invoice_pdf(db=db, load=load)
+    try:
+        pdf_bytes = _generate_and_persist_invoice_pdf(db=db, load=load)
+    except ValidationError as exc:
+        details = exc.details if isinstance(exc.details, dict) else {}
+        if details.get("code") == "carrier_profile_incomplete":
+            raise ValidationError(
+                "Complete Carrier Profile before generating invoice.",
+                details={
+                    "code": "carrier_profile_incomplete",
+                    "message": "Complete Carrier Profile before generating invoice.",
+                    "missing_fields": details.get("missing_fields", []),
+                    "action_url": details.get("action_url", "/dashboard/settings/carrier-profile"),
+                },
+                status_code=422,
+            ) from exc
+        raise
     db.commit()
     filename = f"invoice-{load.load_number or load.id}.pdf"
 
