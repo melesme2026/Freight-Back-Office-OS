@@ -181,12 +181,7 @@ class SubmissionPacketService:
         load_number = self._clean(load.load_number) or str(load.id)
 
         packet_documents = list(getattr(packet, "documents", None) or [])
-        docs_by_type: dict[str, SubmissionPacketDocument] = {}
-        for doc in packet_documents:
-            doc_type = self._clean(getattr(doc, "document_type", None))
-            if not doc_type or doc_type in docs_by_type:
-                continue
-            docs_by_type[doc_type] = doc
+        docs_by_type = self._snapshot_documents_by_type(packet_documents)
 
         required = (
             DocumentType.INVOICE.value,
@@ -204,15 +199,17 @@ class SubmissionPacketService:
         zip_buffer = io.BytesIO()
         with zipfile.ZipFile(zip_buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as archive:
             for doc_type in PACKET_DOWNLOAD_DOC_TYPES:
-                packet_doc = docs_by_type.get(doc_type)
-                if packet_doc is None:
-                    continue
+                snapshot_docs = docs_by_type.get(doc_type, [])
                 linked_doc = self._resolve_download_document(
-                    packet_doc=getattr(packet_doc, "document", None),
                     load_id=load_id,
                     org_id=org_id,
                     doc_type=doc_type,
                 )
+                if linked_doc is None:
+                    raise ValidationError(
+                        "Submission packet snapshot document file is missing",
+                        details={"packet_id": packet_id, "document_type": doc_type},
+                    )
                 storage_key = self._clean(getattr(linked_doc, "storage_key", None))
                 if not storage_key:
                     raise ValidationError(
@@ -267,17 +264,11 @@ class SubmissionPacketService:
     def _resolve_download_document(
         self,
         *,
-        packet_doc: LoadDocument | None,
         load_id: str,
         org_id: str,
         doc_type: str,
     ) -> LoadDocument | None:
         storage_service = StorageService()
-        if packet_doc is not None:
-            packet_storage_key = self._clean(getattr(packet_doc, "storage_key", None))
-            if packet_storage_key and storage_service.exists(relative_path=packet_storage_key):
-                return packet_doc
-
         fallback_stmt = (
             select(LoadDocument)
             .where(
@@ -291,7 +282,24 @@ class SubmissionPacketService:
             candidate_key = self._clean(getattr(candidate, "storage_key", None))
             if candidate_key and storage_service.exists(relative_path=candidate_key):
                 return candidate
-        return packet_doc
+        return None
+
+
+    def _snapshot_documents_by_type(
+        self,
+        packet_documents: list[SubmissionPacketDocument],
+    ) -> dict[str, list[SubmissionPacketDocument]]:
+        docs_by_type: dict[str, list[SubmissionPacketDocument]] = {}
+        for snapshot_doc in sorted(
+            packet_documents,
+            key=lambda item: (getattr(item, "created_at", datetime.min.replace(tzinfo=timezone.utc)), str(getattr(item, "id", ""))),
+            reverse=True,
+        ):
+            doc_type = self._clean(getattr(snapshot_doc, "document_type", None))
+            if not doc_type:
+                continue
+            docs_by_type.setdefault(doc_type, []).append(snapshot_doc)
+        return docs_by_type
 
     def _next_packet_reference(self, *, load_id: str) -> str:
         existing_count = int(
