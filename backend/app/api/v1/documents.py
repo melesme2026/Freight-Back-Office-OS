@@ -1,9 +1,25 @@
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import date, datetime
 from typing import Any
 
+from app.core.config import get_settings
+from app.core.dependencies import get_db_session
+from app.core.exceptions import AppError, UnauthorizedError
+from app.core.security import get_current_token_payload
+from app.domain.enums.channel import Channel
+from app.domain.enums.document_type import DocumentType
+from app.domain.enums.processing_status import ProcessingStatus
+from app.repositories.driver_repo import DriverRepository
+from app.repositories.load_repo import LoadRepository
+from app.schemas.common import ApiResponse
+from app.services.ai.extraction_service import ExtractionService
+from app.services.documents.document_linker import DocumentLinker
+from app.services.documents.document_service import DocumentService
+from app.services.documents.storage_service import StorageService
+from app.services.notifications.notification_service import NotificationService
 from fastapi import (
     APIRouter,
     Depends,
@@ -17,23 +33,8 @@ from fastapi import (
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
-from app.core.dependencies import get_db_session
-from app.core.exceptions import DuplicateRecordError, UnauthorizedError
-from app.core.config import get_settings
-from app.core.security import get_current_token_payload
-from app.domain.enums.channel import Channel
-from app.domain.enums.document_type import DocumentType
-from app.domain.enums.processing_status import ProcessingStatus
-from app.repositories.driver_repo import DriverRepository
-from app.repositories.load_repo import LoadRepository
-from app.schemas.common import ApiResponse
-from app.services.ai.extraction_service import ExtractionService
-from app.services.documents.document_linker import DocumentLinker
-from app.services.documents.document_service import DocumentService
-from app.services.notifications.notification_service import NotificationService
-from app.services.documents.storage_service import StorageService
-
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 ALLOWED_UPLOAD_MIME_TYPES = {
     "application/pdf",
@@ -48,7 +49,6 @@ ALLOWED_UPLOAD_MIME_TYPES = {
 MAX_UPLOAD_FILE_SIZE_BYTES = get_settings().max_upload_file_size_mb * 1024 * 1024
 
 DEFAULT_LOAD_DOCUMENT_PAGE_SIZE = 100
-
 
 
 REQUIRED_SINGLETON_DOCUMENT_TYPES = {
@@ -74,6 +74,7 @@ def _document_label(value: DocumentType) -> str:
         DocumentType.INVOICE: "Invoice",
     }
     return labels.get(value, value.value.replace("_", " ").title())
+
 
 class DocumentCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -233,9 +234,7 @@ def _serialize_document(item: Any) -> dict[str, Any]:
             else None
         ),
         "uploaded_by_staff_user_name": (
-            getattr(uploaded_by_staff_user, "full_name", None)
-            if uploaded_by_staff_user
-            else None
+            getattr(uploaded_by_staff_user, "full_name", None) if uploaded_by_staff_user else None
         ),
         "validation_issue_count": (
             len(validation_issues) if isinstance(validation_issues, list) else None
@@ -274,10 +273,7 @@ def _validate_upload_file(file: UploadFile) -> None:
         allowed_types = ", ".join(sorted(ALLOWED_UPLOAD_MIME_TYPES))
         raise HTTPException(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-            detail=(
-                "Unsupported file type. "
-                f"Allowed MIME types: {allowed_types}."
-            ),
+            detail=(f"Unsupported file type. Allowed MIME types: {allowed_types}."),
         )
 
 
@@ -351,20 +347,6 @@ async def upload_document(
     normalized_document_type = _normalize_optional_text(document_type)
 
     try:
-        storage = StorageService()
-        storage_result = await storage.save_file(file)
-
-        storage_key = storage_result.get("storage_key")
-        if not storage_key:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Storage service did not return a storage key.",
-            )
-
-        file_size_bytes = storage_result.get("size")
-        _validate_upload_size(file_size_bytes)
-        storage_bucket = storage_result.get("bucket")
-
         service = DocumentService(db)
         token_role = _get_token_role(token_payload)
         token_subject = str(token_payload.get("sub") or "").strip()
@@ -372,9 +354,10 @@ async def upload_document(
         if token_role != "driver" and token_subject:
             server_uploaded_by_staff_user_id = token_subject
 
-
         replace_existing = _parse_replace_flag(replace)
-        parsed_document_type = service._normalize_document_type(normalized_document_type, allow_none=True)
+        parsed_document_type = service._normalize_document_type(
+            normalized_document_type, allow_none=True
+        )
         existing_required_doc = None
         if parsed_document_type in REQUIRED_SINGLETON_DOCUMENT_TYPES and load_id is not None:
             existing_docs, _ = service.list_documents(
@@ -387,7 +370,6 @@ async def upload_document(
             existing_required_doc = existing_docs[0] if existing_docs else None
 
             if existing_required_doc and not replace_existing:
-                storage.delete(relative_path=str(storage_key))
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
                     detail={
@@ -399,11 +381,29 @@ async def upload_document(
                     },
                 )
 
+        storage = StorageService()
+        storage_result = await storage.save_file(file, max_size_bytes=MAX_UPLOAD_FILE_SIZE_BYTES)
+
+        storage_key = storage_result.get("storage_key")
+        if not storage_key:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Storage service did not return a storage key.",
+            )
+
+        file_size_bytes = storage_result.get("size")
+        _validate_upload_size(file_size_bytes)
+        storage_bucket = storage_result.get("bucket")
+
         if existing_required_doc and replace_existing:
             old_storage_key = existing_required_doc.storage_key
             existing_required_doc.original_filename = _normalize_optional_text(file.filename)
             existing_required_doc.storage_key = str(storage_key).strip()
-            existing_required_doc.storage_bucket = _normalize_optional_text(str(storage_bucket)) if storage_bucket is not None else None
+            existing_required_doc.storage_bucket = (
+                _normalize_optional_text(str(storage_bucket))
+                if storage_bucket is not None
+                else None
+            )
             existing_required_doc.mime_type = _normalize_optional_text(file.content_type)
             existing_required_doc.file_size_bytes = file_size_bytes
             existing_required_doc.processing_status = ProcessingStatus.PENDING
@@ -415,24 +415,24 @@ async def upload_document(
                 storage.delete(relative_path=old_storage_key)
         else:
             item = service.create_document(
-            organization_id=str(organization_id),
-            customer_account_id=str(customer_account_id),
-            storage_key=str(storage_key).strip(),
-            storage_bucket=(
-                _normalize_optional_text(str(storage_bucket))
-                if storage_bucket is not None
-                else None
-            ),
-            source_channel=normalized_source_channel,
-            driver_id=_uuid_to_str(driver_id),
-            load_id=_uuid_to_str(load_id),
-            document_type=normalized_document_type,
-            original_filename=_normalize_optional_text(file.filename),
-            mime_type=_normalize_optional_text(file.content_type),
-            file_size_bytes=file_size_bytes,
-            page_count=page_count,
-            uploaded_by_staff_user_id=server_uploaded_by_staff_user_id,
-        )
+                organization_id=str(organization_id),
+                customer_account_id=str(customer_account_id),
+                storage_key=str(storage_key).strip(),
+                storage_bucket=(
+                    _normalize_optional_text(str(storage_bucket))
+                    if storage_bucket is not None
+                    else None
+                ),
+                source_channel=normalized_source_channel,
+                driver_id=_uuid_to_str(driver_id),
+                load_id=_uuid_to_str(load_id),
+                document_type=normalized_document_type,
+                original_filename=_normalize_optional_text(file.filename),
+                mime_type=_normalize_optional_text(file.content_type),
+                file_size_bytes=file_size_bytes,
+                page_count=page_count,
+                uploaded_by_staff_user_id=server_uploaded_by_staff_user_id,
+            )
         _create_document_uploaded_notification(
             db=db,
             organization_id=str(organization_id),
@@ -450,10 +450,27 @@ async def upload_document(
         )
     except HTTPException:
         raise
+    except AppError:
+        db.rollback()
+        raise
     except Exception as exc:
+        db.rollback()
+        logger.exception(
+            "Document upload failed",
+            extra={
+                "organization_id": str(organization_id),
+                "customer_account_id": str(customer_account_id),
+                "load_id": _uuid_to_str(load_id),
+                "document_type": normalized_document_type,
+                "filename": file.filename,
+            },
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to upload document: {exc}",
+            detail={
+                "code": "document_upload_failed",
+                "message": "Document upload failed. Please try again or contact support if it continues.",
+            },
         ) from exc
 
 
@@ -486,7 +503,9 @@ async def upload_driver_document(
     load_repo = LoadRepository(db)
     driver = driver_repo.get_by_id(token_driver_id)
     if driver is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Driver profile not found.")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Driver profile not found."
+        )
     if str(driver.organization_id) != str(organization_id):
         raise UnauthorizedError("Driver profile organization mismatch")
 
@@ -502,17 +521,6 @@ async def upload_driver_document(
         resolved_load_id = str(load.id)
 
     try:
-        storage = StorageService()
-        storage_result = await storage.save_file(file)
-        storage_key = storage_result.get("storage_key")
-        if not storage_key:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Storage service did not return a storage key.",
-            )
-
-        _validate_upload_size(storage_result.get("size"))
-
         service = DocumentService(db)
         replace_existing = _parse_replace_flag(replace)
         parsed_document_type = service._normalize_document_type(normalized_document_type)
@@ -527,7 +535,6 @@ async def upload_driver_document(
             )
             existing_required_doc = existing_docs[0] if existing_docs else None
             if existing_required_doc and not replace_existing:
-                storage.delete(relative_path=str(storage_key))
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
                     detail={
@@ -538,6 +545,17 @@ async def upload_driver_document(
                         "can_replace": True,
                     },
                 )
+
+        storage = StorageService()
+        storage_result = await storage.save_file(file, max_size_bytes=MAX_UPLOAD_FILE_SIZE_BYTES)
+        storage_key = storage_result.get("storage_key")
+        if not storage_key:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Storage service did not return a storage key.",
+            )
+
+        _validate_upload_size(storage_result.get("size"))
 
         if existing_required_doc and replace_existing:
             old_storage_key = existing_required_doc.storage_key
@@ -560,9 +578,7 @@ async def upload_driver_document(
                 organization_id=str(organization_id),
                 customer_account_id=str(driver.customer_account_id),
                 storage_key=str(storage_key).strip(),
-                storage_bucket=_normalize_optional_text(
-                    str(storage_result.get("bucket"))
-                )
+                storage_bucket=_normalize_optional_text(str(storage_result.get("bucket")))
                 if storage_result.get("bucket") is not None
                 else None,
                 source_channel="driver_portal",
@@ -592,10 +608,27 @@ async def upload_driver_document(
         )
     except HTTPException:
         raise
+    except AppError:
+        db.rollback()
+        raise
     except Exception as exc:
+        db.rollback()
+        logger.exception(
+            "Driver document upload failed",
+            extra={
+                "organization_id": str(organization_id),
+                "driver_id": str(token_driver_id),
+                "load_id": _uuid_to_str(load_id),
+                "document_type": normalized_document_type,
+                "filename": file.filename,
+            },
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to upload document: {exc}",
+            detail={
+                "code": "document_upload_failed",
+                "message": "Document upload failed. Please try again or contact support if it continues.",
+            },
         ) from exc
 
 

@@ -1,14 +1,16 @@
 from __future__ import annotations
 
+import logging
 import mimetypes
 import uuid
 from pathlib import Path
 
+from app.core.config import get_settings
+from app.core.exceptions import NotFoundError, ValidationError
 from fastapi import UploadFile
 from fastapi.responses import FileResponse
 
-from app.core.config import get_settings
-from app.core.exceptions import NotFoundError, ValidationError
+logger = logging.getLogger(__name__)
 
 
 class StorageService:
@@ -16,12 +18,18 @@ class StorageService:
         self.settings = get_settings()
         self.root = self.settings.storage_local_root_path.resolve()
         self.root.mkdir(parents=True, exist_ok=True)
+        self._ensure_root_is_writable()
 
-    async def save_file(self, file: UploadFile) -> dict[str, str | int | None]:
+    async def save_file(
+        self,
+        file: UploadFile,
+        *,
+        max_size_bytes: int | None = None,
+    ) -> dict[str, str | int | None]:
         safe_original_filename = self._normalize_upload_filename(file.filename)
-        resolved_mime_type = self._normalize_optional_text(file.content_type) or self._guess_mime_type(
-            safe_original_filename
-        )
+        resolved_mime_type = self._normalize_optional_text(
+            file.content_type
+        ) or self._guess_mime_type(safe_original_filename)
 
         suffix = Path(safe_original_filename).suffix
         generated_filename = f"{uuid.uuid4().hex}{suffix}"
@@ -32,6 +40,15 @@ class StorageService:
         content = await file.read()
         if content is None:
             content = b""
+
+        if max_size_bytes is not None and len(content) > max_size_bytes:
+            raise ValidationError(
+                "File is too large",
+                details={
+                    "max_size_bytes": max_size_bytes,
+                    "file_size_bytes": len(content),
+                },
+            )
 
         stored_relative_path = self.save_bytes(
             relative_path=relative_path,
@@ -187,6 +204,21 @@ class StorageService:
     def _guess_mime_type(self, filename: str) -> str:
         guessed, _ = mimetypes.guess_type(filename)
         return guessed or "application/octet-stream"
+
+    def _ensure_root_is_writable(self) -> None:
+        probe_path = self.root / f".write-test-{uuid.uuid4().hex}"
+        try:
+            probe_path.write_bytes(b"")
+            probe_path.unlink(missing_ok=True)
+        except OSError as exc:
+            logger.exception(
+                "Document storage root is not writable",
+                extra={"storage_root": str(self.root)},
+            )
+            raise ValidationError(
+                "Document storage is not writable",
+                details={"storage_root": str(self.root)},
+            ) from exc
 
     @staticmethod
     def _normalize_optional_text(value: str | None) -> str | None:

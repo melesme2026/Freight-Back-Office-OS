@@ -992,6 +992,50 @@ function extractErrorMessage(caught: unknown, fallback: string) {
   return fallback;
 }
 
+function isHtmlErrorText(value: string) {
+  return /<!doctype html|<html[\s>]/i.test(value.trim());
+}
+
+type UploadErrorPayload = {
+  detail?: { code?: string; message?: string };
+  error?: {
+    code?: string;
+    message?: string;
+    details?: { detail?: { code?: string; message?: string } };
+  };
+  message?: string;
+};
+
+async function parseUploadError(response: Response, fallback: string) {
+  const responseText = await response.text();
+  let parsed: UploadErrorPayload | null = null;
+
+  try {
+    parsed = responseText.trim().length > 0 ? (JSON.parse(responseText) as UploadErrorPayload) : null;
+  } catch {
+    parsed = null;
+  }
+
+  const duplicateDetail = parsed?.detail ?? parsed?.error?.details?.detail;
+  if (response.status === 409 && duplicateDetail?.code === "duplicate_required_document") {
+    return {
+      duplicate: true,
+      message: duplicateDetail.message ?? "A required document already exists for this load.",
+    };
+  }
+
+  const message = parsed?.error?.message ?? parsed?.message ?? parsed?.detail?.message;
+  if (message && message.trim().length > 0) {
+    return { duplicate: false, message };
+  }
+
+  if (responseText.trim().length > 0 && !isHtmlErrorText(responseText)) {
+    return { duplicate: false, message: responseText };
+  }
+
+  return { duplicate: false, message: fallback };
+}
+
 function isValidEmail(value: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 }
@@ -2247,16 +2291,20 @@ export default function LoadDetailPage() {
       });
 
       if (!uploadResponse.ok) {
-        const responseText = await uploadResponse.text();
-        let parsed: { detail?: { code?: string; message?: string } } | null = null;
-        try { parsed = JSON.parse(responseText); } catch {}
-        const detail = parsed?.detail;
-        if (uploadResponse.status === 409 && detail?.code === "duplicate_required_document") {
-          setPendingDuplicateUpload({ file, formData, message: detail.message ?? "A required document already exists for this load." });
+        const uploadError = await parseUploadError(
+          uploadResponse,
+          "Document upload failed. Please try again.",
+        );
+        if (uploadError.duplicate) {
+          setPendingDuplicateUpload({
+            file,
+            formData,
+            message: uploadError.message,
+          });
           setActionMessage(null);
           return;
         }
-        throw new Error(responseText || "Failed to upload document.");
+        throw new Error(uploadError.message);
       }
 
       const [updatedLoad, updatedDocuments] = await Promise.all([
@@ -2294,10 +2342,16 @@ export default function LoadDetailPage() {
         body: pendingDuplicateUpload.formData,
       });
       if (!replaceResponse.ok) {
-        const responseText = await replaceResponse.text();
-        throw new Error(responseText || "Failed to replace document.");
+        const uploadError = await parseUploadError(
+          replaceResponse,
+          "Document replacement failed. Please try again.",
+        );
+        throw new Error(uploadError.message);
       }
-      const [updatedLoad, updatedDocuments] = await Promise.all([fetchLoad(), fetchLoadDocuments({ silent: true })]);
+      const [updatedLoad, updatedDocuments] = await Promise.all([
+        fetchLoad(),
+        fetchLoadDocuments({ silent: true }),
+      ]);
       setLoad(updatedLoad);
       setLoadDocuments(updatedDocuments);
       setSelectedUploadDocumentType("");

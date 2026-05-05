@@ -95,6 +95,10 @@ function isUrlSearchParams(value: unknown): value is URLSearchParams {
   return typeof URLSearchParams !== "undefined" && value instanceof URLSearchParams;
 }
 
+function isHtmlErrorText(value: string): boolean {
+  return /<!doctype html|<html[\s>]/i.test(value.trim());
+}
+
 function resolveRequestBody(options: Pick<RequestOptions, "body" | "jsonBody">): {
   body: BodyInit | null | undefined;
   shouldSetJsonContentType: boolean;
@@ -215,7 +219,7 @@ async function buildError(response: Response): Promise<ApiClientError> {
     }
 
     const text = await response.text();
-    if (text.trim().length > 0) {
+    if (text.trim().length > 0 && !isHtmlErrorText(text)) {
       return new ApiClientError(text, { status: response.status });
     }
     return new ApiClientError(fallbackMessage, { status: response.status });
