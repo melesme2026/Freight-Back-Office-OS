@@ -98,7 +98,7 @@ export default function DriverLoadDetailPage() {
       setSuccessMessage(null);
       try {
         await apiClient.post("/driver/documents/upload", formData, { token: token ?? undefined, organizationId: organizationId ?? undefined });
-        setSuccessMessage("Document uploaded.");
+        setSuccessMessage(`Upload successful: ${file.name} (${labelForDocumentType(documentType)}).`);
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : "Upload error.";
         if (message.includes("duplicate_required_document") || message.toLowerCase().includes("already exists")) {

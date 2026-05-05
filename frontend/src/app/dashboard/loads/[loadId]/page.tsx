@@ -2267,7 +2267,11 @@ export default function LoadDetailPage() {
       setLoad(updatedLoad);
       setLoadDocuments(updatedDocuments);
       setSelectedUploadDocumentType("");
-      setActionMessage("Document uploaded.");
+      const uploadTypeLabel = UPLOAD_DOCUMENT_TYPE_OPTIONS.find(
+        (option) => option.value === selectedUploadDocumentType,
+      )?.label;
+      const uploadTypeSuffix = uploadTypeLabel ? ` (${uploadTypeLabel})` : "";
+      setActionMessage(`Upload successful: ${file.name}${uploadTypeSuffix}.`);
     } catch (caught: unknown) {
       setError(extractErrorMessage(caught, "Failed to upload document."));
     } finally {
