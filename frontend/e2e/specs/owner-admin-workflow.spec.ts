@@ -29,7 +29,7 @@ test("owner/admin launch workflow including docs, invoice, packet, payments, and
 
   const fileInput = page.locator('input[type="file"]').first();
   await fileInput.setInputFiles(path.join(process.cwd(), "e2e/fixtures/files/sample-ratecon.pdf"));
-  await expect(page.getByText(/uploaded successfully/i)).toBeVisible();
+  await expect(page.getByText(/upload successful/i)).toBeVisible();
 
   await page.getByRole("button", { name: "Generate Invoice" }).click();
   await expect(page.getByText(/invoice/i).first()).toBeVisible();
