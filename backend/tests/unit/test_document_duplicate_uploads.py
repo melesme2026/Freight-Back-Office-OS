@@ -143,3 +143,71 @@ def test_driver_duplicate_and_replace_flow(db_session):
         db=db_session,
     ))
     assert replaced.meta["driver_upload"] is True
+
+
+def test_invalid_owner_document_type_returns_validation_error_without_saving(
+    db_session,
+    tmp_path,
+    monkeypatch,
+):
+    from app.core.config import get_settings
+    from app.core.exceptions import ValidationError
+
+    org_id, customer_id, driver_id, load_id = _seed_base(db_session)
+    monkeypatch.setenv("STORAGE_LOCAL_ROOT", str(tmp_path))
+    get_settings.cache_clear()
+
+    with pytest.raises(ValidationError):
+        asyncio.run(
+            upload_document(
+                organization_id=org_id,
+                token_payload={
+                    "organization_id": org_id,
+                    "role": "owner",
+                    "sub": "00000000-0000-0000-0000-000000009999",
+                },
+                customer_account_id=customer_id,
+                source_channel="manual",
+                file=UploadFile(
+                    filename="bad.pdf",
+                    file=BytesIO(b"bad-doc-type"),
+                    headers={"content-type": "application/pdf"},
+                ),
+                driver_id=driver_id,
+                load_id=load_id,
+                document_type="not-a-real-doc-type",
+                uploaded_by_staff_user_id=None,
+                page_count=None,
+                replace=None,
+                db=db_session,
+            )
+        )
+
+    assert list(tmp_path.rglob("*")) == []
+    get_settings.cache_clear()
+
+
+def test_storage_rejects_oversized_file_before_writing(tmp_path, monkeypatch):
+    from app.core.config import get_settings
+    from app.core.exceptions import ValidationError
+    from app.services.documents.storage_service import StorageService
+
+    monkeypatch.setenv("STORAGE_LOCAL_ROOT", str(tmp_path))
+    get_settings.cache_clear()
+
+    storage = StorageService()
+    with pytest.raises(ValidationError) as exc:
+        asyncio.run(
+            storage.save_file(
+                UploadFile(
+                    filename="too-large.pdf",
+                    file=BytesIO(b"x" * 11),
+                    headers={"content-type": "application/pdf"},
+                ),
+                max_size_bytes=10,
+            )
+        )
+
+    assert exc.value.details["max_size_bytes"] == 10
+    assert not any(path.is_file() for path in tmp_path.rglob("*"))
+    get_settings.cache_clear()
