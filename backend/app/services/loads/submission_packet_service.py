@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import desc, func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.exceptions import NotFoundError, ValidationError
@@ -207,7 +207,12 @@ class SubmissionPacketService:
                 packet_doc = docs_by_type.get(doc_type)
                 if packet_doc is None:
                     continue
-                linked_doc = getattr(packet_doc, "document", None)
+                linked_doc = self._resolve_download_document(
+                    packet_doc=getattr(packet_doc, "document", None),
+                    load_id=load_id,
+                    org_id=org_id,
+                    doc_type=doc_type,
+                )
                 storage_key = self._clean(getattr(linked_doc, "storage_key", None))
                 if not storage_key:
                     raise ValidationError(
@@ -256,8 +261,37 @@ class SubmissionPacketService:
         stmt = select(LoadDocument).where(
             LoadDocument.organization_id == uuid.UUID(org_id),
             LoadDocument.load_id == uuid.UUID(load_id),
-        )
+        ).order_by(desc(LoadDocument.received_at), desc(LoadDocument.created_at))
         return list(self.db.scalars(stmt).all())
+
+    def _resolve_download_document(
+        self,
+        *,
+        packet_doc: LoadDocument | None,
+        load_id: str,
+        org_id: str,
+        doc_type: str,
+    ) -> LoadDocument | None:
+        storage_service = StorageService()
+        if packet_doc is not None:
+            packet_storage_key = self._clean(getattr(packet_doc, "storage_key", None))
+            if packet_storage_key and storage_service.exists(relative_path=packet_storage_key):
+                return packet_doc
+
+        fallback_stmt = (
+            select(LoadDocument)
+            .where(
+                LoadDocument.organization_id == uuid.UUID(org_id),
+                LoadDocument.load_id == uuid.UUID(load_id),
+                LoadDocument.document_type == DocumentType(doc_type),
+            )
+            .order_by(desc(LoadDocument.received_at), desc(LoadDocument.created_at))
+        )
+        for candidate in self.db.scalars(fallback_stmt).all():
+            candidate_key = self._clean(getattr(candidate, "storage_key", None))
+            if candidate_key and storage_service.exists(relative_path=candidate_key):
+                return candidate
+        return packet_doc
 
     def _next_packet_reference(self, *, load_id: str) -> str:
         existing_count = int(
