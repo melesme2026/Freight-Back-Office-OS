@@ -206,3 +206,67 @@ def test_submission_packet_download_missing_packet_returns_not_found(db_session)
             load_id=str(load.id),
             org_id="00000000-0000-0000-0000-000000009981",
         )
+
+
+def test_build_packet_zip_uses_latest_valid_document_after_replace(db_session) -> None:
+    org_id = "00000000-0000-0000-0000-000000009982"
+    load = _seed_load_with_docs(db_session, organization_id=org_id)
+    packet_service = SubmissionPacketService(db_session)
+    packet = packet_service.create_packet_from_load(str(load.id), org_id, None)
+
+    document_service = DocumentService(db_session)
+    storage = StorageService()
+
+    docs, _ = document_service.list_documents(organization_id=org_id, load_id=str(load.id), document_type=DocumentType.PROOF_OF_DELIVERY, page=1, page_size=10)
+    original_pod = docs[0]
+    storage.save_bytes(relative_path=original_pod.storage_key, content=b"old-pod", overwrite=True)
+
+    replaced_pod_key = storage.save_bytes(relative_path="uploads/replaced-pod.pdf", content=b"new-pod", overwrite=True)
+    document_service.create_document(
+        organization_id=org_id,
+        customer_account_id="00000000-0000-0000-0000-000000009902",
+        driver_id="00000000-0000-0000-0000-000000009903",
+        load_id=str(load.id),
+        source_channel="manual",
+        document_type=DocumentType.PROOF_OF_DELIVERY,
+        storage_key=replaced_pod_key,
+        original_filename="replaced-pod.pdf",
+        mime_type="application/pdf",
+        file_size_bytes=1100,
+    )
+    storage.delete(relative_path=original_pod.storage_key)
+
+    # Ensure all non-POD documents are present in storage.
+    for packet_doc in packet.documents:
+        linked_document = packet_doc.document
+        if packet_doc.document_type == DocumentType.PROOF_OF_DELIVERY.value:
+            continue
+        storage.save_bytes(relative_path=linked_document.storage_key, content=b"present", overwrite=True)
+
+    zip_bytes, _ = packet_service.build_packet_zip(packet_id=str(packet.id), load_id=str(load.id), org_id=org_id)
+    with zipfile.ZipFile(io.BytesIO(zip_bytes)) as archive:
+        assert archive.read("pod-LD-001.pdf") == b"new-pod"
+
+
+def test_build_packet_zip_missing_snapshot_file_returns_controlled_error(db_session) -> None:
+    org_id = "00000000-0000-0000-0000-000000009983"
+    load = _seed_load_with_docs(db_session, organization_id=org_id)
+    packet = SubmissionPacketService(db_session).create_packet_from_load(str(load.id), org_id, None)
+    storage = StorageService()
+
+    for packet_doc in packet.documents:
+        linked_document = packet_doc.document
+        if packet_doc.document_type == DocumentType.PROOF_OF_DELIVERY.value:
+            continue
+        storage.save_bytes(relative_path=linked_document.storage_key, content=b"present", overwrite=True)
+
+    with pytest.raises(ValidationError) as exc:
+        SubmissionPacketService(db_session).build_packet_zip(packet_id=str(packet.id), load_id=str(load.id), org_id=org_id)
+
+    assert exc.value.message == "Submission packet snapshot document file is missing"
+    assert exc.value.details["document_type"] in {
+        DocumentType.INVOICE.value,
+        DocumentType.RATE_CONFIRMATION.value,
+        DocumentType.PROOF_OF_DELIVERY.value,
+        DocumentType.BILL_OF_LADING.value,
+    }
