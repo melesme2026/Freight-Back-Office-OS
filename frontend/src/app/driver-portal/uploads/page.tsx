@@ -55,7 +55,7 @@ export default function DriverUploadsPage() {
         organizationId: organizationId ?? undefined,
       });
 
-      setSuccessMessage("Document uploaded successfully.");
+      setSuccessMessage(`Upload successful: ${file.name} (${documentType.trim()}).`);
       setFile(null);
       setSelectedLoadId("");
       const uploadInput = event.currentTarget.elements.namedItem("upload-file") as HTMLInputElement | null;
