@@ -53,12 +53,15 @@ def test_build_professional_invoice_pdf_contains_professional_sections() -> None
     assert b"ap@topline.example" in pdf_bytes
     assert b"1,500.00" in pdf_bytes
     assert b"USD" in pdf_bytes
+    assert b"Pickup Date: 2026-04-01" in pdf_bytes
+    assert b"Delivery Date: 2026-04-03" in pdf_bytes
     assert b"Required Billing Packet Checklist" in pdf_bytes
     assert b"[X] Rate Confirmation" in pdf_bytes
     assert b"[X] Proof of Delivery" in pdf_bytes
     assert b"[ ] Bill of Lading" in pdf_bytes
     assert b"Total Due" in pdf_bytes
     assert b"Please remit payment according to the agreed terms." in pdf_bytes
+    assert b"Logo: use company letterhead/logo if configured" not in pdf_bytes
 
 
 def test_build_professional_invoice_pdf_handles_missing_optional_fields_without_crashing() -> None:
@@ -138,3 +141,35 @@ def test_build_professional_invoice_pdf_wraps_long_values_without_crashing() -> 
     assert b"Shipment Details" in pdf_bytes
     assert b"Load Ref:" in pdf_bytes
     assert b"Notes:" in pdf_bytes
+
+
+def test_build_professional_invoice_pdf_prefers_load_number_for_load_reference() -> None:
+    load = SimpleNamespace(
+        id=uuid.UUID("11111111-2222-3333-4444-555555555555"),
+        load_number="LD-7777",
+        invoice_number="INV-7777",
+        rate_confirmation_number=None,
+        customer_account_id=uuid.uuid4(),
+        customer_account=SimpleNamespace(account_name="Acme Shipper"),
+        organization=None,
+        broker=None,
+        driver=SimpleNamespace(full_name="Jane Driver"),
+        gross_amount="1500.00",
+        currency_code="USD",
+        pickup_location="Chicago, IL",
+        pickup_date="2026-04-01",
+        delivery_location="Atlanta, GA",
+        delivery_date="2026-04-03",
+        notes=None,
+        documents=[],
+        broker_name_raw=None,
+        broker_email_raw=None,
+    )
+
+    pdf_bytes = _build_professional_invoice_pdf(
+        load=load,
+        carrier_profile={"legal_name": "N/A Carrier", "email": "N/A", "phone": "N/A", "address": "N/A", "mc_number": "N/A", "dot_number": "N/A", "remit_to": "N/A"},
+    )
+
+    assert b"Load Ref: LD-7777" in pdf_bytes
+    assert b"Load Ref: 11111111-2222-3333-4444-555555555555" not in pdf_bytes

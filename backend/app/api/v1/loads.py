@@ -587,7 +587,9 @@ def _build_professional_invoice_pdf(*, load: Any, carrier_profile: dict[str, str
     invoice_number = _string_or_na(getattr(load, "invoice_number", None))
     invoice_date = _format_invoice_date(datetime.utcnow().date())
     load_number = _string_or_na(getattr(load, "load_number", None))
-    load_reference = _string_or_na(getattr(load, "rate_confirmation_number", None))
+    load_reference = _string_or_na(getattr(load, "load_number", None))
+    if load_reference == "N/A":
+        load_reference = _string_or_na(getattr(load, "rate_confirmation_number", None))
     if load_reference == "N/A":
         load_reference = str(getattr(load, "id", "N/A"))
 
@@ -699,7 +701,6 @@ def _build_professional_invoice_pdf(*, load: Any, carrier_profile: dict[str, str
     add_text(50, 768, company_name, font="F2", size=12)
     add_text(50, 752, carrier_name, font="F2", size=14)
     add_text(50, 736, "Freight Invoice", font="F2", size=12)
-    add_text(250, 768, "Logo: use company letterhead/logo if configured", size=8)
     add_text(384, 764, f"Invoice #: {invoice_number}", size=10)
     add_text(384, 746, f"Date: {invoice_date}", size=10)
     add_text(384, 728, f"Load #: {load_number}", size=10)

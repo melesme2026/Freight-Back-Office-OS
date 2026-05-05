@@ -112,7 +112,7 @@ export default function DriverLoadsPage() {
 
         <section className="space-y-3">
           {isLoading ? <div className="rounded-2xl border border-slate-200 bg-white px-4 py-6 text-sm text-slate-500">Loading loads...</div> : null}
-          {!isLoading && loads.length === 0 ? <div className="rounded-2xl border border-slate-200 bg-white px-4 py-6 text-sm text-slate-500">No loads found for this driver.</div> : null}
+          {!isLoading && loads.length === 0 ? <div className="rounded-2xl border border-slate-200 bg-white px-4 py-6 text-sm text-slate-500">No loads assigned yet.</div> : null}
 
           {loads.map((load) => {
             const status = toDriverStatus(load.status, load.missing_documents.length > 0);
