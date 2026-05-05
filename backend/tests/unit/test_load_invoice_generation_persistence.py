@@ -246,7 +246,7 @@ def test_download_invoice_route_returns_professional_invoice_sections(db_session
     assert b"Shipment Details" in pdf_bytes
     assert b"Charges" in pdf_bytes
     assert b"Required Billing Packet Checklist" in pdf_bytes
-    assert b"Please remit payment according to the agreed terms." in pdf_bytes
+    assert b"Please reference invoice number and load number with payment." in pdf_bytes
 
 
 def test_generate_invoice_logs_template_selection(db_session, caplog) -> None:
