@@ -271,7 +271,7 @@ def list_staff_users(
     effective_organization_id = organization_id or token_organization_id
     items, total = repo.list(
         organization_id=effective_organization_id,
-        role=_normalize_optional_text(role),
+        role=_normalize_optional_text(role) or None,
         is_active=is_active,
         search=_normalize_optional_text(search),
         page=page,
@@ -279,6 +279,9 @@ def list_staff_users(
         include_removed=include_removed,
         include_related=True,
     )
+    if role is None:
+        items = [item for item in items if _normalize_role_value(item.role) != Role.DRIVER.value]
+        total = len(items)
 
     return ApiResponse(
         data=[_serialize_staff_user(item) for item in items],

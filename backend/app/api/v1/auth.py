@@ -177,6 +177,14 @@ def _normalize_email(value: str) -> str:
 
 def _normalize_role(value: str) -> str:
     normalized = _normalize_required_text(value, "role").lower()
+    aliases = {
+        "operations_manager": Role.OPS_MANAGER.value,
+        "operations-agent": Role.OPS_AGENT.value,
+        "operations_agent": Role.OPS_AGENT.value,
+        "billing": Role.BILLING_ADMIN.value,
+        "staff": Role.OPS_AGENT.value,
+    }
+    normalized = aliases.get(normalized, normalized)
     if normalized not in ALLOWED_INVITE_ROLES:
         raise ValidationError(
             "Invalid role",

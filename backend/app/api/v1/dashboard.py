@@ -47,6 +47,7 @@ def get_dashboard(
     token_payload: dict[str, object] = Depends(get_current_token_payload),
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
+    _assert_operator_role(token_payload)
     token_org_id = token_payload.get("organization_id")
     effective_org_id = organization_id or uuid.UUID(str(token_org_id))
     if str(effective_org_id) != str(token_org_id):
@@ -201,3 +202,7 @@ def get_dashboard(
         meta={},
         error=None,
     )
+def _assert_operator_role(token_payload: dict[str, object]) -> None:
+    role = str(token_payload.get("role") or "").strip().lower()
+    if role == "driver":
+        raise UnauthorizedError("Driver accounts cannot access dashboard summary")

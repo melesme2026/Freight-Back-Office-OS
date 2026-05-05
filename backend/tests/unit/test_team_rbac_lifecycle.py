@@ -214,3 +214,43 @@ def test_removed_members_hidden_from_default_team_list_and_audited(db_session) -
 
     actions = {entry.action for entry in db_session.query(AuditLog).all()}
     assert "staff_removed" in actions
+
+
+def test_invite_operations_manager_alias_persists_as_ops_manager(db_session) -> None:
+    org_id = uuid.uuid4()
+    _seed_org(db_session, org_id, name="Alias Org", slug="alias-org")
+    owner = _seed_user(db_session, org_id=org_id, role=Role.OWNER, email="owner@alias.org")
+    db_session.commit()
+
+    token = create_access_token(subject=str(owner.id), additional_claims={"organization_id": str(org_id), "role": "owner"})
+    response = invite_user(
+        InviteUserRequest(
+            organization_id=org_id,
+            full_name="Ops Manager",
+            email="ops.manager@alias.org",
+            role="operations_manager",
+        ),
+        token=token,
+        db=db_session,
+    )
+    invited = db_session.query(StaffUser).filter(StaffUser.id == uuid.UUID(response.data["user_id"])).one()
+    assert str(getattr(invited.role, "value", invited.role)) == Role.OPS_MANAGER.value
+
+
+def test_team_list_excludes_driver_accounts(db_session) -> None:
+    org_id = uuid.uuid4()
+    _seed_org(db_session, org_id, name="Team Org", slug="team-org")
+    owner = _seed_user(db_session, org_id=org_id, role=Role.OWNER, email="owner@team.org")
+    _seed_user(db_session, org_id=org_id, role=Role.OPS_AGENT, email="ops@team.org")
+    driver_user = _seed_user(db_session, org_id=org_id, role=Role.DRIVER, email="driver@team.org")
+    db_session.commit()
+
+    response = list_staff_users(
+        token_payload={"organization_id": str(org_id), "role": "owner"},
+        db=db_session,
+        page=1,
+        page_size=200,
+    )
+    ids = {item["id"] for item in response.data}
+    assert str(owner.id) in ids
+    assert str(driver_user.id) not in ids
