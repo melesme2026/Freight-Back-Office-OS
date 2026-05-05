@@ -9,6 +9,7 @@ from app.api.v1.carrier_profile import router as carrier_profile_router
 from app.api.v1.brokers import router as brokers_router
 from app.api.v1.customer_accounts import router as customer_accounts_router
 from app.api.v1.dashboard import router as dashboard_router
+from app.api.v1.demo_requests import router as demo_requests_router
 from app.api.v1.documents import router as documents_router
 from app.api.v1.drivers import router as drivers_router
 from app.api.v1.follow_ups import router as follow_ups_router
@@ -40,6 +41,7 @@ api_router = APIRouter(prefix=settings.api_v1_prefix)
 # Core / system
 api_router.include_router(health_router, tags=["health"])
 api_router.include_router(auth_router, tags=["auth"])
+api_router.include_router(demo_requests_router, tags=["demo-requests"])
 
 protected_dependencies = [Depends(get_current_token_payload)]
 

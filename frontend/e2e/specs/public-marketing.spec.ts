@@ -20,6 +20,17 @@ test("public pages and core nav route correctly", async ({ page }) => {
   ]);
   await expect(page.getByRole("heading", { name: /walkthrough/i })).toBeVisible();
 
+
+  await page.route("**/api/v1/demo-requests", async (route) => {
+    await route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ data: { id: "demo-id", status: "received", message: "Demo request received." } }) });
+  });
+  await page.getByPlaceholder("Full name").fill("Jane Demo");
+  await page.getByPlaceholder("Work email").fill("jane@example.com");
+  await page.getByPlaceholder("Company").fill("Acme");
+  await page.getByRole("button", { name: /submit demo request/i }).click();
+  await expect(page.getByText("Demo request received. We’ll contact you shortly.")).toBeVisible();
+  await expect(page.getByText(/email draft was opened/i)).toHaveCount(0);
+
   await page.goto("/");
   await page.getByRole("link", { name: "Staff Login" }).click();
   await expect(page).toHaveURL(/\/login/);
