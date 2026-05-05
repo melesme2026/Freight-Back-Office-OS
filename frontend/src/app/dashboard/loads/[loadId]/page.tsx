@@ -93,6 +93,21 @@ type Load = {
 type CarrierProfile = {
   legal_name: string | null;
 };
+type InvoiceBlocker = {
+  message: string;
+  missingFields: string[];
+  actionUrl: string;
+};
+const INVOICE_FIELD_LABELS: Record<string, string> = {
+  address_line1: "Address Line 1",
+  city: "City",
+  state: "State",
+  postal_code: "ZIP / Postal Code",
+  phone: "Phone",
+  email: "Email",
+  remit_to_name: "Remit-To Name",
+  remit_to_address: "Remit-To Address",
+};
 
 type ReviewQueueItem = {
   load_id: string;
@@ -1018,6 +1033,7 @@ export default function LoadDetailPage() {
     useState<UploadDocumentType>("");
   const [error, setError] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [invoiceBlocker, setInvoiceBlocker] = useState<InvoiceBlocker | null>(null);
   const [pendingDuplicateUpload, setPendingDuplicateUpload] = useState<{ file: File; formData: FormData; message: string } | null>(null);
   const [emailSuccessMessage, setEmailSuccessMessage] = useState<string | null>(null);
   const [showEmailSuccess, setShowEmailSuccess] = useState(false);
@@ -2124,24 +2140,32 @@ export default function LoadDetailPage() {
       setIsGeneratingInvoice(true);
       setError(null);
       setActionMessage(null);
+      setInvoiceBlocker(null);
 
       const token = getAccessToken();
-      const carrierProfileResponse = await fetch(buildConfiguredApiUrl("/carrier-profile"), {
-        method: "GET",
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-      });
-      if (!carrierProfileResponse.ok) {
-        throw new Error("Complete Carrier Profile before generating invoice");
-      }
-
       const response = await fetch(buildConfiguredApiUrl(`/loads/${encodeURIComponent(load.id)}/invoice`), {
         method: "GET",
         headers: token ? { Authorization: `Bearer ${token}` } : undefined,
       });
 
       if (!response.ok) {
-        const responseText = await response.text();
-        throw new Error(responseText || "Failed to generate invoice.");
+        const payload = (await response.json().catch(() => null)) as ApiResponse<unknown> | null;
+        const errorCode = payload?.error?.code ?? String(payload?.error?.details?.code ?? "");
+        if (errorCode === "carrier_profile_incomplete") {
+          const missingFields = Array.isArray(payload?.error?.details?.missing_fields)
+            ? payload?.error?.details?.missing_fields.map((item) => String(item))
+            : [];
+          const actionUrl = typeof payload?.error?.details?.action_url === "string"
+            ? payload.error.details.action_url
+            : "/dashboard/settings/carrier-profile";
+          setInvoiceBlocker({
+            message: payload?.error?.message ?? "Complete your company and remit-to details before generating an invoice.",
+            missingFields,
+            actionUrl,
+          });
+          return;
+        }
+        throw new Error(payload?.error?.message || "Failed to generate invoice.");
       }
 
       const blob = await response.blob();
@@ -2554,6 +2578,28 @@ export default function LoadDetailPage() {
             </button>
           </div>
         </div>
+
+        {invoiceBlocker ? (
+          <div className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-soft">
+            <h2 className="text-lg font-semibold text-amber-900">Carrier Profile incomplete</h2>
+            <p className="mt-1 text-sm text-amber-800">
+              Complete your company and remit-to details before generating an invoice.
+            </p>
+            {invoiceBlocker.missingFields.length > 0 ? (
+              <ul className="mt-3 list-disc pl-5 text-sm text-amber-900">
+                {invoiceBlocker.missingFields.map((field) => (
+                  <li key={field}>{INVOICE_FIELD_LABELS[field] ?? field}</li>
+                ))}
+              </ul>
+            ) : null}
+            <a
+              href={`${invoiceBlocker.actionUrl}?returnTo=${encodeURIComponent(`/dashboard/loads/${load.id}`)}`}
+              className="mt-4 inline-flex rounded-xl bg-amber-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-amber-700"
+            >
+              Complete Carrier Profile
+            </a>
+          </div>
+        ) : null}
 
         <div className="mb-6 rounded-2xl border border-slate-200 bg-white p-4 shadow-soft">
           <div className="flex flex-wrap items-end gap-3">
