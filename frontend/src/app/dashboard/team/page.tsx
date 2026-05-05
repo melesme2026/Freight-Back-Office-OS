@@ -36,6 +36,13 @@ const STAFF_ROLES = [
   { value: "support_agent", label: "Support Agent" },
   { value: "viewer", label: "Viewer" },
 ];
+function normalizeRole(value: string): string {
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "operations_manager") return "ops_manager";
+  if (normalized === "operations_agent") return "ops_agent";
+  if (normalized === "billing") return "billing_admin";
+  return normalized;
+}
 
 function formatDateTime(value?: string | null): string {
   if (!value) return "Never";
@@ -96,7 +103,8 @@ export default function TeamPage() {
         token,
         organizationId,
       });
-      setStaffMembers(payload?.data ?? []);
+      const members = (payload?.data ?? []).map((member) => ({ ...member, role: normalizeRole(member.role) }));
+      setStaffMembers(members);
       setErrorMessage(null);
     } catch (error: unknown) {
       setErrorMessage(error instanceof Error ? error.message : "Unable to load team members.");
@@ -384,7 +392,7 @@ export default function TeamPage() {
                           onChange={(event) => void handleRoleChange(member, event.target.value)}
                           className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs"
                         >
-                          {STAFF_ROLES.map((role) => (
+                          {[...STAFF_ROLES, { value: "owner", label: "Owner" }].map((role) => (
                             <option key={role.value} value={role.value}>
                               {role.label}
                             </option>
