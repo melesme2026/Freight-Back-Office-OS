@@ -18,10 +18,12 @@ from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_db_session
-from app.core.exceptions import UnauthorizedError
+from app.core.exceptions import DuplicateRecordError, UnauthorizedError
 from app.core.config import get_settings
 from app.core.security import get_current_token_payload
 from app.domain.enums.channel import Channel
+from app.domain.enums.document_type import DocumentType
+from app.domain.enums.processing_status import ProcessingStatus
 from app.repositories.driver_repo import DriverRepository
 from app.repositories.load_repo import LoadRepository
 from app.schemas.common import ApiResponse
@@ -47,6 +49,31 @@ MAX_UPLOAD_FILE_SIZE_BYTES = get_settings().max_upload_file_size_mb * 1024 * 102
 
 DEFAULT_LOAD_DOCUMENT_PAGE_SIZE = 100
 
+
+
+REQUIRED_SINGLETON_DOCUMENT_TYPES = {
+    DocumentType.RATE_CONFIRMATION,
+    DocumentType.BILL_OF_LADING,
+    DocumentType.PROOF_OF_DELIVERY,
+    DocumentType.INVOICE,
+}
+
+
+def _parse_replace_flag(value: str | bool | None) -> bool:
+    if isinstance(value, bool):
+        return value
+    normalized = str(value or "").strip().lower()
+    return normalized in {"1", "true", "yes", "on"}
+
+
+def _document_label(value: DocumentType) -> str:
+    labels = {
+        DocumentType.RATE_CONFIRMATION: "Rate Confirmation",
+        DocumentType.BILL_OF_LADING: "Bill of Lading",
+        DocumentType.PROOF_OF_DELIVERY: "Proof of Delivery",
+        DocumentType.INVOICE: "Invoice",
+    }
+    return labels.get(value, value.value.replace("_", " ").title())
 
 class DocumentCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -310,6 +337,7 @@ async def upload_document(
     document_type: str | None = Form(None),
     uploaded_by_staff_user_id: uuid.UUID | None = Form(None),
     page_count: int | None = Form(None),
+    replace: str | None = Form(None),
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
     _ = uploaded_by_staff_user_id
@@ -345,7 +373,48 @@ async def upload_document(
             server_uploaded_by_staff_user_id = token_subject
 
 
-        item = service.create_document(
+        replace_existing = _parse_replace_flag(replace)
+        parsed_document_type = service._normalize_document_type(normalized_document_type, allow_none=True)
+        existing_required_doc = None
+        if parsed_document_type in REQUIRED_SINGLETON_DOCUMENT_TYPES and load_id is not None:
+            existing_docs, _ = service.list_documents(
+                organization_id=str(organization_id),
+                load_id=str(load_id),
+                document_type=parsed_document_type,
+                page=1,
+                page_size=10,
+            )
+            existing_required_doc = existing_docs[0] if existing_docs else None
+
+            if existing_required_doc and not replace_existing:
+                storage.delete(relative_path=str(storage_key))
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={
+                        "code": "duplicate_required_document",
+                        "message": f"{_document_label(parsed_document_type)} already exists for this load. Replace it?",
+                        "existing_document_id": str(existing_required_doc.id),
+                        "document_type": parsed_document_type.value,
+                        "can_replace": True,
+                    },
+                )
+
+        if existing_required_doc and replace_existing:
+            old_storage_key = existing_required_doc.storage_key
+            existing_required_doc.original_filename = _normalize_optional_text(file.filename)
+            existing_required_doc.storage_key = str(storage_key).strip()
+            existing_required_doc.storage_bucket = _normalize_optional_text(str(storage_bucket)) if storage_bucket is not None else None
+            existing_required_doc.mime_type = _normalize_optional_text(file.content_type)
+            existing_required_doc.file_size_bytes = file_size_bytes
+            existing_required_doc.processing_status = ProcessingStatus.PENDING
+            existing_required_doc.received_at = datetime.utcnow()
+            if server_uploaded_by_staff_user_id:
+                existing_required_doc.uploaded_by_staff_user_id = server_uploaded_by_staff_user_id
+            item = service.document_repo.update(existing_required_doc)
+            if old_storage_key and old_storage_key != existing_required_doc.storage_key:
+                storage.delete(relative_path=old_storage_key)
+        else:
+            item = service.create_document(
             organization_id=str(organization_id),
             customer_account_id=str(customer_account_id),
             storage_key=str(storage_key).strip(),
@@ -396,6 +465,7 @@ async def upload_driver_document(
     file: UploadFile = File(...),
     document_type: str = Form(...),
     load_id: uuid.UUID | None = Form(None),
+    replace: str | None = Form(None),
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
     _validate_upload_file(file)
@@ -444,25 +514,67 @@ async def upload_driver_document(
         _validate_upload_size(storage_result.get("size"))
 
         service = DocumentService(db)
-        item = service.create_document(
-            organization_id=str(organization_id),
-            customer_account_id=str(driver.customer_account_id),
-            storage_key=str(storage_key).strip(),
-            storage_bucket=_normalize_optional_text(
-                str(storage_result.get("bucket"))
+        replace_existing = _parse_replace_flag(replace)
+        parsed_document_type = service._normalize_document_type(normalized_document_type)
+        existing_required_doc = None
+        if parsed_document_type in REQUIRED_SINGLETON_DOCUMENT_TYPES and resolved_load_id:
+            existing_docs, _ = service.list_documents(
+                organization_id=str(organization_id),
+                load_id=resolved_load_id,
+                document_type=parsed_document_type,
+                page=1,
+                page_size=10,
             )
-            if storage_result.get("bucket") is not None
-            else None,
-            source_channel="driver_portal",
-            driver_id=str(driver.id),
-            load_id=resolved_load_id,
-            document_type=normalized_document_type,
-            original_filename=_normalize_optional_text(file.filename),
-            mime_type=_normalize_optional_text(file.content_type),
-            file_size_bytes=storage_result.get("size"),
-            page_count=None,
-            uploaded_by_staff_user_id=None,
-        )
+            existing_required_doc = existing_docs[0] if existing_docs else None
+            if existing_required_doc and not replace_existing:
+                storage.delete(relative_path=str(storage_key))
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={
+                        "code": "duplicate_required_document",
+                        "message": f"{_document_label(parsed_document_type)} already exists for this load. Replace it?",
+                        "existing_document_id": str(existing_required_doc.id),
+                        "document_type": parsed_document_type.value,
+                        "can_replace": True,
+                    },
+                )
+
+        if existing_required_doc and replace_existing:
+            old_storage_key = existing_required_doc.storage_key
+            existing_required_doc.original_filename = _normalize_optional_text(file.filename)
+            existing_required_doc.storage_key = str(storage_key).strip()
+            existing_required_doc.storage_bucket = (
+                _normalize_optional_text(str(storage_result.get("bucket")))
+                if storage_result.get("bucket") is not None
+                else None
+            )
+            existing_required_doc.mime_type = _normalize_optional_text(file.content_type)
+            existing_required_doc.file_size_bytes = storage_result.get("size")
+            existing_required_doc.processing_status = ProcessingStatus.PENDING
+            existing_required_doc.received_at = datetime.utcnow()
+            item = service.document_repo.update(existing_required_doc)
+            if old_storage_key and old_storage_key != existing_required_doc.storage_key:
+                storage.delete(relative_path=old_storage_key)
+        else:
+            item = service.create_document(
+                organization_id=str(organization_id),
+                customer_account_id=str(driver.customer_account_id),
+                storage_key=str(storage_key).strip(),
+                storage_bucket=_normalize_optional_text(
+                    str(storage_result.get("bucket"))
+                )
+                if storage_result.get("bucket") is not None
+                else None,
+                source_channel="driver_portal",
+                driver_id=str(driver.id),
+                load_id=resolved_load_id,
+                document_type=normalized_document_type,
+                original_filename=_normalize_optional_text(file.filename),
+                mime_type=_normalize_optional_text(file.content_type),
+                file_size_bytes=storage_result.get("size"),
+                page_count=None,
+                uploaded_by_staff_user_id=None,
+            )
         _create_document_uploaded_notification(
             db=db,
             organization_id=str(organization_id),

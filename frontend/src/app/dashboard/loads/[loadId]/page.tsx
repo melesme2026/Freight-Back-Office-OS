@@ -1018,6 +1018,7 @@ export default function LoadDetailPage() {
     useState<UploadDocumentType>("");
   const [error, setError] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [pendingDuplicateUpload, setPendingDuplicateUpload] = useState<{ file: File; formData: FormData; message: string } | null>(null);
   const [emailSuccessMessage, setEmailSuccessMessage] = useState<string | null>(null);
   const [showEmailSuccess, setShowEmailSuccess] = useState(false);
   const [staffUsers, setStaffUsers] = useState<StaffUserOption[]>([]);
@@ -2223,6 +2224,14 @@ export default function LoadDetailPage() {
 
       if (!uploadResponse.ok) {
         const responseText = await uploadResponse.text();
+        let parsed: { detail?: { code?: string; message?: string } } | null = null;
+        try { parsed = JSON.parse(responseText); } catch {}
+        const detail = parsed?.detail;
+        if (uploadResponse.status === 409 && detail?.code === "duplicate_required_document") {
+          setPendingDuplicateUpload({ file, formData, message: detail.message ?? "A required document already exists for this load." });
+          setActionMessage(null);
+          return;
+        }
         throw new Error(responseText || "Failed to upload document.");
       }
 
@@ -2234,7 +2243,7 @@ export default function LoadDetailPage() {
       setLoad(updatedLoad);
       setLoadDocuments(updatedDocuments);
       setSelectedUploadDocumentType("");
-      setActionMessage(`Document "${file.name}" uploaded successfully.`);
+      setActionMessage("Document uploaded.");
     } catch (caught: unknown) {
       setError(extractErrorMessage(caught, "Failed to upload document."));
     } finally {
@@ -2244,6 +2253,35 @@ export default function LoadDetailPage() {
       }
     }
   }
+
+  async function handleReplaceDuplicateUpload() {
+    if (!pendingDuplicateUpload) return;
+    try {
+      setIsUploadingDocument(true);
+      const token = getAccessToken();
+      pendingDuplicateUpload.formData.set("replace", "true");
+      const replaceResponse = await fetch(buildConfiguredApiUrl("/documents/upload"), {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        body: pendingDuplicateUpload.formData,
+      });
+      if (!replaceResponse.ok) {
+        const responseText = await replaceResponse.text();
+        throw new Error(responseText || "Failed to replace document.");
+      }
+      const [updatedLoad, updatedDocuments] = await Promise.all([fetchLoad(), fetchLoadDocuments({ silent: true })]);
+      setLoad(updatedLoad);
+      setLoadDocuments(updatedDocuments);
+      setSelectedUploadDocumentType("");
+      setPendingDuplicateUpload(null);
+      setActionMessage("Document replaced.");
+    } catch (caught: unknown) {
+      setError(extractErrorMessage(caught, "Failed to replace document."));
+    } finally {
+      setIsUploadingDocument(false);
+    }
+  }
+
 
   async function handleDownloadDocument(document: LoadDocument) {
     if (!document.id || downloadingDocumentId) {

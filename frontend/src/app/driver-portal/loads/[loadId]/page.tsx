@@ -34,6 +34,7 @@ export default function DriverLoadDetailPage() {
   const [loadData, setLoadData] = useState<Record<string, unknown> | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [pendingReplace, setPendingReplace] = useState<{ documentType: string; file: File; message: string } | null>(null);
   const [uploadingType, setUploadingType] = useState<string | null>(null);
 
   const fetchLoad = useCallback(async () => {
@@ -95,17 +96,49 @@ export default function DriverLoadDetailPage() {
       setUploadingType(documentType);
       setErrorMessage(null);
       setSuccessMessage(null);
-      await apiClient.post("/driver/documents/upload", formData, {
-        token: token ?? undefined,
-        organizationId: organizationId ?? undefined,
-      });
-      setSuccessMessage(`${labelForDocumentType(documentType)} upload success.`);
+      try {
+        await apiClient.post("/driver/documents/upload", formData, { token: token ?? undefined, organizationId: organizationId ?? undefined });
+        setSuccessMessage("Document uploaded.");
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : "Upload error.";
+        if (message.includes("duplicate_required_document") || message.toLowerCase().includes("already exists")) {
+          setPendingReplace({ documentType, file, message: "A required document already exists for this load." });
+          return;
+        } else {
+          throw error;
+        }
+      }
       await fetchLoad();
     } catch (error: unknown) {
       setErrorMessage(error instanceof Error ? error.message : "Upload error.");
     } finally {
       setUploadingType(null);
       event.target.value = "";
+    }
+  }
+
+
+  async function handleReplaceUpload() {
+    if (!pendingReplace || !loadId) return;
+    const token = getAccessToken();
+    const organizationId = getOrganizationId();
+    if (!organizationId) return;
+    const formData = new FormData();
+    formData.append("organization_id", organizationId);
+    formData.append("document_type", pendingReplace.documentType);
+    formData.append("load_id", loadId);
+    formData.append("file", pendingReplace.file);
+    formData.append("replace", "true");
+    try {
+      setUploadingType(pendingReplace.documentType);
+      await apiClient.post("/driver/documents/upload", formData, { token: token ?? undefined, organizationId: organizationId ?? undefined });
+      setPendingReplace(null);
+      setSuccessMessage("Document replaced.");
+      await fetchLoad();
+    } catch (error: unknown) {
+      setErrorMessage(error instanceof Error ? error.message : "Upload error.");
+    } finally {
+      setUploadingType(null);
     }
   }
 
@@ -124,6 +157,7 @@ export default function DriverLoadDetailPage() {
 
         {errorMessage ? <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{errorMessage}</div> : null}
         {successMessage ? <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{successMessage}</div> : null}
+        {pendingReplace ? <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"><p className="font-semibold">{pendingReplace.message}</p><div className="mt-2 flex gap-2"><button type="button" className="rounded-lg bg-amber-600 px-3 py-2 text-xs font-semibold text-white" onClick={() => void handleReplaceUpload()} disabled={Boolean(uploadingType)}>Replace existing</button><button type="button" className="rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-semibold text-amber-900" onClick={() => setPendingReplace(null)} disabled={Boolean(uploadingType)}>Cancel</button></div></div> : null}
 
         <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-4">
           <h2 className="text-lg font-semibold text-slate-900">Document Uploads</h2>

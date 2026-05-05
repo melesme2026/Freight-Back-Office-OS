@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import asyncio
 from io import BytesIO
-from pathlib import Path
 
 import pytest
 from starlette.datastructures import UploadFile
@@ -32,6 +31,7 @@ from app.domain.models.customer_account import CustomerAccount
 from app.domain.models.organization import Organization
 from app.domain.models.driver import Driver
 from app.services.documents.document_service import DocumentService
+from app.services.documents.storage_service import StorageService
 from app.services.loads.load_service import LoadService
 
 
@@ -81,19 +81,18 @@ def test_launch_smoke_owner_admin_and_driver_flow(db_session):
         delivery_location="Atlanta, GA",
     )
 
-    storage_root = Path("data/sandbox/uploaded-docs")
-    storage_root.mkdir(parents=True, exist_ok=True)
-
     docs = DocumentService(db_session)
+    storage = StorageService()
     for idx, doc_type in enumerate(["rate_confirmation", "bill_of_lading", "proof_of_delivery"], start=1):
-        storage_key = f"uploads/smoke-{doc_type}-{idx}.pdf"
-        full_path = storage_root / storage_key
-        full_path.parent.mkdir(parents=True, exist_ok=True)
-        full_path.write_bytes(b"smoke-doc")
+        storage_key = storage.save_bytes(
+            relative_path=f"uploads/smoke-{doc_type}-{idx}.pdf",
+            content=b"smoke-doc",
+            overwrite=True,
+        )
         docs.create_document(
             organization_id=org_id,
             customer_account_id=customer_id,
-            storage_key=f"uploads/smoke-{doc_type}-{idx}.pdf",
+            storage_key=storage_key,
             source_channel="web",
             driver_id=driver_id,
             load_id=str(load.id),
@@ -153,6 +152,7 @@ def test_launch_smoke_owner_admin_and_driver_flow(db_session):
             file=UploadFile(filename="driver-pod.pdf", file=BytesIO(b"driver-pod"), headers={"content-type": "application/pdf"}),
             document_type="proof_of_delivery",
             load_id=load.id,
+            replace="true",
             db=db_session,
         )
     )
