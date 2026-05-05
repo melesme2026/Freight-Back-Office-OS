@@ -16,11 +16,11 @@ export default defineConfig({
     navigationTimeout: 20_000,
   },
   webServer: {
-    command: "npm run dev",
+    command: "npm run build && npm run start",
     url: process.env.PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:3000",
     reuseExistingServer: !process.env.CI,
     cwd: __dirname,
-    timeout: 120_000,
+    timeout: 300_000,
   },
   projects: [
     { name: "chromium", use: { ...devices["Desktop Chrome"] } },

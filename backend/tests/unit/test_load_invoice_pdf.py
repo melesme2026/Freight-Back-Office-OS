@@ -60,8 +60,9 @@ def test_build_professional_invoice_pdf_contains_professional_sections() -> None
     assert b"[X] Proof of Delivery" in pdf_bytes
     assert b"[ ] Bill of Lading" in pdf_bytes
     assert b"Total Due" in pdf_bytes
-    assert b"Please remit payment according to the agreed terms." in pdf_bytes
+    assert b"Please reference invoice number and load number with payment." in pdf_bytes
     assert b"Logo: use company letterhead/logo if configured" not in pdf_bytes
+    assert b"11111111-2222-3333-4444-555555555555" not in pdf_bytes
 
 
 def test_build_professional_invoice_pdf_handles_missing_optional_fields_without_crashing() -> None:
@@ -92,7 +93,7 @@ def test_build_professional_invoice_pdf_handles_missing_optional_fields_without_
 
     assert isinstance(pdf_bytes, bytes)
     assert b"Customer:" in pdf_bytes
-    assert b"N/A" in pdf_bytes
+    assert b"Not provided" in pdf_bytes
 
 
 def test_build_professional_invoice_pdf_wraps_long_values_without_crashing() -> None:
@@ -173,3 +174,4 @@ def test_build_professional_invoice_pdf_prefers_load_number_for_load_reference()
 
     assert b"Load Ref: LD-7777" in pdf_bytes
     assert b"Load Ref: 11111111-2222-3333-4444-555555555555" not in pdf_bytes
+

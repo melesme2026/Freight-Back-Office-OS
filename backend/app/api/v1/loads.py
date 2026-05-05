@@ -679,10 +679,14 @@ def _build_professional_invoice_pdf(*, load: Any, carrier_profile: dict[str, str
     def add_box(x: int, y: int, width: int, height: int) -> None:
         text_ops.append(f"{x} {y} {width} {height} re S")
 
+    def _safe_text(value: object | None, *, missing: str = "Not provided") -> str:
+        normalized = _normalize_optional_text(value)
+        return normalized if normalized is not None else missing
+
     def _wrap_text(value: str, *, max_chars: int, max_lines: int | None = None) -> list[str]:
         normalized = str(value or "").replace("\r", " ").replace("\n", " ").strip()
         if not normalized:
-            normalized = "N/A"
+            normalized = "Not provided"
 
         words = normalized.split()
         lines: list[str] = []
@@ -714,7 +718,7 @@ def _build_professional_invoice_pdf(*, load: Any, carrier_profile: dict[str, str
             elif lines:
                 lines[-1] = lines[-1].rstrip() + "..."
 
-        return lines or ["N/A"]
+        return lines or ["Not provided"]
 
     def add_wrapped_field(
         *,
@@ -734,17 +738,17 @@ def _build_professional_invoice_pdf(*, load: Any, carrier_profile: dict[str, str
         return y_cursor
 
     # Header
-    add_box(36, 718, 540, 68)
-    add_text(50, 768, company_name, font="F2", size=12)
-    add_text(50, 752, carrier_name, font="F2", size=14)
-    add_text(50, 736, "Freight Invoice", font="F2", size=12)
+    add_box(36, 714, 540, 72)
+    add_wrapped_field(x=50, y=768, label="Carrier", value=carrier_name, max_chars=44, max_lines=2)
+    add_text(50, 734, "Freight Invoice", font="F2", size=12)
     add_text(384, 764, f"Invoice #: {invoice_number}", size=10)
-    add_text(384, 746, f"Date: {invoice_date}", size=10)
-    add_text(384, 728, f"Load #: {load_number}", size=10)
+    add_text(384, 748, f"Invoice Date: {invoice_date}", size=10)
+    add_wrapped_field(x=384, y=732, label="Load #", value=load_number, max_chars=28, max_lines=2)
+    add_text(384, 704, f"Payment Terms: {_safe_text(payment_terms)}", size=10)
 
     # Carrier / Bill-to sections
-    section_y = 570
-    section_h = 136
+    section_y = 540
+    section_h = 164
     left_x = 36
     right_x = 316
     section_w = 260
@@ -763,13 +767,13 @@ def _build_professional_invoice_pdf(*, load: Any, carrier_profile: dict[str, str
         label="Carrier",
         value=carrier_name,
         max_chars=29,
-        max_lines=2,
+        max_lines=3,
     )
     left_cursor = add_wrapped_field(
         x=left_x + section_padding_x,
         y=left_cursor,
         label="Email",
-        value=carrier_email,
+        value=_safe_text(carrier_email),
         max_chars=31,
         max_lines=2,
     )
@@ -777,7 +781,7 @@ def _build_professional_invoice_pdf(*, load: Any, carrier_profile: dict[str, str
         x=left_x + section_padding_x,
         y=left_cursor,
         label="Phone",
-        value=carrier_phone,
+        value=_safe_text(carrier_phone),
         max_chars=31,
         max_lines=1,
     )
@@ -785,7 +789,7 @@ def _build_professional_invoice_pdf(*, load: Any, carrier_profile: dict[str, str
         x=left_x + section_padding_x,
         y=left_cursor,
         label="Address",
-        value=carrier_address,
+        value=_safe_text(carrier_address),
         max_chars=29,
         max_lines=3,
     )
@@ -793,7 +797,7 @@ def _build_professional_invoice_pdf(*, load: Any, carrier_profile: dict[str, str
         x=left_x + section_padding_x,
         y=left_cursor,
         label="MC",
-        value=carrier_mc_number,
+        value=_safe_text(carrier_mc_number),
         max_chars=29,
         max_lines=1,
     )
@@ -801,17 +805,17 @@ def _build_professional_invoice_pdf(*, load: Any, carrier_profile: dict[str, str
         x=left_x + section_padding_x,
         y=left_cursor,
         label="DOT",
-        value=carrier_dot_number,
+        value=_safe_text(carrier_dot_number),
         max_chars=29,
         max_lines=1,
     )
     add_wrapped_field(
         x=left_x + section_padding_x,
         y=left_cursor,
-        label="Remit",
-        value=remit_to_instructions,
+        label="Remit Instructions",
+        value=_safe_text(remit_to_instructions),
         max_chars=29,
-        max_lines=3,
+        max_lines=4,
     )
 
     add_text(right_x + section_padding_x, right_top, "Bill-To / Broker", font="F2", size=11)
@@ -820,7 +824,7 @@ def _build_professional_invoice_pdf(*, load: Any, carrier_profile: dict[str, str
         x=right_x + section_padding_x,
         y=right_cursor,
         label="Customer",
-        value=customer_name,
+        value=_safe_text(customer_name),
         max_chars=27,
         max_lines=2,
     )
@@ -828,7 +832,7 @@ def _build_professional_invoice_pdf(*, load: Any, carrier_profile: dict[str, str
         x=right_x + section_padding_x,
         y=right_cursor,
         label="Billing Email",
-        value=billing_email,
+        value=_safe_text(billing_email),
         max_chars=29,
         max_lines=2,
     )
@@ -836,15 +840,15 @@ def _build_professional_invoice_pdf(*, load: Any, carrier_profile: dict[str, str
         x=right_x + section_padding_x,
         y=right_cursor,
         label="Broker",
-        value=broker_name,
+        value=_safe_text(broker_name),
         max_chars=29,
-        max_lines=1,
+        max_lines=2,
     )
     right_cursor = add_wrapped_field(
         x=right_x + section_padding_x,
         y=right_cursor,
         label="Broker Email",
-        value=broker_email,
+        value=_safe_text(broker_email),
         max_chars=29,
         max_lines=1,
     )
@@ -852,35 +856,42 @@ def _build_professional_invoice_pdf(*, load: Any, carrier_profile: dict[str, str
         x=right_x + section_padding_x,
         y=right_cursor,
         label="Terms",
-        value=payment_terms,
+        value=_safe_text(payment_terms),
         max_chars=29,
-        max_lines=1,
+        max_lines=2,
     )
 
     # Shipment details
-    add_box(36, 436, 540, 118)
-    shipment_top = 436 + 118 - section_padding_top
+    add_box(36, 402, 540, 128)
+    shipment_top = 402 + 128 - section_padding_top
     add_text(50, shipment_top, "Shipment Details", font="F2", size=11)
     add_wrapped_field(
         x=50,
         y=shipment_top - 20,
         label="Pickup",
-        value=_string_or_na(getattr(load, "pickup_location", None)),
+        value=_safe_text(getattr(load, "pickup_location", None)),
         max_chars=33,
         max_lines=2,
     )
-    add_text(50, shipment_top - 50, f"Pickup Date: {pickup_date}")
+    add_text(50, shipment_top - 50, f"Pickup Date: {_safe_text(pickup_date)}")
     add_wrapped_field(
         x=50,
         y=shipment_top - 66,
         label="Delivery",
-        value=_string_or_na(getattr(load, "delivery_location", None)),
+        value=_safe_text(getattr(load, "delivery_location", None)),
         max_chars=33,
         max_lines=2,
     )
-    add_text(50, shipment_top - 96, f"Delivery Date: {delivery_date}")
+    add_text(50, shipment_top - 96, f"Delivery Date: {_safe_text(delivery_date)}")
 
-    add_text(304, shipment_top - 20, f"Driver: {_string_or_na(getattr(driver, 'full_name', None))}")
+    add_wrapped_field(
+        x=304,
+        y=shipment_top - 20,
+        label="Driver",
+        value=_safe_text(getattr(driver, "full_name", None)),
+        max_chars=30,
+        max_lines=2,
+    )
     add_wrapped_field(
         x=304,
         y=shipment_top - 36,
@@ -893,28 +904,28 @@ def _build_professional_invoice_pdf(*, load: Any, carrier_profile: dict[str, str
         x=304,
         y=shipment_top - 64,
         label="Notes",
-        value=_string_or_na(getattr(load, "notes", None)),
+        value=_safe_text(getattr(load, "notes", None)),
         max_chars=30,
-        max_lines=2,
+        max_lines=3,
     )
 
     # Charges
-    add_box(36, 336, 540, 82)
-    add_text(50, 400, "Charges", font="F2", size=11)
-    add_text(50, 382, "Line Item")
-    add_text(286, 382, "Amount")
-    add_text(422, 382, "Currency")
-    text_ops.append("50 374 m 562 374 l S")
-    add_text(50, 356, "Linehaul / Freight Charge")
-    add_text(286, 356, gross_amount)
-    add_text(422, 356, currency_code)
-    text_ops.append("50 348 m 562 348 l S")
-    add_text(50, 338, "Total Due", font="F2", size=11)
-    add_text(422, 338, total_due, font="F2", size=12)
+    add_box(36, 304, 540, 86)
+    add_text(50, 372, "Charges", font="F2", size=11)
+    add_text(50, 354, "Description")
+    add_text(390, 354, "Amount")
+    add_text(476, 354, "Currency")
+    text_ops.append("50 346 m 562 346 l S")
+    add_text(50, 330, "Linehaul / Freight Charge")
+    add_text(390, 330, gross_amount)
+    add_text(476, 330, currency_code)
+    text_ops.append("50 322 m 562 322 l S")
+    add_text(50, 310, "Total Due", font="F2", size=11)
+    add_text(450, 310, total_due, font="F2", size=12)
 
     # Checklist
-    checklist_y = 186
-    checklist_h = 136
+    checklist_y = 164
+    checklist_h = 128
     add_box(36, checklist_y, 540, checklist_h)
     checklist_top = checklist_y + checklist_h - section_padding_top
     add_text(50, checklist_top, "Required Billing Packet Checklist", font="F2", size=11)
@@ -964,9 +975,18 @@ def _build_professional_invoice_pdf(*, load: Any, carrier_profile: dict[str, str
         right_check_y -= line_gap
 
     # Footer
-    add_box(36, 118, 540, 54)
-    add_text(50, 150, "Please remit payment according to the agreed terms.", font="F2", size=11)
-    add_text(50, 132, f"Generated At: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}")
+    add_box(36, 56, 540, 96)
+    footer_top = 136
+    add_wrapped_field(
+        x=50,
+        y=footer_top,
+        label="Payment Instructions",
+        value=_safe_text(remit_to_instructions),
+        max_chars=78,
+        max_lines=2,
+    )
+    add_text(50, 92, "Please reference invoice number and load number with payment.", font="F2", size=10)
+    add_text(50, 74, f"Generated At: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}")
 
     stream = "\n".join(text_ops).encode("latin-1", errors="replace")
 

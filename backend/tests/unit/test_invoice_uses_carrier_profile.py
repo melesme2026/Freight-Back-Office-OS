@@ -57,7 +57,7 @@ def test_invoice_uses_carrier_profile_fields_and_invoice_number(db_session) -> N
     assert b"Carrier Prime LLC" in pdf
     assert b"MC: MC-445566" in pdf
     assert b"DOT: DOT-889900" in pdf
-    assert b"Remit:" in pdf
+    assert b"Remit Instructions:" in pdf
     assert load.invoice_number is not None
     assert load.invoice_number.startswith("INV-")
 

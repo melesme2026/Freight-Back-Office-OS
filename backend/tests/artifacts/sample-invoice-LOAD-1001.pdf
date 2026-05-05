@@ -1,0 +1,306 @@
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R /F2 5 0 R >> >> /Contents 6 0 R >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+5 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>
+endobj
+6 0 obj
+<< /Length 3003 >>
+stream
+0.5 w
+0 0 0 RG
+36 714 540 72 re S
+BT
+/F1 10 Tf
+50 768 Td
+(Carrier: Adwa Express LLC) Tj
+ET
+BT
+/F2 12 Tf
+50 734 Td
+(Freight Invoice) Tj
+ET
+BT
+/F1 10 Tf
+384 764 Td
+(Invoice #: INV-1001) Tj
+ET
+BT
+/F1 10 Tf
+384 748 Td
+(Invoice Date: 2026-05-05) Tj
+ET
+BT
+/F1 10 Tf
+384 732 Td
+(Load #: LOAD-1001) Tj
+ET
+BT
+/F1 10 Tf
+384 704 Td
+(Payment Terms: Net 30 days) Tj
+ET
+36 540 260 164 re S
+316 540 260 164 re S
+BT
+/F2 11 Tf
+50 688 Td
+(Carrier / Remit-To) Tj
+ET
+BT
+/F1 10 Tf
+50 668 Td
+(Carrier: Adwa Express LLC) Tj
+ET
+BT
+/F1 10 Tf
+50 654 Td
+(Email: billing@adwa.example) Tj
+ET
+BT
+/F1 10 Tf
+50 640 Td
+(Phone: +1-312-555-0101) Tj
+ET
+BT
+/F1 10 Tf
+50 626 Td
+(Address: 1200 W Lake St, Chicago, IL) Tj
+ET
+BT
+/F1 10 Tf
+66 612 Td
+(60607) Tj
+ET
+BT
+/F1 10 Tf
+50 598 Td
+(MC: MC-990011) Tj
+ET
+BT
+/F1 10 Tf
+50 584 Td
+(DOT: DOT-220033) Tj
+ET
+BT
+/F1 10 Tf
+50 570 Td
+(Remit Instructions: Adwa Express LLC | 1200 W) Tj
+ET
+BT
+/F1 10 Tf
+66 556 Td
+(Lake St, Chicago, IL 60607 |) Tj
+ET
+BT
+/F1 10 Tf
+66 542 Td
+(ACH preferred) Tj
+ET
+BT
+/F2 11 Tf
+330 688 Td
+(Bill-To / Broker) Tj
+ET
+BT
+/F1 10 Tf
+330 668 Td
+(Customer: TQL broker) Tj
+ET
+BT
+/F1 10 Tf
+330 654 Td
+(Billing Email: ap@tql.example) Tj
+ET
+BT
+/F1 10 Tf
+330 640 Td
+(Broker: TQL broker) Tj
+ET
+BT
+/F1 10 Tf
+330 626 Td
+(Broker Email: ap@tql.example) Tj
+ET
+BT
+/F1 10 Tf
+330 612 Td
+(Terms: Net 30 days) Tj
+ET
+36 402 540 128 re S
+BT
+/F2 11 Tf
+50 514 Td
+(Shipment Details) Tj
+ET
+BT
+/F1 10 Tf
+50 494 Td
+(Pickup: Chicago, IL) Tj
+ET
+BT
+/F1 10 Tf
+50 464 Td
+(Pickup Date: 2026-04-01) Tj
+ET
+BT
+/F1 10 Tf
+50 448 Td
+(Delivery: Detroit, MI) Tj
+ET
+BT
+/F1 10 Tf
+50 418 Td
+(Delivery Date: 2026-04-02) Tj
+ET
+BT
+/F1 10 Tf
+304 494 Td
+(Driver: John Driver) Tj
+ET
+BT
+/F1 10 Tf
+304 478 Td
+(Load Ref: LOAD-1001) Tj
+ET
+BT
+/F1 10 Tf
+304 450 Td
+(Notes: Handle with care) Tj
+ET
+36 304 540 86 re S
+BT
+/F2 11 Tf
+50 372 Td
+(Charges) Tj
+ET
+BT
+/F1 10 Tf
+50 354 Td
+(Description) Tj
+ET
+BT
+/F1 10 Tf
+390 354 Td
+(Amount) Tj
+ET
+BT
+/F1 10 Tf
+476 354 Td
+(Currency) Tj
+ET
+50 346 m 562 346 l S
+BT
+/F1 10 Tf
+50 330 Td
+(Linehaul / Freight Charge) Tj
+ET
+BT
+/F1 10 Tf
+390 330 Td
+(1,500.00) Tj
+ET
+BT
+/F1 10 Tf
+476 330 Td
+(USD) Tj
+ET
+50 322 m 562 322 l S
+BT
+/F2 11 Tf
+50 310 Td
+(Total Due) Tj
+ET
+BT
+/F2 12 Tf
+450 310 Td
+(1,500.00 USD) Tj
+ET
+36 164 540 128 re S
+BT
+/F2 11 Tf
+50 276 Td
+(Required Billing Packet Checklist) Tj
+ET
+BT
+/F1 10 Tf
+50 254 Td
+([X] Rate Confirmation) Tj
+ET
+BT
+/F1 10 Tf
+50 240 Td
+([X] Bill of Lading) Tj
+ET
+BT
+/F1 10 Tf
+50 226 Td
+([X] Proof of Delivery) Tj
+ET
+BT
+/F1 10 Tf
+50 212 Td
+([X] Invoice) Tj
+ET
+BT
+/F1 10 Tf
+324 254 Td
+([ ] Lumper Receipt) Tj
+ET
+BT
+/F1 10 Tf
+324 240 Td
+([ ] Scale Ticket) Tj
+ET
+BT
+/F1 10 Tf
+324 226 Td
+([ ] Detention Support) Tj
+ET
+BT
+/F1 10 Tf
+324 212 Td
+([ ] Accessorial Support) Tj
+ET
+36 56 540 96 re S
+BT
+/F1 10 Tf
+50 136 Td
+(Payment Instructions: Adwa Express LLC | 1200 W Lake St, Chicago, IL 60607 | ACH preferred) Tj
+ET
+BT
+/F2 10 Tf
+50 92 Td
+(Please reference invoice number and load number with payment.) Tj
+ET
+BT
+/F1 10 Tf
+50 74 Td
+(Generated At: 2026-05-05 03:10:27 UTC) Tj
+ET
+endstream
+endobj
+xref
+0 7
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000251 00000 n 
+0000000321 00000 n 
+0000000396 00000 n 
+trailer
+<< /Size 7 /Root 1 0 R >>
+startxref
+3451
+%%EOF
