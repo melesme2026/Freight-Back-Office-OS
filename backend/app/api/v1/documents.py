@@ -76,6 +76,27 @@ def _document_label(value: DocumentType) -> str:
     return labels.get(value, value.value.replace("_", " ").title())
 
 
+def _upload_log_context(
+    *,
+    organization_id: object,
+    customer_account_id: object | None = None,
+    driver_id: object | None = None,
+    load_id: object | None = None,
+    document_type: str | None = None,
+    filename: str | None = None,
+) -> dict[str, Any]:
+    return {
+        "organization_id": str(organization_id),
+        "customer_account_id": str(customer_account_id) if customer_account_id is not None else None,
+        "driver_id": str(driver_id) if driver_id is not None else None,
+        "load_id": str(load_id) if load_id is not None else None,
+        "document_type": document_type,
+        # Python LogRecord reserves `filename`, so keep the requested field in a nested context.
+        "document_upload": {"filename": filename},
+        "upload_filename": filename,
+    }
+
+
 class DocumentCreateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -345,6 +366,8 @@ async def upload_document(
 
     normalized_source_channel = _normalize_required_text(source_channel, "source_channel")
     normalized_document_type = _normalize_optional_text(document_type)
+    storage: StorageService | None = None
+    uploaded_storage_key: str | None = None
 
     try:
         service = DocumentService(db)
@@ -394,6 +417,7 @@ async def upload_document(
         file_size_bytes = storage_result.get("size")
         _validate_upload_size(file_size_bytes)
         storage_bucket = storage_result.get("bucket")
+        uploaded_storage_key = str(storage_key).strip()
 
         if existing_required_doc and replace_existing:
             old_storage_key = existing_required_doc.storage_key
@@ -417,7 +441,7 @@ async def upload_document(
             item = service.create_document(
                 organization_id=str(organization_id),
                 customer_account_id=str(customer_account_id),
-                storage_key=str(storage_key).strip(),
+                storage_key=uploaded_storage_key,
                 storage_bucket=(
                     _normalize_optional_text(str(storage_bucket))
                     if storage_bucket is not None
@@ -449,21 +473,42 @@ async def upload_document(
             error=None,
         )
     except HTTPException:
+        if storage is not None and uploaded_storage_key:
+            storage.delete(relative_path=uploaded_storage_key)
         raise
-    except AppError:
+    except AppError as exc:
         db.rollback()
+        if storage is not None and uploaded_storage_key:
+            storage.delete(relative_path=uploaded_storage_key)
+        logger.warning(
+            "Known document upload failure",
+            extra={
+                **_upload_log_context(
+                    organization_id=organization_id,
+                    customer_account_id=customer_account_id,
+                    driver_id=driver_id,
+                    load_id=load_id,
+                    document_type=normalized_document_type,
+                    filename=file.filename,
+                ),
+                "error_code": exc.code,
+            },
+        )
         raise
     except Exception as exc:
         db.rollback()
+        if storage is not None and uploaded_storage_key:
+            storage.delete(relative_path=uploaded_storage_key)
         logger.exception(
             "Document upload failed",
-            extra={
-                "organization_id": str(organization_id),
-                "customer_account_id": str(customer_account_id),
-                "load_id": _uuid_to_str(load_id),
-                "document_type": normalized_document_type,
-                "filename": file.filename,
-            },
+            extra=_upload_log_context(
+                organization_id=organization_id,
+                customer_account_id=customer_account_id,
+                driver_id=driver_id,
+                load_id=load_id,
+                document_type=normalized_document_type,
+                filename=file.filename,
+            ),
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -520,6 +565,9 @@ async def upload_driver_document(
             raise UnauthorizedError("Drivers may only attach documents to their own loads")
         resolved_load_id = str(load.id)
 
+    storage: StorageService | None = None
+    uploaded_storage_key: str | None = None
+
     try:
         service = DocumentService(db)
         replace_existing = _parse_replace_flag(replace)
@@ -556,6 +604,7 @@ async def upload_driver_document(
             )
 
         _validate_upload_size(storage_result.get("size"))
+        uploaded_storage_key = str(storage_key).strip()
 
         if existing_required_doc and replace_existing:
             old_storage_key = existing_required_doc.storage_key
@@ -577,7 +626,7 @@ async def upload_driver_document(
             item = service.create_document(
                 organization_id=str(organization_id),
                 customer_account_id=str(driver.customer_account_id),
-                storage_key=str(storage_key).strip(),
+                storage_key=uploaded_storage_key,
                 storage_bucket=_normalize_optional_text(str(storage_result.get("bucket")))
                 if storage_result.get("bucket") is not None
                 else None,
@@ -607,21 +656,42 @@ async def upload_driver_document(
             error=None,
         )
     except HTTPException:
+        if storage is not None and uploaded_storage_key:
+            storage.delete(relative_path=uploaded_storage_key)
         raise
-    except AppError:
+    except AppError as exc:
         db.rollback()
+        if storage is not None and uploaded_storage_key:
+            storage.delete(relative_path=uploaded_storage_key)
+        logger.warning(
+            "Known driver document upload failure",
+            extra={
+                **_upload_log_context(
+                    organization_id=organization_id,
+                    customer_account_id=getattr(driver, "customer_account_id", None),
+                    driver_id=token_driver_id,
+                    load_id=load_id,
+                    document_type=normalized_document_type,
+                    filename=file.filename,
+                ),
+                "error_code": exc.code,
+            },
+        )
         raise
     except Exception as exc:
         db.rollback()
+        if storage is not None and uploaded_storage_key:
+            storage.delete(relative_path=uploaded_storage_key)
         logger.exception(
             "Driver document upload failed",
-            extra={
-                "organization_id": str(organization_id),
-                "driver_id": str(token_driver_id),
-                "load_id": _uuid_to_str(load_id),
-                "document_type": normalized_document_type,
-                "filename": file.filename,
-            },
+            extra=_upload_log_context(
+                organization_id=organization_id,
+                customer_account_id=getattr(driver, "customer_account_id", None),
+                driver_id=token_driver_id,
+                load_id=load_id,
+                document_type=normalized_document_type,
+                filename=file.filename,
+            ),
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

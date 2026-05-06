@@ -4,6 +4,7 @@ import { useRouter, useParams } from "next/navigation";
 import { ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { apiClient } from "@/lib/api-client";
+import { parseUploadErrorResponse, isHtmlErrorText } from "@/lib/upload-errors";
 import { getAccessToken, getOrganizationId } from "@/lib/auth";
 import { buildApiUrl as buildConfiguredApiUrl } from "@/lib/config";
 
@@ -992,50 +993,6 @@ function extractErrorMessage(caught: unknown, fallback: string) {
   return fallback;
 }
 
-function isHtmlErrorText(value: string) {
-  return /<!doctype html|<html[\s>]/i.test(value.trim());
-}
-
-type UploadErrorPayload = {
-  detail?: { code?: string; message?: string };
-  error?: {
-    code?: string;
-    message?: string;
-    details?: { detail?: { code?: string; message?: string } };
-  };
-  message?: string;
-};
-
-async function parseUploadError(response: Response, fallback: string) {
-  const responseText = await response.text();
-  let parsed: UploadErrorPayload | null = null;
-
-  try {
-    parsed = responseText.trim().length > 0 ? (JSON.parse(responseText) as UploadErrorPayload) : null;
-  } catch {
-    parsed = null;
-  }
-
-  const duplicateDetail = parsed?.detail ?? parsed?.error?.details?.detail;
-  if (response.status === 409 && duplicateDetail?.code === "duplicate_required_document") {
-    return {
-      duplicate: true,
-      message: duplicateDetail.message ?? "A required document already exists for this load.",
-    };
-  }
-
-  const message = parsed?.error?.message ?? parsed?.message ?? parsed?.detail?.message;
-  if (message && message.trim().length > 0) {
-    return { duplicate: false, message };
-  }
-
-  if (responseText.trim().length > 0 && !isHtmlErrorText(responseText)) {
-    return { duplicate: false, message: responseText };
-  }
-
-  return { duplicate: false, message: fallback };
-}
-
 function isValidEmail(value: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 }
@@ -1684,21 +1641,32 @@ export default function LoadDetailPage() {
       matchesDocumentType(document, ["invoice"])
     );
 
+    const hasPodFromDocuments = loadDocuments.some((document) =>
+      matchesDocumentType(document, [
+        "pod",
+        "proof_of_delivery",
+        "proof-of-delivery",
+        "proof of delivery",
+        "delivery_receipt",
+        "delivery receipt",
+      ])
+    );
+
     return {
       hasRateCon: load?.has_ratecon === true || hasRateConFromDocuments,
       hasBol: load?.has_bol === true || hasBolFromDocuments,
       hasInvoice: load?.has_invoice === true || hasInvoiceFromDocuments,
+      hasPod:
+        load?.packet_readiness?.present_documents?.includes("proof_of_delivery") === true ||
+        hasPodFromDocuments,
     };
   }, [load, loadDocuments]);
 
   const requiredDocsReceivedCount = useMemo(() => {
-    const submissionMissingCount = load?.packet_readiness?.missing_required_documents?.submission?.length;
-    if (typeof submissionMissingCount === "number") {
-      return Math.max(0, 3 - submissionMissingCount);
-    }
-
-    return [documentPresence.hasRateCon, documentPresence.hasInvoice].filter(Boolean).length;
-  }, [documentPresence, load?.packet_readiness]);
+    return [documentPresence.hasRateCon, documentPresence.hasPod, documentPresence.hasInvoice].filter(
+      Boolean
+    ).length;
+  }, [documentPresence]);
 
   const documentChecklist = useMemo(
     () => [
@@ -1708,9 +1676,7 @@ export default function LoadDetailPage() {
       },
       {
         name: "Proof of Delivery",
-        status: load?.packet_readiness?.present_documents?.includes("proof_of_delivery")
-          ? "received"
-          : "missing",
+        status: documentPresence.hasPod ? "received" : "missing",
       },
       {
         name: "Invoice",
@@ -1721,7 +1687,14 @@ export default function LoadDetailPage() {
         status: documentPresence.hasBol ? "received" : "recommended",
       },
     ],
-    [documentPresence, load?.packet_readiness]
+    [documentPresence]
+  );
+
+  const missingSubmissionDocuments = useMemo(
+    () => documentChecklist
+      .filter((document) => document.status === "missing")
+      .map((document) => document.name),
+    [documentChecklist]
   );
 
   const validationIssues = useMemo(() => {
@@ -1738,8 +1711,7 @@ export default function LoadDetailPage() {
     if (!documentPresence.hasRateCon) {
       issues.set("rate confirmation missing", "Rate confirmation missing");
     }
-    const missingSubmission = load?.packet_readiness?.missing_required_documents?.submission ?? [];
-    if (missingSubmission.includes("proof_of_delivery")) {
+    if (!documentPresence.hasPod) {
       issues.set("proof of delivery missing", "Proof of delivery missing");
     }
 
@@ -2233,6 +2205,11 @@ export default function LoadDetailPage() {
   }
 
   async function handleUploadDocument(event: ChangeEvent<HTMLInputElement>) {
+    if (isUploadingDocument) {
+      event.target.value = "";
+      return;
+    }
+
     const file = event.target.files?.[0] ?? null;
 
     if (!file) {
@@ -2260,6 +2237,7 @@ export default function LoadDetailPage() {
 
     try {
       setIsUploadingDocument(true);
+      setPendingDuplicateUpload(null);
       setError(null);
       setActionMessage(`Uploading "${file.name}"...`);
 
@@ -2291,7 +2269,7 @@ export default function LoadDetailPage() {
       });
 
       if (!uploadResponse.ok) {
-        const uploadError = await parseUploadError(
+        const uploadError = await parseUploadErrorResponse(
           uploadResponse,
           "Document upload failed. Please try again.",
         );
@@ -2331,9 +2309,11 @@ export default function LoadDetailPage() {
   }
 
   async function handleReplaceDuplicateUpload() {
-    if (!pendingDuplicateUpload) return;
+    if (!pendingDuplicateUpload || isUploadingDocument) return;
     try {
       setIsUploadingDocument(true);
+      setError(null);
+      setActionMessage(`Replacing "${pendingDuplicateUpload.file.name}"...`);
       const token = getAccessToken();
       pendingDuplicateUpload.formData.set("replace", "true");
       const replaceResponse = await fetch(buildConfiguredApiUrl("/documents/upload"), {
@@ -2342,7 +2322,7 @@ export default function LoadDetailPage() {
         body: pendingDuplicateUpload.formData,
       });
       if (!replaceResponse.ok) {
-        const uploadError = await parseUploadError(
+        const uploadError = await parseUploadErrorResponse(
           replaceResponse,
           "Document replacement failed. Please try again.",
         );
@@ -2391,7 +2371,10 @@ export default function LoadDetailPage() {
 
       if (!response.ok) {
         const responseText = await response.text();
-        throw new Error(responseText || "Failed to download document.");
+        const message = responseText.trim().length > 0 && !isHtmlErrorText(responseText)
+          ? responseText
+          : "Failed to download document.";
+        throw new Error(message);
       }
 
       const blob = await response.blob();
@@ -3136,6 +3119,31 @@ export default function LoadDetailPage() {
                 </div>
               </div>
 
+              {pendingDuplicateUpload ? (
+                <div className="mb-5 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950" role="alert">
+                  <div className="font-semibold">Replace existing required document?</div>
+                  <p className="mt-1">{pendingDuplicateUpload.message}</p>
+                  <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                    <button
+                      type="button"
+                      onClick={() => void handleReplaceDuplicateUpload()}
+                      disabled={isUploadingDocument}
+                      className="rounded-xl bg-amber-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {isUploadingDocument ? "Replacing..." : "Replace document"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPendingDuplicateUpload(null)}
+                      disabled={isUploadingDocument}
+                      className="rounded-xl border border-amber-300 bg-white px-4 py-2 text-sm font-semibold text-amber-800 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      Keep existing
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+
               <div className="mb-5 grid gap-4 lg:grid-cols-[240px,1fr]">
                 <div>
                   <label
@@ -3177,8 +3185,8 @@ export default function LoadDetailPage() {
               <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
                 <p className="font-semibold">What is missing right now</p>
                 <p className="mt-1 text-xs">
-                  {(load.packet_readiness?.missing_required_documents?.submission ?? []).length > 0
-                    ? (load.packet_readiness?.missing_required_documents?.submission ?? []).join(", ")
+                  {missingSubmissionDocuments.length > 0
+                    ? missingSubmissionDocuments.join(", ")
                     : "No required submission documents are missing."}
                 </p>
                 <p className="mt-1 text-xs">Accepted types: PDF/JPG/PNG/WEBP/HEIC/HEIF/TIFF · Max size: 15MB</p>

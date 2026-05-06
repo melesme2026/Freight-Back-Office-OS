@@ -211,3 +211,50 @@ def test_storage_rejects_oversized_file_before_writing(tmp_path, monkeypatch):
     assert exc.value.details["max_size_bytes"] == 10
     assert not any(path.is_file() for path in tmp_path.rglob("*"))
     get_settings.cache_clear()
+
+
+def test_owner_upload_cleans_up_file_when_database_create_fails(
+    db_session,
+    tmp_path,
+    monkeypatch,
+):
+    from app.core.config import get_settings
+
+    org_id, customer_id, driver_id, load_id = _seed_base(db_session)
+    monkeypatch.setenv("STORAGE_LOCAL_ROOT", str(tmp_path))
+    get_settings.cache_clear()
+
+    def fail_create_document(self, *args, **kwargs):
+        raise RuntimeError("simulated database failure")
+
+    monkeypatch.setattr(DocumentService, "create_document", fail_create_document)
+
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(
+            upload_document(
+                organization_id=org_id,
+                token_payload={
+                    "organization_id": org_id,
+                    "role": "owner",
+                    "sub": "00000000-0000-0000-0000-000000009999",
+                },
+                customer_account_id=customer_id,
+                source_channel="manual",
+                file=UploadFile(
+                    filename="db-fail.pdf",
+                    file=BytesIO(b"stored-then-rollback"),
+                    headers={"content-type": "application/pdf"},
+                ),
+                driver_id=driver_id,
+                load_id=load_id,
+                document_type="proof_of_delivery",
+                uploaded_by_staff_user_id=None,
+                page_count=None,
+                replace=None,
+                db=db_session,
+            )
+        )
+
+    assert exc.value.status_code == 500
+    assert not any(path.is_file() for path in tmp_path.rglob("*"))
+    get_settings.cache_clear()

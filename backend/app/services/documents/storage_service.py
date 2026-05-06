@@ -17,7 +17,17 @@ class StorageService:
     def __init__(self) -> None:
         self.settings = get_settings()
         self.root = self.settings.storage_local_root_path.resolve()
-        self.root.mkdir(parents=True, exist_ok=True)
+        try:
+            self.root.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            logger.exception(
+                "Document storage root could not be created",
+                extra={"storage_root": str(self.root)},
+            )
+            raise ValidationError(
+                "Document storage is not writable",
+                details={"storage_root": str(self.root)},
+            ) from exc
         self._ensure_root_is_writable()
 
     async def save_file(
@@ -37,18 +47,24 @@ class StorageService:
         top_level_folder = self._folder_for_content_type(resolved_mime_type)
         relative_path = f"{top_level_folder}/{generated_filename}"
 
-        content = await file.read()
-        if content is None:
-            content = b""
+        chunks: list[bytes] = []
+        bytes_read = 0
+        while True:
+            chunk = await file.read(1024 * 1024)
+            if not chunk:
+                break
+            bytes_read += len(chunk)
+            if max_size_bytes is not None and bytes_read > max_size_bytes:
+                raise ValidationError(
+                    "File is too large",
+                    details={
+                        "max_size_bytes": max_size_bytes,
+                        "file_size_bytes": bytes_read,
+                    },
+                )
+            chunks.append(chunk)
 
-        if max_size_bytes is not None and len(content) > max_size_bytes:
-            raise ValidationError(
-                "File is too large",
-                details={
-                    "max_size_bytes": max_size_bytes,
-                    "file_size_bytes": len(content),
-                },
-            )
+        content = b"".join(chunks)
 
         stored_relative_path = self.save_bytes(
             relative_path=relative_path,
@@ -117,7 +133,20 @@ class StorageService:
                 details={"relative_path": relative_path},
             )
 
-        destination.write_bytes(content)
+        try:
+            destination.write_bytes(content)
+        except OSError as exc:
+            logger.exception(
+                "Document storage write failed",
+                extra={
+                    "storage_root": str(self.root),
+                    "relative_path": relative_path,
+                },
+            )
+            raise ValidationError(
+                "Document storage is not writable",
+                details={"relative_path": relative_path},
+            ) from exc
         return str(destination.relative_to(self.root)).replace("\\", "/")
 
     def read_bytes(
