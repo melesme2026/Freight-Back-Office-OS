@@ -8,7 +8,7 @@ from starlette.datastructures import UploadFile
 
 from app.api.v1.documents import upload_driver_document
 from app.api.v1.load_payment_reconciliation import _authorize_payment_read, _authorize_payment_write
-from app.api.v1.loads import _authorize_load_access, _authorize_submission_download, _authorize_submission_read
+from app.api.v1.loads import _authorize_load_access, _authorize_submission_download, _authorize_submission_read, list_driver_loads
 from app.core.exceptions import ForbiddenError, UnauthorizedError
 from app.domain.models.driver import Driver
 from app.services.loads.load_service import LoadService
@@ -60,6 +60,42 @@ def test_driver_only_load_visibility(db_session) -> None:
     assert total == 1
     assert len(items) == 1
     assert str(items[0].driver_id) == driver_a
+
+
+
+def test_driver_load_endpoint_uses_token_driver_scope(db_session) -> None:
+    org_id = "00000000-0000-0000-0000-000000010301"
+    driver_a = "00000000-0000-0000-0000-000000010311"
+    driver_b = "00000000-0000-0000-0000-000000010322"
+
+    _seed_driver(db_session, organization_id=org_id, driver_id=driver_a)
+    _seed_driver(db_session, organization_id=org_id, driver_id=driver_b)
+    _seed_load(db_session, organization_id=org_id, driver_id=driver_a, load_number="LD-TOKEN-MINE")
+    _seed_load(db_session, organization_id=org_id, driver_id=driver_b, load_number="LD-TOKEN-OTHER")
+
+    response = list_driver_loads(
+        token_payload={"organization_id": org_id, "role": "driver", "driver_id": driver_a},
+        page=1,
+        page_size=50,
+        db=db_session,
+    )
+
+    assert response.meta["total"] == 1
+    assert response.data[0]["load_number"] == "LD-TOKEN-MINE"
+    assert response.data[0]["driver_id"] == driver_a
+
+
+def test_staff_cannot_use_driver_load_endpoint(db_session) -> None:
+    with pytest.raises(ForbiddenError):
+        list_driver_loads(
+            token_payload={
+                "organization_id": "00000000-0000-0000-0000-000000010401",
+                "role": "owner",
+            },
+            page=1,
+            page_size=25,
+            db=db_session,
+        )
 
 
 def test_cross_driver_access_denied(db_session) -> None:

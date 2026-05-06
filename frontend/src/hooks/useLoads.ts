@@ -283,7 +283,7 @@ export function useLoads(options?: { scope?: "staff" | "driver" }) {
       const token = getAccessToken();
       const organizationId = getOrganizationId();
 
-      const response = await apiClient.get<ApiResponse<unknown>>(scope === "driver" ? "/driver/loads" : "/loads", {
+      const response = await apiClient.get<ApiResponse<unknown>>(scope === "driver" ? "/driver/loads?page=1&page_size=100" : "/loads", {
         token: token ?? undefined,
         organizationId: organizationId ?? undefined,
       });

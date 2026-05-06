@@ -1,18 +1,89 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 
 import { useLoads } from "@/hooks/useLoads";
-import { apiClient } from "@/lib/api-client";
+import { ApiClientError, apiClient } from "@/lib/api-client";
 import { getAccessToken, getOrganizationId } from "@/lib/auth";
+import { labelForDocumentType } from "@/lib/driver-portal";
+
+type DriverDocument = {
+  id: string;
+  load_id: string | null;
+  load_number: string | null;
+  document_type: string | null;
+  original_filename: string | null;
+  processing_status: string | null;
+  received_at: string | null;
+};
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  return value as Record<string, unknown>;
+}
+
+function asText(value: unknown): string | null {
+  if (typeof value === "string" && value.trim()) return value.trim();
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  return null;
+}
+
+function normalizeDocuments(payload: unknown): DriverDocument[] {
+  const root = asRecord(payload);
+  const items = Array.isArray(root?.data) ? root.data : Array.isArray(payload) ? payload : [];
+
+  return items
+    .map((item) => {
+      const record = asRecord(item);
+      const id = asText(record?.id);
+      if (!record || !id) return null;
+
+      return {
+        id,
+        load_id: asText(record.load_id),
+        load_number: asText(record.load_number),
+        document_type: asText(record.document_type),
+        original_filename: asText(record.original_filename) ?? asText(record.file_name),
+        processing_status: asText(record.processing_status),
+        received_at: asText(record.received_at) ?? asText(record.created_at),
+      };
+    })
+    .filter((item): item is DriverDocument => item !== null);
+}
+
+function formatDateTime(value: string | null): string {
+  if (!value) return "Submitted just now";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function getFriendlyError(error: unknown): string {
+  if (error instanceof ApiClientError) {
+    if (error.status === 409) {
+      return error.message || "A document already exists for that load. Open the load to replace it.";
+    }
+    if (error.status === 403 || error.status === 401) {
+      return "You do not have access to upload that document. Sign in again or contact dispatch.";
+    }
+  }
+  return error instanceof Error ? error.message : "Upload failed. Please try again.";
+}
 
 export default function DriverUploadsPage() {
   const { loads, isLoading: isLoadingLoads } = useLoads({ scope: "driver" });
 
   const [selectedLoadId, setSelectedLoadId] = useState("");
-  const [documentType, setDocumentType] = useState("bol");
+  const [documentType, setDocumentType] = useState("proof_of_delivery");
   const [file, setFile] = useState<File | null>(null);
+  const [documents, setDocuments] = useState<DriverDocument[]>([]);
+  const [isLoadingDocuments, setIsLoadingDocuments] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -26,14 +97,48 @@ export default function DriverUploadsPage() {
     }));
   }, [loads]);
 
+  async function fetchDocuments() {
+    const token = getAccessToken();
+    const organizationId = getOrganizationId();
+    if (!organizationId) {
+      setDocuments([]);
+      setIsLoadingDocuments(false);
+      return;
+    }
+
+    try {
+      setIsLoadingDocuments(true);
+      const payload = await apiClient.get<unknown>("/documents?page=1&page_size=100", {
+        token: token ?? undefined,
+        organizationId: organizationId ?? undefined,
+      });
+      setDocuments(normalizeDocuments(payload));
+    } catch {
+      setDocuments([]);
+    } finally {
+      setIsLoadingDocuments(false);
+    }
+  }
+
+  useEffect(() => {
+    void fetchDocuments();
+  }, []);
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
+    if (isSubmitting) return;
 
     const token = getAccessToken();
     const organizationId = getOrganizationId();
 
     if (!organizationId || !file || !documentType.trim()) {
       setErrorMessage("Select a document type and file before uploading.");
+      return;
+    }
+
+    if (file.size > MAX_UPLOAD_MB * 1024 * 1024) {
+      setErrorMessage(`File is too large. Upload a file under ${MAX_UPLOAD_MB}MB.`);
       return;
     }
 
@@ -50,40 +155,61 @@ export default function DriverUploadsPage() {
       setErrorMessage(null);
       setSuccessMessage(null);
 
-      await apiClient.post("/driver/documents/upload", formData, {
+      const response = await apiClient.post<unknown>("/driver/documents/upload", formData, {
         token: token ?? undefined,
         organizationId: organizationId ?? undefined,
       });
 
-      setSuccessMessage(`Upload successful: ${file.name} (${documentType.trim()}).`);
+      const uploadedDocument = normalizeDocuments(response)[0] ?? normalizeDocuments({ data: [asRecord(response)?.data] })[0];
+      if (uploadedDocument) {
+        setDocuments((current) => [uploadedDocument, ...current.filter((item) => item.id !== uploadedDocument.id)]);
+      }
+
+      setSuccessMessage(`Upload successful: ${file.name} (${labelForDocumentType(documentType.trim())}).`);
       setFile(null);
       setSelectedLoadId("");
       const uploadInput = event.currentTarget.elements.namedItem("upload-file") as HTMLInputElement | null;
       if (uploadInput) {
         uploadInput.value = "";
       }
+      await fetchDocuments();
     } catch (error: unknown) {
-      setErrorMessage(error instanceof Error ? error.message : "Upload failed.");
+      setErrorMessage(getFriendlyError(error));
     } finally {
       setIsSubmitting(false);
     }
   }
 
+  const documentsByLoad = useMemo(() => {
+    const names = new Map(loadOptions.map((load) => [load.id, load.label]));
+    const grouped = new Map<string, { label: string; documents: DriverDocument[] }>();
+
+    for (const document of documents) {
+      const key = document.load_id ?? "unassigned";
+      const label = document.load_number ?? (document.load_id ? names.get(document.load_id) : null) ?? "Not linked to a load";
+      const existing = grouped.get(key) ?? { label, documents: [] };
+      existing.documents.push(document);
+      grouped.set(key, existing);
+    }
+
+    return Array.from(grouped.entries()).map(([id, value]) => ({ id, ...value }));
+  }, [documents, loadOptions]);
+
   return (
     <main className="min-h-screen bg-slate-50 text-slate-900">
-      <div className="mx-auto max-w-4xl px-6 py-10">
+      <div className="mx-auto max-w-4xl px-4 py-6 sm:px-6 sm:py-10">
         <div className="mb-8">
           <p className="text-sm font-medium text-brand-700">Driver Portal / Uploads</p>
-          <h1 className="text-3xl font-bold tracking-tight text-slate-950">Upload Documents</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-950 sm:text-3xl">Upload Documents</h1>
           <p className="mt-2 text-sm text-slate-600">
-            Upload rate confirmations, PODs, invoices, and supporting paperwork, then optionally link each file to a load.
+            Upload PODs, BOLs, rate confirmations, and photos from your phone. Link the file to a load when possible so dispatch can review it faster.
           </p>
           <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
-            <p className="font-semibold text-slate-900">How uploads work</p>
+            <p className="font-semibold text-slate-900">Mobile upload tips</p>
             <ol className="mt-2 list-decimal space-y-1 pl-4">
-              <li>Select document type and file (PDF or image).</li>
-              <li>Optionally select a load to attach the file immediately.</li>
-              <li>Submit and monitor processing from the staff Documents screen.</li>
+              <li>Select the assigned load and document type.</li>
+              <li>Take a photo or choose a PDF/image from your phone.</li>
+              <li>Wait for the green success confirmation before leaving this page.</li>
             </ol>
             <p className="mt-3 text-xs text-slate-600">
               Accepted file types: {acceptedTypes}. Maximum file size: {MAX_UPLOAD_MB}MB.
@@ -98,12 +224,12 @@ export default function DriverUploadsPage() {
         ) : null}
 
         {successMessage ? (
-          <div className="mb-6 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+          <div className="mb-6 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">
             {successMessage}
           </div>
         ) : null}
 
-        <form onSubmit={(event) => void handleSubmit(event)} className="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
+        <form onSubmit={(event) => void handleSubmit(event)} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-soft sm:p-6">
           <div className="grid gap-5">
             <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
               <p className="font-semibold">What is usually missing?</p>
@@ -121,11 +247,12 @@ export default function DriverUploadsPage() {
                 id="upload-document-type"
                 value={documentType}
                 onChange={(event) => setDocumentType(event.target.value)}
-                className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
+                disabled={isSubmitting}
+                className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-base disabled:bg-slate-100 sm:text-sm"
               >
-                <option value="rate_confirmation">Rate Confirmation</option>
                 <option value="proof_of_delivery">Proof of Delivery</option>
                 <option value="bill_of_lading">Bill of Lading</option>
+                <option value="rate_confirmation">Rate Confirmation</option>
                 <option value="invoice">Invoice</option>
                 <option value="lumper_receipt">Lumper Receipt</option>
                 <option value="detention_support">Detention Support</option>
@@ -136,66 +263,99 @@ export default function DriverUploadsPage() {
               </select>
             </div>
 
-            <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-              Driver is resolved automatically from your signed-in driver account.
-            </div>
-
             <div>
               <label htmlFor="upload-load" className="text-sm font-semibold text-slate-700">
-                Load (optional)
+                Assigned load
               </label>
               <select
                 id="upload-load"
                 value={selectedLoadId}
                 onChange={(event) => setSelectedLoadId(event.target.value)}
-                disabled={isLoadingLoads}
-                className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
+                disabled={isSubmitting || isLoadingLoads}
+                className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-base disabled:bg-slate-100 sm:text-sm"
               >
-                <option value="">No load selected</option>
+                <option value="">Select a load (recommended)</option>
                 {loadOptions.map((load) => (
                   <option key={load.id} value={load.id}>
                     {load.label}
                   </option>
                 ))}
               </select>
-              {!isLoadingLoads && loadOptions.length === 0 ? (
-                <p className="mt-2 text-xs text-amber-700">
-                  No driver loads are available yet. You can still upload documents without linking,
-                  then staff can attach them later.
-                </p>
-              ) : null}
+              <p className="mt-2 text-xs text-slate-500">
+                Only loads assigned to your driver account are available here.
+              </p>
             </div>
 
             <div>
               <label htmlFor="upload-file" className="text-sm font-semibold text-slate-700">
-                Document file
+                File or photo
               </label>
               <input
                 id="upload-file"
                 name="upload-file"
                 type="file"
-                accept="application/pdf,image/*"
+                accept="image/*,application/pdf"
+                capture="environment"
+                disabled={isSubmitting}
                 onChange={(event) => setFile(event.target.files?.[0] ?? null)}
-                className="mt-2 block w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
+                className="mt-2 w-full rounded-xl border border-dashed border-slate-300 bg-slate-50 px-3 py-4 text-sm text-slate-700 file:mr-3 file:rounded-lg file:border-0 file:bg-brand-600 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white disabled:cursor-not-allowed disabled:opacity-60"
               />
-              <p className="mt-2 text-xs text-slate-500">Accepted: {acceptedTypes} · Max: {MAX_UPLOAD_MB}MB</p>
+              {file ? (
+                <p className="mt-2 break-all text-xs text-slate-600">
+                  Selected: {file.name} ({(file.size / (1024 * 1024)).toFixed(2)}MB)
+                </p>
+              ) : null}
             </div>
 
             <button
               type="submit"
-              disabled={isSubmitting}
-              className="inline-flex w-full items-center justify-center rounded-xl bg-brand-600 px-5 py-3 text-base font-semibold text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60 sm:w-fit"
+              disabled={isSubmitting || !file}
+              className="min-h-12 rounded-xl bg-brand-600 px-5 py-3 text-base font-semibold text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:bg-slate-300 sm:text-sm"
             >
               {isSubmitting ? "Uploading document..." : "Upload Document"}
             </button>
-            <Link
-              href="/driver-portal/loads"
-              className="inline-flex w-fit rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
-            >
-              View my loads
-            </Link>
           </div>
         </form>
+
+        <section className="mt-8 rounded-2xl border border-slate-200 bg-white p-4 shadow-soft sm:p-6">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-semibold text-slate-900">Upload history</h2>
+              <p className="mt-1 text-sm text-slate-600">Documents submitted from your assigned loads appear here after upload.</p>
+            </div>
+            <Link href="/driver-portal/loads" className="rounded-xl border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700">
+              View loads
+            </Link>
+          </div>
+
+          {isLoadingDocuments ? (
+            <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-500">Loading upload history...</div>
+          ) : documentsByLoad.length === 0 ? (
+            <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-500">No documents submitted yet.</div>
+          ) : (
+            <div className="mt-4 space-y-4">
+              {documentsByLoad.map((group) => (
+                <div key={group.id} className="rounded-xl border border-slate-200 p-3">
+                  <div className="font-semibold text-slate-900">{group.label}</div>
+                  <div className="mt-3 space-y-2">
+                    {group.documents.map((document) => (
+                      <div key={document.id} className="flex flex-col gap-1 rounded-lg bg-slate-50 px-3 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+                        <div className="min-w-0">
+                          <div className="font-medium text-slate-900">{labelForDocumentType(document.document_type ?? "other")}</div>
+                          <div className="break-all text-xs text-slate-600">{document.original_filename ?? "Uploaded document"}</div>
+                        </div>
+                        <div className="text-xs text-slate-500 sm:text-right">
+                          <div className="font-semibold capitalize text-emerald-700">{document.processing_status ?? "submitted"}</div>
+                          <div>{formatDateTime(document.received_at)}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
       </div>
     </main>
   );

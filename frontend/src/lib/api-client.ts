@@ -209,7 +209,18 @@ async function buildError(response: Response): Promise<ApiClientError> {
       }
 
       if (errorBody?.detail !== undefined) {
-        return new ApiClientError(JSON.stringify(errorBody.detail), { status: response.status });
+        if (typeof errorBody.detail === "object" && !Array.isArray(errorBody.detail)) {
+          const detail = errorBody.detail as Record<string, unknown>;
+          const message = typeof detail.message === "string" ? detail.message : fallbackMessage;
+          const code = typeof detail.code === "string" ? detail.code : undefined;
+          return new ApiClientError(message, {
+            status: response.status,
+            code,
+            details: detail,
+          });
+        }
+
+        return new ApiClientError(fallbackMessage, { status: response.status });
       }
 
       if (typeof errorBody?.message === "string" && errorBody.message.trim().length > 0) {

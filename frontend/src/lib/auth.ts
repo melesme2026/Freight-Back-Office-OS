@@ -111,20 +111,31 @@ export function getTokenType(): string {
   return normalizeTokenType(getStorageItem(TOKEN_TYPE_KEY));
 }
 
+function getTokenStringClaim(claim: string): string | null {
+  const token = getAccessToken();
+  if (!token) {
+    return null;
+  }
+
+  const payload = decodeJwtPayload(token);
+  const value = payload?.[claim];
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+}
+
 export function getOrganizationId(): string | null {
-  return getStorageItem(ORGANIZATION_ID_KEY);
+  return getStorageItem(ORGANIZATION_ID_KEY) ?? getTokenStringClaim("organization_id");
 }
 
 export function getUserEmail(): string | null {
-  return getStorageItem(USER_EMAIL_KEY);
+  return getStorageItem(USER_EMAIL_KEY) ?? getTokenStringClaim("email") ?? getTokenStringClaim("sub");
 }
 
 export function getUserRole(): string | null {
-  return getStorageItem(USER_ROLE_KEY);
+  return getStorageItem(USER_ROLE_KEY) ?? getTokenStringClaim("role");
 }
 
 export function getDriverId(): string | null {
-  return getStorageItem(DRIVER_ID_KEY);
+  return getStorageItem(DRIVER_ID_KEY) ?? getTokenStringClaim("driver_id");
 }
 
 export function getAuthSession(): {
