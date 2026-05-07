@@ -3,36 +3,37 @@ from __future__ import annotations
 import csv
 import io
 import logging
+import re
 import uuid
 from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
+from app.core.dependencies import get_db_session
+from app.core.exceptions import ConflictError, ForbiddenError, UnauthorizedError, ValidationError
+from app.core.security import get_current_token_payload
+from app.domain.enums.document_type import DocumentType
+from app.domain.enums.follow_up_task import FollowUpTaskStatus, FollowUpTaskType
+from app.domain.enums.load_status import LoadStatus
+from app.domain.models.follow_up_task import FollowUpTask
+from app.schemas.common import ApiResponse
+from app.services.carrier_profile_service import CarrierProfileService
+from app.services.documents.document_service import DocumentService
+from app.services.documents.storage_service import StorageService
+from app.services.email.email_service import PacketEmailService
+from app.services.loads.load_service import LoadService
+from app.services.loads.operational_queue_service import OperationalQueueService
+from app.services.loads.packet_readiness import calculate_packet_readiness
+from app.services.loads.submission_packet_service import SubmissionPacketService
+from app.services.notifications.operational_notification_service import (
+    OperationalNotificationService,
+)
+from app.services.workflow.workflow_engine import WorkflowEngine
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
 from sqlalchemy.orm import Session
-
-from app.core.dependencies import get_db_session
-from app.core.security import get_current_token_payload
-from app.core.exceptions import ConflictError, ForbiddenError, UnauthorizedError, ValidationError
-from app.domain.enums.follow_up_task import FollowUpTaskStatus, FollowUpTaskType
-from app.domain.enums.document_type import DocumentType
-from app.domain.enums.load_status import LoadStatus
-from app.domain.models.follow_up_task import FollowUpTask
-from app.schemas.common import ApiResponse
-from app.services.email.email_service import PacketEmailService
-from app.services.documents.document_service import DocumentService
-from app.services.documents.storage_service import StorageService
-from app.services.carrier_profile_service import CarrierProfileService
-from app.services.loads.load_service import LoadService
-from app.services.loads.operational_queue_service import OperationalQueueService
-from app.services.loads.packet_readiness import calculate_packet_readiness
-from app.services.loads.submission_packet_service import SubmissionPacketService
-from app.services.notifications.operational_notification_service import OperationalNotificationService
-from app.services.workflow.workflow_engine import WorkflowEngine
-
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -136,6 +137,30 @@ def _normalize_email(value: str | None) -> str | None:
     return normalized.lower() if normalized else None
 
 
+_EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+def _normalize_packet_recipient_email(value: str | None, field_name: str = "to_email") -> str:
+    normalized = _normalize_required_text(value or "", field_name).lower()
+    if not _EMAIL_PATTERN.match(normalized):
+        raise ValidationError("Enter a valid recipient email.", details={field_name: value})
+    return normalized
+
+
+def _sanitize_packet_send_result(send_result: dict[str, Any]) -> dict[str, Any]:
+    status = "sent" if bool(send_result.get("accepted")) else "failed"
+    error_message = _normalize_optional_text(str(send_result.get("error_message") or ""))
+    if error_message and "disabled" in error_message.lower():
+        status = "skipped"
+    return {
+        "provider": send_result.get("provider") or "none",
+        "accepted": bool(send_result.get("accepted")),
+        "status": status,
+        "provider_message_id": send_result.get("provider_message_id"),
+        "error_message": error_message,
+    }
+
+
 def _normalize_currency_code(value: str | None) -> str | None:
     normalized = _normalize_optional_text(value)
     return normalized.upper() if normalized else None
@@ -220,8 +245,6 @@ def _parse_load_status(value: str) -> LoadStatus:
     )
 
 
-
-
 def _build_load_packet_readiness(item: Any, *, db: Session | None = None) -> dict[str, Any]:
     documents = getattr(item, "documents", None)
 
@@ -254,7 +277,6 @@ def _build_load_packet_readiness(item: Any, *, db: Session | None = None) -> dic
     )
 
     return calculate_packet_readiness(document_types=document_types)
-
 
 
 class SubmissionPacketCreateRequest(BaseModel):
@@ -344,31 +366,93 @@ def _serialize_submission_packet(packet: Any) -> dict[str, Any]:
                 "id": _uuid_to_str(getattr(event, "id", None)),
                 "event_type": getattr(event, "event_type", None),
                 "message": getattr(event, "message", None),
-                "created_by_staff_user_id": _uuid_to_str(getattr(event, "created_by_staff_user_id", None)),
+                "created_by_staff_user_id": _uuid_to_str(
+                    getattr(event, "created_by_staff_user_id", None)
+                ),
                 "created_at": _to_iso_or_none(getattr(event, "created_at", None)),
             }
-            for event in sorted((getattr(packet, "events", None) or []), key=lambda item: getattr(item, "created_at", datetime.min))
+            for event in sorted(
+                (getattr(packet, "events", None) or []),
+                key=lambda item: getattr(item, "created_at", datetime.min),
+            )
         ],
     }
 
 
-def _build_default_packet_email(*, packet: Any, load: Any, carrier_name: str | None = None) -> tuple[str, str]:
+def _serialize_packet_email_history(packet: Any) -> list[dict[str, Any]]:
+    history: list[dict[str, Any]] = []
+    event_priority = {
+        "packet_email_sent": 3,
+        "packet_email_failed": 3,
+        "packet_email_send_attempt": 1,
+    }
+    for event in sorted(
+        (getattr(packet, "events", None) or []),
+        key=lambda item: (
+            getattr(item, "created_at", datetime.min),
+            event_priority.get(str(getattr(item, "event_type", "")), 0),
+        ),
+        reverse=True,
+    ):
+        event_type = getattr(event, "event_type", None)
+        if not str(event_type or "").startswith("packet_email_"):
+            continue
+        message = getattr(event, "message", None) or ""
+        recipient_match = re.search(r"(?:to|for) ([^;:\s]+@[^;:\s]+)", message)
+        subject_match = re.search(r"subject=([^;]+)", message)
+        attachment_match = re.search(r"attachments=(\d+)", message)
+        if event_type == "packet_email_sent":
+            status = "sent"
+        elif event_type == "packet_email_failed":
+            status = (
+                "skipped"
+                if "skipped" in message.lower() or "disabled" in message.lower()
+                else "failed"
+            )
+        elif event_type == "packet_email_send_attempt":
+            status = "queued"
+        else:
+            status = str(event_type).replace("packet_email_", "")
+        history.append(
+            {
+                "id": _uuid_to_str(getattr(event, "id", None)),
+                "status": status,
+                "recipient": recipient_match.group(1)
+                if recipient_match
+                else getattr(packet, "destination_email", None),
+                "subject": subject_match.group(1).strip() if subject_match else None,
+                "sent_at": _to_iso_or_none(getattr(event, "created_at", None)),
+                "sent_by_staff_user_id": _uuid_to_str(
+                    getattr(event, "created_by_staff_user_id", None)
+                ),
+                "attachment_count": int(attachment_match.group(1)) if attachment_match else None,
+                "message": "Packet email status recorded."
+                if status in {"failed", "skipped"}
+                else message,
+            }
+        )
+    return history
+
+
+def _build_default_packet_email(
+    *, packet: Any, load: Any, carrier_name: str | None = None
+) -> tuple[str, str]:
     load_number = _string_or_na(getattr(load, "load_number", None))
     invoice_number = _string_or_na(getattr(load, "invoice_number", None))
     amount = f"{_string_or_na(getattr(load, 'gross_amount', None))} {_string_or_na(getattr(load, 'currency_code', None))}"
-    subject = f"Invoice Packet for Load {load_number} / Invoice {invoice_number}"
+    subject = f"Billing Packet | Load {load_number} | Invoice {invoice_number}"
     sender_name = carrier_name or "Carrier"
     body = "\n".join(
         [
             "Hello,",
             "",
-            f"Please find the billing packet for Load {load_number} ready for review.",
+            f"Attached is the billing packet for Load {load_number} and Invoice {invoice_number}.",
             "",
             "Included documents:",
             "- Invoice",
             "- Rate Confirmation",
             "- Proof of Delivery",
-            "- Bill of Lading (if included)",
+            "- Bill of Lading (if available)",
             "",
             f"Carrier: {sender_name}",
             f"Invoice Number: {invoice_number}",
@@ -376,7 +460,7 @@ def _build_default_packet_email(*, packet: Any, load: Any, carrier_name: str | N
             f"Pickup: {_string_or_na(getattr(load, 'pickup_location', None))}",
             f"Delivery: {_string_or_na(getattr(load, 'delivery_location', None))}",
             "",
-            "Please confirm receipt and advise if any additional documentation is required.",
+            "Please confirm receipt and advise if any additional documentation is required. Payment/remit instructions are included with the invoice or carrier profile on file.",
             "",
             "Thank you,",
             sender_name,
@@ -384,7 +468,10 @@ def _build_default_packet_email(*, packet: Any, load: Any, carrier_name: str | N
     )
     return subject, body
 
-def _serialize_load(item: Any, *, detailed: bool = False, db: Session | None = None) -> dict[str, Any]:
+
+def _serialize_load(
+    item: Any, *, detailed: bool = False, db: Session | None = None
+) -> dict[str, Any]:
     customer_account = getattr(item, "customer_account", None)
     driver = getattr(item, "driver", None)
     broker = getattr(item, "broker", None)
@@ -435,22 +522,16 @@ def _serialize_load(item: Any, *, detailed: bool = False, db: Session | None = N
                 "broker_email_raw": item.broker_email_raw,
                 "pickup_location": item.pickup_location,
                 "delivery_location": item.delivery_location,
-                "extraction_confidence_avg": _to_decimal_string(
-                    item.extraction_confidence_avg
-                ),
+                "extraction_confidence_avg": _to_decimal_string(item.extraction_confidence_avg),
                 "last_reviewed_by": (
-                    str(item.last_reviewed_by)
-                    if getattr(item, "last_reviewed_by", None)
-                    else None
+                    str(item.last_reviewed_by) if getattr(item, "last_reviewed_by", None) else None
                 ),
                 "last_reviewed_by_name": (
                     getattr(last_reviewed_by_user, "full_name", None)
                     if last_reviewed_by_user
                     else None
                 ),
-                "last_reviewed_at": _to_iso_or_none(
-                    getattr(item, "last_reviewed_at", None)
-                ),
+                "last_reviewed_at": _to_iso_or_none(getattr(item, "last_reviewed_at", None)),
                 "last_contacted_at": _to_iso_or_none(getattr(item, "last_contacted_at", None)),
                 "follow_up_required": bool(getattr(item, "follow_up_required", False)),
                 "next_follow_up_at": _to_iso_or_none(getattr(item, "next_follow_up_at", None)),
@@ -589,7 +670,7 @@ def _ensure_load_invoice_number(*, db: Session, load: Any) -> str:
         return existing
 
     year = datetime.utcnow().year
-    org_id = str(getattr(load, "organization_id"))
+    org_id = str(load.organization_id)
     prefix = f"INV-{year}-"
 
     loads, _ = LoadService(db).list_loads(organization_id=org_id, page=1, page_size=5000)
@@ -617,7 +698,11 @@ def _build_professional_invoice_pdf(*, load: Any, carrier_profile: dict[str, str
     documents = getattr(load, "documents", None) or []
 
     present_document_values = {
-        getattr(getattr(document, "document_type", None), "value", str(getattr(document, "document_type", "")))
+        getattr(
+            getattr(document, "document_type", None),
+            "value",
+            str(getattr(document, "document_type", "")),
+        )
         for document in documents
         if getattr(document, "document_type", None) is not None
     }
@@ -656,7 +741,7 @@ def _build_professional_invoice_pdf(*, load: Any, carrier_profile: dict[str, str
         broker_email = _string_or_na(getattr(load, "broker_email_raw", None))
     broker_mc_number = _string_or_na(getattr(broker, "mc_number", None))
     payment_terms = (
-        f"Net {getattr(broker, 'payment_terms_days')} days"
+        f"Net {broker.payment_terms_days} days"
         if getattr(broker, "payment_terms_days", None) is not None
         else "N/A"
     )
@@ -986,7 +1071,9 @@ def _build_professional_invoice_pdf(*, load: Any, carrier_profile: dict[str, str
         max_chars=78,
         max_lines=2,
     )
-    add_text(50, 92, "Please reference invoice number and load number with payment.", font="F2", size=10)
+    add_text(
+        50, 92, "Please reference invoice number and load number with payment.", font="F2", size=10
+    )
     add_text(50, 74, f"Generated At: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}")
 
     stream = "\n".join(text_ops).encode("latin-1", errors="replace")
@@ -1026,6 +1113,7 @@ def _build_professional_invoice_pdf(*, load: Any, carrier_profile: dict[str, str
     )
 
     return bytes(pdf)
+
 
 def _generate_and_persist_invoice_pdf(*, db: Session, load: Any) -> bytes:
     template_function_name = "_build_professional_invoice_pdf"
@@ -1129,7 +1217,9 @@ def create_load(
     normalized_broker_email = _normalize_email(payload.broker_email_raw)
 
     if not normalized_load_number:
-        raise ValidationError("Load number is required", details={"load_number": payload.load_number})
+        raise ValidationError(
+            "Load number is required", details={"load_number": payload.load_number}
+        )
 
     if not normalized_broker_id and not normalized_broker_name and not normalized_broker_email:
         raise ValidationError(
@@ -1405,7 +1495,10 @@ def transition_load_status(
         notifier = OperationalNotificationService(db)
         old_status = str(result.get("old_status") or "")
         new_status = str(result.get("new_status") or "")
-        if parsed_status in {LoadStatus.SUBMITTED_TO_BROKER, LoadStatus.SUBMITTED_TO_FACTORING} and old_status != new_status:
+        if (
+            parsed_status in {LoadStatus.SUBMITTED_TO_BROKER, LoadStatus.SUBMITTED_TO_FACTORING}
+            and old_status != new_status
+        ):
             notifier.invoice_submitted(load=transitioned_load)
         if parsed_status == LoadStatus.FULLY_PAID and old_status != new_status:
             payment_record = getattr(transitioned_load, "payment_record", None)
@@ -1480,7 +1573,9 @@ def list_submission_packets(
 
     packet_service = SubmissionPacketService(db)
     packets = packet_service.list_packets(load_id=str(load_id), org_id=str(load.organization_id))
-    return ApiResponse(data=[_serialize_submission_packet(packet) for packet in packets], meta={}, error=None)
+    return ApiResponse(
+        data=[_serialize_submission_packet(packet) for packet in packets], meta={}, error=None
+    )
 
 
 @router.post("/loads/{load_id}/submission-packets", response_model=ApiResponse)
@@ -1499,7 +1594,9 @@ def create_submission_packet(
     packet = packet_service.create_packet_from_load(
         load_id=str(load_id),
         org_id=str(load.organization_id),
-        actor=str(token_payload.get("staff_user_id")) if token_payload.get("staff_user_id") else None,
+        actor=str(token_payload.get("staff_user_id"))
+        if token_payload.get("staff_user_id")
+        else None,
     )
     if payload.notes:
         packet.notes = payload.notes.strip()
@@ -1548,7 +1645,9 @@ def download_submission_packet_zip(
     )
 
 
-@router.post("/loads/{load_id}/submission-packets/{packet_id}/mark-sent", response_model=ApiResponse)
+@router.post(
+    "/loads/{load_id}/submission-packets/{packet_id}/mark-sent", response_model=ApiResponse
+)
 def mark_submission_packet_sent(
     load_id: uuid.UUID,
     packet_id: uuid.UUID,
@@ -1579,7 +1678,28 @@ def mark_submission_packet_sent(
     return ApiResponse(data=_serialize_submission_packet(packet), meta={}, error=None)
 
 
-@router.post("/loads/{load_id}/submission-packets/{packet_id}/send-email", response_model=ApiResponse)
+@router.get(
+    "/loads/{load_id}/submission-packets/{packet_id}/email-history", response_model=ApiResponse
+)
+def get_submission_packet_email_history(
+    load_id: uuid.UUID,
+    packet_id: uuid.UUID,
+    token_payload: dict[str, Any] = Depends(get_current_token_payload),
+    db: Session = Depends(get_db_session),
+) -> ApiResponse:
+    _authorize_submission_read(token_payload)
+    service = LoadService(db)
+    load = service.get_load(str(load_id))
+    _authorize_load_access(item=load, token_payload=token_payload)
+    packet = SubmissionPacketService(db).get_packet(
+        str(packet_id), str(load_id), str(load.organization_id)
+    )
+    return ApiResponse(data=_serialize_packet_email_history(packet), meta={}, error=None)
+
+
+@router.post(
+    "/loads/{load_id}/submission-packets/{packet_id}/send-email", response_model=ApiResponse
+)
 def send_submission_packet_email(
     load_id: uuid.UUID,
     packet_id: uuid.UUID,
@@ -1594,8 +1714,10 @@ def send_submission_packet_email(
 
     packet_service = SubmissionPacketService(db)
     packet = packet_service.get_packet(str(packet_id), str(load_id), str(load.organization_id))
-    actor_id = str(token_payload.get("staff_user_id")) if token_payload.get("staff_user_id") else None
-    normalized_to_email = _normalize_required_text(payload.to_email, "to_email").lower()
+    actor_id = (
+        str(token_payload.get("staff_user_id")) if token_payload.get("staff_user_id") else None
+    )
+    normalized_to_email = _normalize_packet_recipient_email(payload.to_email)
     default_subject, default_body = _build_default_packet_email(packet=packet, load=load)
     normalized_subject = _normalize_optional_text(payload.subject) or default_subject
     normalized_body = _normalize_optional_text(payload.body) or default_body
@@ -1611,44 +1733,73 @@ def send_submission_packet_email(
     db.flush()
 
     email_service = PacketEmailService()
-    zip_bytes, load_number = packet_service.build_packet_zip(
-        packet_id=str(packet.id),
-        load_id=str(load.id),
-        org_id=str(load.organization_id),
-    )
+    try:
+        attachments, _load_number = packet_service.build_packet_email_attachments(
+            packet_id=str(packet.id),
+            load_id=str(load.id),
+            org_id=str(load.organization_id),
+        )
+    except ValidationError as exc:
+        packet_service._add_event(  # noqa: SLF001
+            str(load.organization_id),
+            str(load.id),
+            str(packet.id),
+            "packet_email_failed",
+            f"Packet email failed for {normalized_to_email}; subject={normalized_subject}; attachments=0.",
+            actor_id,
+        )
+        db.commit()
+        raise exc
+    attachment_count = len(attachments)
     send_result = email_service.send_email_with_attachments(
         to=normalized_to_email,
         subject=normalized_subject,
         body=normalized_body,
         attachments=[
             {
-                "filename": f"packet-{load_number}.zip",
-                "content_type": "application/zip",
-                "bytes": zip_bytes,
+                "filename": str(attachment["filename"]),
+                "content_type": str(attachment["content_type"]),
+                "bytes": attachment["bytes"],
             }
+            for attachment in attachments
         ],
         cc=payload.cc,
         bcc=payload.bcc,
     )
 
+    sanitized_result = _sanitize_packet_send_result(send_result)
+
     if not bool(send_result.get("accepted")):
         error_message = str(send_result.get("error_message") or "Failed to send packet email.")
+        logger.warning(
+            "Billing packet email failed: organization_id=%s load_id=%s recipient=%s attachment_count=%s",
+            load.organization_id,
+            load.id,
+            normalized_to_email,
+            attachment_count,
+        )
         packet_service._add_event(  # noqa: SLF001
             str(load.organization_id),
             str(load.id),
             str(packet.id),
             "packet_email_failed",
-            f"Packet email failed for {normalized_to_email}: {error_message}",
+            f"Packet email {sanitized_result['status']} for {normalized_to_email}; subject={normalized_subject}; attachments={attachment_count}.",
             actor_id,
         )
         db.commit()
         if "disabled" in error_message.lower():
-            raise ConflictError(error_message)
-        raise ValidationError(error_message)
+            raise ConflictError(
+                "Email sending is disabled or not configured. Download the packet ZIP or try again after email is configured."
+            )
+        raise ValidationError(
+            "Packet email could not be sent. Check email configuration and try again."
+        )
 
     provider = str(send_result.get("provider") or "smtp")
-    provider_message_id = _normalize_optional_text(str(send_result.get("provider_message_id") or ""))
-    success_message = f"Packet email sent to {normalized_to_email} via {provider}."
+    provider_message_id = _normalize_optional_text(
+        str(send_result.get("provider_message_id") or "")
+    )
+    success_message = f"Packet email sent to {normalized_to_email} via {provider}; subject={normalized_subject}; attachments={attachment_count}."
     if provider_message_id:
         success_message = f"{success_message} Provider message id: {provider_message_id}."
     packet_service._add_event(  # noqa: SLF001
@@ -1666,7 +1817,9 @@ def send_submission_packet_email(
         packet.sent_by_staff_user_id = uuid.UUID(actor_id) if actor_id else None
     packet.destination_email = normalized_to_email
     packet.destination_type = packet.destination_type or "broker"
-    packet.destination_name = packet.destination_name or (getattr(load, "broker_name_raw", None) or "Broker/AP")
+    packet.destination_name = packet.destination_name or (
+        getattr(load, "broker_name_raw", None) or "Broker/AP"
+    )
     if (packet.status or "").lower() != "sent":
         packet.status = "sent"
 
@@ -1685,11 +1838,19 @@ def send_submission_packet_email(
         task.status = FollowUpTaskStatus.CANCELED
 
     db.commit()
-    refreshed_packet = packet_service.get_packet(str(packet_id), str(load_id), str(load.organization_id))
-    return ApiResponse(data=_serialize_submission_packet(refreshed_packet), meta={"email_send_result": send_result}, error=None)
+    refreshed_packet = packet_service.get_packet(
+        str(packet_id), str(load_id), str(load.organization_id)
+    )
+    return ApiResponse(
+        data=_serialize_submission_packet(refreshed_packet),
+        meta={"email_send_result": sanitized_result},
+        error=None,
+    )
 
 
-@router.post("/loads/{load_id}/submission-packets/{packet_id}/mark-accepted", response_model=ApiResponse)
+@router.post(
+    "/loads/{load_id}/submission-packets/{packet_id}/mark-accepted", response_model=ApiResponse
+)
 def mark_submission_packet_accepted(
     load_id: uuid.UUID,
     packet_id: uuid.UUID,
@@ -1710,7 +1871,9 @@ def mark_submission_packet_accepted(
     return ApiResponse(data=_serialize_submission_packet(packet), meta={}, error=None)
 
 
-@router.post("/loads/{load_id}/submission-packets/{packet_id}/mark-rejected", response_model=ApiResponse)
+@router.post(
+    "/loads/{load_id}/submission-packets/{packet_id}/mark-rejected", response_model=ApiResponse
+)
 def mark_submission_packet_rejected(
     load_id: uuid.UUID,
     packet_id: uuid.UUID,
@@ -1800,37 +1963,41 @@ def export_loads_csv(
 
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow([
-        "load_id",
-        "load_number",
-        "status",
-        "driver_id",
-        "customer_account_id",
-        "broker_id",
-        "gross_amount",
-        "currency_code",
-        "pickup_date",
-        "delivery_date",
-        "created_at",
-        "updated_at",
-    ])
+    writer.writerow(
+        [
+            "load_id",
+            "load_number",
+            "status",
+            "driver_id",
+            "customer_account_id",
+            "broker_id",
+            "gross_amount",
+            "currency_code",
+            "pickup_date",
+            "delivery_date",
+            "created_at",
+            "updated_at",
+        ]
+    )
 
     for item in items:
         row = _serialize_load(item, detailed=False, db=db)
-        writer.writerow([
-            row.get("id"),
-            row.get("load_number"),
-            row.get("status"),
-            row.get("driver_id"),
-            row.get("customer_account_id"),
-            row.get("broker_id"),
-            row.get("gross_amount"),
-            row.get("currency_code"),
-            row.get("pickup_date"),
-            row.get("delivery_date"),
-            row.get("created_at"),
-            row.get("updated_at"),
-        ])
+        writer.writerow(
+            [
+                row.get("id"),
+                row.get("load_number"),
+                row.get("status"),
+                row.get("driver_id"),
+                row.get("customer_account_id"),
+                row.get("broker_id"),
+                row.get("gross_amount"),
+                row.get("currency_code"),
+                row.get("pickup_date"),
+                row.get("delivery_date"),
+                row.get("created_at"),
+                row.get("updated_at"),
+            ]
+        )
 
     output.seek(0)
     return StreamingResponse(

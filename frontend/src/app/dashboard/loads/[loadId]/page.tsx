@@ -789,6 +789,22 @@ function extractStaffUserId(payload: unknown): string | null {
   return null;
 }
 
+
+function packetEmailRecipient(event: SubmissionPacketEvent, packet: SubmissionPacket) {
+  if (event.recipient) return event.recipient;
+  const message = event.message ?? "";
+  const match = message.match(/(?:to|for) ([^;:\s]+@[^;:\s]+)/);
+  return match?.[1] ?? packet.destination_email ?? "recipient unavailable";
+}
+
+function packetEmailDetail(event: SubmissionPacketEvent) {
+  const message = event.message ?? "";
+  const subject = message.match(/subject=([^;]+)/)?.[1]?.trim();
+  const attachments = message.match(/attachments=(\d+)/)?.[1];
+  const details = [subject ? `Subject: ${subject}` : null, attachments ? `${attachments} attachment${attachments === "1" ? "" : "s"}` : null].filter(Boolean);
+  return details.join(" • ");
+}
+
 function normalizeLoadIdParam(value: string | string[] | undefined): string | null {
   if (typeof value === "string" && value.trim().length > 0) {
     return value.trim();
@@ -1037,7 +1053,6 @@ export default function LoadDetailPage() {
   const [invoiceBlocker, setInvoiceBlocker] = useState<InvoiceBlocker | null>(null);
   const [pendingDuplicateUpload, setPendingDuplicateUpload] = useState<{ file: File; formData: FormData; message: string } | null>(null);
   const [emailSuccessMessage, setEmailSuccessMessage] = useState<string | null>(null);
-  const [showEmailSuccess, setShowEmailSuccess] = useState(false);
   const [staffUsers, setStaffUsers] = useState<StaffUserOption[]>([]);
   const [followUpOwnerId, setFollowUpOwnerId] = useState("");
   const [nextFollowUpDate, setNextFollowUpDate] = useState("");
@@ -1242,13 +1257,13 @@ export default function LoadDetailPage() {
     const body = [
       "Hello,",
       "",
-      `Please find the billing packet for Load ${loadNumber} ready for review.`,
+      `Attached is the billing packet for Load ${loadNumber} and Invoice ${invoiceNumber}.`,
       "",
       "Included documents:",
       "- Invoice",
       "- Rate Confirmation",
       "- Proof of Delivery",
-      "- Bill of Lading (if included)",
+      "- Bill of Lading (if available)",
       "",
       `Carrier: ${carrierName}`,
       `Invoice Number: ${invoiceNumber}`,
@@ -1256,7 +1271,7 @@ export default function LoadDetailPage() {
       `Pickup: ${load?.pickup_location ?? "N/A"}`,
       `Delivery: ${load?.delivery_location ?? "N/A"}`,
       "",
-      "Please confirm receipt and advise if any additional documentation is required.",
+      "Please confirm receipt and advise if any additional documentation is required. Payment/remit instructions are included with the invoice or carrier profile on file.",
       "",
       "Thank you,",
       carrierName,
@@ -1278,17 +1293,17 @@ export default function LoadDetailPage() {
     const carrierName = (carrierProfile?.legal_name || "Carrier").trim();
     const amountValue = load?.gross_amount ?? "0.00";
     const amountText = `${String(amountValue)} ${load?.currency_code ?? "USD"}`;
-    const defaultSubject = `Invoice Packet for Load ${loadNumber} / Invoice ${invoiceNumber}`;
+    const defaultSubject = `Billing Packet | Load ${loadNumber} | Invoice ${invoiceNumber}`;
     const defaultBody = [
       "Hello,",
       "",
-      `Please find the billing packet for Load ${loadNumber} ready for review.`,
+      `Attached is the billing packet for Load ${loadNumber} and Invoice ${invoiceNumber}.`,
       "",
       "Included documents:",
       "- Invoice",
       "- Rate Confirmation",
       "- Proof of Delivery",
-      "- Bill of Lading (if included)",
+      "- Bill of Lading (if available)",
       "",
       `Carrier: ${carrierName}`,
       `Invoice Number: ${invoiceNumber}`,
@@ -1296,7 +1311,7 @@ export default function LoadDetailPage() {
       `Pickup: ${load?.pickup_location ?? "N/A"}`,
       `Delivery: ${load?.delivery_location ?? "N/A"}`,
       "",
-      "Please confirm receipt and advise if any additional documentation is required.",
+      "Please confirm receipt and advise if any additional documentation is required. Payment/remit instructions are included with the invoice or carrier profile on file.",
       "",
       "Thank you,",
       carrierName,
@@ -1356,12 +1371,8 @@ export default function LoadDetailPage() {
       setLoad(await fetchLoad());
       logPacketEmailSuccess(toEmail);
     } catch (caught: unknown) {
-      const message = extractErrorMessage(caught, "Failed to send packet email.");
-      if (message.toLowerCase().includes("disabled")) {
-        logPacketEmailSuccess(toEmail);
-      } else {
-        setModalError(message);
-      }
+      const message = extractErrorMessage(caught, "Packet email could not be sent. Check email configuration and try again.");
+      setModalError(message.toLowerCase().includes("smtp") ? "Packet email could not be sent. Check email configuration and try again." : message);
     } finally {
       setIsSubmissionBusy(false);
     }
@@ -1454,7 +1465,6 @@ export default function LoadDetailPage() {
   async function submitPaymentAction(action: PaymentActionType, values: Record<string, string>) {
     const closePaymentModal = () => {
       setModalState({ kind: "none" });
-      setShowEmailSuccess(false);
     };
 
     if (action === "record_payment") {
@@ -2758,7 +2768,6 @@ export default function LoadDetailPage() {
             {emailSuccessMessage}
           </div>
         )}
-        {showEmailSuccess && <div role="alert">Packet email sent and logged</div>}
 
         {workflowBlockedReason ? (
           <div className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
@@ -3020,7 +3029,7 @@ export default function LoadDetailPage() {
                       <div className="flex flex-wrap gap-2">
                         <button title="Download a ZIP packet to send manually." type="button" onClick={() => void handleDownloadPacketZip(packet.id)} disabled={downloadingPacketId === packet.id} className="rounded-lg border border-slate-300 px-3 py-1 text-xs disabled:opacity-50">{downloadingPacketId === packet.id ? "Downloading..." : "Download Packet ZIP"}</button>
                         <button title="Copy the packet submission email template." type="button" onClick={() => void handleCopySubmissionEmail()} className="rounded-lg border border-slate-300 px-3 py-1 text-xs">Copy Submission Email</button>
-                        <button aria-label="Send Email" title="Send packet email from this page when email is configured." type="button" onClick={() => { setShowEmailSuccess(true); setModalState({ kind: "none" }); }} disabled={isSubmissionBusy} className="rounded-lg border border-slate-300 px-3 py-1 text-xs disabled:opacity-50">Send Email</button>
+                        <button aria-label="Email Packet" title="Send packet email from this page when email is configured." type="button" onClick={() => openSendPacketEmailModal(packet)} disabled={isSubmissionBusy || ((load.packet_readiness?.missing_required_documents?.submission ?? []).length > 0)} className="rounded-lg border border-slate-300 px-3 py-1 text-xs disabled:opacity-50">Email Packet</button>
                       </div>
                       <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Status updates</div>
                       <div className="flex flex-wrap gap-2">
@@ -3039,7 +3048,8 @@ export default function LoadDetailPage() {
                             .map((event) => (
                               <div key={event.id} className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-1 last:border-b-0 last:pb-0">
                                 <span className="font-medium">{(event.event_type ?? "").replace("packet_email_", "").replaceAll("_", " ") || "send attempt"}</span>
-                                <span>{event.recipient ?? "recipient unavailable"}</span>
+                                <span>{packetEmailRecipient(event, packet)}</span>
+                                <span>{packetEmailDetail(event) || "—"}</span>
                                 <span className="text-slate-500">{formatDateTime(event.created_at)}</span>
                               </div>
                             ))}
@@ -3580,7 +3590,12 @@ export default function LoadDetailPage() {
           <div className="w-full max-w-xl rounded-2xl border border-slate-200 bg-white p-5 shadow-soft">
             {modalState.kind === "send_packet_email" ? (
               <>
-                <h3 className="text-lg font-semibold text-slate-950">Send Packet Email</h3>
+                <h3 className="text-lg font-semibold text-slate-950">Email Billing Packet</h3>
+                <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
+                  <div className="font-semibold text-slate-900">Attachment checklist</div>
+                  <div className="mt-1">{modalState.packet.documents.map((doc) => normalizeDocumentTypeLabel(doc.document_type)).join(", ") || "No packet documents found."}</div>
+                  {(load?.packet_readiness?.missing_required_documents?.submission ?? []).length > 0 ? <div className="mt-2 text-rose-700">Missing required docs: {(load?.packet_readiness?.missing_required_documents?.submission ?? []).join(", ")}. Sending is blocked.</div> : null}
+                </div>
                 <div className="mt-4 space-y-3">
                   <input className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" value={modalState.toEmail} onChange={(event) => { setModalError(null); setModalState({ ...modalState, toEmail: event.target.value }); }} placeholder="Recipient email" />
                   <input className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" value={modalState.subject} onChange={(event) => { setModalError(null); setModalState({ ...modalState, subject: event.target.value }); }} placeholder="Subject" />
@@ -3589,7 +3604,7 @@ export default function LoadDetailPage() {
                 {modalError ? <div className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{modalError}</div> : null}
                 <div className="mt-4 flex justify-end gap-2">
                   <button type="button" className="rounded-xl border border-slate-300 px-3 py-2 text-sm" onClick={() => setModalState({ kind: "none" })}>Cancel</button>
-                  <button type="button" disabled={isSubmissionBusy} className="rounded-xl bg-brand-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50" onClick={() => {
+                  <button type="button" disabled={isSubmissionBusy || ((load?.packet_readiness?.missing_required_documents?.submission ?? []).length > 0)} className="rounded-xl bg-brand-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50" onClick={() => {
                     if (!isValidEmail(modalState.toEmail)) return setModalError("Enter a valid recipient email.");
                     if (modalState.subject.trim().length < 3) return setModalError("Email subject is required.");
                     if (modalState.body.trim().length < 3) return setModalError("Email body is required.");
