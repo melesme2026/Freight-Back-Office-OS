@@ -30,16 +30,19 @@ class Notification(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         Index("ix_notifications_customer_account_id", "customer_account_id"),
         Index("ix_notifications_driver_id", "driver_id"),
         Index("ix_notifications_load_id", "load_id"),
+        Index("ix_notifications_document_id", "document_id"),
+        Index("ix_notifications_broker_id", "broker_id"),
+        Index("ix_notifications_demo_request_id", "demo_request_id"),
         Index("ix_notifications_created_by_staff_user_id", "created_by_staff_user_id"),
         Index("ix_notifications_channel", "channel"),
         Index("ix_notifications_status", "status"),
         Index("ix_notifications_provider_message_id", "provider_message_id"),
     )
 
-    organization_id: Mapped[uuid.UUID] = mapped_column(
+    organization_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("organizations.id", ondelete="CASCADE"),
-        nullable=False,
+        nullable=True,
     )
     customer_account_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
@@ -54,6 +57,21 @@ class Notification(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     load_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("loads.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    document_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("load_documents.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    broker_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("brokers.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    demo_request_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("demo_requests.id", ondelete="SET NULL"),
         nullable=True,
     )
     created_by_staff_user_id: Mapped[uuid.UUID | None] = mapped_column(
@@ -76,6 +94,7 @@ class Notification(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     message_type: Mapped[str] = mapped_column(String(100), nullable=False)
     subject: Mapped[str | None] = mapped_column(String(255), nullable=True)
     body_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    recipient: Mapped[str | None] = mapped_column(String(255), nullable=True)
     provider_message_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     status: Mapped[NotificationStatus] = mapped_column(
         SqlEnum(
@@ -103,7 +122,7 @@ class Notification(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    organization: Mapped["Organization"] = relationship(
+    organization: Mapped["Organization | None"] = relationship(
         back_populates="notifications",
         lazy="selectin",
     )

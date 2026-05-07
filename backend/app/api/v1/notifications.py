@@ -28,9 +28,13 @@ class NotificationCreateRequest(BaseModel):
     customer_account_id: uuid.UUID | None = None
     driver_id: uuid.UUID | None = None
     load_id: uuid.UUID | None = None
+    document_id: uuid.UUID | None = None
+    broker_id: uuid.UUID | None = None
+    demo_request_id: uuid.UUID | None = None
     created_by_staff_user_id: uuid.UUID | None = None
     subject: str | None = None
     body_text: str | None = None
+    recipient: str | None = None
     provider_message_id: str | None = None
     status: str = "queued"
 
@@ -104,7 +108,7 @@ def _enum_to_string(value: object | None) -> str | None:
 
 
 def _serialize_notification(item: Any) -> dict[str, Any]:
-    recipient = item.driver_id or item.customer_account_id or item.load_id
+    recipient = item.recipient or item.driver_id or item.customer_account_id or item.load_id
 
     return {
         "id": str(item.id),
@@ -114,6 +118,9 @@ def _serialize_notification(item: Any) -> dict[str, Any]:
         ),
         "driver_id": str(item.driver_id) if item.driver_id else None,
         "load_id": str(item.load_id) if item.load_id else None,
+        "document_id": str(item.document_id) if item.document_id else None,
+        "broker_id": str(item.broker_id) if item.broker_id else None,
+        "demo_request_id": str(item.demo_request_id) if item.demo_request_id else None,
         "created_by_staff_user_id": (
             str(item.created_by_staff_user_id)
             if item.created_by_staff_user_id
@@ -165,9 +172,13 @@ def create_notification(
         customer_account_id=_uuid_to_str(payload.customer_account_id),
         driver_id=effective_driver_id,
         load_id=_uuid_to_str(payload.load_id),
+        document_id=_uuid_to_str(payload.document_id),
+        broker_id=_uuid_to_str(payload.broker_id),
+        demo_request_id=_uuid_to_str(payload.demo_request_id),
         created_by_staff_user_id=_uuid_to_str(payload.created_by_staff_user_id),
         subject=_normalize_optional_text(payload.subject),
         body_text=_normalize_optional_text(payload.body_text),
+        recipient=_normalize_optional_text(payload.recipient),
         provider_message_id=_normalize_optional_text(payload.provider_message_id),
         status=_normalize_required_text(payload.status, field_name="status"),
     )

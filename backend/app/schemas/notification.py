@@ -23,6 +23,10 @@ class NotificationSendRequest(BaseModel):
     customer_account_id: str | None = None
     driver_id: str | None = None
     load_id: str | None = None
+    document_id: str | None = None
+    broker_id: str | None = None
+    demo_request_id: str | None = None
+    recipient: str | None = None
     channel: Channel
     message_type: str = Field(min_length=1, max_length=100)
     subject: str | None = Field(default=None, max_length=255)
@@ -38,6 +42,10 @@ class NotificationRead(BaseModel):
     customer_account_id: str | None = None
     driver_id: str | None = None
     load_id: str | None = None
+    document_id: str | None = None
+    broker_id: str | None = None
+    demo_request_id: str | None = None
+    recipient: str | None = None
     created_by_staff_user_id: str | None = None
     channel: Channel
     direction: str
@@ -65,6 +73,10 @@ class NotificationListItem(BaseModel):
     customer_account_id: str | None = None
     driver_id: str | None = None
     load_id: str | None = None
+    document_id: str | None = None
+    broker_id: str | None = None
+    demo_request_id: str | None = None
+    recipient: str | None = None
     sent_at: datetime | None = None
     delivered_at: datetime | None = None
     created_at: datetime

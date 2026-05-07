@@ -9,4 +9,5 @@ class NotificationStatus(StrEnum):
     DELIVERED = "delivered"
     READ = "read"
     FAILED = "failed"
+    SKIPPED = "skipped"
     RECEIVED = "received"
