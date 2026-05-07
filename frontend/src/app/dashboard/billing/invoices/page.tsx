@@ -366,23 +366,23 @@ export default function BillingInvoicesPage() {
   }
 
   return (
-    <main className="min-h-screen bg-slate-50 text-slate-900">
-      <div className="mx-auto max-w-7xl px-6 py-10">
+    <main className="safe-page min-h-screen bg-slate-50 text-slate-900">
+      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-10">
         <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="text-sm font-medium text-brand-700">Dashboard / Billing / Invoices</p>
-            <h1 className="text-3xl font-bold tracking-tight text-slate-950">Invoices</h1>
+            <h1 className="text-2xl font-bold tracking-tight text-slate-950 sm:text-3xl">Invoices</h1>
             <p className="mt-2 text-sm leading-6 text-slate-600">
               Review issued invoices, open balances, due dates, and customer billing status.
             </p>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <button
               type="button"
               onClick={handleRetry}
               disabled={isLoading}
-              className="inline-flex items-center rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-soft transition hover:border-slate-300 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
+              className="touch-target inline-flex items-center rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-soft transition hover:border-slate-300 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {isLoading ? "Refreshing..." : "Refresh"}
             </button>
@@ -392,7 +392,7 @@ export default function BillingInvoicesPage() {
               onClick={() => void handleCreateInvoice()}
               disabled={isCreating || isLoading}
               title="Create a minimal operational invoice."
-              className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60"
+              className="touch-target rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {isCreating ? "Creating..." : "New Invoice"}
             </button>
@@ -431,8 +431,8 @@ export default function BillingInvoicesPage() {
 
           {!isLoading && !errorMessage && items.length > 0 ? (
             <>
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-slate-200 text-sm">
+              <div className="mobile-scroll-area overflow-x-auto">
+                <table className="min-w-[760px] divide-y divide-slate-200 text-sm lg:min-w-full">
                   <thead className="bg-slate-50">
                     <tr className="text-left text-slate-600">
                       <th className="px-5 py-4 font-semibold">Invoice</th>
@@ -490,7 +490,7 @@ export default function BillingInvoicesPage() {
                           <button
                             type="button"
                             onClick={() => openInvoiceDetail(invoice.id)}
-                            className="text-sm font-semibold text-brand-700 transition hover:text-brand-800"
+                            className="touch-target inline-flex items-center text-sm font-semibold text-brand-700 transition hover:text-brand-800"
                           >
                             View →
                           </button>
@@ -506,7 +506,7 @@ export default function BillingInvoicesPage() {
                   Showing page {page} of {pages} · {total} total invoice{total === 1 ? "" : "s"}
                 </div>
 
-                <div className="flex items-center gap-3">
+                <div className="flex flex-wrap items-center gap-3">
                   <button
                     type="button"
                     onClick={() => setPage((current) => Math.max(1, current - 1))}

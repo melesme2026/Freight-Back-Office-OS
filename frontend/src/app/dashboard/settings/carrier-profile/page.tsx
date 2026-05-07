@@ -152,7 +152,7 @@ export default function CarrierProfilePage() {
 
   return (
     <main className="min-h-screen bg-slate-50 text-slate-900">
-      <div className="mx-auto max-w-4xl px-6 py-10">
+      <div className="mx-auto max-w-4xl px-4 py-6 sm:px-6 sm:py-10">
         <p className="text-sm font-medium text-brand-700">
           Dashboard / Settings / Carrier Profile
         </p>

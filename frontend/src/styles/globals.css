@@ -43,3 +43,41 @@ textarea {
   background: #bfdbfe;
   color: #0f172a;
 }
+@layer utilities {
+  .safe-page {
+    overflow-x: clip;
+  }
+
+  .touch-target {
+    min-height: 44px;
+  }
+
+  .mobile-scroll-area {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+    scrollbar-width: thin;
+  }
+
+  .mobile-scroll-area > * {
+    min-width: 0;
+  }
+
+  .break-mobile {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  .pdf-fit-container {
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .pdf-fit-container iframe,
+  .pdf-fit-container embed,
+  .pdf-fit-container object {
+    width: 100%;
+    max-width: 100%;
+    min-height: 70vh;
+  }
+}

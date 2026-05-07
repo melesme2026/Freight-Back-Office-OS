@@ -326,12 +326,12 @@ export default function DocumentsPage() {
   }
 
   return (
-    <div className="px-6 py-10 text-slate-900">
+    <div className="safe-page px-4 py-6 text-slate-900 sm:px-6 sm:py-10">
       <div className="mx-auto max-w-7xl">
         <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
           <div>
             <p className="text-sm font-medium text-brand-700">Dashboard / Documents</p>
-            <h1 className="text-3xl font-bold tracking-tight text-slate-950">Documents</h1>
+            <h1 className="text-2xl font-bold tracking-tight text-slate-950 sm:text-3xl">Documents</h1>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
               Review uploaded documents, processing status, classification results, and
               linked operational records across the system.
@@ -405,8 +405,8 @@ export default function DocumentsPage() {
           <div className="border-b border-amber-200 bg-amber-50 px-5 py-3 text-xs text-amber-900">
             OCR/extraction may return incomplete field output for some documents. Verify key values before submission.
           </div>
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-slate-200 text-sm">
+          <div className="mobile-scroll-area overflow-x-auto">
+            <table className="min-w-[920px] divide-y divide-slate-200 text-sm lg:min-w-full">
               <thead className="bg-slate-50">
                 <tr className="text-left text-slate-600">
                   <th className="px-5 py-4 font-semibold">Document</th>
@@ -491,7 +491,7 @@ export default function DocumentsPage() {
                         <button
                           type="button"
                           onClick={() => openDocument(document.id)}
-                          className="text-sm font-semibold text-brand-700 transition hover:text-brand-800"
+                          className="touch-target inline-flex items-center text-sm font-semibold text-brand-700 transition hover:text-brand-800"
                         >
                           View →
                         </button>

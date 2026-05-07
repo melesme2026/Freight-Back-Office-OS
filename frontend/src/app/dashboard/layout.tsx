@@ -126,7 +126,7 @@ export default function DashboardLayout({
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900">
+    <div className="safe-page min-h-screen bg-slate-50 text-slate-900">
       <div className="flex min-h-screen">
         <aside className="hidden w-72 shrink-0 border-r border-slate-200 bg-white xl:flex xl:flex-col">
           <div className="border-b border-slate-200 px-6 py-5">
@@ -179,7 +179,7 @@ export default function DashboardLayout({
 
         <div className="flex min-h-screen min-w-0 flex-1 flex-col">
           <header className="border-b border-slate-200 bg-white">
-            <div className="flex items-center justify-between px-6 py-4">
+            <div className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
               <div>
                 <div className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-700">
                   Operations Workspace
@@ -187,7 +187,7 @@ export default function DashboardLayout({
                 <p className="mt-1 text-xl font-bold text-slate-950">{pageTitle}</p>
               </div>
 
-              <div className="flex items-center gap-3">
+              <div className="flex w-full items-center justify-between gap-3 sm:w-auto">
                 <div className="hidden text-right md:block">
                   <div className="text-sm font-medium text-slate-900">
                     {session.userEmail ?? "Signed-in user"}
@@ -197,14 +197,14 @@ export default function DashboardLayout({
                 <button
                   type="button"
                   onClick={handleLogout}
-                  className="xl:hidden rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
+                  className="touch-target xl:hidden rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
                 >
                   Log Out
                 </button>
               </div>
             </div>
 
-            <div className="flex gap-2 overflow-x-auto border-t border-slate-100 px-4 py-3 xl:hidden">
+            <nav aria-label="Dashboard sections" className="mobile-scroll-area flex gap-2 overflow-x-auto border-t border-slate-100 px-4 py-3 xl:hidden">
               {NAV_ITEMS.map((item) => {
                 const active = isActivePath(pathname, item.href);
 
@@ -212,7 +212,7 @@ export default function DashboardLayout({
                   <Link
                     key={item.href}
                     href={item.href}
-                    className={`whitespace-nowrap rounded-full px-3 py-2 text-xs font-semibold transition ${
+                    className={`touch-target inline-flex shrink-0 items-center whitespace-nowrap rounded-full px-3 py-2 text-xs font-semibold transition ${
                       active
                         ? "bg-brand-600 text-white"
                         : "bg-slate-100 text-slate-700 hover:bg-slate-200"
@@ -222,10 +222,10 @@ export default function DashboardLayout({
                   </Link>
                 );
               })}
-            </div>
+            </nav>
           </header>
 
-          <main className="min-w-0 flex-1">{children}</main>
+          <main className="min-w-0 flex-1 overflow-x-clip">{children}</main>
         </div>
       </div>
     </div>

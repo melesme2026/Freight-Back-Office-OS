@@ -196,7 +196,7 @@ export default function DriverUploadsPage() {
   }, [documents, loadOptions]);
 
   return (
-    <main className="min-h-screen bg-slate-50 text-slate-900">
+    <main className="safe-page min-h-screen bg-slate-50 text-slate-900">
       <div className="mx-auto max-w-4xl px-4 py-6 sm:px-6 sm:py-10">
         <div className="mb-8">
           <p className="text-sm font-medium text-brand-700">Driver Portal / Uploads</p>
@@ -248,7 +248,7 @@ export default function DriverUploadsPage() {
                 value={documentType}
                 onChange={(event) => setDocumentType(event.target.value)}
                 disabled={isSubmitting}
-                className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-base disabled:bg-slate-100 sm:text-sm"
+                className="touch-target mt-2 w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-base disabled:bg-slate-100 sm:text-sm"
               >
                 <option value="proof_of_delivery">Proof of Delivery</option>
                 <option value="bill_of_lading">Bill of Lading</option>
@@ -272,7 +272,7 @@ export default function DriverUploadsPage() {
                 value={selectedLoadId}
                 onChange={(event) => setSelectedLoadId(event.target.value)}
                 disabled={isSubmitting || isLoadingLoads}
-                className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-base disabled:bg-slate-100 sm:text-sm"
+                className="touch-target mt-2 w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-base disabled:bg-slate-100 sm:text-sm"
               >
                 <option value="">Select a load (recommended)</option>
                 {loadOptions.map((load) => (
@@ -298,7 +298,7 @@ export default function DriverUploadsPage() {
                 capture="environment"
                 disabled={isSubmitting}
                 onChange={(event) => setFile(event.target.files?.[0] ?? null)}
-                className="mt-2 w-full rounded-xl border border-dashed border-slate-300 bg-slate-50 px-3 py-4 text-sm text-slate-700 file:mr-3 file:rounded-lg file:border-0 file:bg-brand-600 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white disabled:cursor-not-allowed disabled:opacity-60"
+                className="mt-2 w-full rounded-xl border border-dashed border-slate-300 bg-slate-50 px-3 py-4 text-sm text-slate-700 file:mr-3 file:min-h-11 file:rounded-lg file:border-0 file:bg-brand-600 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white disabled:cursor-not-allowed disabled:opacity-60"
               />
               {file ? (
                 <p className="mt-2 break-all text-xs text-slate-600">
@@ -310,7 +310,7 @@ export default function DriverUploadsPage() {
             <button
               type="submit"
               disabled={isSubmitting || !file}
-              className="min-h-12 rounded-xl bg-brand-600 px-5 py-3 text-base font-semibold text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:bg-slate-300 sm:text-sm"
+              className="touch-target min-h-12 rounded-xl bg-brand-600 px-5 py-3 text-base font-semibold text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:bg-slate-300 sm:text-sm"
             >
               {isSubmitting ? "Uploading document..." : "Upload Document"}
             </button>
@@ -318,12 +318,12 @@ export default function DriverUploadsPage() {
         </form>
 
         <section className="mt-8 rounded-2xl border border-slate-200 bg-white p-4 shadow-soft sm:p-6">
-          <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 className="text-lg font-semibold text-slate-900">Upload history</h2>
               <p className="mt-1 text-sm text-slate-600">Documents submitted from your assigned loads appear here after upload.</p>
             </div>
-            <Link href="/driver-portal/loads" className="rounded-xl border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700">
+            <Link href="/driver-portal/loads" className="touch-target inline-flex items-center rounded-xl border border-slate-300 px-3 py-2 text-xs font-semibold text-slate-700">
               View loads
             </Link>
           </div>
@@ -339,7 +339,7 @@ export default function DriverUploadsPage() {
                   <div className="font-semibold text-slate-900">{group.label}</div>
                   <div className="mt-3 space-y-2">
                     {group.documents.map((document) => (
-                      <div key={document.id} className="flex flex-col gap-1 rounded-lg bg-slate-50 px-3 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+                      <div key={document.id} className="flex flex-col gap-2 rounded-lg bg-slate-50 px-3 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
                         <div className="min-w-0">
                           <div className="font-medium text-slate-900">{labelForDocumentType(document.document_type ?? "other")}</div>
                           <div className="break-all text-xs text-slate-600">{document.original_filename ?? "Uploaded document"}</div>

@@ -290,13 +290,13 @@ export default function LoadsPage() {
 
   return (
     <main className="min-h-screen bg-slate-50 text-slate-900">
-      <div className="mx-auto max-w-7xl px-6 py-10">
+      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-10">
         <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="text-sm font-medium text-brand-700">
               Dashboard / Loads
             </p>
-            <h1 className="text-3xl font-bold tracking-tight text-slate-950">
+            <h1 className="text-2xl font-bold tracking-tight text-slate-950 sm:text-3xl">
               Loads
             </h1>
             <p className="mt-2 text-sm leading-6 text-slate-600">
@@ -310,17 +310,17 @@ export default function LoadsPage() {
             ) : null}
           </div>
 
-          <div className="flex gap-3">
+          <div className="flex flex-wrap gap-3">
             <button
               type="button"
               onClick={() => void handleExportCsv()}
-              className="inline-flex items-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-slate-300 focus:ring-offset-2"
+              className="touch-target inline-flex items-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-slate-300 focus:ring-offset-2"
             >
               Export CSV
             </button>
             <Link
               href="/dashboard/loads/new"
-              className="inline-flex items-center rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-700 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2"
+              className="touch-target inline-flex items-center rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-700 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2"
             >
               New Load
             </Link>
@@ -434,8 +434,8 @@ export default function LoadsPage() {
         ) : null}
 
         <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-soft">
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-slate-200 text-sm">
+          <div className="mobile-scroll-area overflow-x-auto">
+            <table className="min-w-[760px] divide-y divide-slate-200 text-sm lg:min-w-full">
               <thead className="bg-slate-50">
                 <tr className="text-left text-slate-600">
                   <th className="px-5 py-4 font-semibold">Load</th>
