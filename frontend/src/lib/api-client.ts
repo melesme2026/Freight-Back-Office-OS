@@ -1,5 +1,5 @@
 import { buildApiUrl } from "@/lib/config";
-import { clearAuth } from "@/lib/auth";
+import { clearAuth, getAccessToken, getOrganizationId, getTokenType } from "@/lib/auth";
 
 type RequestOptions = Omit<RequestInit, "body"> & {
   token?: string;
@@ -30,37 +30,6 @@ export class ApiClientError extends Error {
     this.code = options.code;
     this.details = options.details;
   }
-}
-
-const ACCESS_TOKEN_STORAGE_KEY = "fbos_access_token";
-const TOKEN_TYPE_STORAGE_KEY = "fbos_token_type";
-const ORGANIZATION_ID_STORAGE_KEY = "fbos_organization_id";
-
-function getStoredAccessToken(): string | undefined {
-  if (typeof window === "undefined") {
-    return undefined;
-  }
-
-  const value = window.localStorage.getItem(ACCESS_TOKEN_STORAGE_KEY)?.trim();
-  return value && value.length > 0 ? value : undefined;
-}
-
-function getStoredTokenType(): string {
-  if (typeof window === "undefined") {
-    return "Bearer";
-  }
-
-  const value = window.localStorage.getItem(TOKEN_TYPE_STORAGE_KEY)?.trim();
-  return value && value.length > 0 ? value : "Bearer";
-}
-
-function getStoredOrganizationId(): string | undefined {
-  if (typeof window === "undefined") {
-    return undefined;
-  }
-
-  const value = window.localStorage.getItem(ORGANIZATION_ID_STORAGE_KEY)?.trim();
-  return value && value.length > 0 ? value : undefined;
 }
 
 function normalizeHeaders(headers?: HeadersInit): Record<string, string> {
@@ -168,7 +137,7 @@ async function parseResponseBody<T>(
 }
 
 async function buildError(response: Response): Promise<ApiClientError> {
-  const fallbackMessage = "Something went wrong. Please try again.";
+  const fallbackMessage = response.status === 403 ? "You do not have permission to access this page or resource." : "Something went wrong. Please try again.";
 
   try {
     const contentType = response.headers.get("content-type") ?? "";
@@ -253,10 +222,10 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   } = options;
 
   const resolvedToken =
-    authMode === "none" ? undefined : token ?? getStoredAccessToken();
-  const resolvedTokenType = getStoredTokenType();
+    authMode === "none" ? undefined : token ?? getAccessToken() ?? undefined;
+  const resolvedTokenType = getTokenType();
   const resolvedOrganizationId =
-    authMode === "none" ? undefined : organizationId ?? getStoredOrganizationId();
+    authMode === "none" ? undefined : organizationId ?? getOrganizationId() ?? undefined;
 
   const normalizedHeaders = normalizeHeaders(headers);
   const resolvedBody = resolveRequestBody({ body, jsonBody });
@@ -288,7 +257,8 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     ) {
       const isDriverPortalRequest = window.location.pathname.startsWith("/driver-portal");
       clearAuth();
-      window.location.replace(isDriverPortalRequest ? "/driver-login" : "/login");
+      const loginPath = isDriverPortalRequest ? "/driver-login" : "/login";
+      window.location.replace(`${loginPath}?session=expired`);
     }
 
     throw await buildError(response);

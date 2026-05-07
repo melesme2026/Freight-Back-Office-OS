@@ -1,5 +1,6 @@
 const DRIVER_ROLES = new Set(["driver"]);
 const TEAM_MANAGER_ROLES = new Set(["owner", "admin"]);
+const OWNER_ONLY_ROLES = new Set(["owner"]);
 
 function isOwner(role: string): boolean {
   return role === "owner";
@@ -18,7 +19,8 @@ export function isDriverRole(role: string | null | undefined): boolean {
 }
 
 export function canAccessDashboard(role: string | null | undefined): boolean {
-  return !isDriverRole(role);
+  const normalized = normalizeRole(role);
+  return normalized.length > 0 && !DRIVER_ROLES.has(normalized);
 }
 
 export function canAccessDriverPortal(role: string | null | undefined): boolean {
@@ -27,6 +29,23 @@ export function canAccessDriverPortal(role: string | null | undefined): boolean 
 
 export function canManageTeam(role: string | null | undefined): boolean {
   return TEAM_MANAGER_ROLES.has(normalizeRole(role));
+}
+
+export function canAccessDashboardPath(role: string | null | undefined, pathname: string): boolean {
+  const normalized = normalizeRole(role);
+  if (!canAccessDashboard(normalized)) {
+    return false;
+  }
+
+  if (pathname === "/dashboard/team" || pathname.startsWith("/dashboard/team/")) {
+    return TEAM_MANAGER_ROLES.has(normalized);
+  }
+
+  if (pathname === "/dashboard/settings" || pathname.startsWith("/dashboard/settings/")) {
+    return OWNER_ONLY_ROLES.has(normalized) || isAdmin(normalized);
+  }
+
+  return true;
 }
 
 export function canModifyTeamMember(

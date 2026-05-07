@@ -60,6 +60,11 @@ export default function DriverLoginPage() {
   const [organizationOptions, setOrganizationOptions] = useState<LoginOrganizationOption[]>([]);
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("session") === "expired") {
+      setErrorMessage("Your session expired. Please sign in again.");
+    }
+
     const token = getAccessToken();
     const organizationId = getOrganizationId();
     const userRole = getUserRole();

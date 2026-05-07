@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
-import { clearAuth, getAccessToken, getOrganizationId, getUserEmail, getUserRole } from "@/lib/auth";
+import { clearAuth, getAuthSession, onAuthChanged, type AuthSession } from "@/lib/auth";
 import { canAccessDriverPortal } from "@/lib/rbac";
 
 const DRIVER_NAV = [
@@ -34,22 +34,22 @@ export default function DriverPortalLayout({
     setIsHydrated(true);
   }, []);
 
-  const session = useMemo(() => {
+  const [session, setSession] = useState<AuthSession>(() => ({
+    accessToken: null,
+    tokenType: "Bearer",
+    organizationId: null,
+    userEmail: null,
+    userRole: null,
+    driverId: null,
+  }));
+
+  useEffect(() => {
     if (!isHydrated) {
-      return {
-        accessToken: null as string | null,
-        organizationId: null as string | null,
-        userRole: null as string | null,
-        userEmail: null as string | null,
-      };
+      return;
     }
 
-    return {
-      accessToken: getAccessToken(),
-      organizationId: getOrganizationId(),
-      userRole: getUserRole(),
-      userEmail: getUserEmail(),
-    };
+    setSession(getAuthSession());
+    return onAuthChanged(() => setSession(getAuthSession()));
   }, [isHydrated]);
 
   const hasDriverAccess = Boolean(
@@ -62,7 +62,7 @@ export default function DriverPortalLayout({
     }
 
     if (!session.accessToken || !session.organizationId) {
-      router.replace("/driver-login");
+      router.replace("/driver-login?session=expired");
       return;
     }
 

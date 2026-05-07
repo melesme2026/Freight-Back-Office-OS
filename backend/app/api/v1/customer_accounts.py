@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_db_session
-from app.core.exceptions import UnauthorizedError, ValidationError
+from app.core.exceptions import ForbiddenError, UnauthorizedError, ValidationError
 from app.core.security import get_current_token_payload
 from app.schemas.common import ApiResponse
 from app.services.onboarding.customer_account_service import CustomerAccountService
@@ -110,12 +110,19 @@ def _serialize_customer_account(item: Any) -> dict[str, Any]:
     }
 
 
+def _assert_staff_dashboard_role(token_payload: dict[str, Any]) -> None:
+    role = str(token_payload.get("role") or "").strip().lower()
+    if role == "driver":
+        raise ForbiddenError("Driver accounts cannot access this dashboard endpoint")
+
+
 @router.post("/customer-accounts", response_model=ApiResponse)
 def create_customer_account(
     payload: CustomerAccountCreateRequest,
     token_payload: dict[str, Any] = Depends(get_current_token_payload),
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
+    _assert_staff_dashboard_role(token_payload)
     token_org_id = token_payload.get("organization_id")
     if str(payload.organization_id) != str(token_org_id):
         raise UnauthorizedError("organization_id does not match authenticated organization")
@@ -152,6 +159,7 @@ def list_customer_accounts(
     page_size: int = Query(default=25, ge=1, le=200),
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
+    _assert_staff_dashboard_role(token_payload)
     token_org_id = token_payload.get("organization_id")
     effective_org_id = organization_id or uuid.UUID(str(token_org_id))
     if str(effective_org_id) != str(token_org_id):
@@ -185,6 +193,7 @@ def get_customer_account(
 ) -> ApiResponse:
     service = CustomerAccountService(db)
     item = service.get_customer_account(str(customer_account_id))
+    _assert_staff_dashboard_role(token_payload)
     token_org_id = token_payload.get("organization_id")
     if str(item.organization_id) != str(token_org_id):
         raise UnauthorizedError("Customer account is not in authenticated organization")
@@ -205,6 +214,7 @@ def update_customer_account(
 ) -> ApiResponse:
     service = CustomerAccountService(db)
     existing = service.get_customer_account(str(customer_account_id))
+    _assert_staff_dashboard_role(token_payload)
     token_org_id = token_payload.get("organization_id")
     if str(existing.organization_id) != str(token_org_id):
         raise UnauthorizedError("Customer account is not in authenticated organization")
