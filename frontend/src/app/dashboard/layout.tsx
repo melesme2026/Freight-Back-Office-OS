@@ -7,12 +7,11 @@ import { useEffect, useMemo, useState } from "react";
 
 import {
   clearAuth,
-  getAccessToken,
-  getOrganizationId,
-  getUserEmail,
-  getUserRole,
+  getAuthSession,
+  onAuthChanged,
+  type AuthSession,
 } from "@/lib/auth";
-import { canAccessDashboard } from "@/lib/rbac";
+import { canAccessDashboardPath } from "@/lib/rbac";
 
 type NavItem = {
   href: Route;
@@ -52,14 +51,20 @@ export default function DashboardLayout({
   const pathname = usePathname();
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
-
-  const accessToken = getAccessToken();
-  const organizationId = getOrganizationId();
-  const userRole = getUserRole();
-  const userEmail = getUserEmail();
+  const [session, setSession] = useState<AuthSession>(() => ({
+    accessToken: null,
+    tokenType: "Bearer",
+    organizationId: null,
+    userEmail: null,
+    userRole: null,
+    driverId: null,
+  }));
+  const [accessDenied, setAccessDenied] = useState(false);
 
   useEffect(() => {
     setMounted(true);
+    setSession(getAuthSession());
+    return onAuthChanged(() => setSession(getAuthSession()));
   }, []);
 
   useEffect(() => {
@@ -67,15 +72,22 @@ export default function DashboardLayout({
       return;
     }
 
-    if (!accessToken || !organizationId) {
-      router.replace("/login");
+    if (!session.accessToken || !session.organizationId) {
+      router.replace("/login?session=expired");
       return;
     }
 
-    if (!canAccessDashboard(userRole)) {
-      router.replace("/driver-portal");
+    if (!canAccessDashboardPath(session.userRole, pathname)) {
+      if (session.userRole === "driver") {
+        router.replace("/driver-portal");
+        return;
+      }
+      setAccessDenied(true);
+      return;
     }
-  }, [mounted, accessToken, organizationId, userRole, router]);
+
+    setAccessDenied(false);
+  }, [mounted, pathname, router, session.accessToken, session.organizationId, session.userRole]);
 
   const pageTitle = useMemo(() => {
     const activeItem = NAV_ITEMS.find((item) => isActivePath(pathname, item.href));
@@ -91,8 +103,26 @@ export default function DashboardLayout({
     return null;
   }
 
-  if (!accessToken || !organizationId || !canAccessDashboard(userRole)) {
+  if (!session.accessToken || !session.organizationId) {
     return null;
+  }
+
+  if (accessDenied || !canAccessDashboardPath(session.userRole, pathname)) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-50 px-6">
+        <div className="max-w-md rounded-2xl border border-amber-200 bg-white p-6 text-center shadow-soft">
+          <h1 className="text-lg font-bold text-slate-950">Access denied</h1>
+          <p className="mt-2 text-sm text-slate-600">Your account does not have permission to view this dashboard area.</p>
+          <button
+            type="button"
+            onClick={() => router.replace("/dashboard")}
+            className="mt-4 rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
+          >
+            Back to dashboard
+          </button>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -105,8 +135,8 @@ export default function DashboardLayout({
             </div>
             <div className="mt-2 text-lg font-bold text-slate-950">Dashboard</div>
             <div className="mt-3 space-y-1 text-xs text-slate-500">
-              <div>{userEmail ?? "Signed-in user"}</div>
-              <div className="break-all">Org: {organizationId}</div>
+              <div>{session.userEmail ?? "Signed-in user"}</div>
+              <div className="break-all">Org: {session.organizationId}</div>
             </div>
             <Link
               href="/"
@@ -160,7 +190,7 @@ export default function DashboardLayout({
               <div className="flex items-center gap-3">
                 <div className="hidden text-right md:block">
                   <div className="text-sm font-medium text-slate-900">
-                    {userEmail ?? "Signed-in user"}
+                    {session.userEmail ?? "Signed-in user"}
                   </div>
                   <div className="text-xs text-slate-500">Organization active</div>
                 </div>

@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_db_session
-from app.core.exceptions import AppError, NotFoundError, UnauthorizedError, ValidationError
+from app.core.exceptions import AppError, ForbiddenError, NotFoundError, UnauthorizedError, ValidationError
 from app.domain.models.driver import Driver
 from app.repositories.driver_repo import DriverRepository
 from app.schemas.common import ApiResponse
@@ -127,6 +127,12 @@ def _get_driver_or_404(repo: DriverRepository, driver_id: uuid.UUID) -> Driver:
     return item
 
 
+def _assert_staff_dashboard_role(token_payload: dict[str, Any]) -> None:
+    role = str(token_payload.get("role") or "").strip().lower()
+    if role == "driver":
+        raise ForbiddenError("Driver accounts cannot access this dashboard endpoint")
+
+
 @router.post("/drivers", response_model=ApiResponse)
 def create_driver(
     payload: DriverCreateRequest,
@@ -135,6 +141,7 @@ def create_driver(
 ) -> ApiResponse:
     repo = DriverRepository(db)
 
+    _assert_staff_dashboard_role(token_payload)
     token_org_id = token_payload.get("organization_id")
     if str(payload.organization_id) != str(token_org_id):
         raise UnauthorizedError("organization_id does not match authenticated organization")
@@ -189,6 +196,7 @@ def list_drivers(
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
     repo = DriverRepository(db)
+    _assert_staff_dashboard_role(token_payload)
     token_org_id = token_payload.get("organization_id")
     effective_org_id = organization_id or uuid.UUID(str(token_org_id))
     if str(effective_org_id) != str(token_org_id):
@@ -223,6 +231,7 @@ def get_driver(
 ) -> ApiResponse:
     repo = DriverRepository(db)
     item = _get_driver_or_404(repo, driver_id)
+    _assert_staff_dashboard_role(token_payload)
     token_org_id = token_payload.get("organization_id")
     if str(item.organization_id) != str(token_org_id):
         raise UnauthorizedError("Driver is not in authenticated organization")
@@ -243,6 +252,7 @@ def update_driver(
 ) -> ApiResponse:
     repo = DriverRepository(db)
     item = _get_driver_or_404(repo, driver_id)
+    _assert_staff_dashboard_role(token_payload)
     token_org_id = token_payload.get("organization_id")
     if str(item.organization_id) != str(token_org_id):
         raise UnauthorizedError("Driver is not in authenticated organization")
@@ -295,6 +305,7 @@ def reactivate_driver(
 ) -> ApiResponse:
     repo = DriverRepository(db)
     item = _get_driver_or_404(repo, driver_id)
+    _assert_staff_dashboard_role(token_payload)
     token_org_id = token_payload.get("organization_id")
     if str(item.organization_id) != str(token_org_id):
         raise UnauthorizedError("Driver is not in authenticated organization")

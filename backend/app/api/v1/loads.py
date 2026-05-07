@@ -1106,12 +1106,19 @@ def _generate_and_persist_invoice_pdf(*, db: Session, load: Any) -> bytes:
     return pdf_bytes
 
 
+def _assert_staff_load_management_role(token_payload: dict[str, Any]) -> None:
+    role = str(token_payload.get("role") or "").strip().lower()
+    if role == "driver":
+        raise ForbiddenError("Driver accounts must use driver load endpoints")
+
+
 @router.post("/loads", response_model=ApiResponse)
 def create_load(
     payload: LoadCreateRequest,
     token_payload: dict[str, Any] = Depends(get_current_token_payload),
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
+    _assert_staff_load_management_role(token_payload)
     token_org_id = token_payload.get("organization_id")
     if str(payload.organization_id) != str(token_org_id):
         raise UnauthorizedError("organization_id does not match authenticated organization")
@@ -1229,6 +1236,7 @@ def list_loads(
     page_size: int = Query(default=25, ge=1, le=200),
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
+    _assert_staff_load_management_role(token_payload)
     token_org_id = token_payload.get("organization_id")
     token_role = str(token_payload.get("role") or "").lower()
     token_driver_id = token_payload.get("driver_id")

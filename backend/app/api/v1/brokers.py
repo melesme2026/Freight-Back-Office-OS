@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_db_session
-from app.core.exceptions import NotFoundError, UnauthorizedError, ValidationError
+from app.core.exceptions import ForbiddenError, NotFoundError, UnauthorizedError, ValidationError
 from app.core.security import get_current_token_payload
 from app.domain.models.broker import Broker
 from app.repositories.broker_repo import BrokerRepository
@@ -95,6 +95,7 @@ def _resolve_effective_org_id(
     organization_id: uuid.UUID | None,
     token_payload: dict[str, Any],
 ) -> uuid.UUID:
+    _assert_staff_dashboard_role(token_payload)
     token_org_id = token_payload.get("organization_id")
     effective_org_id = organization_id or uuid.UUID(str(token_org_id))
     if str(effective_org_id) != str(token_org_id):
@@ -117,6 +118,12 @@ def _get_broker_or_404(
     if str(item.organization_id) != str(token_org_id):
         raise UnauthorizedError("Broker is not in authenticated organization")
     return item
+
+
+def _assert_staff_dashboard_role(token_payload: dict[str, Any]) -> None:
+    role = str(token_payload.get("role") or "").strip().lower()
+    if role == "driver":
+        raise ForbiddenError("Driver accounts cannot access this dashboard endpoint")
 
 
 @router.post("/brokers", response_model=ApiResponse)
