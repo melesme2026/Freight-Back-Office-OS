@@ -42,11 +42,26 @@ def test_build_professional_invoice_pdf_contains_professional_sections() -> None
         ],
     )
 
-    pdf_bytes = _build_professional_invoice_pdf(load=load, carrier_profile={"legal_name":"Blue Sky Transport LLC","email":"billing@bluesky.example","phone":"+1-555-111-2222","address":"100 Main St | Chicago, IL 60601 | USA","mc_number":"MC-778899","dot_number":"DOT-112233","remit_to":"Blue Sky Transport LLC | 100 Main St, Chicago, IL 60601 | ACH to account ending 2481"})
+    pdf_bytes = _build_professional_invoice_pdf(
+        load=load,
+        carrier_profile={
+            "legal_name": "Blue Sky Transport LLC",
+            "email": "billing@bluesky.example",
+            "phone": "+1-555-111-2222",
+            "address": "100 Main St | Chicago, IL 60601 | USA",
+            "mc_number": "MC-778899",
+            "dot_number": "DOT-112233",
+            "remit_to": (
+                "Blue Sky Transport LLC | 100 Main St, Chicago, IL 60601 | "
+                "ACH to account ending 2481"
+            ),
+        },
+    )
 
     assert isinstance(pdf_bytes, bytes)
     assert b"Freight Invoice" in pdf_bytes
     assert b"Invoice #: INV-1001" in pdf_bytes
+    assert b"Due Date:" in pdf_bytes
     assert b"Load #: LD-1001" in pdf_bytes
     assert b"Acme Shipper" in pdf_bytes
     assert b"TopLine Broker" in pdf_bytes
@@ -60,6 +75,8 @@ def test_build_professional_invoice_pdf_contains_professional_sections() -> None
     assert b"[X] Proof of Delivery" in pdf_bytes
     assert b"[ ] Bill of Lading" in pdf_bytes
     assert b"Total Due" in pdf_bytes
+    assert b"Payment / Remittance" in pdf_bytes
+    assert b"Remit Instructions:" in pdf_bytes
     assert b"Please reference invoice number and load number with payment." in pdf_bytes
     assert b"Logo: use company letterhead/logo if configured" not in pdf_bytes
     assert b"11111111-2222-3333-4444-555555555555" not in pdf_bytes
@@ -89,7 +106,18 @@ def test_build_professional_invoice_pdf_handles_missing_optional_fields_without_
         broker_email_raw=None,
     )
 
-    pdf_bytes = _build_professional_invoice_pdf(load=load, carrier_profile={"legal_name":"N/A Carrier","email":"N/A","phone":"N/A","address":"N/A","mc_number":"N/A","dot_number":"N/A","remit_to":"N/A"})
+    pdf_bytes = _build_professional_invoice_pdf(
+        load=load,
+        carrier_profile={
+            "legal_name": "N/A Carrier",
+            "email": "N/A",
+            "phone": "N/A",
+            "address": "N/A",
+            "mc_number": "N/A",
+            "dot_number": "N/A",
+            "remit_to": "N/A",
+        },
+    )
 
     assert isinstance(pdf_bytes, bytes)
     assert b"Customer:" in pdf_bytes
@@ -134,7 +162,18 @@ def test_build_professional_invoice_pdf_wraps_long_values_without_crashing() -> 
         ],
     )
 
-    pdf_bytes = _build_professional_invoice_pdf(load=load, carrier_profile={"legal_name":"N/A Carrier","email":"N/A","phone":"N/A","address":"N/A","mc_number":"N/A","dot_number":"N/A","remit_to":"N/A"})
+    pdf_bytes = _build_professional_invoice_pdf(
+        load=load,
+        carrier_profile={
+            "legal_name": "N/A Carrier",
+            "email": "N/A",
+            "phone": "N/A",
+            "address": "N/A",
+            "mc_number": "N/A",
+            "dot_number": "N/A",
+            "remit_to": "N/A",
+        },
+    )
 
     assert isinstance(pdf_bytes, bytes)
     assert len(pdf_bytes) > 0
@@ -169,9 +208,16 @@ def test_build_professional_invoice_pdf_prefers_load_number_for_load_reference()
 
     pdf_bytes = _build_professional_invoice_pdf(
         load=load,
-        carrier_profile={"legal_name": "N/A Carrier", "email": "N/A", "phone": "N/A", "address": "N/A", "mc_number": "N/A", "dot_number": "N/A", "remit_to": "N/A"},
+        carrier_profile={
+            "legal_name": "N/A Carrier",
+            "email": "N/A",
+            "phone": "N/A",
+            "address": "N/A",
+            "mc_number": "N/A",
+            "dot_number": "N/A",
+            "remit_to": "N/A",
+        },
     )
 
     assert b"Load Ref: LD-7777" in pdf_bytes
     assert b"Load Ref: 11111111-2222-3333-4444-555555555555" not in pdf_bytes
-
