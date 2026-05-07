@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import pytest
-
-from app.api.v1.loads import SubmissionPacketSendEmailRequest, send_submission_packet_email
+from app.api.v1.loads import (
+    SubmissionPacketSendEmailRequest,
+    get_submission_packet_email_history,
+    send_submission_packet_email,
+)
 from app.core.exceptions import ConflictError, ForbiddenError, UnauthorizedError, ValidationError
 from app.domain.enums.document_type import DocumentType
 from app.services.documents.document_service import DocumentService
@@ -40,9 +43,15 @@ def _seed_packet(db_session, *, organization_id: str):
             mime_type="application/pdf",
             file_size_bytes=1000 + idx,
         )
-        StorageService().save_bytes(relative_path=document.storage_key, content=f"{doc_type.value}-file".encode("utf-8"), overwrite=True)
+        StorageService().save_bytes(
+            relative_path=document.storage_key,
+            content=f"{doc_type.value}-file".encode(),
+            overwrite=True,
+        )
 
-    packet = SubmissionPacketService(db_session).create_packet_from_load(str(load.id), organization_id, None)
+    packet = SubmissionPacketService(db_session).create_packet_from_load(
+        str(load.id), organization_id, None
+    )
     return load, packet
 
 
@@ -75,7 +84,9 @@ def test_send_email_disabled_returns_clear_error_and_no_sent_status(db_session) 
     assert "packet_email_failed" in event_types
 
 
-def test_smtp_config_missing_returns_clear_error(db_session, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_smtp_config_missing_returns_clear_error(
+    db_session, monkeypatch: pytest.MonkeyPatch
+) -> None:
     org_id = "00000000-0000-0000-0000-000000008011"
     load, packet = _seed_packet(db_session, organization_id=org_id)
 
@@ -87,7 +98,9 @@ def test_smtp_config_missing_returns_clear_error(db_session, monkeypatch: pytest
             "error_message": "SMTP_HOST is required for SMTP packet email sending.",
         }
 
-    monkeypatch.setattr("app.api.v1.loads.PacketEmailService.send_email_with_attachments", _mock_send)
+    monkeypatch.setattr(
+        "app.api.v1.loads.PacketEmailService.send_email_with_attachments", _mock_send
+    )
 
     with pytest.raises(ValidationError) as exc:
         send_submission_packet_email(
@@ -98,12 +111,14 @@ def test_smtp_config_missing_returns_clear_error(db_session, monkeypatch: pytest
             db=db_session,
         )
 
-    assert "SMTP_HOST is required" in exc.value.message
+    assert "Packet email could not be sent" in exc.value.message
     refreshed = SubmissionPacketService(db_session).get_packet(str(packet.id), str(load.id), org_id)
     assert refreshed.status == "ready"
 
 
-def test_successful_send_attaches_zip_logs_events_and_marks_sent(db_session, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_successful_send_attaches_packet_documents_logs_events_and_marks_sent(
+    db_session, monkeypatch: pytest.MonkeyPatch
+) -> None:
     org_id = "00000000-0000-0000-0000-000000008021"
     load, packet = _seed_packet(db_session, organization_id=org_id)
     captured: dict[str, object] = {}
@@ -117,7 +132,9 @@ def test_successful_send_attaches_zip_logs_events_and_marks_sent(db_session, mon
             "error_message": None,
         }
 
-    monkeypatch.setattr("app.api.v1.loads.PacketEmailService.send_email_with_attachments", _mock_send)
+    monkeypatch.setattr(
+        "app.api.v1.loads.PacketEmailService.send_email_with_attachments", _mock_send
+    )
 
     result = send_submission_packet_email(
         load_id=load.id,
@@ -130,8 +147,13 @@ def test_successful_send_attaches_zip_logs_events_and_marks_sent(db_session, mon
     attachments = captured.get("attachments")
     assert isinstance(attachments, list)
     assert attachments
-    assert attachments[0]["content_type"] == "application/zip"
-    assert attachments[0]["bytes"]
+    filenames = {attachment["filename"] for attachment in attachments}
+    assert "Invoice_LD-EMAIL-001.pdf" in filenames
+    assert "POD_LD-EMAIL-001.pdf" in filenames
+    assert "BOL_LD-EMAIL-001.pdf" in filenames
+    assert "RateConfirmation_LD-EMAIL-001.pdf" in filenames
+    assert all(attachment["content_type"] == "application/pdf" for attachment in attachments)
+    assert all(attachment["bytes"] for attachment in attachments)
     refreshed = SubmissionPacketService(db_session).get_packet(str(packet.id), str(load.id), org_id)
     event_types = [event.event_type for event in refreshed.events]
     assert "packet_email_send_attempt" in event_types
@@ -139,9 +161,22 @@ def test_successful_send_attaches_zip_logs_events_and_marks_sent(db_session, mon
     assert refreshed.status == "sent"
     assert refreshed.sent_at is not None
     assert result.meta["email_send_result"]["accepted"] is True
+    assert result.meta["email_send_result"]["status"] == "sent"
+
+    history = get_submission_packet_email_history(
+        load_id=load.id,
+        packet_id=packet.id,
+        token_payload=_token(org_id),
+        db=db_session,
+    )
+    assert history.data[0]["status"] == "sent"
+    assert history.data[0]["recipient"] == "ap@broker.test"
+    assert history.data[0]["attachment_count"] == 4
 
 
-def test_failed_send_logs_failed_event_and_keeps_packet_not_sent(db_session, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_failed_send_logs_failed_event_and_keeps_packet_not_sent(
+    db_session, monkeypatch: pytest.MonkeyPatch
+) -> None:
     org_id = "00000000-0000-0000-0000-000000008031"
     load, packet = _seed_packet(db_session, organization_id=org_id)
 
@@ -196,3 +231,58 @@ def test_cross_org_send_denied(db_session) -> None:
             token_payload=_token(other_org_id),
             db=db_session,
         )
+
+
+def test_missing_recipient_or_invalid_email_is_blocked(db_session) -> None:
+    org_id = "00000000-0000-0000-0000-000000008061"
+    load, packet = _seed_packet(db_session, organization_id=org_id)
+
+    with pytest.raises(ValidationError):
+        send_submission_packet_email(
+            load_id=load.id,
+            packet_id=packet.id,
+            payload=SubmissionPacketSendEmailRequest(to_email="not-an-email"),
+            token_payload=_token(org_id),
+            db=db_session,
+        )
+
+
+def test_missing_required_packet_document_blocks_send(
+    db_session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    org_id = "00000000-0000-0000-0000-000000008071"
+    load, packet = _seed_packet(db_session, organization_id=org_id)
+    packet.documents = [
+        doc for doc in packet.documents if doc.document_type != DocumentType.PROOF_OF_DELIVERY.value
+    ]
+    db_session.flush()
+
+    called = False
+
+    def _mock_send(self, **_: object):
+        nonlocal called
+        called = True
+        return {
+            "provider": "smtp",
+            "accepted": True,
+            "provider_message_id": "msg-123",
+            "error_message": None,
+        }
+
+    monkeypatch.setattr(
+        "app.api.v1.loads.PacketEmailService.send_email_with_attachments", _mock_send
+    )
+
+    with pytest.raises(ValidationError) as exc:
+        send_submission_packet_email(
+            load_id=load.id,
+            packet_id=packet.id,
+            payload=SubmissionPacketSendEmailRequest(to_email="ap@broker.test"),
+            token_payload=_token(org_id),
+            db=db_session,
+        )
+
+    assert "missing required snapshot documents" in exc.value.message.lower()
+    assert called is False
+    refreshed = SubmissionPacketService(db_session).get_packet(str(packet.id), str(load.id), org_id)
+    assert refreshed.status == "ready"
