@@ -11,10 +11,13 @@ export default function RequestDemoPage() {
   const [isContactSales, setIsContactSales] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [statusTone, setStatusTone] = useState<"success" | "error">("success");
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [company, setCompany] = useState("");
+  const [phone, setPhone] = useState("");
+  const [fleetSize, setFleetSize] = useState("");
   const [notes, setNotes] = useState("");
 
   const title = useMemo(() => (isContactSales ? "Contact Sales" : "Request Demo"), [isContactSales]);
@@ -27,8 +30,12 @@ export default function RequestDemoPage() {
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (isSubmitting) {
+      return;
+    }
     setIsSubmitting(true);
     setStatusMessage(null);
+    setStatusTone("success");
 
     try {
       const response = await fetch(buildApiUrl("/demo-requests"), {
@@ -38,6 +45,8 @@ export default function RequestDemoPage() {
           full_name: name,
           email,
           company,
+          phone: phone || null,
+          fleet_size: fleetSize || null,
           message: notes || null,
         }),
       });
@@ -46,12 +55,16 @@ export default function RequestDemoPage() {
         throw new Error("failed");
       }
 
+      setStatusTone("success");
       setStatusMessage("Demo request received. We’ll contact you shortly.");
       setName("");
       setEmail("");
       setCompany("");
+      setPhone("");
+      setFleetSize("");
       setNotes("");
     } catch {
+      setStatusTone("error");
       setStatusMessage(`We couldn’t save your request. Please email ${SALES_EMAIL}.`);
     } finally {
       setIsSubmitting(false);
@@ -66,14 +79,26 @@ export default function RequestDemoPage() {
           {isContactSales ? "Talk to Freight Back Office OS sales" : "Book a Freight Back Office OS walkthrough"}
         </h1>
 
-        {statusMessage ? <div className="mt-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{statusMessage}</div> : null}
+        {statusMessage ? (
+          <div
+            className={`mt-6 rounded-xl border px-4 py-3 text-sm ${
+              statusTone === "success"
+                ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                : "border-amber-200 bg-amber-50 text-amber-800"
+            }`}
+          >
+            {statusMessage}
+          </div>
+        ) : null}
 
         <form className="mt-8 grid gap-4" onSubmit={onSubmit}>
           <input type="text" placeholder="Full name" required value={name} onChange={(event) => setName(event.target.value)} className="rounded-xl border border-slate-300 px-4 py-3 text-sm" />
           <input type="email" placeholder="Work email" required value={email} onChange={(event) => setEmail(event.target.value)} className="rounded-xl border border-slate-300 px-4 py-3 text-sm" />
           <input type="text" placeholder="Company" required value={company} onChange={(event) => setCompany(event.target.value)} className="rounded-xl border border-slate-300 px-4 py-3 text-sm" />
+          <input type="tel" placeholder="Phone (optional)" value={phone} onChange={(event) => setPhone(event.target.value)} className="rounded-xl border border-slate-300 px-4 py-3 text-sm" />
+          <input type="text" placeholder="Fleet size (optional)" value={fleetSize} onChange={(event) => setFleetSize(event.target.value)} className="rounded-xl border border-slate-300 px-4 py-3 text-sm" />
           <textarea placeholder="Monthly load volume, integrations needed, or questions" rows={4} value={notes} onChange={(event) => setNotes(event.target.value)} className="rounded-xl border border-slate-300 px-4 py-3 text-sm" />
-          <button type="submit" disabled={isSubmitting} className="w-fit rounded-xl bg-brand-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:opacity-70">
+          <button type="submit" disabled={isSubmitting} className="w-fit rounded-xl bg-brand-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-70">
             {isSubmitting ? "Submitting..." : isContactSales ? "Submit sales request" : "Submit demo request"}
           </button>
         </form>
