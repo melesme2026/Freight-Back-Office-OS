@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Iterable
-
-from sqlalchemy.orm import Session
+from collections.abc import Iterable
 
 from app.core.config import get_settings
 from app.domain.enums.channel import Channel
@@ -13,6 +11,8 @@ from app.domain.models.driver import Driver
 from app.domain.models.load import Load
 from app.domain.models.load_document import LoadDocument
 from app.domain.models.load_payment_record import LoadPaymentRecord
+from sqlalchemy.orm import Session
+
 from app.services.notifications.email_service import EmailService
 from app.services.notifications.notification_service import NotificationService
 
@@ -97,22 +97,53 @@ class OperationalNotificationService:
         full_name: str,
         email: str,
         company: str,
-        message: str | None,
+        phone: str | None = None,
+        fleet_size: str | None = None,
+        message: str | None = None,
+        status: str = "new",
+        submitted_at: object | None = None,
     ) -> None:
+        submitted_label = self._timestamp_label(submitted_at)
+        lead_label = company or full_name
+        ops_body = "\n".join(
+            [
+                "A new demo request was submitted to Freight Back Office OS.",
+                f"Status: {status}",
+                f"Submitted: {submitted_label}",
+                f"Name: {full_name}",
+                f"Company: {company}",
+                f"Email: {email}",
+                f"Phone: {phone or 'Not provided'}",
+                f"Fleet size: {fleet_size or 'Not provided'}",
+                f"Message: {message or 'Not provided'}",
+            ]
+        )
         self._create_and_deliver(
             organization_id=None,
             event_type="demo_request_received",
             recipient=self._ops_recipient(),
-            subject=f"New demo request: {company}",
-            body="\n".join(
-                [
-                    "A new demo request was submitted.",
-                    f"Name: {full_name}",
-                    f"Company: {company}",
-                    f"Email: {email}",
-                    f"Message: {message or 'Not provided'}",
-                ]
-            ),
+            subject=f"New Demo Request | {lead_label}",
+            body=ops_body,
+            demo_request_id=demo_request_id,
+            idempotency_fields={"demo_request_id": demo_request_id},
+        )
+
+        acknowledgement_body = "\n".join(
+            [
+                f"Hi {full_name},",
+                "",
+                "Thank you for requesting a Freight Back Office OS demo.",
+                "We received your request, and our team will review it and follow up with you.",
+                "",
+                "Freight Back Office OS",
+            ]
+        )
+        self._create_and_deliver(
+            organization_id=None,
+            event_type="demo_request_acknowledgement",
+            recipient=email,
+            subject="We received your Freight Back Office OS demo request",
+            body=acknowledgement_body,
             demo_request_id=demo_request_id,
             idempotency_fields={"demo_request_id": demo_request_id},
         )
@@ -162,11 +193,17 @@ class OperationalNotificationService:
             idempotency_fields={"load_id": str(load.id)},
         )
 
-    def payment_status_updated(self, *, record: LoadPaymentRecord, previous_status: str | None = None) -> None:
+    def payment_status_updated(
+        self, *, record: LoadPaymentRecord, previous_status: str | None = None
+    ) -> None:
         status = getattr(record.payment_status, "value", str(record.payment_status))
         if previous_status == status:
             return
-        event_type = "payment_marked_paid" if status == LoadPaymentStatus.PAID.value else "payment_status_updated"
+        event_type = (
+            "payment_marked_paid"
+            if status == LoadPaymentStatus.PAID.value
+            else "payment_status_updated"
+        )
         load = record.load
         subject = (
             f"Payment marked paid: {self._load_label(load)}"
@@ -282,13 +319,13 @@ class OperationalNotificationService:
                 organization_id=organization_id,
                 provider_message_id=str(result.get("provider_message_id") or ""),
             )
-        except Exception as exc:  # noqa: BLE001 - source actions must stay resilient.
+        except Exception:  # noqa: BLE001 - source actions must stay resilient.
             logger.exception(
                 "Operational notification failed",
                 extra={"event_type": event_type, "organization_id": organization_id},
             )
             try:
-                if 'notification' in locals():
+                if "notification" in locals():
                     self.notifications.mark_failed(
                         notification_id=str(notification.id),
                         organization_id=organization_id,
@@ -298,10 +335,16 @@ class OperationalNotificationService:
                 logger.exception("Failed to mark operational notification as failed")
 
     def _email_configured(self) -> bool:
-        delivery_enabled = self.settings.email_delivery_enabled or self.settings.email_sending_enabled
+        delivery_enabled = (
+            self.settings.email_delivery_enabled or self.settings.email_sending_enabled
+        )
         if not delivery_enabled:
             return False
-        if not self.settings.email_enabled and self.settings.environment not in {"local", "development", "test"}:
+        if not self.settings.email_enabled and self.settings.environment not in {
+            "local",
+            "development",
+            "test",
+        }:
             return False
         if self.settings.email_provider == "smtp":
             return bool(self.settings.smtp_host)
@@ -320,6 +363,15 @@ class OperationalNotificationService:
     @staticmethod
     def _str(value: object | None) -> str | None:
         return None if value is None else str(value)
+
+    @staticmethod
+    def _timestamp_label(value: object | None) -> str:
+        if value is None:
+            return "Not provided"
+        isoformat = getattr(value, "isoformat", None)
+        if callable(isoformat):
+            return str(isoformat())
+        return str(value)
 
     @staticmethod
     def _load_label(load: Load | None) -> str:

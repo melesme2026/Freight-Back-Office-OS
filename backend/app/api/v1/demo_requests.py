@@ -1,32 +1,172 @@
 from __future__ import annotations
 
 import logging
+import uuid
+from datetime import datetime, timedelta, timezone
+from typing import Any
 
-from fastapi import APIRouter, Depends, status
-from sqlalchemy.orm import Session
-
+from app.core.config import get_settings
 from app.core.dependencies import get_db_session
+from app.core.exceptions import NotFoundError, RateLimitError, UnauthorizedError, ValidationError
+from app.core.security import get_current_token_payload
 from app.domain.models.demo_request import DemoRequest
 from app.schemas.common import ApiResponse
-from app.schemas.demo_requests import DemoRequestCreateRequest
-from app.services.notifications.operational_notification_service import OperationalNotificationService
+from app.schemas.demo_requests import DemoRequestCreateRequest, DemoRequestStatusUpdateRequest
+from app.services.notifications.operational_notification_service import (
+    OperationalNotificationService,
+)
+from fastapi import APIRouter, Depends, Query, Request, status
+from sqlalchemy import func, or_, select
+from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+DEMO_REQUEST_STATUSES = {"new", "contacted", "scheduled", "converted", "closed"}
+STAFF_DEMO_REQUEST_ROLES = {"owner", "admin", "ops_manager", "ops_agent", "support_agent"}
+
+
+def _clean_text(value: str | None) -> str | None:
+    if value is None:
+        return None
+    normalized = str(value).strip()
+    return normalized or None
+
+
+def _client_ip(request: Request | None) -> str | None:
+    if request is None:
+        return None
+    forwarded_for = request.headers.get("x-forwarded-for")
+    if forwarded_for:
+        first_ip = forwarded_for.split(",", 1)[0].strip()
+        if first_ip:
+            return first_ip[:64]
+    real_ip = request.headers.get("x-real-ip")
+    if real_ip and real_ip.strip():
+        return real_ip.strip()[:64]
+    return (
+        getattr(request.client, "host", None)[:64]
+        if request.client and request.client.host
+        else None
+    )
+
+
+def _user_agent(request: Request | None) -> str | None:
+    value = request.headers.get("user-agent") if request is not None else None
+    return _clean_text(value)[:512] if _clean_text(value) else None
+
+
+def _utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _window_start(seconds: int) -> datetime:
+    return _utc_now() - timedelta(seconds=seconds)
+
+
+def _find_recent_duplicate(
+    db: Session,
+    *,
+    payload: DemoRequestCreateRequest,
+    source_ip: str | None,
+    window_seconds: int,
+) -> DemoRequest | None:
+    cutoff = _window_start(window_seconds)
+    stmt = (
+        select(DemoRequest)
+        .where(DemoRequest.created_at >= cutoff)
+        .where(func.lower(DemoRequest.email) == str(payload.email).lower())
+        .where(func.lower(DemoRequest.company) == payload.company.lower())
+        .where(DemoRequest.full_name == payload.full_name)
+        .order_by(DemoRequest.created_at.desc())
+        .limit(1)
+    )
+    if source_ip:
+        stmt = stmt.where(or_(DemoRequest.source_ip == source_ip, DemoRequest.source_ip.is_(None)))
+    return db.scalar(stmt)
+
+
+def _enforce_ip_rate_limit(db: Session, *, source_ip: str | None) -> None:
+    if not source_ip:
+        return
+    settings = get_settings()
+    cutoff = _window_start(settings.demo_request_rate_limit_window_seconds)
+    count = (
+        db.scalar(
+            select(func.count(DemoRequest.id)).where(
+                DemoRequest.source_ip == source_ip,
+                DemoRequest.created_at >= cutoff,
+            )
+        )
+        or 0
+    )
+    if int(count) >= settings.demo_request_rate_limit_max_per_ip:
+        raise RateLimitError(
+            "Too many demo requests submitted recently. Please wait and try again.",
+            details={"retry_after_seconds": settings.demo_request_rate_limit_window_seconds},
+        )
+
+
+def _serialize_demo_request(item: DemoRequest) -> dict[str, Any]:
+    return {
+        "id": str(item.id),
+        "full_name": item.full_name,
+        "email": item.email,
+        "company": item.company,
+        "phone": item.phone,
+        "fleet_size": item.fleet_size,
+        "message": item.message,
+        "status": item.status,
+        "created_at": item.created_at.isoformat() if item.created_at else None,
+        "updated_at": item.updated_at.isoformat() if item.updated_at else None,
+    }
+
+
+def _ensure_demo_request_staff(token_payload: dict[str, Any]) -> None:
+    role = str(token_payload.get("role") or "").strip().lower()
+    if role not in STAFF_DEMO_REQUEST_ROLES:
+        raise UnauthorizedError("Authenticated staff role is required to manage demo requests")
+
 
 @router.post("/demo-requests", status_code=status.HTTP_201_CREATED, response_model=ApiResponse)
 def create_demo_request(
     payload: DemoRequestCreateRequest,
+    request: Request = None,  # type: ignore[assignment]
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
+    settings = get_settings()
+    source_ip = _client_ip(request)
+    user_agent = _user_agent(request)
+
+    duplicate = _find_recent_duplicate(
+        db,
+        payload=payload,
+        source_ip=source_ip,
+        window_seconds=settings.demo_request_duplicate_window_seconds,
+    )
+    if duplicate is not None:
+        return ApiResponse(
+            data={
+                "id": str(duplicate.id),
+                "status": duplicate.status,
+                "message": "Demo request received.",
+                "duplicate": True,
+            }
+        )
+
+    _enforce_ip_rate_limit(db, source_ip=source_ip)
+
     item = DemoRequest(
         full_name=payload.full_name,
         email=str(payload.email).lower(),
         company=payload.company,
+        phone=payload.phone,
+        fleet_size=payload.fleet_size,
         message=payload.message,
-        status="received",
+        status="new",
+        source_ip=source_ip,
+        user_agent=user_agent,
     )
     db.add(item)
     db.flush()
@@ -36,12 +176,75 @@ def create_demo_request(
             full_name=item.full_name,
             email=item.email,
             company=item.company,
+            phone=item.phone,
+            fleet_size=item.fleet_size,
             message=item.message,
+            status=item.status,
+            submitted_at=item.created_at or _utc_now(),
         )
     except Exception:
-        logger.exception("Demo request notification failed", extra={"demo_request_id": str(item.id)})
+        logger.exception(
+            "Demo request notification failed", extra={"demo_request_id": str(item.id)}
+        )
     db.commit()
     db.refresh(item)
     return ApiResponse(
-        data={"id": str(item.id), "status": item.status, "message": "Demo request received."}
+        data={
+            "id": str(item.id),
+            "status": item.status,
+            "message": "Demo request received.",
+            "duplicate": False,
+        }
     )
+
+
+@router.get("/demo-requests", response_model=ApiResponse)
+def list_demo_requests(
+    *,
+    status_filter: str | None = Query(default=None, alias="status"),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=50, ge=1, le=200),
+    token_payload: dict[str, Any] = Depends(get_current_token_payload),
+    db: Session = Depends(get_db_session),
+) -> ApiResponse:
+    _ensure_demo_request_staff(token_payload)
+    stmt = select(DemoRequest)
+    count_stmt = select(func.count(DemoRequest.id))
+    if status_filter:
+        normalized_status = status_filter.strip().lower()
+        if normalized_status not in DEMO_REQUEST_STATUSES:
+            raise ValidationError(
+                "Invalid demo request status",
+                details={"allowed_statuses": sorted(DEMO_REQUEST_STATUSES)},
+            )
+        stmt = stmt.where(DemoRequest.status == normalized_status)
+        count_stmt = count_stmt.where(DemoRequest.status == normalized_status)
+
+    total = db.scalar(count_stmt) or 0
+    items = db.scalars(
+        stmt.order_by(DemoRequest.created_at.desc()).offset((page - 1) * page_size).limit(page_size)
+    ).all()
+    return ApiResponse(
+        data=[_serialize_demo_request(item) for item in items],
+        meta={"page": page, "page_size": page_size, "total": int(total)},
+    )
+
+
+@router.patch("/demo-requests/{demo_request_id}/status", response_model=ApiResponse)
+def update_demo_request_status(
+    demo_request_id: uuid.UUID,
+    payload: DemoRequestStatusUpdateRequest,
+    token_payload: dict[str, Any] = Depends(get_current_token_payload),
+    db: Session = Depends(get_db_session),
+) -> ApiResponse:
+    _ensure_demo_request_staff(token_payload)
+    item = db.get(DemoRequest, demo_request_id)
+    if item is None:
+        raise NotFoundError(
+            "Demo request not found", details={"demo_request_id": str(demo_request_id)}
+        )
+    item.status = payload.status
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+    return ApiResponse(data=_serialize_demo_request(item))

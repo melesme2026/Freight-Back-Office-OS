@@ -3,8 +3,6 @@ from __future__ import annotations
 import asyncio
 from io import BytesIO
 
-from starlette.datastructures import UploadFile
-
 from app.api.v1.demo_requests import create_demo_request
 from app.api.v1.documents import upload_document, upload_driver_document
 from app.domain.enums.notification_status import NotificationStatus
@@ -15,7 +13,10 @@ from app.domain.models.organization import Organization
 from app.schemas.demo_requests import DemoRequestCreateRequest
 from app.services.loads.load_service import LoadService
 from app.services.notifications.email_service import EmailService
-from app.services.notifications.operational_notification_service import OperationalNotificationService
+from app.services.notifications.operational_notification_service import (
+    OperationalNotificationService,
+)
+from starlette.datastructures import UploadFile
 
 
 def _seed_upload_base(db_session, *, driver_email: str | None = "driver@example.com"):
@@ -63,12 +64,15 @@ def test_demo_request_creates_skipped_notification_when_email_config_missing(db_
 
     response = create_demo_request(payload=payload, db=db_session)
 
-    notification = db_session.query(Notification).one()
-    assert response.data["status"] == "received"
-    assert notification.message_type == "demo_request_received"
-    assert str(notification.demo_request_id) == response.data["id"]
-    assert notification.status == NotificationStatus.SKIPPED
-    assert "recipient" in (notification.error_message or "").lower()
+    notifications = db_session.query(Notification).order_by(Notification.created_at.asc()).all()
+    assert response.data["status"] == "new"
+    assert [item.message_type for item in notifications] == [
+        "demo_request_received",
+        "demo_request_acknowledgement",
+    ]
+    assert all(str(item.demo_request_id) == response.data["id"] for item in notifications)
+    assert all(item.status == NotificationStatus.SKIPPED for item in notifications)
+    assert "recipient" in (notifications[0].error_message or "").lower()
 
 
 def test_owner_document_upload_creates_notification(db_session):
@@ -144,7 +148,9 @@ def test_driver_document_upload_creates_ops_and_driver_confirmation_notification
 def test_email_failure_marks_notification_failed_without_breaking_action(db_session, monkeypatch):
     org_id, customer_id, driver_id, load_id = _seed_upload_base(db_session)
 
-    monkeypatch.setattr(OperationalNotificationService, "_ops_recipient", lambda self: "ops@example.com")
+    monkeypatch.setattr(
+        OperationalNotificationService, "_ops_recipient", lambda self: "ops@example.com"
+    )
     monkeypatch.setattr(OperationalNotificationService, "_email_configured", lambda self: True)
 
     def fail_send(self, **kwargs):

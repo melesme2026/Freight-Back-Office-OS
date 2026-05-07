@@ -9,7 +9,6 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -115,6 +114,21 @@ class InvalidTransitionError(AppError):
             message,
             code="invalid_transition",
             status_code=status.HTTP_409_CONFLICT,
+            details=details,
+        )
+
+
+class RateLimitError(AppError):
+    def __init__(
+        self,
+        message: str = "Too many requests",
+        *,
+        details: Mapping[str, Any] | None = None,
+    ) -> None:
+        super().__init__(
+            message,
+            code="rate_limited",
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             details=details,
         )
 
