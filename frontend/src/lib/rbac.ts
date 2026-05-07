@@ -1,6 +1,7 @@
 const DRIVER_ROLES = new Set(["driver"]);
 const TEAM_MANAGER_ROLES = new Set(["owner", "admin"]);
 const OWNER_ONLY_ROLES = new Set(["owner"]);
+const LEAD_PIPELINE_ROLES = new Set(["owner", "admin", "staff", "ops_manager", "ops_agent", "support_agent"]);
 
 function isOwner(role: string): boolean {
   return role === "owner";
@@ -31,10 +32,18 @@ export function canManageTeam(role: string | null | undefined): boolean {
   return TEAM_MANAGER_ROLES.has(normalizeRole(role));
 }
 
+export function canManageLeadPipeline(role: string | null | undefined): boolean {
+  return LEAD_PIPELINE_ROLES.has(normalizeRole(role));
+}
+
 export function canAccessDashboardPath(role: string | null | undefined, pathname: string): boolean {
   const normalized = normalizeRole(role);
   if (!canAccessDashboard(normalized)) {
     return false;
+  }
+
+  if (pathname === "/dashboard/leads" || pathname.startsWith("/dashboard/leads/")) {
+    return LEAD_PIPELINE_ROLES.has(normalized);
   }
 
   if (pathname === "/dashboard/team" || pathname.startsWith("/dashboard/team/")) {

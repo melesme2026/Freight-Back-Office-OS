@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 import pytest
 from app.api.v1.demo_requests import (
     create_demo_request,
     list_demo_requests,
+    update_demo_request_pipeline,
     update_demo_request_status,
 )
 from app.core.config import get_settings
@@ -11,7 +14,11 @@ from app.core.exceptions import RateLimitError, UnauthorizedError
 from app.domain.enums.notification_status import NotificationStatus
 from app.domain.models.demo_request import DemoRequest
 from app.domain.models.notification import Notification
-from app.schemas.demo_requests import DemoRequestCreateRequest, DemoRequestStatusUpdateRequest
+from app.schemas.demo_requests import (
+    DemoRequestCreateRequest,
+    DemoRequestPipelineUpdateRequest,
+    DemoRequestStatusUpdateRequest,
+)
 from app.services.notifications.email_service import EmailService
 from pydantic import ValidationError as PydanticValidationError
 
@@ -179,6 +186,105 @@ def test_demo_request_ip_rate_limit_blocks_obvious_flood(
             request=_Request(),
             db=db_session,
         )
+
+
+def test_demo_request_list_allows_owner_admin_and_staff_roles(db_session):
+    create_demo_request(payload=_payload(), db=db_session)
+
+    for role in ["owner", "admin", "staff", "ops_manager", "ops_agent", "support_agent"]:
+        response = list_demo_requests(
+            page=1,
+            page_size=50,
+            token_payload={"role": role},
+            db=db_session,
+        )
+        assert response.meta["total"] == 1
+        assert response.data[0]["email"] == "jane@example.com"
+
+
+def test_demo_request_list_rejects_driver(db_session):
+    create_demo_request(payload=_payload(), db=db_session)
+
+    with pytest.raises(UnauthorizedError):
+        list_demo_requests(
+            page=1,
+            page_size=50,
+            token_payload={"role": "driver"},
+            db=db_session,
+        )
+
+
+def test_demo_request_list_supports_search_filter_and_metrics(db_session):
+    create_demo_request(
+        payload=_payload(email="jane@example.com", company="Acme Freight"), db=db_session
+    )
+    second = create_demo_request(
+        payload=_payload(
+            full_name="Sam Carrier",
+            email="sam@example.com",
+            company="Bluebird Logistics",
+            phone="555-9999",
+        ),
+        db=db_session,
+    )
+    update_demo_request_status(
+        demo_request_id=second.data["id"],
+        payload=DemoRequestStatusUpdateRequest(status="contacted"),
+        token_payload={"role": "owner"},
+        db=db_session,
+    )
+
+    response = list_demo_requests(
+        status_filter="contacted",
+        search="bluebird",
+        page=1,
+        page_size=50,
+        token_payload={"role": "ops_agent"},
+        db=db_session,
+    )
+
+    assert response.meta["total"] == 1
+    assert response.data[0]["company"] == "Bluebird Logistics"
+    assert response.meta["metrics"]["new"] == 1
+    assert response.meta["metrics"]["contacted"] == 1
+
+
+def test_demo_request_pipeline_update_persists_notes_and_follow_up(db_session):
+    created = create_demo_request(payload=_payload(), db=db_session)
+    follow_up = datetime(2026, 5, 8, 15, 30, tzinfo=timezone.utc)
+
+    response = update_demo_request_pipeline(
+        demo_request_id=created.data["id"],
+        payload=DemoRequestPipelineUpdateRequest(
+            status="scheduled",
+            notes="Call booked with owner.",
+            next_follow_up_at=follow_up,
+        ),
+        token_payload={"role": "support_agent"},
+        db=db_session,
+    )
+
+    assert response.data["status"] == "scheduled"
+    assert response.data["notes"] == "Call booked with owner."
+    assert response.data["next_follow_up_at"].startswith("2026-05-08T15:30:00")
+
+    row = db_session.get(DemoRequest, created.data["id"])
+    assert row is not None
+    assert row.notes == "Call booked with owner."
+    assert row.next_follow_up_at is not None
+
+
+def test_demo_request_closed_status_is_normalized_to_lost(db_session):
+    created = create_demo_request(payload=_payload(), db=db_session)
+    response = update_demo_request_status(
+        demo_request_id=created.data["id"],
+        payload=DemoRequestStatusUpdateRequest(status="closed"),
+        token_payload={"role": "admin"},
+        db=db_session,
+    )
+
+    assert response.data["status"] == "lost"
+    assert db_session.get(DemoRequest, created.data["id"]).status == "lost"
 
 
 def test_demo_request_status_update_for_staff(db_session):
