@@ -201,7 +201,7 @@ export default function DriverLoadDetailPage() {
   const status = toDriverStatus(asText(loadData?.status, "booked"), checklist.some((item) => item.required && !item.uploaded));
 
   return (
-    <main className="min-h-screen bg-slate-50 text-slate-900">
+    <main className="safe-page min-h-screen bg-slate-50 text-slate-900">
       <div className="mx-auto max-w-3xl px-4 py-6 sm:px-6 sm:py-10">
         <h1 className="text-2xl font-bold text-slate-950">Load {asText(loadData?.load_number)}</h1>
         <div className="mt-3 space-y-1 rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
@@ -213,7 +213,7 @@ export default function DriverLoadDetailPage() {
 
         {errorMessage ? <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{errorMessage}</div> : null}
         {successMessage ? <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{successMessage}</div> : null}
-        {pendingReplace ? <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"><p className="font-semibold">{pendingReplace.message}</p><div className="mt-2 flex gap-2"><button type="button" className="rounded-lg bg-amber-600 px-3 py-2 text-xs font-semibold text-white" onClick={() => void handleReplaceUpload()} disabled={Boolean(uploadingType)}>Replace existing</button><button type="button" className="rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-semibold text-amber-900" onClick={() => setPendingReplace(null)} disabled={Boolean(uploadingType)}>Cancel</button></div></div> : null}
+        {pendingReplace ? <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"><p className="font-semibold">{pendingReplace.message}</p><div className="mt-2 flex flex-col gap-2 sm:flex-row"><button type="button" className="touch-target rounded-lg bg-amber-600 px-3 py-2 text-xs font-semibold text-white" onClick={() => void handleReplaceUpload()} disabled={Boolean(uploadingType)}>Replace existing</button><button type="button" className="touch-target rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-semibold text-amber-900" onClick={() => setPendingReplace(null)} disabled={Boolean(uploadingType)}>Cancel</button></div></div> : null}
 
         <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-4">
           <h2 className="text-lg font-semibold text-slate-900">Document Uploads</h2>
@@ -229,7 +229,7 @@ export default function DriverLoadDetailPage() {
           <div className="mt-3 space-y-3">
             {checklist.map((item) => (
               <div key={item.type} className="rounded-xl border border-slate-200 p-3">
-                <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <div className="font-medium text-slate-900">{labelForDocumentType(item.type)}</div>
                     <div className="text-xs text-slate-600">{item.required ? "Required" : "Optional"}</div>
@@ -238,7 +238,7 @@ export default function DriverLoadDetailPage() {
                 </div>
 
                 {!item.uploaded ? (
-                  <label className="mt-3 inline-flex w-full cursor-pointer items-center justify-center rounded-xl bg-brand-600 px-5 py-3 text-sm font-semibold text-white sm:w-auto">
+                  <label className="touch-target mt-3 inline-flex w-full cursor-pointer items-center justify-center rounded-xl bg-brand-600 px-5 py-3 text-sm font-semibold text-white sm:w-auto">
                     {uploadingType === item.type ? "Uploading..." : `Upload ${labelForDocumentType(item.type)}`}
                     <input type="file" accept="image/*,application/pdf" capture="environment" className="hidden" onChange={(event) => void uploadDocument(item.type, event)} disabled={Boolean(uploadingType)} />
                   </label>
@@ -255,7 +255,7 @@ export default function DriverLoadDetailPage() {
               <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-500">No documents submitted for this load yet.</div>
             ) : (
               documents.map((document) => (
-                <div key={document.id} className="flex flex-col gap-1 rounded-xl border border-slate-200 p-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+                <div key={document.id} className="flex flex-col gap-2 rounded-xl border border-slate-200 p-3 text-sm sm:flex-row sm:items-center sm:justify-between">
                   <div className="min-w-0">
                     <div className="font-medium text-slate-900">{labelForDocumentType(document.document_type ?? "other")}</div>
                     <div className="break-all text-xs text-slate-600">{document.original_filename ?? "Uploaded document"}</div>

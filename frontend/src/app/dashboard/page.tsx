@@ -189,15 +189,15 @@ export default function DashboardPage() {
   }, [loads, workMode, ownershipFilter, currentUserId]);
 
   return (
-    <div className="px-6 py-10 text-slate-900"><div className="mx-auto max-w-7xl">
+    <div className="safe-page px-4 py-6 text-slate-900 sm:px-6 sm:py-10"><div className="mx-auto max-w-7xl">
       <header className="mb-8 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <p className="text-sm font-medium text-brand-700">Operator Dashboard</p>
-          <h1 className="text-3xl font-bold tracking-tight text-slate-950">Freight Back Office OS</h1>
+          <h1 className="break-mobile text-2xl font-bold tracking-tight text-slate-950 sm:text-3xl">Freight Back Office OS</h1>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">Centralize load operations, paperwork review, onboarding, billing, and support in one workspace.</p>
         </div>
 
-        <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-soft">
+        <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-soft sm:min-w-56">
           <div className="text-xs uppercase tracking-wide text-slate-500">Dashboard Health</div>
           <div className="mt-1 text-sm font-semibold text-slate-900">{(metrics?.critical_validation_issues ?? 0) > 0 ? "Attention Needed" : "Operational"}</div>
         </div>
@@ -211,7 +211,7 @@ export default function DashboardPage() {
           </div>
           <div className="flex flex-wrap gap-2">
             {(["dispatcher", "billing", "collections"] as WorkMode[]).map((mode) => (
-              <button key={mode} type="button" onClick={() => setWorkMode(mode)} className={`rounded-xl px-4 py-2 text-sm font-semibold transition ${workMode === mode ? "bg-brand-600 text-white" : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-100"}`}>
+              <button key={mode} type="button" onClick={() => setWorkMode(mode)} className={`touch-target rounded-xl px-4 py-2 text-sm font-semibold transition ${workMode === mode ? "bg-brand-600 text-white" : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-100"}`}>
                 {workModeConfig[mode].label}
               </button>
             ))}
@@ -233,7 +233,7 @@ export default function DashboardPage() {
               { key: "team_follow_ups", label: "Team follow-ups" },
               { key: "unassigned", label: "Unassigned" },
             ] as const).map((option) => (
-              <button key={option.key} type="button" onClick={() => setOwnershipFilter(option.key)} className={`rounded-xl px-3 py-2 text-xs font-semibold transition ${ownershipFilter === option.key ? "bg-slate-900 text-white" : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-100"}`}>
+              <button key={option.key} type="button" onClick={() => setOwnershipFilter(option.key)} className={`touch-target rounded-xl px-3 py-2 text-xs font-semibold transition ${ownershipFilter === option.key ? "bg-slate-900 text-white" : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-100"}`}>
                 {option.label}
               </button>
             ))}
@@ -246,12 +246,12 @@ export default function DashboardPage() {
             needsAttentionLoads.map((load) => {
               const urgency = getUrgency(load.next_follow_up_at);
               return (
-                <Link key={load.id} href={`/dashboard/loads/${load.id}`} className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 transition hover:border-brand-300">
+                <Link key={load.id} href={`/dashboard/loads/${load.id}`} className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 transition hover:border-brand-300 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <div className="text-sm font-semibold text-slate-900">Load {load.load_number ?? load.id.slice(0, 8)}</div>
                     <div className="mt-1 text-xs text-slate-600">{load.operational?.next_action?.label ?? "Follow-up required"} · {(load.operational?.queue ?? "general").replaceAll("_", " ")}</div>
                   </div>
-                  <div className="text-right">
+                  <div className="text-left sm:text-right">
                     <span className={`rounded-md px-2 py-1 text-xs font-semibold ${urgency.tone === "danger" ? "bg-rose-100 text-rose-700" : urgency.tone === "warning" ? "bg-amber-100 text-amber-700" : "bg-slate-100 text-slate-700"}`}>{urgency.label}</span>
                     <div className="mt-1 text-xs text-slate-500">{load.follow_up_owner_name ?? (load.follow_up_owner_id ? "Assigned" : "Unassigned")}</div>
                   </div>
@@ -269,31 +269,31 @@ export default function DashboardPage() {
         <MetricCard label="Paid" value={loading ? "..." : metrics?.loads_paid ?? 0} tone="success" />
       </section>
 
-      <section className="mb-8 rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
+      <section className="mb-8 rounded-2xl border border-slate-200 bg-white p-4 shadow-soft sm:p-6">
         <h2 className="text-lg font-semibold text-slate-950">Mode Priorities</h2>
         <p className="mt-1 text-sm text-slate-600">Focused KPI slices for the selected work mode.</p>
         <div className="mt-4 grid gap-4 md:grid-cols-3">{(loading ? [] : modeActionNow).map((item) => <div key={item.label}><MetricCard label={item.label} value={item.value} tone={item.tone as "default"|"warning"|"danger"|"success"} /><p className="mt-2 text-xs text-slate-600">{item.helper}</p></div>)}{loading ? <div className="text-sm text-slate-500">Loading priorities...</div> : null}</div>
         <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h3 className="text-sm font-semibold text-slate-900">Open Follow-Ups</h3>
               <p className="mt-1 text-xs text-slate-600">Overdue and urgent reminders to keep payment collections moving.</p>
             </div>
             <Link href="/dashboard/follow-ups" className="text-xs font-semibold text-brand-700 hover:underline">View follow-ups</Link>
           </div>
-          <div className="mt-3 flex gap-3 text-xs">
+          <div className="mt-3 flex flex-wrap gap-2 text-xs">
             <span className="rounded-md bg-rose-100 px-2 py-1 text-rose-700">Overdue: {metrics?.operational_queues?.payment_overdue ?? 0}</span>
             <span className="rounded-md bg-amber-100 px-2 py-1 text-amber-700">Urgent: {metrics?.operational_queues?.disputed_or_short_paid ?? 0}</span>
           </div>
         </div>
       </section>
 
-      <section className="mb-8 rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
+      <section className="mb-8 rounded-2xl border border-slate-200 bg-white p-4 shadow-soft sm:p-6">
         <div className="mb-4"><h2 className="text-lg font-semibold text-slate-950">Operational Queues</h2><p className="mt-1 text-sm text-slate-600">Queue order follows the selected work mode.</p></div>
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">{prioritizedQueues.map((queue) => <Link key={queue.key} href={`/dashboard/loads?queue=${encodeURIComponent(queue.key)}`} className="rounded-xl border border-slate-200 bg-slate-50 p-4 transition hover:border-brand-300 hover:bg-brand-50"><MetricCard label={queue.label} value={loading ? "..." : metrics?.operational_queues?.[queue.key] ?? 0} tone={queue.tone} /></Link>)}</div>
       </section>
 
-      <section className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">{dashboardCards.map((card) => <Link key={card.title} href={card.href} className="group rounded-2xl border border-slate-200 bg-white p-6 shadow-soft transition hover:-translate-y-0.5 hover:border-brand-300"><h2 className="text-lg font-semibold text-slate-950">{card.title}</h2><p className="mt-2 text-sm leading-6 text-slate-600">{card.description}</p><div className="mt-5 text-sm font-medium text-brand-700 group-hover:text-brand-800">Go to {card.title} →</div></Link>)}</section>
+      <section className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">{dashboardCards.map((card) => <Link key={card.title} href={card.href} className="group rounded-2xl border border-slate-200 bg-white p-4 shadow-soft transition hover:-translate-y-0.5 hover:border-brand-300 sm:p-6"><h2 className="text-lg font-semibold text-slate-950">{card.title}</h2><p className="mt-2 text-sm leading-6 text-slate-600">{card.description}</p><div className="mt-5 text-sm font-medium text-brand-700 group-hover:text-brand-800">Go to {card.title} →</div></Link>)}</section>
     </div></div>
   );
 }

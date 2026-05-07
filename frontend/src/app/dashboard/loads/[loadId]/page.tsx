@@ -2583,12 +2583,12 @@ export default function LoadDetailPage() {
   }
 
   return (
-    <main className="min-h-screen bg-slate-50 text-slate-900">
-      <div className="mx-auto max-w-7xl px-6 py-10">
+    <main className="safe-page min-h-screen bg-slate-50 text-slate-900">
+      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-10">
         <div className="mb-8 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <p className="text-sm font-medium text-brand-700">Dashboard / Loads / Detail</p>
-            <h1 className="text-3xl font-bold tracking-tight text-slate-950">
+            <h1 className="break-mobile text-2xl font-bold tracking-tight text-slate-950 sm:text-3xl">
               {getLoadDisplayTitle(load)}
             </h1>
             <p className="mt-2 text-sm leading-6 text-slate-600">
@@ -2597,12 +2597,12 @@ export default function LoadDetailPage() {
             </p>
           </div>
 
-          <div className="flex flex-wrap gap-3">
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:gap-3">
             <button
               type="button"
               onClick={handleMarkReviewed}
               disabled={isMarkingReviewed}
-              className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+              className="touch-target rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {isMarkingReviewed ? "Marking..." : "Mark Reviewed"}
             </button>
@@ -2611,7 +2611,7 @@ export default function LoadDetailPage() {
               type="button"
               onClick={handleAdvanceStatus}
               disabled={!canAdvanceStatus}
-              className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
+              className="touch-target rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {isAdvancing
                 ? "Advancing..."
@@ -2623,7 +2623,7 @@ export default function LoadDetailPage() {
               type="button"
               onClick={handleGenerateInvoice}
               disabled={isGeneratingInvoice}
-              className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+              className="touch-target rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {isGeneratingInvoice ? "Generating..." : "Generate Invoice"}
             </button>
@@ -2645,7 +2645,7 @@ export default function LoadDetailPage() {
             ) : null}
             <a
               href={`${invoiceBlocker.actionUrl}?returnTo=${encodeURIComponent(`/dashboard/loads/${load.id}`)}`}
-              className="mt-4 inline-flex rounded-xl bg-amber-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-amber-700"
+              className="touch-target mt-4 inline-flex items-center rounded-xl bg-amber-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-amber-700"
             >
               Complete Carrier Profile
             </a>
@@ -2653,13 +2653,13 @@ export default function LoadDetailPage() {
         ) : null}
 
         <div className="mb-6 rounded-2xl border border-slate-200 bg-white p-4 shadow-soft">
-          <div className="flex flex-wrap items-end gap-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
             <label className="text-sm font-semibold text-slate-700">
               Quick status set
               <select
                 value={manualStatus}
                 onChange={(event) => setManualStatus(event.target.value as LoadStatus)}
-                className="mt-2 block rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
+                className="mt-2 block w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm sm:w-auto"
               >
                 {MANUAL_STATUS_OPTIONS.map((item) => (
                   <option key={item.value} value={item.value}>
@@ -2672,7 +2672,7 @@ export default function LoadDetailPage() {
               type="button"
               onClick={handleSetManualStatus}
               disabled={isSettingStatus}
-              className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
+              className="touch-target rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {isSettingStatus ? "Updating..." : "Set Status"}
             </button>
@@ -2688,12 +2688,12 @@ export default function LoadDetailPage() {
             Use explicit actions for broker and factoring operations. Each action logs workflow
             events and transitions status.
           </p>
-          <div className="mt-3 grid gap-2 md:grid-cols-2">
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
             <button
               type="button"
               onClick={() => void handleWorkflowAction("submit_to_broker")}
               disabled={isExecutingWorkflowAction}
-              className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-left text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+              className="touch-target rounded-xl border border-slate-300 bg-white px-3 py-2 text-left text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
             >
               Mark as Sent to Broker
             </button>
@@ -2701,7 +2701,7 @@ export default function LoadDetailPage() {
               type="button"
               onClick={() => void handleWorkflowAction("mark_packet_rejected")}
               disabled={isExecutingWorkflowAction}
-              className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-left text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+              className="touch-target rounded-xl border border-slate-300 bg-white px-3 py-2 text-left text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
             >
               Mark Packet Rejected
             </button>
@@ -2709,7 +2709,7 @@ export default function LoadDetailPage() {
               type="button"
               onClick={() => void handleWorkflowAction("submit_to_factoring")}
               disabled={isExecutingWorkflowAction}
-              className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-left text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+              className="touch-target rounded-xl border border-slate-300 bg-white px-3 py-2 text-left text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
             >
               Mark as Submitted to Factoring
             </button>
@@ -2717,7 +2717,7 @@ export default function LoadDetailPage() {
               type="button"
               onClick={() => void handleWorkflowAction("mark_advance_paid")}
               disabled={isExecutingWorkflowAction}
-              className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-left text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+              className="touch-target rounded-xl border border-slate-300 bg-white px-3 py-2 text-left text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
             >
               Mark as Funded
             </button>
@@ -2725,7 +2725,7 @@ export default function LoadDetailPage() {
               type="button"
               onClick={() => void handleWorkflowAction("mark_reserve_pending")}
               disabled={isExecutingWorkflowAction}
-              className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-left text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+              className="touch-target rounded-xl border border-slate-300 bg-white px-3 py-2 text-left text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
             >
               Mark Reserve Pending
             </button>
@@ -2733,7 +2733,7 @@ export default function LoadDetailPage() {
               type="button"
               onClick={() => void handleWorkflowAction("mark_fully_paid")}
               disabled={isExecutingWorkflowAction}
-              className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-left text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+              className="touch-target rounded-xl border border-slate-300 bg-white px-3 py-2 text-left text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
             >
               Mark Fully Paid
             </button>
@@ -2777,8 +2777,8 @@ export default function LoadDetailPage() {
 
         <div className="grid gap-6 xl:grid-cols-[2fr,1fr]">
           <section className="space-y-6">
-            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
-              <div className="mb-5 flex items-center justify-between gap-4">
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-soft sm:p-6">
+              <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
                 <h2 className="text-lg font-semibold text-slate-950">Load Summary</h2>
                 <span
                   className={`rounded-full px-3 py-1 text-xs font-semibold ${statusBadge(
@@ -2933,8 +2933,8 @@ export default function LoadDetailPage() {
               </div>
             </div>
 
-            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
-              <div className="mb-5 flex items-center justify-between gap-4">
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-soft sm:p-6">
+              <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
                 <div>
                   <h2 className="text-lg font-semibold text-slate-950">Workflow Readiness</h2>
                   <p className="mt-1 text-sm text-slate-600">
@@ -2950,7 +2950,7 @@ export default function LoadDetailPage() {
                 </span>
               </div>
 
-              <div className="mb-6 grid gap-3 sm:grid-cols-3">
+              <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 <div className="rounded-xl border border-slate-200 px-4 py-3">
                   <div className="text-xs uppercase tracking-wide text-slate-500">Open Issues</div>
                   <div className="mt-1 text-lg font-semibold text-slate-950">{totalOpenIssues}</div>
@@ -2977,7 +2977,7 @@ export default function LoadDetailPage() {
                 {workflowSteps.map((step) => (
                   <div
                     key={step.status}
-                    className="flex items-center justify-between rounded-xl border border-slate-200 px-4 py-3"
+                    className="flex flex-col gap-2 rounded-xl border border-slate-200 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
                   >
                     <div className="text-sm font-medium text-slate-900">
                       {step.status.replaceAll("_", " ")}
@@ -2998,8 +2998,8 @@ export default function LoadDetailPage() {
               </div>
             </div>
 
-            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
-              <div className="mb-4 flex items-center justify-between gap-3">
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-soft sm:p-6">
+              <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <h2 className="text-lg font-semibold text-slate-950">Submission Packet</h2>
                   <p className="mt-1 text-sm text-slate-600">Build the broker/factor billing packet, send it, and track delivery outcomes.</p>
@@ -3008,7 +3008,7 @@ export default function LoadDetailPage() {
                   type="button"
                   onClick={() => void handleCreateSubmissionPacket()}
                   disabled={isSubmissionBusy}
-                  className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:opacity-50"
+                  className="touch-target rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:opacity-50"
                 >
                   {isSubmissionBusy ? "Working..." : "Create Submission Packet"}
                 </button>
@@ -3062,13 +3062,13 @@ export default function LoadDetailPage() {
               </div>
             </div>
 
-            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
-              <div className="mb-4 flex items-center justify-between gap-3">
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-soft sm:p-6">
+              <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <h2 className="text-lg font-semibold text-slate-950">Follow-Up Actions</h2>
                   <p className="mt-1 text-sm text-slate-600">Track reminders for packet responses, overdue payment, reserve release, and disputes.</p>
                 </div>
-                <button type="button" onClick={() => void handleGenerateFollowUps()} disabled={isSavingFollowUpTask} className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:opacity-50">
+                <button type="button" onClick={() => void handleGenerateFollowUps()} disabled={isSavingFollowUpTask} className="touch-target rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:opacity-50">
                   {isSavingFollowUpTask ? "Working..." : "Generate Follow-Up Tasks"}
                 </button>
               </div>
@@ -3091,7 +3091,7 @@ export default function LoadDetailPage() {
               </div>
             </div>
 
-            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-soft sm:p-6">
               <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div>
                   <h2 className="text-lg font-semibold text-slate-950">Documents</h2>
@@ -3105,7 +3105,7 @@ export default function LoadDetailPage() {
                     type="button"
                     onClick={handleRefreshDocuments}
                     disabled={isDocumentsLoading || isUploadingDocument}
-                    className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="touch-target rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {isDocumentsLoading ? "Refreshing..." : "Refresh"}
                   </button>
@@ -3169,7 +3169,7 @@ export default function LoadDetailPage() {
                       setSelectedUploadDocumentType(event.target.value as UploadDocumentType)
                     }
                     disabled={isUploadingDocument}
-                    className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="touch-target w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {UPLOAD_DOCUMENT_TYPE_OPTIONS.map((option) => (
                       <option key={option.value || "auto"} value={option.value}>
@@ -3205,11 +3205,11 @@ export default function LoadDetailPage() {
                 Document extraction may be incomplete for some files. Verify critical values before submission or funding actions.
               </div>
 
-              <div className="mb-6 grid gap-3 sm:grid-cols-3">
+              <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {documentChecklist.map((document) => (
                   <div
                     key={document.name}
-                    className="flex items-center justify-between rounded-xl border border-slate-200 px-4 py-3"
+                    className="flex flex-col gap-2 rounded-xl border border-slate-200 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
                   >
                     <div className="text-sm font-medium text-slate-900">{document.name}</div>
                     <span
@@ -3227,13 +3227,13 @@ export default function LoadDetailPage() {
                 ))}
               </div>
 
-              <div className="overflow-x-auto rounded-2xl border border-slate-200">
-                <div className="grid grid-cols-12 gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
+              <div className="mobile-scroll-area overflow-x-auto rounded-2xl border border-slate-200">
+                <div className="hidden grid-cols-12 gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500 lg:grid">
                   <div className="col-span-12 lg:col-span-4">Document</div>
-                  <div className="col-span-6 lg:col-span-2">Type</div>
-                  <div className="col-span-6 lg:col-span-2">Status</div>
-                  <div className="col-span-6 lg:col-span-2">Uploaded</div>
-                  <div className="col-span-6 lg:col-span-1">Size</div>
+                  <div className="col-span-1 lg:col-span-2">Type</div>
+                  <div className="col-span-1 lg:col-span-2">Status</div>
+                  <div className="col-span-1 lg:col-span-2">Uploaded</div>
+                  <div className="col-span-1 lg:col-span-1">Size</div>
                   <div className="col-span-12 lg:col-span-1 text-right">Action</div>
                 </div>
 
@@ -3242,7 +3242,7 @@ export default function LoadDetailPage() {
                     {loadDocuments.map((document) => (
                       <div
                         key={document.id}
-                        className="grid grid-cols-12 gap-3 px-4 py-4 text-sm text-slate-700"
+                        className="grid grid-cols-1 gap-3 px-4 py-4 text-sm text-slate-700 lg:grid-cols-12"
                       >
                         <div className="col-span-12 lg:col-span-4">
                           <div className="font-medium text-slate-900">
@@ -3253,7 +3253,8 @@ export default function LoadDetailPage() {
                           </div>
                         </div>
 
-                        <div className="col-span-6 lg:col-span-2">
+                        <div className="col-span-1 lg:col-span-2">
+                          <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500 lg:hidden">Type</div>
                           <select
                             value={(document.document_type as UploadDocumentType) || "unknown"}
                             onChange={(event) =>
@@ -3273,7 +3274,8 @@ export default function LoadDetailPage() {
                           </select>
                         </div>
 
-                        <div className="col-span-6 lg:col-span-2">
+                        <div className="col-span-1 lg:col-span-2">
+                          <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500 lg:hidden">Status</div>
                           <span
                             className={`rounded-full px-3 py-1 text-xs font-semibold ${processingStatusBadge(
                               document.processing_status
@@ -3283,20 +3285,22 @@ export default function LoadDetailPage() {
                           </span>
                         </div>
 
-                        <div className="col-span-6 lg:col-span-2">
+                        <div className="col-span-1 lg:col-span-2">
+                          <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500 lg:hidden">Uploaded</div>
                           <div>{formatDateTime(document.created_at)}</div>
                         </div>
 
-                        <div className="col-span-6 lg:col-span-1">
+                        <div className="col-span-1 lg:col-span-1">
+                          <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500 lg:hidden">Size</div>
                           <div>{formatFileSize(document.file_size_bytes)}</div>
                         </div>
 
-                        <div className="col-span-12 flex justify-end lg:col-span-1">
+                        <div className="col-span-1 flex flex-col gap-2 sm:flex-row sm:justify-end lg:col-span-1">
                           <button
                             type="button"
                             onClick={() => void handleDownloadDocument(document)}
                             disabled={downloadingDocumentId === document.id || deletingDocumentId === document.id}
-                            className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                            className="touch-target rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
                           >
                             {downloadingDocumentId === document.id ? "Downloading..." : "Download"}
                           </button>
@@ -3304,7 +3308,7 @@ export default function LoadDetailPage() {
                             type="button"
                             onClick={() => void handleDeleteDocument(document)}
                             disabled={deletingDocumentId === document.id}
-                            className="ml-2 rounded-xl border border-rose-300 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
+                            className="touch-target rounded-xl border border-rose-300 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50 sm:ml-2"
                           >
                             {deletingDocumentId === document.id ? "Deleting..." : "Delete"}
                           </button>
@@ -3320,7 +3324,7 @@ export default function LoadDetailPage() {
               </div>
             </div>
 
-            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-soft sm:p-6">
               <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                 <h2 className="text-lg font-semibold text-slate-950">Validation Issues</h2>
 
@@ -3366,7 +3370,7 @@ export default function LoadDetailPage() {
           </section>
 
           <aside className="space-y-6">
-            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-soft sm:p-6">
               <h2 className="mb-4 text-lg font-semibold text-slate-950">Quick Actions</h2>
               <div className="space-y-3">
                 <button
@@ -3386,7 +3390,7 @@ export default function LoadDetailPage() {
               </div>
             </div>
 
-            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-soft sm:p-6">
               <h2 className="mb-4 text-lg font-semibold text-slate-950">Load Metrics</h2>
               <div className="space-y-3 text-sm text-slate-700">
                 <div className="flex items-center justify-between">
@@ -3410,7 +3414,7 @@ export default function LoadDetailPage() {
               </div>
             </div>
 
-            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-soft sm:p-6">
               <h2 className="mb-2 text-lg font-semibold text-slate-950">Next Action & Follow-up</h2>
               <p className="text-sm text-slate-600">{load.operational?.next_action?.label || "Follow up with broker"}</p>
               <p className="mt-2 text-xs text-slate-500">Why this action is needed: {followUpReason}</p>
@@ -3451,7 +3455,7 @@ export default function LoadDetailPage() {
               </div>
             </div>
 
-            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-soft sm:p-6">
               <h2 className="mb-4 text-lg font-semibold text-slate-950">Payment Reconciliation</h2>
               <p className="mb-3 text-sm text-slate-600">Use these actions to track actual money movement for this load.</p>
               <div className="space-y-3 text-sm text-slate-700">
@@ -3482,7 +3486,7 @@ export default function LoadDetailPage() {
               </div>
             </div>
 
-            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-soft sm:p-6">
               <h2 className="mb-4 text-lg font-semibold text-slate-950">
                 Broker / Factoring Workflow
               </h2>
@@ -3576,7 +3580,7 @@ export default function LoadDetailPage() {
               ) : null}
             </div>
 
-            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-soft sm:p-6">
               <h2 className="mb-4 text-lg font-semibold text-slate-950">Notes</h2>
               <div className="text-sm text-slate-700">
                 {load.notes && load.notes.trim().length > 0 ? load.notes : "No notes available."}
@@ -3586,8 +3590,8 @@ export default function LoadDetailPage() {
         </div>
       </div>
       {modalState.kind !== "none" ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
-          <div className="w-full max-w-xl rounded-2xl border border-slate-200 bg-white p-5 shadow-soft">
+        <div className="fixed inset-0 z-50 flex items-end justify-center overflow-y-auto bg-slate-900/50 p-3 sm:items-center sm:p-4">
+          <div className="max-h-[92vh] w-full max-w-xl overflow-y-auto rounded-2xl border border-slate-200 bg-white p-4 shadow-soft sm:p-5">
             {modalState.kind === "send_packet_email" ? (
               <>
                 <h3 className="text-lg font-semibold text-slate-950">Email Billing Packet</h3>
@@ -3597,14 +3601,14 @@ export default function LoadDetailPage() {
                   {(load?.packet_readiness?.missing_required_documents?.submission ?? []).length > 0 ? <div className="mt-2 text-rose-700">Missing required docs: {(load?.packet_readiness?.missing_required_documents?.submission ?? []).join(", ")}. Sending is blocked.</div> : null}
                 </div>
                 <div className="mt-4 space-y-3">
-                  <input className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" value={modalState.toEmail} onChange={(event) => { setModalError(null); setModalState({ ...modalState, toEmail: event.target.value }); }} placeholder="Recipient email" />
-                  <input className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" value={modalState.subject} onChange={(event) => { setModalError(null); setModalState({ ...modalState, subject: event.target.value }); }} placeholder="Subject" />
-                  <textarea className="min-h-40 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" value={modalState.body} onChange={(event) => { setModalError(null); setModalState({ ...modalState, body: event.target.value }); }} placeholder="Email body" />
+                  <input className="touch-target w-full rounded-xl border border-slate-300 px-3 py-2 text-base sm:text-sm" value={modalState.toEmail} onChange={(event) => { setModalError(null); setModalState({ ...modalState, toEmail: event.target.value }); }} placeholder="Recipient email" />
+                  <input className="touch-target w-full rounded-xl border border-slate-300 px-3 py-2 text-base sm:text-sm" value={modalState.subject} onChange={(event) => { setModalError(null); setModalState({ ...modalState, subject: event.target.value }); }} placeholder="Subject" />
+                  <textarea className="min-h-40 w-full rounded-xl border border-slate-300 px-3 py-2 text-base sm:text-sm" value={modalState.body} onChange={(event) => { setModalError(null); setModalState({ ...modalState, body: event.target.value }); }} placeholder="Email body" />
                 </div>
                 {modalError ? <div className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{modalError}</div> : null}
-                <div className="mt-4 flex justify-end gap-2">
-                  <button type="button" className="rounded-xl border border-slate-300 px-3 py-2 text-sm" onClick={() => setModalState({ kind: "none" })}>Cancel</button>
-                  <button type="button" disabled={isSubmissionBusy || ((load?.packet_readiness?.missing_required_documents?.submission ?? []).length > 0)} className="rounded-xl bg-brand-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50" onClick={() => {
+                <div className="mt-4 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                  <button type="button" className="touch-target rounded-xl border border-slate-300 px-3 py-2 text-sm" onClick={() => setModalState({ kind: "none" })}>Cancel</button>
+                  <button type="button" disabled={isSubmissionBusy || ((load?.packet_readiness?.missing_required_documents?.submission ?? []).length > 0)} className="touch-target rounded-xl bg-brand-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50" onClick={() => {
                     if (!isValidEmail(modalState.toEmail)) return setModalError("Enter a valid recipient email.");
                     if (modalState.subject.trim().length < 3) return setModalError("Email subject is required.");
                     if (modalState.body.trim().length < 3) return setModalError("Email body is required.");
@@ -3618,13 +3622,13 @@ export default function LoadDetailPage() {
                 <h3 className="text-lg font-semibold text-slate-950">Payment Action</h3>
                 <div className="mt-4 grid gap-3">
                   {Object.entries(modalState.values).map(([key, value]) => (
-                    <input key={key} type={key.includes("date") ? "date" : "text"} className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" value={value} onChange={(event) => { setModalError(null); setModalState({ ...modalState, values: { ...modalState.values, [key]: event.target.value } }); }} placeholder={key.replaceAll("_", " ")} />
+                    <input key={key} type={key.includes("date") ? "date" : "text"} className="touch-target w-full rounded-xl border border-slate-300 px-3 py-2 text-base sm:text-sm" value={value} onChange={(event) => { setModalError(null); setModalState({ ...modalState, values: { ...modalState.values, [key]: event.target.value } }); }} placeholder={key.replaceAll("_", " ")} />
                   ))}
                 </div>
                 {modalError ? <div className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{modalError}</div> : null}
-                <div className="mt-4 flex justify-end gap-2">
-                  <button type="button" className="rounded-xl border border-slate-300 px-3 py-2 text-sm" onClick={() => setModalState({ kind: "none" })}>Cancel</button>
-                  <button type="button" disabled={isSavingPayment} className="rounded-xl bg-brand-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50" onClick={() => void submitPaymentAction(modalState.action, modalState.values)}>{isSavingPayment ? "Saving..." : "Save payment"}</button>
+                <div className="mt-4 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                  <button type="button" className="touch-target rounded-xl border border-slate-300 px-3 py-2 text-sm" onClick={() => setModalState({ kind: "none" })}>Cancel</button>
+                  <button type="button" disabled={isSavingPayment} className="touch-target rounded-xl bg-brand-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50" onClick={() => void submitPaymentAction(modalState.action, modalState.values)}>{isSavingPayment ? "Saving..." : "Save payment"}</button>
                 </div>
               </>
             ) : null}
@@ -3632,12 +3636,12 @@ export default function LoadDetailPage() {
               <>
                 <h3 className="text-lg font-semibold text-slate-950">Snooze Follow-Up</h3>
                 <div className="mt-4">
-                  <input type="date" className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" value={modalState.until} onChange={(event) => { setModalError(null); setModalState({ ...modalState, until: event.target.value }); }} />
+                  <input type="date" className="touch-target w-full rounded-xl border border-slate-300 px-3 py-2 text-base sm:text-sm" value={modalState.until} onChange={(event) => { setModalError(null); setModalState({ ...modalState, until: event.target.value }); }} />
                 </div>
                 {modalError ? <div className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{modalError}</div> : null}
-                <div className="mt-4 flex justify-end gap-2">
-                  <button type="button" className="rounded-xl border border-slate-300 px-3 py-2 text-sm" onClick={() => setModalState({ kind: "none" })}>Cancel</button>
-                  <button type="button" disabled={isSavingFollowUpTask} className="rounded-xl bg-brand-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50" onClick={() => {
+                <div className="mt-4 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                  <button type="button" className="touch-target rounded-xl border border-slate-300 px-3 py-2 text-sm" onClick={() => setModalState({ kind: "none" })}>Cancel</button>
+                  <button type="button" disabled={isSavingFollowUpTask} className="touch-target rounded-xl bg-brand-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50" onClick={() => {
                     if (!isValidDate(modalState.until)) return setModalError("Select a valid snooze date.");
                     void handleFollowUpAction(modalState.taskId, "snooze", new Date(`${modalState.until}T12:00:00Z`).toISOString());
                   }}>{isSavingFollowUpTask ? "Saving..." : "Snooze"}</button>

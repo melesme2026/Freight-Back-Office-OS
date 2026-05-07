@@ -92,9 +92,9 @@ export default function DriverPortalLayout({
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900">
+    <div className="safe-page min-h-screen bg-slate-50 text-slate-900">
       <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
+        <div className="mx-auto flex max-w-6xl flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
           <div>
             <div className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-700">Driver Portal</div>
             <div className="text-sm text-slate-500">{session.userEmail ?? "Authenticated user"}</div>
@@ -108,17 +108,17 @@ export default function DriverPortalLayout({
           <button
             type="button"
             onClick={handleLogout}
-            className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
+            className="touch-target rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
           >
             Log Out
           </button>
         </div>
-        <div className="mx-auto flex max-w-6xl gap-2 overflow-x-auto px-6 pb-3">
+        <nav aria-label="Driver portal sections" className="mobile-scroll-area mx-auto flex max-w-6xl gap-2 overflow-x-auto px-4 pb-3 sm:px-6">
           {DRIVER_NAV.map((item) => (
             <Link
               key={item.href}
               href={item.href}
-              className={`whitespace-nowrap rounded-full px-3 py-2 text-xs font-semibold transition ${
+              className={`touch-target inline-flex shrink-0 items-center whitespace-nowrap rounded-full px-3 py-2 text-xs font-semibold transition ${
                 isActive(pathname, item.href)
                   ? "bg-brand-600 text-white"
                   : "bg-slate-100 text-slate-700 hover:bg-slate-200"
@@ -127,7 +127,7 @@ export default function DriverPortalLayout({
               {item.label}
             </Link>
           ))}
-        </div>
+        </nav>
       </header>
       {children}
     </div>
