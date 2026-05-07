@@ -11,7 +11,7 @@ import {
   onAuthChanged,
   type AuthSession,
 } from "@/lib/auth";
-import { canAccessDashboardPath } from "@/lib/rbac";
+import { canAccessDashboardPath, canManageLeadPipeline } from "@/lib/rbac";
 
 type NavItem = {
   href: Route;
@@ -27,6 +27,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/dashboard/brokers", label: "Brokers" },
   { href: "/dashboard/drivers", label: "Drivers" },
   { href: "/dashboard/team", label: "Team" },
+  { href: "/dashboard/leads", label: "Leads" },
   { href: "/dashboard/billing", label: "Billing" },
   { href: "/dashboard/money", label: "Money" },
   { href: "/dashboard/onboarding", label: "Onboarding" },
@@ -34,6 +35,14 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/dashboard/support", label: "Support" },
   { href: "/dashboard/settings", label: "Settings" },
 ];
+
+function canShowNavItem(item: NavItem, role: string | null): boolean {
+  if (item.href === "/dashboard/leads") {
+    return canManageLeadPipeline(role);
+  }
+
+  return canAccessDashboardPath(role, item.href);
+}
 
 function isActivePath(pathname: string, href: string): boolean {
   if (href === "/dashboard") {
@@ -147,7 +156,7 @@ export default function DashboardLayout({
           </div>
 
           <nav className="flex-1 space-y-1 px-3 py-4">
-            {NAV_ITEMS.map((item) => {
+            {NAV_ITEMS.filter((item) => canShowNavItem(item, session.userRole)).map((item) => {
               const active = isActivePath(pathname, item.href);
 
               return (
@@ -205,7 +214,7 @@ export default function DashboardLayout({
             </div>
 
             <nav aria-label="Dashboard sections" className="mobile-scroll-area flex gap-2 overflow-x-auto border-t border-slate-100 px-4 py-3 xl:hidden">
-              {NAV_ITEMS.map((item) => {
+              {NAV_ITEMS.filter((item) => canShowNavItem(item, session.userRole)).map((item) => {
                 const active = isActivePath(pathname, item.href);
 
                 return (

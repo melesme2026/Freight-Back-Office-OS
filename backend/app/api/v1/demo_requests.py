@@ -11,7 +11,14 @@ from app.core.exceptions import NotFoundError, RateLimitError, UnauthorizedError
 from app.core.security import get_current_token_payload
 from app.domain.models.demo_request import DemoRequest
 from app.schemas.common import ApiResponse
-from app.schemas.demo_requests import DemoRequestCreateRequest, DemoRequestStatusUpdateRequest
+from app.schemas.demo_requests import (
+    DEMO_REQUEST_ACCEPTED_STATUSES,
+    DEMO_REQUEST_STATUSES,
+    DemoRequestCreateRequest,
+    DemoRequestPipelineUpdateRequest,
+    DemoRequestStatusUpdateRequest,
+    normalize_demo_request_status,
+)
 from app.services.notifications.operational_notification_service import (
     OperationalNotificationService,
 )
@@ -23,8 +30,14 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-DEMO_REQUEST_STATUSES = {"new", "contacted", "scheduled", "converted", "closed"}
-STAFF_DEMO_REQUEST_ROLES = {"owner", "admin", "ops_manager", "ops_agent", "support_agent"}
+DB_SESSION_DEPENDENCY = Depends(get_db_session)
+TOKEN_PAYLOAD_DEPENDENCY = Depends(get_current_token_payload)
+STATUS_FILTER_QUERY = Query(default=None, alias="status")
+PAGE_QUERY = Query(default=1, ge=1)
+PAGE_SIZE_QUERY = Query(default=50, ge=1, le=200)
+SEARCH_QUERY = Query(default=None, min_length=1, max_length=255)
+
+STAFF_DEMO_REQUEST_ROLES = {"owner", "admin", "staff", "ops_manager", "ops_agent", "support_agent"}
 
 
 def _clean_text(value: str | None) -> str | None:
@@ -117,7 +130,10 @@ def _serialize_demo_request(item: DemoRequest) -> dict[str, Any]:
         "phone": item.phone,
         "fleet_size": item.fleet_size,
         "message": item.message,
-        "status": item.status,
+        "status": normalize_demo_request_status(item.status),
+        "notes": item.notes,
+        "next_follow_up_at": item.next_follow_up_at.isoformat() if item.next_follow_up_at else None,
+        "source": "request_demo",
         "created_at": item.created_at.isoformat() if item.created_at else None,
         "updated_at": item.updated_at.isoformat() if item.updated_at else None,
     }
@@ -133,7 +149,7 @@ def _ensure_demo_request_staff(token_payload: dict[str, Any]) -> None:
 def create_demo_request(
     payload: DemoRequestCreateRequest,
     request: Request = None,  # type: ignore[assignment]
-    db: Session = Depends(get_db_session),
+    db: Session = DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     settings = get_settings()
     source_ip = _client_ip(request)
@@ -201,41 +217,115 @@ def create_demo_request(
 @router.get("/demo-requests", response_model=ApiResponse)
 def list_demo_requests(
     *,
-    status_filter: str | None = Query(default=None, alias="status"),
-    page: int = Query(default=1, ge=1),
-    page_size: int = Query(default=50, ge=1, le=200),
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    status_filter: str | None = STATUS_FILTER_QUERY,
+    page: int = PAGE_QUERY,
+    page_size: int = PAGE_SIZE_QUERY,
+    search: str | None = SEARCH_QUERY,
+    token_payload: dict[str, Any] = TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     _ensure_demo_request_staff(token_payload)
     stmt = select(DemoRequest)
     count_stmt = select(func.count(DemoRequest.id))
+    if not isinstance(status_filter, str):
+        status_filter = None
+    if not isinstance(search, str):
+        search = None
+
     if status_filter:
         normalized_status = status_filter.strip().lower()
-        if normalized_status not in DEMO_REQUEST_STATUSES:
+        if normalized_status not in DEMO_REQUEST_ACCEPTED_STATUSES:
             raise ValidationError(
                 "Invalid demo request status",
                 details={"allowed_statuses": sorted(DEMO_REQUEST_STATUSES)},
             )
-        stmt = stmt.where(DemoRequest.status == normalized_status)
-        count_stmt = count_stmt.where(DemoRequest.status == normalized_status)
+        normalized_status = normalize_demo_request_status(normalized_status)
+        if normalized_status == "lost":
+            status_clause = DemoRequest.status.in_(["lost", "closed"])
+        else:
+            status_clause = DemoRequest.status == normalized_status
+        stmt = stmt.where(status_clause)
+        count_stmt = count_stmt.where(status_clause)
+
+    if search:
+        term = f"%{search.strip().lower()}%"
+        search_clause = or_(
+            func.lower(DemoRequest.full_name).like(term),
+            func.lower(DemoRequest.company).like(term),
+            func.lower(DemoRequest.email).like(term),
+            func.lower(func.coalesce(DemoRequest.phone, "")).like(term),
+        )
+        stmt = stmt.where(search_clause)
+        count_stmt = count_stmt.where(search_clause)
 
     total = db.scalar(count_stmt) or 0
     items = db.scalars(
         stmt.order_by(DemoRequest.created_at.desc()).offset((page - 1) * page_size).limit(page_size)
     ).all()
+    metric_rows = db.execute(
+        select(DemoRequest.status, func.count(DemoRequest.id)).group_by(DemoRequest.status)
+    ).all()
+    metrics = {status: 0 for status in sorted(DEMO_REQUEST_STATUSES)}
+    for raw_status, count in metric_rows:
+        status_key = normalize_demo_request_status(str(raw_status or "new"))
+        if status_key in metrics:
+            metrics[status_key] += int(count)
+
     return ApiResponse(
         data=[_serialize_demo_request(item) for item in items],
-        meta={"page": page, "page_size": page_size, "total": int(total)},
+        meta={"page": page, "page_size": page_size, "total": int(total), "metrics": metrics},
     )
+
+
+@router.get("/demo-requests/{demo_request_id}", response_model=ApiResponse)
+def get_demo_request(
+    demo_request_id: uuid.UUID,
+    token_payload: dict[str, Any] = TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = DB_SESSION_DEPENDENCY,
+) -> ApiResponse:
+    _ensure_demo_request_staff(token_payload)
+    item = db.get(DemoRequest, demo_request_id)
+    if item is None:
+        raise NotFoundError(
+            "Demo request not found", details={"demo_request_id": str(demo_request_id)}
+        )
+    return ApiResponse(data=_serialize_demo_request(item))
+
+
+@router.patch("/demo-requests/{demo_request_id}", response_model=ApiResponse)
+def update_demo_request_pipeline(
+    demo_request_id: uuid.UUID,
+    payload: DemoRequestPipelineUpdateRequest,
+    token_payload: dict[str, Any] = TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = DB_SESSION_DEPENDENCY,
+) -> ApiResponse:
+    _ensure_demo_request_staff(token_payload)
+    item = db.get(DemoRequest, demo_request_id)
+    if item is None:
+        raise NotFoundError(
+            "Demo request not found", details={"demo_request_id": str(demo_request_id)}
+        )
+
+    update_data = payload.model_dump(exclude_unset=True)
+    if "status" in update_data and update_data["status"] is not None:
+        item.status = update_data["status"]
+    if "notes" in update_data:
+        item.notes = update_data["notes"]
+    if "next_follow_up_at" in update_data:
+        item.next_follow_up_at = update_data["next_follow_up_at"]
+
+    db.add(item)
+    db.commit()
+    db.refresh(item)
+    return ApiResponse(data=_serialize_demo_request(item))
 
 
 @router.patch("/demo-requests/{demo_request_id}/status", response_model=ApiResponse)
 def update_demo_request_status(
     demo_request_id: uuid.UUID,
     payload: DemoRequestStatusUpdateRequest,
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     _ensure_demo_request_staff(token_payload)
     item = db.get(DemoRequest, demo_request_id)
