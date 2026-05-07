@@ -19,7 +19,7 @@ from app.services.ai.extraction_service import ExtractionService
 from app.services.documents.document_linker import DocumentLinker
 from app.services.documents.document_service import DocumentService
 from app.services.documents.storage_service import StorageService
-from app.services.notifications.notification_service import NotificationService
+from app.services.notifications.operational_notification_service import OperationalNotificationService
 from fastapi import (
     APIRouter,
     Depends,
@@ -316,27 +316,21 @@ def _build_document_list_meta(
 def _create_document_uploaded_notification(
     *,
     db: Session,
-    organization_id: str,
-    customer_account_id: str,
-    document_id: str,
-    driver_id: str | None,
-    load_id: str | None,
+    document: Any,
+    driver: Any | None = None,
+    driver_confirmation: bool = False,
 ) -> None:
     try:
-        notification_service = NotificationService(db)
-        notification_service.create_notification(
-            organization_id=organization_id,
-            channel=Channel.MANUAL.value,
-            direction="inbound",
-            message_type="document_uploaded",
-            customer_account_id=customer_account_id,
-            driver_id=driver_id,
-            load_id=load_id,
-            subject="Driver document uploaded",
-            body_text=f"Document {document_id} was uploaded.",
-            status="queued",
+        OperationalNotificationService(db).document_uploaded(
+            document=document,
+            driver=driver,
+            driver_confirmation=driver_confirmation,
         )
     except Exception:
+        logger.exception(
+            "Document upload notification failed",
+            extra={"document_id": str(getattr(document, "id", ""))},
+        )
         # Keep upload path resilient even if notification creation fails.
         return
 
@@ -457,14 +451,7 @@ async def upload_document(
                 page_count=page_count,
                 uploaded_by_staff_user_id=server_uploaded_by_staff_user_id,
             )
-        _create_document_uploaded_notification(
-            db=db,
-            organization_id=str(organization_id),
-            customer_account_id=str(customer_account_id),
-            document_id=str(item.id),
-            driver_id=_uuid_to_str(driver_id),
-            load_id=_uuid_to_str(load_id),
-        )
+        _create_document_uploaded_notification(db=db, document=item)
         db.commit()
 
         return ApiResponse(
@@ -642,11 +629,9 @@ async def upload_driver_document(
             )
         _create_document_uploaded_notification(
             db=db,
-            organization_id=str(organization_id),
-            customer_account_id=str(driver.customer_account_id),
-            document_id=str(item.id),
-            driver_id=str(driver.id),
-            load_id=resolved_load_id,
+            document=item,
+            driver=driver,
+            driver_confirmation=True,
         )
         db.commit()
 

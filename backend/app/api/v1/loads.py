@@ -30,6 +30,7 @@ from app.services.loads.load_service import LoadService
 from app.services.loads.operational_queue_service import OperationalQueueService
 from app.services.loads.packet_readiness import calculate_packet_readiness
 from app.services.loads.submission_packet_service import SubmissionPacketService
+from app.services.notifications.operational_notification_service import OperationalNotificationService
 from app.services.workflow.workflow_engine import WorkflowEngine
 
 
@@ -1398,6 +1399,20 @@ def transition_load_status(
         actor_type=_normalize_required_text(payload.actor_type, "actor_type"),
         notes=_normalize_optional_text(payload.notes),
     )
+
+    transitioned_load = service.get_load(str(load_id))
+    try:
+        notifier = OperationalNotificationService(db)
+        old_status = str(result.get("old_status") or "")
+        new_status = str(result.get("new_status") or "")
+        if parsed_status in {LoadStatus.SUBMITTED_TO_BROKER, LoadStatus.SUBMITTED_TO_FACTORING} and old_status != new_status:
+            notifier.invoice_submitted(load=transitioned_load)
+        if parsed_status == LoadStatus.FULLY_PAID and old_status != new_status:
+            payment_record = getattr(transitioned_load, "payment_record", None)
+            if payment_record is not None:
+                notifier.payment_status_updated(record=payment_record, previous_status=old_status)
+    except Exception:
+        logger.exception("Load status notification failed", extra={"load_id": str(load_id)})
 
     db.commit()
 

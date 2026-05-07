@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import datetime
 from decimal import Decimal
@@ -13,7 +14,10 @@ from app.core.dependencies import get_db_session
 from app.core.exceptions import ForbiddenError
 from app.core.security import get_current_token_payload
 from app.schemas.common import ApiResponse
+from app.services.notifications.operational_notification_service import OperationalNotificationService
 from app.services.payments.payment_reconciliation_service import PaymentReconciliationService
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/loads/{load_id}/payment-reconciliation")
 
@@ -145,6 +149,19 @@ def _org_id(token_payload: dict[str, Any]) -> str:
     return str(token_payload.get("organization_id") or "")
 
 
+def _notify_payment_status(db: Session, record: Any, previous_status: str | None) -> None:
+    try:
+        OperationalNotificationService(db).payment_status_updated(
+            record=record,
+            previous_status=previous_status,
+        )
+    except Exception:
+        logger.exception(
+            "Payment status notification failed",
+            extra={"load_id": _to_str(getattr(record, "load_id", None))},
+        )
+
+
 @router.get("/", response_model=ApiResponse)
 def get_payment_reconciliation(
     load_id: str,
@@ -168,6 +185,7 @@ def patch_payment_reconciliation(
     service = _service(db)
     record = service.get_or_create_for_load(load_id, _org_id(token_payload), actor_staff_user_id=_actor_id(token_payload))
 
+    previous_status = getattr(getattr(record, "payment_status", None), "value", getattr(record, "payment_status", None))
     if payload.amount_received is not None:
         record = service.update_amount_received(load_id, _org_id(token_payload), payload.amount_received)
     if payload.notes is not None:
@@ -179,6 +197,7 @@ def patch_payment_reconciliation(
     record.payment_status = service.compute_status(record)
     record.updated_by_staff_user_id = uuid.UUID(_actor_id(token_payload)) if _actor_id(token_payload) else None
     db.flush()
+    _notify_payment_status(db, record, str(previous_status) if previous_status else None)
     return ApiResponse(data=_serialize(record))
 
 
@@ -186,9 +205,12 @@ def patch_payment_reconciliation(
 def mark_paid(load_id: str, payload: MarkPaidRequest, db: Session = Depends(get_db_session), token_payload: dict[str, Any] = Depends(get_current_token_payload)) -> ApiResponse:
     _authorize_payment_write(token_payload)
     service = _service(db)
+    existing_record = service.get_or_create_for_load(load_id, _org_id(token_payload), actor_staff_user_id=_actor_id(token_payload))
+    previous_status = getattr(getattr(existing_record, "payment_status", None), "value", getattr(existing_record, "payment_status", None))
     record = service.mark_paid(load_id, _org_id(token_payload), payload.amount, payload.paid_date)
     record.updated_by_staff_user_id = uuid.UUID(_actor_id(token_payload)) if _actor_id(token_payload) else None
     db.flush()
+    _notify_payment_status(db, record, str(previous_status) if previous_status else None)
     return ApiResponse(data=_serialize(record))
 
 
@@ -196,9 +218,12 @@ def mark_paid(load_id: str, payload: MarkPaidRequest, db: Session = Depends(get_
 def mark_partial_payment(load_id: str, payload: MarkPartialRequest, db: Session = Depends(get_db_session), token_payload: dict[str, Any] = Depends(get_current_token_payload)) -> ApiResponse:
     _authorize_payment_write(token_payload)
     service = _service(db)
+    existing_record = service.get_or_create_for_load(load_id, _org_id(token_payload), actor_staff_user_id=_actor_id(token_payload))
+    previous_status = getattr(getattr(existing_record, "payment_status", None), "value", getattr(existing_record, "payment_status", None))
     record = service.mark_partial_payment(load_id, _org_id(token_payload), payload.amount)
     record.updated_by_staff_user_id = uuid.UUID(_actor_id(token_payload)) if _actor_id(token_payload) else None
     db.flush()
+    _notify_payment_status(db, record, str(previous_status) if previous_status else None)
     return ApiResponse(data=_serialize(record))
 
 
@@ -206,9 +231,12 @@ def mark_partial_payment(load_id: str, payload: MarkPartialRequest, db: Session 
 def mark_advance_paid(load_id: str, payload: MarkAdvanceRequest, db: Session = Depends(get_db_session), token_payload: dict[str, Any] = Depends(get_current_token_payload)) -> ApiResponse:
     _authorize_payment_write(token_payload)
     service = _service(db)
+    existing_record = service.get_or_create_for_load(load_id, _org_id(token_payload), actor_staff_user_id=_actor_id(token_payload))
+    previous_status = getattr(getattr(existing_record, "payment_status", None), "value", getattr(existing_record, "payment_status", None))
     record = service.mark_advance_paid(load_id, _org_id(token_payload), payload.amount, payload.advance_date, payload.factor_name)
     record.updated_by_staff_user_id = uuid.UUID(_actor_id(token_payload)) if _actor_id(token_payload) else None
     db.flush()
+    _notify_payment_status(db, record, str(previous_status) if previous_status else None)
     return ApiResponse(data=_serialize(record))
 
 
@@ -216,9 +244,12 @@ def mark_advance_paid(load_id: str, payload: MarkAdvanceRequest, db: Session = D
 def mark_reserve_pending(load_id: str, payload: MarkReservePendingRequest, db: Session = Depends(get_db_session), token_payload: dict[str, Any] = Depends(get_current_token_payload)) -> ApiResponse:
     _authorize_payment_write(token_payload)
     service = _service(db)
+    existing_record = service.get_or_create_for_load(load_id, _org_id(token_payload), actor_staff_user_id=_actor_id(token_payload))
+    previous_status = getattr(getattr(existing_record, "payment_status", None), "value", getattr(existing_record, "payment_status", None))
     record = service.mark_reserve_pending(load_id, _org_id(token_payload), payload.reserve_amount)
     record.updated_by_staff_user_id = uuid.UUID(_actor_id(token_payload)) if _actor_id(token_payload) else None
     db.flush()
+    _notify_payment_status(db, record, str(previous_status) if previous_status else None)
     return ApiResponse(data=_serialize(record))
 
 
@@ -226,9 +257,12 @@ def mark_reserve_pending(load_id: str, payload: MarkReservePendingRequest, db: S
 def mark_reserve_paid(load_id: str, payload: MarkReservePaidRequest, db: Session = Depends(get_db_session), token_payload: dict[str, Any] = Depends(get_current_token_payload)) -> ApiResponse:
     _authorize_payment_write(token_payload)
     service = _service(db)
+    existing_record = service.get_or_create_for_load(load_id, _org_id(token_payload), actor_staff_user_id=_actor_id(token_payload))
+    previous_status = getattr(getattr(existing_record, "payment_status", None), "value", getattr(existing_record, "payment_status", None))
     record = service.mark_reserve_paid(load_id, _org_id(token_payload), payload.amount, payload.reserve_paid_date)
     record.updated_by_staff_user_id = uuid.UUID(_actor_id(token_payload)) if _actor_id(token_payload) else None
     db.flush()
+    _notify_payment_status(db, record, str(previous_status) if previous_status else None)
     return ApiResponse(data=_serialize(record))
 
 
@@ -236,6 +270,8 @@ def mark_reserve_paid(load_id: str, payload: MarkReservePaidRequest, db: Session
 def mark_short_paid(load_id: str, payload: MarkShortPaidRequest, db: Session = Depends(get_db_session), token_payload: dict[str, Any] = Depends(get_current_token_payload)) -> ApiResponse:
     _authorize_payment_write(token_payload)
     service = _service(db)
+    existing_record = service.get_or_create_for_load(load_id, _org_id(token_payload), actor_staff_user_id=_actor_id(token_payload))
+    previous_status = getattr(getattr(existing_record, "payment_status", None), "value", getattr(existing_record, "payment_status", None))
     record = service.mark_short_paid(
         load_id,
         _org_id(token_payload),
@@ -245,6 +281,7 @@ def mark_short_paid(load_id: str, payload: MarkShortPaidRequest, db: Session = D
     )
     record.updated_by_staff_user_id = uuid.UUID(_actor_id(token_payload)) if _actor_id(token_payload) else None
     db.flush()
+    _notify_payment_status(db, record, str(previous_status) if previous_status else None)
     return ApiResponse(data=_serialize(record))
 
 
@@ -252,7 +289,10 @@ def mark_short_paid(load_id: str, payload: MarkShortPaidRequest, db: Session = D
 def mark_disputed(load_id: str, payload: MarkDisputedRequest, db: Session = Depends(get_db_session), token_payload: dict[str, Any] = Depends(get_current_token_payload)) -> ApiResponse:
     _authorize_payment_write(token_payload)
     service = _service(db)
+    existing_record = service.get_or_create_for_load(load_id, _org_id(token_payload), actor_staff_user_id=_actor_id(token_payload))
+    previous_status = getattr(getattr(existing_record, "payment_status", None), "value", getattr(existing_record, "payment_status", None))
     record = service.mark_disputed(load_id, _org_id(token_payload), payload.reason)
     record.updated_by_staff_user_id = uuid.UUID(_actor_id(token_payload)) if _actor_id(token_payload) else None
     db.flush()
+    _notify_payment_status(db, record, str(previous_status) if previous_status else None)
     return ApiResponse(data=_serialize(record))

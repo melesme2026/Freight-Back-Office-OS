@@ -115,6 +115,9 @@ class Settings(BaseSettings):
     whatsapp_verify_token: str | None = Field(default=None)
     whatsapp_webhook_secret: str | None = Field(default=None)
 
+    notifications_enabled: bool = Field(default=True, validation_alias=AliasChoices("NOTIFICATIONS_ENABLED", "notifications_enabled"))
+    email_delivery_enabled: bool = Field(default=False, validation_alias=AliasChoices("EMAIL_DELIVERY_ENABLED", "email_delivery_enabled"))
+    ops_notification_email: str | None = Field(default=None, validation_alias=AliasChoices("OPS_NOTIFICATION_EMAIL", "ops_notification_email"))
     email_enabled: bool = Field(default=False)
     email_provider: Literal["smtp", "ses", "sendgrid", "none"] = Field(default="none")
     default_from_email: str = Field(default="no-reply@freightbackoffice.local")
@@ -152,6 +155,8 @@ class Settings(BaseSettings):
         "log_json",
         "ai_enabled",
         "whatsapp_enabled",
+        "notifications_enabled",
+        "email_delivery_enabled",
         "email_enabled",
         "email_sending_enabled",
         "email_dev_allow_token_response",
@@ -247,6 +252,9 @@ class Settings(BaseSettings):
         "smtp_host",
         "smtp_username",
         "smtp_password",
+        "ops_notification_email",
+        "email_from_address",
+        "email_from_name",
         "frontend_api_url",
         "public_backend_url",
         mode="before",

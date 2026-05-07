@@ -33,6 +33,10 @@ class EmailService:
         if not normalized_body:
             raise ValidationError("body_text is required")
 
+        delivery_enabled = self.settings.email_delivery_enabled or self.settings.email_sending_enabled
+        if not delivery_enabled and self.settings.environment not in {"local", "development", "test"}:
+            raise ValidationError("Email delivery is disabled")
+
         if not self.settings.email_enabled:
             if self.settings.environment in {"local", "development", "test"}:
                 return {
@@ -59,7 +63,9 @@ class EmailService:
             raise ValidationError("smtp_host is required for smtp email delivery")
 
         msg = EmailMessage()
-        msg["From"] = self.settings.default_from_email
+        from_email = self.settings.email_from_address or self.settings.default_from_email
+        from_name = self.settings.email_from_name
+        msg["From"] = f"{from_name} <{from_email}>" if from_name else from_email
         msg["To"] = normalized_to_email
         msg["Subject"] = normalized_subject
         msg.set_content(normalized_body)
