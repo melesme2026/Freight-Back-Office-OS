@@ -8,7 +8,6 @@ from urllib.parse import urlparse
 from pydantic import AliasChoices, Field, computed_field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-
 ROOT_DIR = Path(__file__).resolve().parents[3]
 BACKEND_DIR = ROOT_DIR / "backend"
 APP_DIR = BACKEND_DIR / "app"
@@ -140,8 +139,49 @@ class Settings(BaseSettings):
 
     billing_enabled: bool = Field(default=False)
     payment_provider: Literal["stripe", "manual", "none"] = Field(default="none")
-    stripe_secret_key: str | None = Field(default=None)
-    stripe_webhook_secret: str | None = Field(default=None)
+    stripe_secret_key: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("STRIPE_SECRET_KEY", "stripe_secret_key"),
+    )
+    stripe_webhook_secret: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("STRIPE_WEBHOOK_SECRET", "stripe_webhook_secret"),
+    )
+    stripe_price_starter_monthly: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "STRIPE_PRICE_STARTER_MONTHLY",
+            "stripe_price_starter_monthly",
+        ),
+    )
+    stripe_price_growth_monthly: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "STRIPE_PRICE_GROWTH_MONTHLY",
+            "stripe_price_growth_monthly",
+        ),
+    )
+    stripe_success_url: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("STRIPE_SUCCESS_URL", "stripe_success_url"),
+    )
+    stripe_cancel_url: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("STRIPE_CANCEL_URL", "stripe_cancel_url"),
+    )
+    billing_enforcement_enabled: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            "BILLING_ENFORCEMENT_ENABLED",
+            "billing_enforcement_enabled",
+        ),
+    )
+    default_trial_days: int = Field(
+        default=14,
+        ge=0,
+        le=365,
+        validation_alias=AliasChoices("DEFAULT_TRIAL_DAYS", "default_trial_days"),
+    )
 
     healthcheck_timeout_seconds: int = Field(default=5, ge=1)
     seed_mode: Literal["demo", "minimal"] = Field(default="demo")

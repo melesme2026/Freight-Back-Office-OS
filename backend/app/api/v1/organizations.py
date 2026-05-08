@@ -58,8 +58,8 @@ class OrganizationUpdateRequest(BaseModel):
 
 
 ALLOWED_BILLING_PROVIDERS = {"stripe", "manual", "none"}
-ALLOWED_BILLING_STATUSES = {"trial", "active", "manual_active", "inactive", "past_due", "canceled"}
-ALLOWED_PLAN_CODES = {"starter", "growth", "enterprise", "none"}
+ALLOWED_BILLING_STATUSES = {"trial", "trialing", "active", "manual_active", "inactive", "past_due", "unpaid", "canceled", "incomplete", "none"}
+ALLOWED_PLAN_CODES = {"starter", "growth", "fleet", "enterprise", "none"}
 
 
 def _normalize_required_text(value: str, field_name: str) -> str:
@@ -120,6 +120,14 @@ def _serialize_organization(item: Any) -> dict[str, Any]:
         "plan_code": item.plan_code,
         "stripe_customer_id": item.stripe_customer_id,
         "stripe_subscription_id": item.stripe_subscription_id,
+        "plan_key": getattr(item, "plan_key", None),
+        "subscription_status": getattr(item, "subscription_status", None),
+        "trial_start": _to_iso_or_none(getattr(item, "trial_start", None)),
+        "trial_end": _to_iso_or_none(getattr(item, "trial_end", None)),
+        "current_period_start": _to_iso_or_none(getattr(item, "current_period_start", None)),
+        "current_period_end": _to_iso_or_none(getattr(item, "current_period_end", None)),
+        "cancel_at_period_end": getattr(item, "cancel_at_period_end", None),
+        "last_payment_status": getattr(item, "last_payment_status", None),
         "billing_notes": item.billing_notes,
         "created_at": _to_iso_or_none(item.created_at),
         "updated_at": _to_iso_or_none(item.updated_at),
@@ -204,6 +212,7 @@ def create_organization(
             details={"slug": normalized_slug},
         )
 
+    normalized_plan_code = _normalize_plan_code(payload.plan_code) or "none"
     org = Organization(
         name=normalized_name,
         slug=normalized_slug,
@@ -215,7 +224,9 @@ def create_organization(
         is_active=payload.is_active,
         billing_provider=_normalize_billing_provider(payload.billing_provider) or "none",
         billing_status=_normalize_billing_status(payload.billing_status) or "trial",
-        plan_code=_normalize_plan_code(payload.plan_code) or "none",
+        plan_code=normalized_plan_code,
+        plan_key=normalized_plan_code,
+        subscription_status="trialing" if (_normalize_billing_status(payload.billing_status) or "trial") in {"trial", "trialing"} else (_normalize_billing_status(payload.billing_status) or "none"),
         stripe_customer_id=_normalize_optional_text(payload.stripe_customer_id),
         stripe_subscription_id=_normalize_optional_text(payload.stripe_subscription_id),
         billing_notes=_normalize_optional_text(payload.billing_notes),
@@ -322,9 +333,11 @@ def update_organization(
 
         if payload.billing_status is not None:
             org.billing_status = _normalize_billing_status(payload.billing_status) or org.billing_status
+            org.subscription_status = "trialing" if org.billing_status == "trial" else org.billing_status
 
         if payload.plan_code is not None:
             org.plan_code = _normalize_plan_code(payload.plan_code) or org.plan_code
+            org.plan_key = org.plan_code
 
         if payload.stripe_customer_id is not None:
             org.stripe_customer_id = _normalize_optional_text(payload.stripe_customer_id)
