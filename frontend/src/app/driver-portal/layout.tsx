@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { clearAuth, getAuthSession, onAuthChanged, type AuthSession } from "@/lib/auth";
+import DriverMobileRuntime from "@/components/driver/DriverMobileRuntime";
 import { canAccessDriverPortal } from "@/lib/rbac";
 
 const DRIVER_NAV = [
@@ -129,6 +130,7 @@ export default function DriverPortalLayout({
           ))}
         </nav>
       </header>
+      <DriverMobileRuntime />
       {children}
     </div>
   );

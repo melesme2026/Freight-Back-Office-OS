@@ -308,6 +308,10 @@ export async function mockApi(page: Page) {
       return ok(route, { new_status: "invoice_ready" });
     }
 
+    if (path.includes("/driver/loads/") && path.endsWith("/check-in") && method === "POST") {
+      return ok(route, { ...seed.load, status: "in_transit", driver_name: seed.driver.name });
+    }
+
     if (path.includes("/workflow-actions") && method === "POST") {
       return ok(route, { new_status: "invoice_ready" });
     }

@@ -1,5 +1,7 @@
 "use client";
 
+/* eslint-disable @next/next/no-img-element */
+
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 
@@ -7,6 +9,11 @@ import { useLoads } from "@/hooks/useLoads";
 import { ApiClientError, apiClient } from "@/lib/api-client";
 import { getAccessToken, getOrganizationId } from "@/lib/auth";
 import { labelForDocumentType } from "@/lib/driver-portal";
+import {
+  enqueueDriverUpload,
+  uploadDriverDocumentWithProgress,
+  validateDriverUploadFile,
+} from "@/lib/driver-mobile";
 
 type DriverDocument = {
   id: string;
@@ -85,10 +92,22 @@ export default function DriverUploadsPage() {
   const [documents, setDocuments] = useState<DriverDocument[]>([]);
   const [isLoadingDocuments, setIsLoadingDocuments] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const MAX_UPLOAD_MB = 15;
   const acceptedTypes = "PDF, JPG, PNG, WEBP, HEIC, HEIF, TIFF";
+
+  useEffect(() => {
+    if (!file || !file.type.startsWith("image/")) {
+      setPreviewUrl(null);
+      return;
+    }
+    const nextPreviewUrl = URL.createObjectURL(file);
+    setPreviewUrl(nextPreviewUrl);
+    return () => URL.revokeObjectURL(nextPreviewUrl);
+  }, [file]);
 
   const loadOptions = useMemo(() => {
     return loads.map((load) => ({
@@ -129,7 +148,6 @@ export default function DriverUploadsPage() {
 
     if (isSubmitting) return;
 
-    const token = getAccessToken();
     const organizationId = getOrganizationId();
 
     if (!organizationId || !file || !documentType.trim()) {
@@ -137,17 +155,10 @@ export default function DriverUploadsPage() {
       return;
     }
 
-    if (file.size > MAX_UPLOAD_MB * 1024 * 1024) {
-      setErrorMessage(`File is too large. Upload a file under ${MAX_UPLOAD_MB}MB.`);
+    const validationError = validateDriverUploadFile(file);
+    if (validationError) {
+      setErrorMessage(validationError);
       return;
-    }
-
-    const formData = new FormData();
-    formData.append("organization_id", organizationId);
-    formData.append("document_type", documentType.trim());
-    formData.append("file", file);
-    if (selectedLoadId) {
-      formData.append("load_id", selectedLoadId);
     }
 
     try {
@@ -155,9 +166,13 @@ export default function DriverUploadsPage() {
       setErrorMessage(null);
       setSuccessMessage(null);
 
-      const response = await apiClient.post<unknown>("/driver/documents/upload", formData, {
-        token: token ?? undefined,
-        organizationId: organizationId ?? undefined,
+      setUploadProgress(0);
+      const response = await uploadDriverDocumentWithProgress({
+        organizationId,
+        documentType: documentType.trim(),
+        file,
+        loadId: selectedLoadId || null,
+        onProgress: (progress) => setUploadProgress(progress.percent),
       });
 
       const uploadedDocument = normalizeDocuments(response)[0] ?? normalizeDocuments({ data: [asRecord(response)?.data] })[0];
@@ -174,9 +189,23 @@ export default function DriverUploadsPage() {
       }
       await fetchDocuments();
     } catch (error: unknown) {
-      setErrorMessage(getFriendlyError(error));
+      if (typeof window !== "undefined" && (!window.navigator.onLine || error instanceof TypeError || (error instanceof Error && error.message.toLowerCase().includes("network")))) {
+        try {
+          await enqueueDriverUpload({ file, documentType: documentType.trim(), loadId: selectedLoadId || null });
+          setSuccessMessage(`Offline: queued ${file.name}. It will retry when your connection returns.`);
+          setFile(null);
+          setSelectedLoadId("");
+          const uploadInput = event.currentTarget.elements.namedItem("upload-file") as HTMLInputElement | null;
+          if (uploadInput) uploadInput.value = "";
+        } catch (queueError: unknown) {
+          setErrorMessage(queueError instanceof Error ? queueError.message : "Upload failed and could not be queued.");
+        }
+      } else {
+        setErrorMessage(getFriendlyError(error));
+      }
     } finally {
       setIsSubmitting(false);
+      setUploadProgress(null);
     }
   }
 
@@ -301,9 +330,22 @@ export default function DriverUploadsPage() {
                 className="mt-2 w-full rounded-xl border border-dashed border-slate-300 bg-slate-50 px-3 py-4 text-sm text-slate-700 file:mr-3 file:min-h-11 file:rounded-lg file:border-0 file:bg-brand-600 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white disabled:cursor-not-allowed disabled:opacity-60"
               />
               {file ? (
-                <p className="mt-2 break-all text-xs text-slate-600">
-                  Selected: {file.name} ({(file.size / (1024 * 1024)).toFixed(2)}MB)
-                </p>
+                <div className="mt-3 space-y-3">
+                  <p className="break-all text-xs text-slate-600">
+                    Selected: {file.name} ({(file.size / (1024 * 1024)).toFixed(2)}MB)
+                  </p>
+                  {previewUrl ? (
+                    <img src={previewUrl} alt="Selected document preview" className="max-h-72 w-full rounded-xl border border-slate-200 object-contain" />
+                  ) : null}
+                </div>
+              ) : null}
+              {uploadProgress !== null ? (
+                <div className="mt-3" aria-label="Upload progress">
+                  <div className="h-3 overflow-hidden rounded-full bg-slate-200">
+                    <div className="h-full rounded-full bg-brand-600 transition-all" style={{ width: `${uploadProgress}%` }} />
+                  </div>
+                  <p className="mt-1 text-xs font-semibold text-slate-600">Uploading: {uploadProgress}%</p>
+                </div>
               ) : null}
             </div>
 

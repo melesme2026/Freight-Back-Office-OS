@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "@/styles/globals.css";
 
 export const metadata: Metadata = {
@@ -9,6 +9,12 @@ export const metadata: Metadata = {
   description:
     "Freight Back Office OS helps carriers, dispatchers, and billing teams manage billing packets, factoring workflows, invoices, collections visibility, and freight back-office reporting.",
   applicationName: "Freight Back Office OS",
+  manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    title: "ADWA Driver",
+    statusBarStyle: "default",
+  },
   keywords: [
     "freight billing software",
     "billing packet management",
@@ -32,6 +38,13 @@ export const metadata: Metadata = {
     description:
       "A freight back-office operating system for billing packets, factoring workflows, collections, and reporting.",
   },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#2563eb",
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
 };
 
 export default function RootLayout({
