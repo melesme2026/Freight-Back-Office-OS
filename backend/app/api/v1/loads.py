@@ -25,6 +25,7 @@ from app.services.loads.load_service import LoadService
 from app.services.loads.operational_queue_service import OperationalQueueService
 from app.services.loads.packet_readiness import calculate_packet_readiness
 from app.services.loads.submission_packet_service import SubmissionPacketService
+from app.services.packet_intelligence.packet_audit_service import PacketAuditService
 from app.services.notifications.operational_notification_service import (
     OperationalNotificationService,
 )
@@ -333,6 +334,16 @@ def _authorize_submission_download(*, item: Any, token_payload: dict[str, Any]) 
         raise ForbiddenError("You do not have permission to download submission packets")
 
 
+def _serialize_packet_audit(audit: Any) -> dict[str, Any] | None:
+    if audit is None:
+        return None
+    if hasattr(audit, "to_dict"):
+        return audit.to_dict()
+    if isinstance(audit, dict):
+        return audit
+    return None
+
+
 def _serialize_submission_packet(packet: Any) -> dict[str, Any]:
     return {
         "id": _uuid_to_str(getattr(packet, "id", None)),
@@ -351,6 +362,7 @@ def _serialize_submission_packet(packet: Any) -> dict[str, Any]:
         "rejected_at": _to_iso_or_none(getattr(packet, "rejected_at", None)),
         "created_at": _to_iso_or_none(getattr(packet, "created_at", None)),
         "updated_at": _to_iso_or_none(getattr(packet, "updated_at", None)),
+        "packet_audit": _serialize_packet_audit(getattr(packet, "packet_audit", None)),
         "documents": [
             {
                 "id": _uuid_to_str(getattr(doc, "id", None)),
@@ -1604,6 +1616,21 @@ def execute_load_workflow_action(
     )
 
 
+@router.get("/loads/{load_id}/packet-audit", response_model=ApiResponse)
+def get_load_packet_audit(
+    load_id: uuid.UUID,
+    token_payload: dict[str, Any] = Depends(get_current_token_payload),
+    db: Session = Depends(get_db_session),
+) -> ApiResponse:
+    _authorize_submission_read(token_payload)
+    service = LoadService(db)
+    load = service.get_load(str(load_id))
+    _authorize_load_access(item=load, token_payload=token_payload)
+
+    audit = PacketAuditService(db).audit_load(load_id=str(load_id), org_id=str(load.organization_id))
+    return ApiResponse(data=audit.to_dict(), meta={}, error=None)
+
+
 @router.get("/loads/{load_id}/submission-packets", response_model=ApiResponse)
 def list_submission_packets(
     load_id: uuid.UUID,
@@ -1616,7 +1643,12 @@ def list_submission_packets(
     _authorize_load_access(item=load, token_payload=token_payload)
 
     packet_service = SubmissionPacketService(db)
+    audit_service = PacketAuditService(db)
     packets = packet_service.list_packets(load_id=str(load_id), org_id=str(load.organization_id))
+    for packet in packets:
+        packet.packet_audit = audit_service.audit_load(
+            load_id=str(load_id), org_id=str(load.organization_id), packet_id=str(packet.id)
+        )
     return ApiResponse(
         data=[_serialize_submission_packet(packet) for packet in packets], meta={}, error=None
     )
@@ -1663,6 +1695,9 @@ def get_submission_packet(
 
     packet_service = SubmissionPacketService(db)
     packet = packet_service.get_packet(str(packet_id), str(load_id), str(load.organization_id))
+    packet.packet_audit = PacketAuditService(db).audit_load(
+        load_id=str(load_id), org_id=str(load.organization_id), packet_id=str(packet_id)
+    )
     return ApiResponse(data=_serialize_submission_packet(packet), meta={}, error=None)
 
 
@@ -1794,6 +1829,24 @@ def send_submission_packet_email(
         )
         db.commit()
         raise exc
+    packet_audit = PacketAuditService(db).audit_load(
+        load_id=str(load_id), org_id=str(load.organization_id), packet_id=str(packet_id)
+    )
+    if packet_audit.has_blocking_findings:
+        packet_service._add_event(  # noqa: SLF001
+            str(load.organization_id),
+            str(load.id),
+            str(packet.id),
+            "packet_email_failed",
+            f"Packet email blocked by audit for {normalized_to_email}; subject={normalized_subject}; attachments={len(attachments)}.",
+            actor_id,
+        )
+        db.commit()
+        raise ValidationError(
+            "Billing packet audit found blocking issues. Fix the audit findings before emailing the packet.",
+            details={"packet_audit": packet_audit.to_dict()},
+        )
+
     attachment_count = len(attachments)
     send_result = email_service.send_email_with_attachments(
         to=normalized_to_email,
