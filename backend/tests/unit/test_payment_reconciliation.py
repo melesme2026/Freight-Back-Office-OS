@@ -116,3 +116,77 @@ def test_cross_org_denied(db_session) -> None:
 
     with pytest.raises(NotFoundError):
         service.get_or_create_for_load(str(load.id), OTHER_ORG_ID)
+
+from app.domain.enums.factoring import FactoringReconciliationStatus, FactoringWorkflowStatus
+from app.services.payments.factoring_company_service import FactoringCompanyService
+
+
+def test_factoring_company_assignment_applies_defaults(db_session) -> None:
+    load = _make_load(db_session)
+    company = FactoringCompanyService(db_session).create_company(
+        organization_id=ORG_ID,
+        company_name="Blue River Capital",
+        contact_email="funding@example.com",
+        phone="555-0101",
+        notes="Primary factor",
+        default_reserve_percent="10",
+        default_fee_percent="3",
+    )
+    service = PaymentReconciliationService(db_session)
+
+    record = service.assign_factoring(
+        str(load.id),
+        ORG_ID,
+        factoring_company_id=str(company.id),
+        factor_name=None,
+        notes="Missing paperwork cleared",
+    )
+
+    assert record.factoring_company_id == company.id
+    assert record.factor_name == "Blue River Capital"
+    assert record.reserve_amount == Decimal("150.00")
+    assert record.factoring_fee_amount == Decimal("45.00")
+    assert record.factoring_status == FactoringWorkflowStatus.SUBMITTED_TO_FACTORING
+    assert record.reconciliation_status == FactoringReconciliationStatus.UNRECONCILED
+    assert record.factoring_notes == "Missing paperwork cleared"
+
+
+def test_factoring_advance_tracks_fee_reserve_and_partial_reconciliation(db_session) -> None:
+    load = _make_load(db_session)
+    service = PaymentReconciliationService(db_session)
+
+    record = service.mark_advance_paid(
+        str(load.id),
+        ORG_ID,
+        Decimal("1200.00"),
+        datetime.now(timezone.utc),
+        "Acme Factor",
+        factoring_fee_percent="2.5",
+        reserve_amount="250.00",
+        notes="Reserve pending broker payment",
+    )
+
+    assert record.factoring_used is True
+    assert record.factoring_fee_amount == Decimal("37.50")
+    assert service.reserve_pending_amount(record) == Decimal("250.00")
+    assert record.factoring_status == FactoringWorkflowStatus.RESERVE_PENDING
+    assert record.reconciliation_status == FactoringReconciliationStatus.PARTIALLY_RECONCILED
+
+
+def test_reconciliation_status_validation(db_session) -> None:
+    load = _make_load(db_session)
+    service = PaymentReconciliationService(db_session)
+
+    record = service.set_reconciliation_status(str(load.id), ORG_ID, "reconciled")
+
+    assert record.reconciliation_status == FactoringReconciliationStatus.RECONCILED
+    assert record.factoring_status == FactoringWorkflowStatus.RECONCILED
+    with pytest.raises(ValueError):
+        service.set_reconciliation_status(str(load.id), ORG_ID, "closed")
+
+from app.api.v1.factoring_companies import _authorize_write as _authorize_factoring_company_write
+
+
+def test_driver_cannot_modify_factoring_companies() -> None:
+    with pytest.raises(ForbiddenError):
+        _authorize_factoring_company_write({"role": "driver"})

@@ -29,6 +29,23 @@ class PaymentPatchRequest(BaseModel):
     notes: str | None = None
     factor_name: str | None = None
     factoring_used: bool | None = None
+    factoring_notes: str | None = None
+
+
+class AssignFactoringRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    factoring_company_id: str | None = None
+    factor_name: str | None = None
+    reserve_percent: str | None = None
+    fee_percent: str | None = None
+    notes: str | None = None
+
+
+class SetReconciliationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    reconciliation_status: str
 
 
 class MarkPaidRequest(BaseModel):
@@ -50,6 +67,11 @@ class MarkAdvanceRequest(BaseModel):
     amount: str
     advance_date: datetime | None = None
     factor_name: str | None = None
+    factoring_company_id: str | None = None
+    factoring_fee_percent: str | None = None
+    factoring_fee_amount: str | None = None
+    reserve_amount: str | None = None
+    notes: str | None = None
 
 
 class MarkReservePendingRequest(BaseModel):
@@ -99,21 +121,29 @@ def _serialize(record: Any) -> dict[str, Any]:
         "payment_status": getattr(getattr(record, "payment_status", None), "value", getattr(record, "payment_status", None)),
         "paid_date": getattr(record, "paid_date", None).isoformat() if getattr(record, "paid_date", None) else None,
         "factoring_used": bool(getattr(record, "factoring_used", False)),
+        "factoring_company_id": _to_str(getattr(record, "factoring_company_id", None)),
+        "factoring_company_name": getattr(getattr(record, "factoring_company", None), "company_name", None),
         "factor_name": getattr(record, "factor_name", None),
+        "factoring_status": getattr(getattr(record, "factoring_status", None), "value", getattr(record, "factoring_status", None)),
+        "reconciliation_status": getattr(getattr(record, "reconciliation_status", None), "value", getattr(record, "reconciliation_status", None)),
         "advance_amount": str(_to_decimal(getattr(record, "advance_amount", 0))) if getattr(record, "advance_amount", None) is not None else None,
         "advance_date": getattr(record, "advance_date", None).isoformat() if getattr(record, "advance_date", None) else None,
+        "factoring_fee_percent": str(_to_decimal(getattr(record, "factoring_fee_percent", 0))) if getattr(record, "factoring_fee_percent", None) is not None else None,
         "factoring_fee_amount": str(_to_decimal(getattr(record, "factoring_fee_amount", 0))) if getattr(record, "factoring_fee_amount", None) is not None else None,
         "reserve_amount": str(_to_decimal(getattr(record, "reserve_amount", 0))) if getattr(record, "reserve_amount", None) is not None else None,
         "reserve_paid_amount": str(_to_decimal(getattr(record, "reserve_paid_amount", 0))),
+        "reserve_pending_amount": str(max(_to_decimal(getattr(record, "reserve_amount", 0)) - _to_decimal(getattr(record, "reserve_paid_amount", 0)), Decimal("0"))),
         "reserve_paid_date": getattr(record, "reserve_paid_date", None).isoformat() if getattr(record, "reserve_paid_date", None) else None,
         "deduction_amount": str(_to_decimal(getattr(record, "deduction_amount", 0))) if getattr(record, "deduction_amount", None) is not None else None,
         "short_paid_amount": str(_to_decimal(getattr(record, "short_paid_amount", 0))) if getattr(record, "short_paid_amount", None) is not None else None,
         "dispute_reason": getattr(record, "dispute_reason", None),
         "notes": getattr(record, "notes", None),
+        "factoring_notes": getattr(record, "factoring_notes", None),
         "created_by_staff_user_id": _to_str(getattr(record, "created_by_staff_user_id", None)),
         "updated_by_staff_user_id": _to_str(getattr(record, "updated_by_staff_user_id", None)),
         "created_at": getattr(record, "created_at", None).isoformat() if getattr(record, "created_at", None) else None,
         "updated_at": getattr(record, "updated_at", None).isoformat() if getattr(record, "updated_at", None) else None,
+        "aging_bucket": PaymentReconciliationService(record._sa_instance_state.session).aging_bucket(record).value if getattr(record, "_sa_instance_state", None) and record._sa_instance_state.session else None,
     }
 
 
@@ -162,6 +192,8 @@ def _notify_payment_status(db: Session, record: Any, previous_status: str | None
         )
 
 
+
+
 @router.get("/", response_model=ApiResponse)
 def get_payment_reconciliation(
     load_id: str,
@@ -194,7 +226,11 @@ def patch_payment_reconciliation(
         record.factor_name = payload.factor_name.strip() or None
     if payload.factoring_used is not None:
         record.factoring_used = payload.factoring_used
+    if payload.factoring_notes is not None:
+        record.factoring_notes = payload.factoring_notes.strip() or None
     record.payment_status = service.compute_status(record)
+    record.reconciliation_status = service.compute_reconciliation_status(record)
+    record.factoring_status = service.compute_factoring_status(record)
     record.updated_by_staff_user_id = uuid.UUID(_actor_id(token_payload)) if _actor_id(token_payload) else None
     db.flush()
     _notify_payment_status(db, record, str(previous_status) if previous_status else None)
@@ -233,7 +269,7 @@ def mark_advance_paid(load_id: str, payload: MarkAdvanceRequest, db: Session = D
     service = _service(db)
     existing_record = service.get_or_create_for_load(load_id, _org_id(token_payload), actor_staff_user_id=_actor_id(token_payload))
     previous_status = getattr(getattr(existing_record, "payment_status", None), "value", getattr(existing_record, "payment_status", None))
-    record = service.mark_advance_paid(load_id, _org_id(token_payload), payload.amount, payload.advance_date, payload.factor_name)
+    record = service.mark_advance_paid(load_id, _org_id(token_payload), payload.amount, payload.advance_date, payload.factor_name, payload.factoring_company_id, payload.factoring_fee_percent, payload.factoring_fee_amount, payload.reserve_amount, payload.notes)
     record.updated_by_staff_user_id = uuid.UUID(_actor_id(token_payload)) if _actor_id(token_payload) else None
     db.flush()
     _notify_payment_status(db, record, str(previous_status) if previous_status else None)

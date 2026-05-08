@@ -213,14 +213,23 @@ type PaymentReconciliationRecord = {
   payment_status?: string | null;
   paid_date?: string | null;
   factoring_used?: boolean | null;
+  factoring_company_id?: string | null;
+  factoring_company_name?: string | null;
   factor_name?: string | null;
+  factoring_status?: string | null;
+  reconciliation_status?: string | null;
+  aging_bucket?: string | null;
   advance_amount?: string | null;
   advance_date?: string | null;
   reserve_amount?: string | null;
   reserve_paid_amount?: string | null;
+  reserve_pending_amount?: string | null;
+  factoring_fee_percent?: string | null;
+  factoring_fee_amount?: string | null;
   short_paid_amount?: string | null;
   dispute_reason?: string | null;
   notes?: string | null;
+  factoring_notes?: string | null;
 };
 type FollowUpTask = {
   id: string;
@@ -930,11 +939,19 @@ function normalizePaymentReconciliation(item: unknown): PaymentReconciliationRec
     payment_status: getStringField(record, "payment_status"),
     paid_date: getStringField(record, "paid_date"),
     factoring_used: getOptionalBooleanField(record, "factoring_used"),
+    factoring_company_id: getStringField(record, "factoring_company_id"),
+    factoring_company_name: getStringField(record, "factoring_company_name"),
     factor_name: getStringField(record, "factor_name"),
+    factoring_status: getStringField(record, "factoring_status"),
+    reconciliation_status: getStringField(record, "reconciliation_status"),
+    aging_bucket: getStringField(record, "aging_bucket"),
     advance_amount: getStringField(record, "advance_amount"),
     advance_date: getStringField(record, "advance_date"),
     reserve_amount: getStringField(record, "reserve_amount"),
     reserve_paid_amount: getStringField(record, "reserve_paid_amount"),
+    reserve_pending_amount: getStringField(record, "reserve_pending_amount"),
+    factoring_fee_percent: getStringField(record, "factoring_fee_percent"),
+    factoring_fee_amount: getStringField(record, "factoring_fee_amount"),
     short_paid_amount: getStringField(record, "short_paid_amount"),
     dispute_reason: getStringField(record, "dispute_reason"),
     notes: getStringField(record, "notes"),
@@ -1451,7 +1468,7 @@ export default function LoadDetailPage() {
       record_payment: { amount_received: baseReceived, paid_date: new Date().toISOString().slice(0, 10) },
       mark_fully_paid: { amount: baseExpected, paid_date: new Date().toISOString().slice(0, 10) },
       record_partial_payment: { amount: baseReceived, paid_date: new Date().toISOString().slice(0, 10) },
-      record_factoring_advance: { amount: baseAdvance, factor_name: paymentRecord?.factor_name ?? "", advance_date: new Date().toISOString().slice(0, 10) },
+      record_factoring_advance: { amount: baseAdvance, factor_name: paymentRecord?.factor_name ?? "", advance_date: new Date().toISOString().slice(0, 10), factoring_fee_percent: paymentRecord?.factoring_fee_percent ?? "", reserve_amount: paymentRecord?.reserve_amount ?? "", notes: paymentRecord?.factoring_notes ?? "" },
       mark_reserve_pending: { reserve_amount: baseReserve },
       record_reserve_paid: { amount: baseReservePaid, paid_date: new Date().toISOString().slice(0, 10) },
       mark_short_paid: { received_amount: baseReceived, expected_amount: baseExpected, reason: paymentRecord?.notes ?? "" },
@@ -1491,7 +1508,7 @@ export default function LoadDetailPage() {
     if (action === "record_factoring_advance") {
       if (!isValidAmount(values.amount ?? "")) return setModalError("Enter a valid factoring advance amount.");
       if (!isValidDate(values.advance_date ?? "")) return setModalError("Enter a valid advance date.");
-      await handlePaymentAction("mark-advance-paid", { amount: values.amount, factor_name: values.factor_name, advance_date: values.advance_date });
+      await handlePaymentAction("mark-advance-paid", { amount: values.amount, factor_name: values.factor_name, advance_date: values.advance_date, factoring_fee_percent: values.factoring_fee_percent || null, reserve_amount: values.reserve_amount || null, notes: values.notes || null });
       closePaymentModal();
       return;
     }
@@ -3463,12 +3480,18 @@ export default function LoadDetailPage() {
                 <div className="flex items-center justify-between gap-4"><span>Expected Amount</span><span className="font-medium text-slate-900">{formatCurrency(paymentRecord?.expected_amount, paymentRecord?.currency ?? load.currency_code ?? "USD")}</span></div>
                 <div className="flex items-center justify-between gap-4"><span>Amount Received</span><span className="font-medium text-slate-900">{formatCurrency(paymentRecord?.amount_received, paymentRecord?.currency ?? load.currency_code ?? "USD")}</span></div>
                 <div className="flex items-center justify-between gap-4"><span>Payment Status</span><span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-700">{(paymentRecord?.payment_status ?? "not_submitted").replaceAll("_", " ")}</span></div>
+                <div className="flex items-center justify-between gap-4"><span>Factoring Status</span><span className="rounded-full bg-brand-50 px-2 py-1 text-xs font-semibold text-brand-700">{(paymentRecord?.factoring_status ?? "not_factored").replaceAll("_", " ")}</span></div>
+                <div className="flex items-center justify-between gap-4"><span>Reconciliation</span><span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-700">{(paymentRecord?.reconciliation_status ?? "unreconciled").replaceAll("_", " ")}</span></div>
+                <div className="flex items-center justify-between gap-4"><span>Aging</span><span className="font-medium text-slate-900">{(paymentRecord?.aging_bucket ?? "current").replaceAll("_", " ")}</span></div>
                 <div className="flex items-center justify-between gap-4"><span>Paid Date</span><span className="font-medium text-slate-900">{formatDateTime(paymentRecord?.paid_date)}</span></div>
                 {paymentRecord?.factoring_used ? (
                   <>
+                    <div className="flex items-center justify-between gap-4"><span>Factoring Company</span><span className="font-medium text-slate-900">{paymentRecord.factoring_company_name ?? paymentRecord.factor_name ?? "—"}</span></div>
                     <div className="flex items-center justify-between gap-4"><span>Advance</span><span className="font-medium text-slate-900">{formatCurrency(paymentRecord?.advance_amount, paymentRecord?.currency ?? load.currency_code ?? "USD")} · {formatDateTime(paymentRecord?.advance_date)}</span></div>
+                    <div className="flex items-center justify-between gap-4"><span>Factoring Fee</span><span className="font-medium text-slate-900">{paymentRecord.factoring_fee_percent ? `${paymentRecord.factoring_fee_percent}% · ` : ""}{formatCurrency(paymentRecord?.factoring_fee_amount, paymentRecord?.currency ?? load.currency_code ?? "USD")}</span></div>
                     <div className="flex items-center justify-between gap-4"><span>Reserve Amount</span><span className="font-medium text-slate-900">{formatCurrency(paymentRecord?.reserve_amount, paymentRecord?.currency ?? load.currency_code ?? "USD")}</span></div>
                     <div className="flex items-center justify-between gap-4"><span>Reserve Paid</span><span className="font-medium text-slate-900">{formatCurrency(paymentRecord?.reserve_paid_amount, paymentRecord?.currency ?? load.currency_code ?? "USD")}</span></div>
+                    <div className="flex items-center justify-between gap-4"><span>Reserve Pending</span><span className="font-medium text-slate-900">{formatCurrency(paymentRecord?.reserve_pending_amount, paymentRecord?.currency ?? load.currency_code ?? "USD")}</span></div>
                   </>
                 ) : null}
                 {paymentRecord?.short_paid_amount ? <div className="flex items-center justify-between gap-4"><span>Short-paid Amount</span><span className="font-medium text-rose-700">{formatCurrency(paymentRecord.short_paid_amount, paymentRecord?.currency ?? load.currency_code ?? "USD")}</span></div> : null}
