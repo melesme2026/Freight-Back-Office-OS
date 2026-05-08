@@ -176,6 +176,21 @@ type LoadDocument = {
   updated_at?: string | null;
 };
 
+
+type PacketAuditFinding = {
+  code: string;
+  severity: "info" | "warning" | "blocking" | string;
+  message: string;
+  affected_documents?: string[] | null;
+};
+
+type PacketAuditResult = {
+  status: "passed" | "warning" | "failed" | string;
+  confidence_score: number;
+  findings: PacketAuditFinding[];
+  generated_at?: string | null;
+};
+
 type SubmissionPacketDocument = {
   id: string;
   document_id?: string | null;
@@ -200,6 +215,7 @@ type SubmissionPacket = {
   status?: string | null;
   created_at?: string | null;
   sent_at?: string | null;
+  packet_audit?: PacketAuditResult | null;
   documents: SubmissionPacketDocument[];
   events: SubmissionPacketEvent[];
 };
@@ -374,6 +390,36 @@ function issueBadge(severity?: string) {
     default:
       return "bg-slate-100 text-slate-700";
   }
+}
+
+function packetAuditStatusBadge(status?: string | null) {
+  switch ((status ?? "").trim().toLowerCase()) {
+    case "passed":
+      return "bg-emerald-100 text-emerald-800";
+    case "warning":
+      return "bg-amber-100 text-amber-800";
+    case "failed":
+      return "bg-rose-100 text-rose-800";
+    default:
+      return "bg-slate-100 text-slate-700";
+  }
+}
+
+function packetAuditSeverityBadge(severity?: string | null) {
+  switch ((severity ?? "").trim().toLowerCase()) {
+    case "blocking":
+      return "bg-rose-100 text-rose-800";
+    case "warning":
+      return "bg-amber-100 text-amber-800";
+    case "info":
+      return "bg-sky-100 text-sky-800";
+    default:
+      return "bg-slate-100 text-slate-700";
+  }
+}
+
+function hasBlockingPacketAudit(audit?: PacketAuditResult | null): boolean {
+  return (audit?.findings ?? []).some((finding) => (finding.severity ?? "").toLowerCase() === "blocking");
 }
 
 function processingStatusBadge(status?: string | null) {
@@ -902,6 +948,7 @@ function normalizeSubmissionPacket(item: unknown): SubmissionPacket | null {
     status: getStringField(record, "status"),
     created_at: getStringField(record, "created_at"),
     sent_at: getStringField(record, "sent_at"),
+    packet_audit: normalizePacketAudit(record?.packet_audit),
     documents: documentsRaw.map((doc) => {
       const docRecord = asRecord(doc);
       return {
@@ -921,6 +968,29 @@ function normalizeSubmissionPacket(item: unknown): SubmissionPacket | null {
         message,
         created_at: getStringField(eventRecord, "created_at"),
         recipient: getStringField(eventRecord, "recipient") ?? recipientMatch?.[0] ?? null,
+      };
+    }),
+  };
+}
+
+function normalizePacketAudit(item: unknown): PacketAuditResult | null {
+  const record = asRecord(item);
+  const status = getStringField(record, "status");
+  if (!status) return null;
+  const findingsRaw = Array.isArray(record?.findings) ? record.findings : [];
+  const score = normalizeCount(record?.confidence_score);
+  return {
+    status,
+    confidence_score: Math.max(0, Math.min(100, score)),
+    generated_at: getStringField(record, "generated_at"),
+    findings: findingsRaw.map((finding) => {
+      const findingRecord = asRecord(finding);
+      const affectedRaw = Array.isArray(findingRecord?.affected_documents) ? findingRecord.affected_documents : [];
+      return {
+        code: getStringField(findingRecord, "code") ?? "packet_audit_finding",
+        severity: getStringField(findingRecord, "severity") ?? "info",
+        message: getStringField(findingRecord, "message") ?? "Packet audit finding needs review.",
+        affected_documents: affectedRaw.filter((value): value is string => typeof value === "string"),
       };
     }),
   };
@@ -1075,6 +1145,7 @@ export default function LoadDetailPage() {
   const [nextFollowUpDate, setNextFollowUpDate] = useState("");
   const [isSavingFollowUp, setIsSavingFollowUp] = useState(false);
   const [submissionPackets, setSubmissionPackets] = useState<SubmissionPacket[]>([]);
+  const [packetAudit, setPacketAudit] = useState<PacketAuditResult | null>(null);
   const [isSubmissionBusy, setIsSubmissionBusy] = useState(false);
   const [downloadingPacketId, setDownloadingPacketId] = useState<string | null>(null);
   const [carrierProfile, setCarrierProfile] = useState<CarrierProfile | null>(null);
@@ -1151,6 +1222,16 @@ export default function LoadDetailPage() {
     [loadId]
   );
 
+  const fetchPacketAudit = useCallback(async (): Promise<PacketAuditResult | null> => {
+    if (!loadId) return null;
+    const token = getAccessToken();
+    const response = await apiClient.get<ApiResponse<unknown>>(
+      `/loads/${encodeURIComponent(loadId)}/packet-audit`,
+      { token: token ?? undefined }
+    );
+    return normalizePacketAudit(response.data);
+  }, [loadId]);
+
   const fetchSubmissionPackets = useCallback(async (): Promise<SubmissionPacket[]> => {
     if (!loadId) return [];
     const token = getAccessToken();
@@ -1203,6 +1284,7 @@ export default function LoadDetailPage() {
       const token = getAccessToken();
       await apiClient.post(`/loads/${encodeURIComponent(loadId)}/submission-packets`, {}, { token: token ?? undefined });
       setSubmissionPackets(await fetchSubmissionPackets());
+      setPacketAudit(await fetchPacketAudit());
       setActionMessage("Billing packet created.");
     } catch (caught: unknown) {
       setError(extractErrorMessage(caught, "Failed to create billing packet."));
@@ -1218,6 +1300,7 @@ export default function LoadDetailPage() {
       const token = getAccessToken();
       await apiClient.post(`/loads/${encodeURIComponent(loadId)}/submission-packets/${encodeURIComponent(packetId)}/${action}`, payload ?? {}, { token: token ?? undefined });
       setSubmissionPackets(await fetchSubmissionPackets());
+      setPacketAudit(await fetchPacketAudit());
       setLoad(await fetchLoad());
       setActionMessage("Submission evidence updated.");
     } catch (caught: unknown) {
@@ -1385,6 +1468,7 @@ export default function LoadDetailPage() {
         { token: token ?? undefined }
       );
       setSubmissionPackets(await fetchSubmissionPackets());
+      setPacketAudit(await fetchPacketAudit());
       setLoad(await fetchLoad());
       logPacketEmailSuccess(toEmail);
     } catch (caught: unknown) {
@@ -1567,6 +1651,7 @@ export default function LoadDetailPage() {
       const loadData = await fetchLoad();
       setLoad(loadData);
       void fetchSubmissionPackets().then((packets) => setSubmissionPackets(packets)).catch(() => setSubmissionPackets([]));
+      void fetchPacketAudit().then((audit) => setPacketAudit(audit)).catch(() => setPacketAudit(null));
       void fetchCarrierProfile().then((profile) => setCarrierProfile(profile)).catch(() => setCarrierProfile(null));
       void fetchPaymentReconciliation().then((record) => setPaymentRecord(record)).catch(() => setPaymentRecord(null));
       void fetchFollowUpTasks().then((tasks) => setFollowUpTasks(tasks)).catch(() => setFollowUpTasks([]));
@@ -1592,7 +1677,7 @@ export default function LoadDetailPage() {
       setIsLoading(false);
       setIsDocumentsLoading(false);
     }
-  }, [fetchCarrierProfile, fetchLoad, fetchPaymentReconciliation, fetchFollowUpTasks, fetchReviewQueueItem, fetchLoadDocuments, fetchSubmissionPackets, loadId]);
+  }, [fetchCarrierProfile, fetchLoad, fetchPaymentReconciliation, fetchFollowUpTasks, fetchReviewQueueItem, fetchLoadDocuments, fetchPacketAudit, fetchSubmissionPackets, loadId]);
 
   useEffect(() => {
     void fetchPageData();
@@ -3031,10 +3116,43 @@ export default function LoadDetailPage() {
                 </button>
               </div>
               <div className="mb-4 text-sm text-slate-700">
-                Required docs: Invoice, Rate Confirmation, Proof of Delivery. Missing: {(load.packet_readiness?.missing_required_documents?.submission ?? []).join(", ") || "none"}.
+                Required docs: Invoice, Rate Confirmation, Proof of Delivery, Bill of Lading. Missing: {(load.packet_readiness?.missing_required_documents?.submission ?? []).join(", ") || "none"}.
               </div>
+              {packetAudit ? (
+                <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Packet audit summary</div>
+                      <div className="mt-1 flex flex-wrap items-center gap-2 text-sm font-semibold text-slate-900">
+                        <span className={`rounded-full px-2 py-0.5 text-xs ${packetAuditStatusBadge(packetAudit.status)}`}>{packetAudit.status}</span>
+                        <span>{packetAudit.confidence_score}% confidence</span>
+                        {hasBlockingPacketAudit(packetAudit) ? <span className="text-xs text-rose-700">Blocking issue found — email send is blocked until fixed.</span> : null}
+                      </div>
+                    </div>
+                    <div className="text-xs text-slate-500">Generated {formatDateTime(packetAudit.generated_at)}</div>
+                  </div>
+                  <div className="mt-3 space-y-2">
+                    {packetAudit.findings.length === 0 ? (
+                      <div className="text-sm text-emerald-700">No packet audit findings. Packet appears complete based on available metadata.</div>
+                    ) : (
+                      packetAudit.findings.map((finding) => (
+                        <div key={`${finding.code}-${finding.message}`} className="rounded-lg border border-white bg-white p-2 text-sm text-slate-700">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${packetAuditSeverityBadge(finding.severity)}`}>{finding.severity}</span>
+                            <span className="font-medium text-slate-900">{finding.code.replaceAll("_", " ")}</span>
+                          </div>
+                          <div className="mt-1">{finding.message}</div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              ) : null}
               <div className="space-y-3">
-                {submissionPackets.map((packet) => (
+                {submissionPackets.map((packet) => {
+                  const activeAudit = packet.packet_audit ?? packetAudit;
+                  const auditBlocksSend = hasBlockingPacketAudit(activeAudit);
+                  return (
                   <div key={packet.id} className="rounded-xl border border-slate-200 p-3">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div className="text-sm font-semibold text-slate-900">{packet.packet_reference ?? packet.id}</div>
@@ -3046,7 +3164,7 @@ export default function LoadDetailPage() {
                       <div className="flex flex-wrap gap-2">
                         <button title="Download a ZIP packet to send manually." type="button" onClick={() => void handleDownloadPacketZip(packet.id)} disabled={downloadingPacketId === packet.id} className="rounded-lg border border-slate-300 px-3 py-1 text-xs disabled:opacity-50">{downloadingPacketId === packet.id ? "Downloading..." : "Download Packet ZIP"}</button>
                         <button title="Copy the packet submission email template." type="button" onClick={() => void handleCopySubmissionEmail()} className="rounded-lg border border-slate-300 px-3 py-1 text-xs">Copy Submission Email</button>
-                        <button aria-label="Email Packet" title="Send packet email from this page when email is configured." type="button" onClick={() => openSendPacketEmailModal(packet)} disabled={isSubmissionBusy || ((load.packet_readiness?.missing_required_documents?.submission ?? []).length > 0)} className="rounded-lg border border-slate-300 px-3 py-1 text-xs disabled:opacity-50">Email Packet</button>
+                        <button aria-label="Email Packet" title={auditBlocksSend ? "Fix blocking packet audit findings before emailing." : "Send packet email from this page when email is configured."} type="button" onClick={() => openSendPacketEmailModal(packet)} disabled={isSubmissionBusy || auditBlocksSend || ((load.packet_readiness?.missing_required_documents?.submission ?? []).length > 0)} className="rounded-lg border border-slate-300 px-3 py-1 text-xs disabled:opacity-50">Email Packet</button>
                       </div>
                       <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Status updates</div>
                       <div className="flex flex-wrap gap-2">
@@ -3056,6 +3174,25 @@ export default function LoadDetailPage() {
                       </div>
                     </div>
                     <div className="mt-2 text-xs text-slate-500">Included docs: {packet.documents.map((doc) => normalizeDocumentTypeLabel(doc.document_type)).join(", ") || "none"}</div>
+                    {activeAudit ? (
+                      <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-semibold uppercase tracking-wide text-slate-500">Audit</span>
+                          <span className={`rounded-full px-2 py-0.5 font-semibold ${packetAuditStatusBadge(activeAudit.status)}`}>{activeAudit.status}</span>
+                          <span>{activeAudit.confidence_score}% confidence</span>
+                        </div>
+                        {activeAudit.findings.length > 0 ? (
+                          <div className="mt-2 space-y-1">
+                            {activeAudit.findings.map((finding) => (
+                              <div key={`${packet.id}-${finding.code}-${finding.message}`} className="flex flex-col gap-1 rounded-md bg-white p-2 sm:flex-row sm:items-start">
+                                <span className={`w-fit rounded-full px-2 py-0.5 text-[11px] font-semibold ${packetAuditSeverityBadge(finding.severity)}`}>{finding.severity}</span>
+                                <span>{finding.message}</span>
+                              </div>
+                            ))}
+                          </div>
+                        ) : <div className="mt-2 text-emerald-700">No audit findings for this packet.</div>}
+                      </div>
+                    ) : null}
                     {packet.events.filter((event) => (event.event_type ?? "").startsWith("packet_email_")).length > 0 ? (
                       <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
                         <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Email delivery history</div>
@@ -3074,7 +3211,8 @@ export default function LoadDetailPage() {
                       </div>
                     ) : null}
                   </div>
-                ))}
+                  );
+                })}
                 {submissionPackets.length === 0 ? <div className="text-sm text-slate-500">No submission packets yet.</div> : null}
               </div>
             </div>
@@ -3622,6 +3760,7 @@ export default function LoadDetailPage() {
                   <div className="font-semibold text-slate-900">Attachment checklist</div>
                   <div className="mt-1">{modalState.packet.documents.map((doc) => normalizeDocumentTypeLabel(doc.document_type)).join(", ") || "No packet documents found."}</div>
                   {(load?.packet_readiness?.missing_required_documents?.submission ?? []).length > 0 ? <div className="mt-2 text-rose-700">Missing required docs: {(load?.packet_readiness?.missing_required_documents?.submission ?? []).join(", ")}. Sending is blocked.</div> : null}
+                  {hasBlockingPacketAudit(modalState.packet.packet_audit ?? packetAudit) ? <div className="mt-2 text-rose-700">Blocking packet audit findings are present. Fix them before emailing.</div> : null}
                 </div>
                 <div className="mt-4 space-y-3">
                   <input className="touch-target w-full rounded-xl border border-slate-300 px-3 py-2 text-base sm:text-sm" value={modalState.toEmail} onChange={(event) => { setModalError(null); setModalState({ ...modalState, toEmail: event.target.value }); }} placeholder="Recipient email" />
@@ -3631,7 +3770,7 @@ export default function LoadDetailPage() {
                 {modalError ? <div className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{modalError}</div> : null}
                 <div className="mt-4 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
                   <button type="button" className="touch-target rounded-xl border border-slate-300 px-3 py-2 text-sm" onClick={() => setModalState({ kind: "none" })}>Cancel</button>
-                  <button type="button" disabled={isSubmissionBusy || ((load?.packet_readiness?.missing_required_documents?.submission ?? []).length > 0)} className="touch-target rounded-xl bg-brand-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50" onClick={() => {
+                  <button type="button" disabled={isSubmissionBusy || hasBlockingPacketAudit(modalState.packet.packet_audit ?? packetAudit) || ((load?.packet_readiness?.missing_required_documents?.submission ?? []).length > 0)} className="touch-target rounded-xl bg-brand-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50" onClick={() => {
                     if (!isValidEmail(modalState.toEmail)) return setModalError("Enter a valid recipient email.");
                     if (modalState.subject.trim().length < 3) return setModalError("Email subject is required.");
                     if (modalState.body.trim().length < 3) return setModalError("Email body is required.");
