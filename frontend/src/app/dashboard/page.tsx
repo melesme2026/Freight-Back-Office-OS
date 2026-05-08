@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
 import { getDashboardMetrics, type DashboardMetrics } from "@/lib/dashboard";
+import { getCommandCenter, type CommandCenterData, type Severity } from "@/lib/command-center";
 import { getAccessToken } from "@/lib/auth";
 import { useLoads, type Load } from "@/hooks/useLoads";
 
@@ -88,6 +89,108 @@ function getUrgency(nextFollowUpAt?: string | null): { label: UrgencyLabel; orde
   return { label: "Upcoming", order: 3, tone: "default" };
 }
 
+
+function severityClasses(severity: Severity): string {
+  if (severity === "critical") return "border-rose-200 bg-rose-50 text-rose-800";
+  if (severity === "warning") return "border-amber-200 bg-amber-50 text-amber-800";
+  return "border-slate-200 bg-slate-50 text-slate-700";
+}
+
+function AIOperationsPanel({ commandCenter }: { commandCenter: CommandCenterData | null }) {
+  const assistant = commandCenter?.ai_operations_assistant;
+  const recommendations = assistant?.recommendations ?? [];
+  const invoiceRisks = assistant?.invoice_risks ?? [];
+  const brokerInsights = assistant?.broker_insights ?? [];
+
+  return (
+    <section className="mb-8 rounded-2xl border border-indigo-100 bg-white p-4 shadow-soft sm:p-6">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-indigo-700">AI Operations Assistant</p>
+          <h2 className="mt-1 text-lg font-semibold text-slate-950">Deterministic operational intelligence</h2>
+          <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">Rules-backed summaries, invoice risk, broker behavior, and collections priorities. The assistant explains why each item appears and does not execute actions automatically.</p>
+        </div>
+        <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+          {assistant ? "LLM off · rules only" : "Loading assistant..."}
+        </div>
+      </div>
+
+      <div className="mt-5 grid gap-4 lg:grid-cols-3">
+        <div className="lg:col-span-2">
+          <h3 className="text-sm font-semibold text-slate-900">Operational summaries</h3>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            {(assistant?.summary ?? []).slice(0, 4).map((item) => (
+              <div key={item.id} className={`rounded-xl border p-4 ${severityClasses(item.severity)}`}>
+                <div className="text-sm font-semibold">{item.title}</div>
+                <div className="mt-2 text-xs leading-5">Recommended: {item.recommendation}</div>
+                <details className="mt-2 text-xs">
+                  <summary className="cursor-pointer font-semibold">Why</summary>
+                  <ul className="mt-2 list-disc space-y-1 pl-4">{item.contributing_factors.map((factor) => <li key={factor}>{factor}</li>)}</ul>
+                </details>
+              </div>
+            ))}
+            {!assistant ? <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">Loading operational summaries...</div> : null}
+          </div>
+        </div>
+
+        <div>
+          <h3 className="text-sm font-semibold text-slate-900">Top recommendations</h3>
+          <div className="mt-3 space-y-3">
+            {recommendations.slice(0, 4).map((item) => (
+              <a key={item.id} href={item.href} className={`block rounded-xl border p-4 transition hover:border-brand-300 ${severityClasses(item.severity)}`}>
+                <div className="text-sm font-semibold">{item.title}</div>
+                <div className="mt-1 text-xs leading-5">{item.description}</div>
+                <div className="mt-2 text-xs font-semibold">Why: {item.why}</div>
+              </a>
+            ))}
+            {assistant && recommendations.length === 0 ? <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">No assistant recommendations need action right now.</div> : null}
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-5 grid gap-4 lg:grid-cols-2">
+        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+          <h3 className="text-sm font-semibold text-slate-900">Invoice risk visibility</h3>
+          <div className="mt-3 space-y-2">
+            {invoiceRisks.slice(0, 3).map((item) => (
+              <div key={`${item.load_id}:${item.risk_level}`} className="rounded-lg bg-white p-3 text-sm">
+                <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                  <span className="font-semibold text-slate-900">{item.broker_name ?? "Unknown broker"} · {item.invoice_number ?? item.load_number ?? "Invoice"}</span>
+                  <span className="rounded-md bg-slate-900 px-2 py-1 text-xs font-semibold text-white">{item.risk_level}</span>
+                </div>
+                <div className="mt-1 text-xs text-slate-600">{item.outstanding_amount} outstanding · {item.age_days} days</div>
+                <details className="mt-2 text-xs text-slate-600"><summary className="cursor-pointer font-semibold text-slate-800">Explain risk</summary><ul className="mt-2 list-disc space-y-1 pl-4">{item.risk_reasons.map((reason) => <li key={reason}>{reason}</li>)}</ul></details>
+              </div>
+            ))}
+            {assistant && invoiceRisks.length === 0 ? <div className="text-sm text-slate-600">No elevated invoice risk in the current command center sample.</div> : null}
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+          <h3 className="text-sm font-semibold text-slate-900">Broker behavior insights</h3>
+          <div className="mt-3 space-y-2">
+            {brokerInsights.slice(0, 3).map((item) => (
+              <div key={item.broker_id} className="rounded-lg bg-white p-3 text-sm">
+                <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                  <span className="font-semibold text-slate-900">{item.broker_name}</span>
+                  <span className={`rounded-md px-2 py-1 text-xs font-semibold ${item.trend === "worsening" ? "bg-amber-100 text-amber-800" : "bg-slate-100 text-slate-700"}`}>{item.trend}</span>
+                </div>
+                <div className="mt-1 text-xs text-slate-600">{item.unpaid_invoice_count} unpaid · {item.unpaid_total} open · avg paid cycle {item.average_payment_days ?? "n/a"} days</div>
+                <details className="mt-2 text-xs text-slate-600"><summary className="cursor-pointer font-semibold text-slate-800">Contributing factors</summary><ul className="mt-2 list-disc space-y-1 pl-4">{item.contributing_factors.map((factor) => <li key={factor}>{factor}</li>)}</ul></details>
+              </div>
+            ))}
+            {assistant && brokerInsights.length === 0 ? <div className="text-sm text-slate-600">No elevated broker payment behavior signals in the current command center sample.</div> : null}
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs leading-5 text-slate-600">
+        Explainability: {assistant?.explainability.rules[0] ?? "Assistant output is organization-scoped and generated from existing command center data."}
+      </div>
+    </section>
+  );
+}
+
 function isNeedsAttention(load: Load, workMode: WorkMode): boolean {
   const urgency = getUrgency(load.next_follow_up_at);
   const status = (load.status ?? "").toLowerCase();
@@ -103,6 +206,7 @@ function isNeedsAttention(load: Load, workMode: WorkMode): boolean {
 
 export default function DashboardPage() {
   const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
+  const [commandCenter, setCommandCenter] = useState<CommandCenterData | null>(null);
   const { loads } = useLoads();
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -129,8 +233,9 @@ export default function DashboardPage() {
     try {
       setLoading(true);
       setErrorMessage(null);
-      const data = await getDashboardMetrics();
+      const [data, commandCenterData] = await Promise.all([getDashboardMetrics(), getCommandCenter()]);
       setMetrics(data);
+      setCommandCenter(commandCenterData);
     } catch (error: unknown) {
       setErrorMessage(error instanceof Error ? error.message : "Failed to load dashboard metrics.");
     } finally {
@@ -220,6 +325,8 @@ export default function DashboardPage() {
       </section>
 
       {errorMessage ? <div className="mb-6 rounded-2xl border border-rose-200 bg-rose-50 p-4"><div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between"><div className="text-sm text-rose-700">{errorMessage}</div><button type="button" onClick={() => void loadDashboard()} className="inline-flex items-center rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-rose-700">Retry</button></div></div> : null}
+
+      <AIOperationsPanel commandCenter={commandCenter} />
 
       <section className={`mb-8 rounded-2xl border p-6 shadow-soft ${workMode === "collections" ? "border-rose-200 bg-rose-50/60" : "border-slate-200 bg-white"}`}>
         <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">

@@ -94,6 +94,17 @@ class DispatcherCommandCenterService:
             today=today,
         )
         tasks = self._build_tasks(missing_doc_items=missing_docs, collection_items=collections, alerts=alerts)
+        broker_insights = self._broker_behavior_insights(payments, today=today)
+        ai_assistant = self._build_ai_operations_assistant(
+            loads=loads,
+            payments=payments,
+            packets=packets,
+            missing_docs=missing_docs,
+            collections=collections,
+            broker_insights=broker_insights,
+            tasks=tasks,
+            today=today,
+        )
 
         return {
             "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -118,13 +129,19 @@ class DispatcherCommandCenterService:
                 "summary": self._task_summary(tasks),
                 "items": tasks[:30],
             },
+            "ai_operations_assistant": ai_assistant,
+            "broker_behavior": {
+                "summary": self._broker_behavior_summary(broker_insights),
+                "items": broker_insights[:10],
+            },
             "priority_cards": self._priority_cards(alerts=alerts, missing_docs=missing_docs, collections=collections),
             "recent_activity": self._recent_activity(org_id=org_id),
             "meta": {
                 "load_limit": COMMAND_CENTER_LOAD_LIMIT,
                 "payment_limit": COMMAND_CENTER_PAYMENT_LIMIT,
-                "logic": "Deterministic operational prioritization based on missing required documents, packet blockers, unpaid aging, factoring reserve state, reconciliation status, and unresolved validation blockers.",
-                "not_implemented": ["live GPS tracking", "telematics ingestion", "AI dispatch optimization", "websocket streaming"],
+                "logic": "Deterministic operational prioritization based on missing required documents, packet blockers, unpaid aging, factoring reserve state, reconciliation status, broker payment behavior, and unresolved validation blockers.",
+                "ai_assistant_logic": "Rules-only assistant: summarizes current operational records, ranks collections by explicit aging/balance/status factors, and includes every contributing factor in each recommendation. No autonomous actions, probabilities, or hidden LLM scoring are used.",
+                "not_implemented": ["live GPS tracking", "telematics ingestion", "AI dispatch optimization", "autonomous collections outreach", "LLM-generated financial predictions", "websocket streaming"],
             },
         }
 
@@ -150,6 +167,7 @@ class DispatcherCommandCenterService:
             .options(
                 selectinload(LoadPaymentRecord.load).selectinload(Load.driver),
                 selectinload(LoadPaymentRecord.load).selectinload(Load.broker),
+                selectinload(LoadPaymentRecord.load).selectinload(Load.documents),
             )
             .order_by(LoadPaymentRecord.updated_at.desc(), LoadPaymentRecord.created_at.desc())
             .limit(COMMAND_CENTER_PAYMENT_LIMIT)
@@ -330,6 +348,324 @@ class DispatcherCommandCenterService:
             {"key": "urgent_collections", "label": "Urgent collections", "count": len(urgent_collections), "severity": "critical" if urgent_collections else "info", "next_action": "Follow up oldest and highest-risk unpaid invoices."},
             {"key": "missing_docs", "label": "Loads missing docs", "count": len(missing_docs), "severity": "warning" if missing_docs else "info", "next_action": "Upload PODs, invoices, and rate confirmations."},
         ]
+
+
+    def _build_ai_operations_assistant(
+        self,
+        *,
+        loads: list[Load],
+        payments: list[LoadPaymentRecord],
+        packets: list[SubmissionPacket],
+        missing_docs: list[dict[str, Any]],
+        collections: list[dict[str, Any]],
+        broker_insights: list[dict[str, Any]],
+        tasks: list[dict[str, Any]],
+        today: date,
+    ) -> dict[str, Any]:
+        summaries = self._assistant_summaries(
+            loads=loads,
+            payments=payments,
+            packets=packets,
+            missing_docs=missing_docs,
+            collections=collections,
+            broker_insights=broker_insights,
+            today=today,
+        )
+        invoice_risks = self._invoice_risk_items(payments, today=today)
+        collection_priorities = self._collection_priorities(collections, broker_insights=broker_insights)
+        recommendations = self._assistant_recommendations(
+            missing_docs=missing_docs,
+            invoice_risks=invoice_risks,
+            collection_priorities=collection_priorities,
+            broker_insights=broker_insights,
+            tasks=tasks,
+        )
+        return {
+            "summary": summaries,
+            "invoice_risks": invoice_risks[:15],
+            "broker_insights": broker_insights[:10],
+            "collections_priorities": collection_priorities[:15],
+            "recommendations": recommendations[:12],
+            "explainability": {
+                "mode": "deterministic_rules_only",
+                "uses_llm": False,
+                "autonomous_actions": False,
+                "rules": [
+                    "Invoice risk is derived from explicit aging, outstanding balance, payment status, reconciliation status, reserve balance, and missing packet documents.",
+                    "Broker behavior is aggregated only from organization-scoped payment records loaded for this command center response.",
+                    "Collections priority is ordered by risk level, invoice age, outstanding amount, and documented broker trend factors.",
+                    "Recommendations are decision-support prompts only; users must choose and perform any operational action.",
+                ],
+            },
+        }
+
+    def _assistant_summaries(
+        self,
+        *,
+        loads: list[Load],
+        payments: list[LoadPaymentRecord],
+        packets: list[SubmissionPacket],
+        missing_docs: list[dict[str, Any]],
+        collections: list[dict[str, Any]],
+        broker_insights: list[dict[str, Any]],
+        today: date,
+    ) -> list[dict[str, Any]]:
+        summaries: list[dict[str, Any]] = []
+        missing_pod_count = sum(1 for item in missing_docs if DocumentType.PROOF_OF_DELIVERY.value in item["missing_required_documents"])
+        if missing_pod_count:
+            summaries.append(self._insight("dispatch_summary", "warning", f"{missing_pod_count} load(s) are blocked by missing POD.", [f"{missing_pod_count} load(s) missing proof_of_delivery"], "Upload or request POD before packet submission."))
+        blocked_packet_count = sum(1 for item in missing_docs if item["blocked_from_packet_send"])
+        if blocked_packet_count:
+            summaries.append(self._insight("packet_blockers", "critical", f"{blocked_packet_count} load(s) have packet blockers requiring review.", [f"{blocked_packet_count} blocked missing-doc or validation item(s)"], "Resolve missing documents or validation blockers before resending packets."))
+        ready_packets = sum(1 for packet in packets if self._packet_status(packet) == "ready")
+        if ready_packets:
+            summaries.append(self._insight("billing_ready", "info", f"{ready_packets} packet(s) are ready for billing submission.", ["Submission packet status is ready"], "Submit ready packets through the normal billing workflow."))
+        overdue_45 = [item for item in collections if int(item["age_days"]) > 45]
+        if overdue_45:
+            total = sum((Decimal(item["outstanding_amount"]) for item in overdue_45), ZERO)
+            summaries.append(self._insight("invoice_aging", "critical", f"{len(overdue_45)} invoice(s) are over 45 days overdue totaling {self._money(total)}.", [">45 days since operational payment reference date", f"Outstanding total {self._money(total)}"], "Prioritize oldest high-balance invoices for collections follow-up."))
+        reserve_total = sum((self._reserve_pending(record) for record in payments), ZERO)
+        if reserve_total > ZERO:
+            summaries.append(self._insight("reserve_pending", "warning", f"Factoring reserves pending total {self._money(reserve_total)}.", ["reserve_amount minus reserve_paid_amount is greater than 0"], "Review reserve release status with the factor or broker."))
+        worsening = [item for item in broker_insights if item["trend"] == "worsening"]
+        if worsening:
+            broker = worsening[0]
+            summaries.append(self._insight("broker_behavior", "warning", f"Broker {broker['broker_name']} has increasing aging exposure.", broker["contributing_factors"], broker["recommendation"]))
+        if not summaries:
+            summaries.append(self._insight("operational_status", "info", "No high-risk operational blockers found in the current command center sample.", [f"Reviewed {len(loads)} active load(s) and {len(payments)} payment record(s) on {today.isoformat()}"], "Continue normal dispatch, billing, and collections monitoring."))
+        return summaries[:8]
+
+    def _invoice_risk_items(self, payments: list[LoadPaymentRecord], *, today: date) -> list[dict[str, Any]]:
+        items: list[dict[str, Any]] = []
+        for record in payments:
+            outstanding = self._outstanding(record)
+            if outstanding <= ZERO or record.payment_status not in UNPAID_PAYMENT_STATUSES:
+                continue
+            missing: list[str] = []
+            if record.load is not None:
+                missing = self._missing_documents(record.load)
+            risk = self._invoice_risk(record, missing_documents=missing, today=today)
+            if risk["level"] == "low" and not missing:
+                continue
+            load = record.load
+            items.append({
+                "load_id": str(record.load_id),
+                "load_number": load.load_number if load else None,
+                "invoice_number": load.invoice_number if load else None,
+                "broker_name": load.broker.name if load and load.broker else (load.broker_name_raw if load else None),
+                "outstanding_amount": self._money(outstanding),
+                "age_days": self._age_days(record, today=today),
+                "risk_level": risk["level"],
+                "priority_score": risk["priority_score"],
+                "risk_reasons": risk["reasons"],
+                "contributing_factors": risk["factors"],
+                "recommended_action": risk["recommended_action"],
+                "payment_status": self._enum_value(record.payment_status),
+                "factoring_status": self._enum_value(record.factoring_status),
+                "reconciliation_status": self._enum_value(record.reconciliation_status),
+                "missing_required_documents": missing,
+            })
+        items.sort(key=lambda item: (-self._risk_order(item["risk_level"]), -int(item["priority_score"]), -int(item["age_days"]), -Decimal(item["outstanding_amount"])))
+        return items
+
+    def _invoice_risk(self, record: LoadPaymentRecord, *, missing_documents: list[str], today: date) -> dict[str, Any]:
+        age = self._age_days(record, today=today)
+        score = 10
+        reasons: list[str] = []
+        factors = [f"age_days={age}", f"outstanding_amount={self._money(self._outstanding(record))}", f"payment_status={self._enum_value(record.payment_status)}"]
+        if age > 60:
+            score += 55
+            reasons.append("Invoice is more than 60 days from the operational payment reference date.")
+        elif age > 45:
+            score += 45
+            reasons.append("Invoice is more than 45 days from the operational payment reference date.")
+        elif age > 30:
+            score += 30
+            reasons.append("Invoice is more than 30 days from the operational payment reference date.")
+        if self._outstanding(record) >= Decimal("5000"):
+            score += 15
+            reasons.append("Outstanding balance is at least $5,000.")
+        if record.payment_status in {LoadPaymentStatus.DISPUTED, LoadPaymentStatus.SHORT_PAID}:
+            score += 25
+            reasons.append(f"Payment status is {record.payment_status.value}.")
+        if self._reserve_pending(record) > ZERO:
+            score += 15
+            reasons.append("Factoring reserve remains pending.")
+            factors.append(f"reserve_pending_amount={self._money(self._reserve_pending(record))}")
+        if record.reconciliation_status != FactoringReconciliationStatus.RECONCILED and (record.amount_received or ZERO) > ZERO:
+            score += 15
+            reasons.append("Payment has money received but reconciliation is still open.")
+        if missing_documents:
+            score += 20
+            reasons.append("Billing packet is blocked by missing required document(s).")
+            factors.append("missing_required_documents=" + ",".join(missing_documents))
+        score = min(score, 100)
+        level = "critical" if score >= 80 else "high" if score >= 65 else "medium" if score >= 35 else "low"
+        if not reasons:
+            reasons.append("Open invoice has unpaid balance but no elevated deterministic risk trigger.")
+        action = "Follow up overdue invoice and document response." if age > 30 else "Monitor invoice and keep packet documentation current."
+        if missing_documents:
+            action = "Resolve missing packet document(s) before collections escalation."
+        if self._reserve_pending(record) > ZERO:
+            action = "Review reserve release status and reconcile expected payment." if age <= 30 else action
+        return {"level": level, "priority_score": score, "reasons": reasons, "factors": factors, "recommended_action": action}
+
+    def _broker_behavior_insights(self, payments: list[LoadPaymentRecord], *, today: date) -> list[dict[str, Any]]:
+        grouped: dict[str, dict[str, Any]] = {}
+        for record in payments:
+            load = record.load
+            broker_id = str(load.broker_id) if load and load.broker_id else f"raw:{(load.broker_name_raw if load else 'Unknown broker') or 'Unknown broker'}"
+            broker_name = load.broker.name if load and load.broker else ((load.broker_name_raw if load else None) or "Unknown broker")
+            row = grouped.setdefault(broker_id, {"broker_id": broker_id, "broker_name": broker_name, "records": [], "paid_days": []})
+            row["records"].append(record)
+            if record.paid_date:
+                row["paid_days"].append(max((self._as_aware(record.paid_date).date() - self._payment_reference_date(record)).days, 0))
+        insights: list[dict[str, Any]] = []
+        for row in grouped.values():
+            records = row["records"]
+            unpaid = [record for record in records if self._outstanding(record) > ZERO and record.payment_status in UNPAID_PAYMENT_STATUSES]
+            overdue = [record for record in unpaid if self._age_days(record, today=today) > 30]
+            severe = [record for record in unpaid if self._age_days(record, today=today) > 45 or record.payment_status in {LoadPaymentStatus.DISPUTED, LoadPaymentStatus.SHORT_PAID}]
+            unpaid_total = sum((self._outstanding(record) for record in unpaid), ZERO)
+            overdue_total = sum((self._outstanding(record) for record in overdue), ZERO)
+            dispute_count = sum(1 for record in records if record.payment_status in {LoadPaymentStatus.DISPUTED, LoadPaymentStatus.SHORT_PAID})
+            unreconciled_count = sum(1 for record in records if record.reconciliation_status != FactoringReconciliationStatus.RECONCILED)
+            reserve_total = sum((self._reserve_pending(record) for record in records), ZERO)
+            paid_days = row["paid_days"]
+            average_payment_days = round(sum(paid_days) / len(paid_days), 1) if paid_days else None
+            current_aging = round(sum((self._age_days(record, today=today) for record in unpaid), 0) / len(unpaid), 1) if unpaid else 0
+            historical_average = average_payment_days if average_payment_days is not None else current_aging
+            trend = "worsening" if (current_aging >= historical_average + 10 and unpaid) or len(severe) >= 2 else "stable"
+            if not unpaid and dispute_count == 0 and reserve_total == ZERO:
+                continue
+            factors = [
+                f"records_reviewed={len(records)}",
+                f"unpaid_invoices={len(unpaid)}",
+                f"overdue_invoices={len(overdue)}",
+                f"unpaid_total={self._money(unpaid_total)}",
+            ]
+            if average_payment_days is not None:
+                factors.append(f"average_paid_cycle_days={average_payment_days}")
+            if current_aging:
+                factors.append(f"current_unpaid_average_age_days={current_aging}")
+            if dispute_count:
+                factors.append(f"dispute_or_short_paid_count={dispute_count}")
+            if unreconciled_count:
+                factors.append(f"unreconciled_count={unreconciled_count}")
+            if reserve_total > ZERO:
+                factors.append(f"reserve_pending_total={self._money(reserve_total)}")
+            recommendation = "Prioritize oldest/highest-balance invoices and verify packet acceptance."
+            if dispute_count:
+                recommendation = "Review dispute or short-pay details before standard collections follow-up."
+            if reserve_total > ZERO:
+                recommendation = "Follow up on reserve release and reconcile factor payment status."
+            insights.append({
+                "broker_id": row["broker_id"],
+                "broker_name": row["broker_name"],
+                "trend": trend,
+                "average_payment_days": average_payment_days,
+                "current_unpaid_average_age_days": current_aging,
+                "unpaid_invoice_count": len(unpaid),
+                "overdue_invoice_count": len(overdue),
+                "dispute_or_short_paid_count": dispute_count,
+                "unreconciled_count": unreconciled_count,
+                "unpaid_total": self._money(unpaid_total),
+                "overdue_total": self._money(overdue_total),
+                "reserve_pending_total": self._money(reserve_total),
+                "contributing_factors": factors,
+                "recommendation": recommendation,
+            })
+        insights.sort(key=lambda item: (item["trend"] != "worsening", -int(item["overdue_invoice_count"]), -Decimal(item["unpaid_total"]), item["broker_name"]))
+        return insights
+
+    def _collection_priorities(self, collections: list[dict[str, Any]], *, broker_insights: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        broker_by_name = {item["broker_name"]: item for item in broker_insights}
+        priorities: list[dict[str, Any]] = []
+        for item in collections:
+            broker = broker_by_name.get(item.get("broker_name"))
+            factors = [item["reason"], f"priority_score={item['priority_score']}"]
+            if broker and broker["trend"] == "worsening":
+                factors.append("broker_trend=worsening")
+            action = "Follow up overdue invoice and record the broker response." if int(item["age_days"]) > 30 else "Monitor unpaid invoice and keep packet documentation ready."
+            if item["reserve_pending_amount"] != "0.00":
+                action = "Follow up reserve release with the factor or broker."
+            priorities.append({
+                **item,
+                "collection_rank_reason": factors,
+                "broker_trend": broker["trend"] if broker else "not_enough_history",
+                "recommended_action": action,
+            })
+        priorities.sort(key=lambda item: (-int(item["priority_score"]), -int(item["age_days"]), -Decimal(item["outstanding_amount"]), item.get("broker_name") or ""))
+        return priorities
+
+    def _assistant_recommendations(
+        self,
+        *,
+        missing_docs: list[dict[str, Any]],
+        invoice_risks: list[dict[str, Any]],
+        collection_priorities: list[dict[str, Any]],
+        broker_insights: list[dict[str, Any]],
+        tasks: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        recommendations: list[dict[str, Any]] = []
+        for item in missing_docs[:5]:
+            missing = item["missing_required_documents"]
+            if missing:
+                action = "Upload missing POD" if DocumentType.PROOF_OF_DELIVERY.value in missing else "Upload missing packet document"
+                recommendations.append(self._recommendation("missing_documents", item["severity"], action, f"Load {item['load_number'] or item['load_id']} is blocked by missing required document(s).", item["reason"], item["load_id"], item["load_number"], "/dashboard/documents", ["missing_required_documents=" + ",".join(missing)]))
+            elif item["blocked_from_packet_send"]:
+                recommendations.append(self._recommendation("blocked_packet", item["severity"], "Review blocked packet", f"Load {item['load_number'] or item['load_id']} has a packet status or validation blocker.", item["reason"], item["load_id"], item["load_number"], "/dashboard/review-queue", item["unresolved_blockers"] or item["packet_statuses"]))
+        for item in collection_priorities[:5]:
+            if int(item["age_days"]) > 30 or item["reserve_pending_amount"] != "0.00":
+                recommendations.append(self._recommendation("collections", item["severity"], item["recommended_action"], f"Prioritize {item['broker_name'] or 'broker'} invoice {item['invoice_number'] or item['load_number'] or item['load_id']} for collections.", item["reason"], item["load_id"], item["load_number"], "/dashboard/money", item["collection_rank_reason"]))
+        for broker in broker_insights[:3]:
+            if broker["trend"] == "worsening" or broker["dispute_or_short_paid_count"] > 0:
+                recommendations.append({
+                    "id": f"broker_behavior:{broker['broker_id']}",
+                    "type": "broker_behavior",
+                    "severity": "warning",
+                    "title": f"Review broker behavior: {broker['broker_name']}",
+                    "description": broker["recommendation"],
+                    "why": "; ".join(broker["contributing_factors"]),
+                    "contributing_factors": broker["contributing_factors"],
+                    "href": "/dashboard/brokers",
+                    "autonomous_action": False,
+                })
+        for task in tasks[:3]:
+            recommendations.append(self._recommendation("workflow_acceleration", task["severity"], task["title"], task["description"], task["description"], task["load_id"], task["load_number"], task["href"], [f"task_type={task['type']}", f"priority_score={task['priority_score']}"]))
+        deduped: dict[str, dict[str, Any]] = {}
+        for item in recommendations:
+            deduped.setdefault(item["id"], item)
+        result = list(deduped.values())
+        result.sort(key=lambda item: (-self._severity_order(item["severity"]), item["title"]))
+        return result
+
+    def _broker_behavior_summary(self, items: list[dict[str, Any]]) -> dict[str, Any]:
+        return {
+            "broker_count": len(items),
+            "worsening_count": sum(1 for item in items if item["trend"] == "worsening"),
+            "dispute_or_short_paid_count": sum(int(item["dispute_or_short_paid_count"]) for item in items),
+            "unpaid_total": self._money(sum((Decimal(item["unpaid_total"]) for item in items), ZERO)),
+            "reserve_pending_total": self._money(sum((Decimal(item["reserve_pending_total"]) for item in items), ZERO)),
+        }
+
+    def _insight(self, insight_type: str, severity: str, title: str, factors: list[str], recommendation: str) -> dict[str, Any]:
+        return {"id": f"{insight_type}:{title}", "type": insight_type, "severity": severity, "title": title, "contributing_factors": factors, "recommendation": recommendation}
+
+    def _recommendation(self, item_type: str, severity: str, title: str, description: str, why: str, load_id: str, load_number: str | None, href: str, factors: list[str]) -> dict[str, Any]:
+        return {"id": f"{item_type}:{load_id}:{title}", "type": item_type, "severity": severity, "title": title, "description": description, "why": why, "load_id": load_id, "load_number": load_number, "href": href, "contributing_factors": factors, "autonomous_action": False}
+
+    def _payment_reference_date(self, record: LoadPaymentRecord) -> date:
+        load = record.load
+        if load is not None:
+            return load.submitted_at.date() if load.submitted_at else load.delivery_date or load.pickup_date or self._as_aware(record.created_at).date()
+        return self._as_aware(record.created_at).date()
+
+    def _risk_order(self, level: str) -> int:
+        return {"critical": 4, "high": 3, "medium": 2, "low": 1}.get(level, 0)
+
+    def _severity_order(self, severity: str) -> int:
+        return {"critical": 4, "warning": 3, "info": 2}.get(severity, 1)
 
     def _recent_activity(self, *, org_id: str) -> list[dict[str, Any]]:
         stmt = (
