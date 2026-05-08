@@ -2,6 +2,7 @@ import { getAccessToken, getOrganizationId } from "@/lib/auth";
 import { apiClient } from "@/lib/api-client";
 
 export type Severity = "info" | "warning" | "critical";
+export type RiskLevel = "low" | "medium" | "high" | "critical";
 
 export type CommandCenterKpis = {
   active_loads: number;
@@ -64,6 +65,84 @@ export type CollectionItem = {
   reason: string;
 };
 
+export type BrokerBehaviorInsight = {
+  broker_id: string;
+  broker_name: string;
+  trend: "stable" | "worsening";
+  average_payment_days: number | null;
+  current_unpaid_average_age_days: number;
+  unpaid_invoice_count: number;
+  overdue_invoice_count: number;
+  dispute_or_short_paid_count: number;
+  unreconciled_count: number;
+  unpaid_total: string;
+  overdue_total: string;
+  reserve_pending_total: string;
+  contributing_factors: string[];
+  recommendation: string;
+};
+
+export type InvoiceRiskInsight = {
+  load_id: string;
+  load_number: string | null;
+  invoice_number: string | null;
+  broker_name: string | null;
+  outstanding_amount: string;
+  age_days: number;
+  risk_level: RiskLevel;
+  priority_score: number;
+  risk_reasons: string[];
+  contributing_factors: string[];
+  recommended_action: string;
+  payment_status: string;
+  factoring_status: string;
+  reconciliation_status: string;
+  missing_required_documents: string[];
+};
+
+export type AssistantInsight = {
+  id: string;
+  type: string;
+  severity: Severity;
+  title: string;
+  contributing_factors: string[];
+  recommendation: string;
+};
+
+export type AssistantRecommendation = {
+  id: string;
+  type: string;
+  severity: Severity;
+  title: string;
+  description: string;
+  why: string;
+  load_id?: string;
+  load_number?: string | null;
+  href: string;
+  contributing_factors: string[];
+  autonomous_action: false;
+};
+
+export type CollectionPriority = CollectionItem & {
+  collection_rank_reason: string[];
+  broker_trend: "stable" | "worsening" | "not_enough_history";
+  recommended_action: string;
+};
+
+export type AIOperationsAssistant = {
+  summary: AssistantInsight[];
+  invoice_risks: InvoiceRiskInsight[];
+  broker_insights: BrokerBehaviorInsight[];
+  collections_priorities: CollectionPriority[];
+  recommendations: AssistantRecommendation[];
+  explainability: {
+    mode: "deterministic_rules_only";
+    uses_llm: boolean;
+    autonomous_actions: boolean;
+    rules: string[];
+  };
+};
+
 export type CommandCenterTask = {
   id: string;
   type: string;
@@ -117,6 +196,17 @@ export type CommandCenterData = {
     };
     items: CommandCenterTask[];
   };
+  ai_operations_assistant?: AIOperationsAssistant;
+  broker_behavior?: {
+    summary: {
+      broker_count: number;
+      worsening_count: number;
+      dispute_or_short_paid_count: number;
+      unpaid_total: string;
+      reserve_pending_total: string;
+    };
+    items: BrokerBehaviorInsight[];
+  };
   priority_cards: PriorityCard[];
   recent_activity: Array<{
     id: string;
@@ -129,6 +219,7 @@ export type CommandCenterData = {
     load_limit: number;
     payment_limit: number;
     logic: string;
+    ai_assistant_logic?: string;
     not_implemented: string[];
   };
 };

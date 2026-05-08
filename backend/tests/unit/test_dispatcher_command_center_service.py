@@ -175,3 +175,86 @@ def test_command_center_prioritizes_blocked_packets_and_overdue_collections(db_s
 def test_driver_blocked_from_command_center_authorizer():
     with pytest.raises(ForbiddenError):
         _require_command_center_access({"role": "driver"})
+
+
+def test_ai_operations_assistant_explains_invoice_risk_broker_behavior_and_collections(db_session):
+    _seed_parties(db_session)
+    missing_pod = _make_load(db_session, load_number="AI-MISSING-POD", delivery_days_ago=8)
+    _add_document(db_session, missing_pod, DocumentType.RATE_CONFIRMATION)
+    _add_document(db_session, missing_pod, DocumentType.INVOICE)
+
+    old_invoice = _make_load(db_session, load_number="AI-OLD", delivery_days_ago=70)
+    _add_document(db_session, old_invoice, DocumentType.RATE_CONFIRMATION)
+    _add_document(db_session, old_invoice, DocumentType.PROOF_OF_DELIVERY)
+    _add_document(db_session, old_invoice, DocumentType.INVOICE)
+    old_record = _payment(db_session, old_invoice, expected="8200", received="0", status=LoadPaymentStatus.AWAITING_PAYMENT)
+
+    disputed = _make_load(db_session, load_number="AI-DISPUTED", delivery_days_ago=50)
+    _add_document(db_session, disputed, DocumentType.RATE_CONFIRMATION)
+    _add_document(db_session, disputed, DocumentType.PROOF_OF_DELIVERY)
+    _add_document(db_session, disputed, DocumentType.INVOICE)
+    disputed_record = _payment(db_session, disputed, expected="3000", received="500", status=LoadPaymentStatus.DISPUTED)
+    disputed_record.reconciliation_status = FactoringReconciliationStatus.PARTIALLY_RECONCILED
+    disputed_record.factoring_status = FactoringWorkflowStatus.RESERVE_PENDING
+    disputed_record.reserve_amount = Decimal("750")
+    disputed_record.reserve_paid_amount = Decimal("0")
+
+    paid = _make_load(db_session, load_number="AI-PAID", delivery_days_ago=95)
+    _add_document(db_session, paid, DocumentType.RATE_CONFIRMATION)
+    _add_document(db_session, paid, DocumentType.PROOF_OF_DELIVERY)
+    _add_document(db_session, paid, DocumentType.INVOICE)
+    paid_record = _payment(db_session, paid, expected="2000", received="2000", status=LoadPaymentStatus.PAID)
+    paid_record.reconciliation_status = FactoringReconciliationStatus.RECONCILED
+    paid_record.paid_date = datetime.now(timezone.utc) - timedelta(days=20)
+
+    data = DispatcherCommandCenterService(db_session).get_command_center(org_id=ORG_ID)
+    assistant = data["ai_operations_assistant"]
+
+    assert assistant["explainability"]["mode"] == "deterministic_rules_only"
+    assert assistant["explainability"]["uses_llm"] is False
+    assert assistant["explainability"]["autonomous_actions"] is False
+    assert any("missing POD" in item["title"] for item in assistant["summary"])
+    assert any("over 45 days overdue" in item["title"] for item in assistant["summary"])
+
+    risk_by_load = {item["load_number"]: item for item in assistant["invoice_risks"]}
+    assert risk_by_load["AI-OLD"]["risk_level"] == "critical"
+    assert any("more than 60 days" in reason for reason in risk_by_load["AI-OLD"]["risk_reasons"])
+    assert risk_by_load["AI-DISPUTED"]["risk_level"] in {"high", "critical"}
+    assert any("Payment status is disputed" in reason for reason in risk_by_load["AI-DISPUTED"]["risk_reasons"])
+
+    collections = assistant["collections_priorities"]
+    assert collections[0]["priority_score"] >= collections[1]["priority_score"]
+    assert {collections[0]["load_number"], collections[1]["load_number"]} == {"AI-OLD", "AI-DISPUTED"}
+    assert collections[0]["collection_rank_reason"]
+    assert any(item["recommended_action"] for item in collections)
+
+    broker = assistant["broker_insights"][0]
+    assert broker["broker_name"] == "Command Broker"
+    assert broker["unpaid_invoice_count"] == 2
+    assert broker["dispute_or_short_paid_count"] == 1
+    assert broker["contributing_factors"]
+
+    recommendations = assistant["recommendations"]
+    assert recommendations
+    assert all(item["autonomous_action"] is False for item in recommendations)
+    assert all(item["contributing_factors"] for item in recommendations)
+
+
+def test_ai_operations_assistant_remains_org_scoped(db_session):
+    _seed_parties(db_session)
+    org_load = _make_load(db_session, load_number="AI-ORG", delivery_days_ago=61)
+    _add_document(db_session, org_load, DocumentType.RATE_CONFIRMATION)
+    _add_document(db_session, org_load, DocumentType.PROOF_OF_DELIVERY)
+    _add_document(db_session, org_load, DocumentType.INVOICE)
+    _payment(db_session, org_load, expected="1000", received="0")
+
+    other_load = _make_load(db_session, load_number="AI-OTHER", org_id=OTHER_ORG_ID, delivery_days_ago=90)
+    _payment(db_session, other_load, expected="9000", received="0", status=LoadPaymentStatus.DISPUTED)
+
+    data = DispatcherCommandCenterService(db_session).get_command_center(org_id=ORG_ID)
+    assistant = data["ai_operations_assistant"]
+
+    serialized = str(assistant)
+    assert "AI-ORG" in serialized
+    assert "AI-OTHER" not in serialized
+    assert "9000.00" not in serialized
