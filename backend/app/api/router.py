@@ -12,6 +12,8 @@ from app.api.v1.dashboard import router as dashboard_router
 from app.api.v1.demo_requests import router as demo_requests_router
 from app.api.v1.documents import router as documents_router
 from app.api.v1.drivers import router as drivers_router
+from app.api.v1.factoring_companies import router as factoring_companies_router
+from app.api.v1.factoring_dashboard import router as factoring_dashboard_router
 from app.api.v1.follow_ups import router as follow_ups_router
 from app.api.v1.health import router as health_router
 from app.api.v1.loads import router as loads_router
@@ -58,6 +60,8 @@ api_router.include_router(brokers_router, tags=["brokers"], dependencies=protect
 api_router.include_router(carrier_profile_router, tags=["carrier-profile"], dependencies=protected_dependencies)
 api_router.include_router(loads_router, tags=["loads"], dependencies=protected_dependencies)
 api_router.include_router(load_payment_reconciliation_router, tags=["load-payment-reconciliation"], dependencies=protected_dependencies)
+api_router.include_router(factoring_companies_router, tags=["factoring-companies"], dependencies=protected_dependencies)
+api_router.include_router(factoring_dashboard_router, tags=["factoring-dashboard"], dependencies=protected_dependencies)
 api_router.include_router(follow_ups_router, tags=["follow-ups"], dependencies=protected_dependencies)
 api_router.include_router(documents_router, tags=["documents"], dependencies=protected_dependencies)
 api_router.include_router(review_queue_router, tags=["review-queue"], dependencies=protected_dependencies)

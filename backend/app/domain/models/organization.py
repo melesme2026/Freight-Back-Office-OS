@@ -19,6 +19,7 @@ if TYPE_CHECKING:
     from app.domain.models.carrier_profile import CarrierProfile
     from app.domain.models.customer_account import CustomerAccount
     from app.domain.models.driver import Driver
+    from app.domain.models.factoring_company import FactoringCompany
     from app.domain.models.follow_up_task import FollowUpTask
     from app.domain.models.ledger_entry import LedgerEntry
     from app.domain.models.load import Load
@@ -147,6 +148,11 @@ class Organization(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         lazy="selectin",
     )
     load_payment_records: Mapped[list["LoadPaymentRecord"]] = relationship(
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
+    factoring_companies: Mapped[list["FactoringCompany"]] = relationship(
+        back_populates="organization",
         cascade="all, delete-orphan",
         lazy="selectin",
     )
