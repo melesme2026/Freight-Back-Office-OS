@@ -11,6 +11,7 @@ from app.core.security import get_current_token_payload
 from app.domain.models.organization import Organization
 from app.repositories.organization_repo import OrganizationRepository
 from app.schemas.common import ApiResponse
+from app.services.audit.audit_service import AuditService
 from app.services.billing.stripe_subscription_service import StripeSubscriptionService
 from fastapi import APIRouter, Depends, Header, Request
 from pydantic import BaseModel, ConfigDict
@@ -73,6 +74,16 @@ def create_checkout_session(
     organization = _get_token_organization(db, token_payload)
     service = StripeSubscriptionService(db, settings)
     result = service.create_checkout_session(organization=organization, plan_key=payload.plan_key)
+    AuditService(db).log_event(
+        organization_id=str(organization.id),
+        entity_type="billing_subscription",
+        entity_id=str(organization.id),
+        action="billing.checkout_session.created",
+        actor_id=str(token_payload.get("sub")) if token_payload.get("sub") else None,
+        actor_type="staff_user",
+        metadata_json={"status": "checkout_started"},
+    )
+    db.commit()
     return ApiResponse(data=result, meta={}, error=None)
 
 

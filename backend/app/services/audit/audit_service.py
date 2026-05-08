@@ -10,6 +10,9 @@ from app.domain.models.audit_log import AuditLog
 from app.repositories.audit_repo import AuditRepository
 
 
+SENSITIVE_METADATA_MARKERS = ("password", "secret", "token", "card", "cvv", "stripe_payment_method")
+
+
 class AuditService:
     DEFAULT_PAGE = 1
     DEFAULT_PAGE_SIZE = 100
@@ -46,6 +49,23 @@ class AuditService:
             return cls.DEFAULT_PAGE_SIZE
         return min(page_size, cls.MAX_PAGE_SIZE)
 
+    @staticmethod
+    def _sanitize_metadata(value: dict[str, Any] | list[Any] | None) -> dict[str, Any] | list[Any] | None:
+        if value is None:
+            return None
+        if isinstance(value, list):
+            return [item for item in value if not isinstance(item, str) or len(item) <= 500]
+        sanitized: dict[str, Any] = {}
+        for key, item in value.items():
+            lowered_key = str(key).lower()
+            if any(marker in lowered_key for marker in SENSITIVE_METADATA_MARKERS):
+                continue
+            if isinstance(item, str) and len(item) > 500:
+                sanitized[key] = item[:500]
+            else:
+                sanitized[key] = item
+        return sanitized
+
     def log_event(
         self,
         *,
@@ -81,8 +101,8 @@ class AuditService:
             entity_type=entity_type,
             entity_id=parsed_entity_id,
             action=action,
-            changes_json=changes_json,
-            metadata_json=metadata_json,
+            changes_json=self._sanitize_metadata(changes_json),
+            metadata_json=self._sanitize_metadata(metadata_json),
         )
         return self.audit_repo.create(log)
 

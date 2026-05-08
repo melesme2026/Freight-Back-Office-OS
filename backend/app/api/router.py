@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 
 from app.api.v1.accounting import router as accounting_router
+from app.api.v1.activity import router as activity_router
 from app.api.v1.auth import router as auth_router
 from app.api.v1.billing import router as billing_router
 from app.api.v1.billing_dashboard import router as billing_dashboard_router
@@ -22,6 +23,7 @@ from app.api.v1.loads import router as loads_router
 from app.api.v1.load_payment_reconciliation import router as load_payment_reconciliation_router
 from app.api.v1.notifications import router as notifications_router
 from app.api.v1.onboarding import router as onboarding_router
+from app.api.v1.operations import router as operations_router
 from app.api.v1.organizations import router as organizations_router
 from app.api.v1.payments import router as payments_router
 from app.api.v1.referrals import router as referrals_router
@@ -69,6 +71,7 @@ api_router.include_router(documents_router, tags=["documents"], dependencies=pro
 api_router.include_router(review_queue_router, tags=["review-queue"], dependencies=protected_dependencies)
 api_router.include_router(notifications_router, tags=["notifications"], dependencies=protected_dependencies)
 api_router.include_router(support_router, tags=["support"], dependencies=protected_dependencies)
+api_router.include_router(operations_router, tags=["operations"], dependencies=protected_dependencies)
 
 # Product / billing
 api_router.include_router(billing_router, tags=["billing"])
@@ -82,6 +85,7 @@ api_router.include_router(billing_dashboard_router, tags=["billing-dashboard"], 
 api_router.include_router(accounting_router, tags=["accounting"], dependencies=protected_dependencies)
 
 # Dashboards
+api_router.include_router(activity_router, tags=["activity"], dependencies=protected_dependencies)
 api_router.include_router(reports_router, tags=["reports"], dependencies=protected_dependencies)
 api_router.include_router(dashboard_router, tags=["dashboard"], dependencies=protected_dependencies)
 

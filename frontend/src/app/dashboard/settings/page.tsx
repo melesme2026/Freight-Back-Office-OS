@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useState } from "react";
 
 import { apiClient } from "@/lib/api-client";
+import { ActivityEvent, fetchRecentActivity, formatActivityAction } from "@/lib/activity";
 import { getAccessToken, getOrganizationId } from "@/lib/auth";
 
 type OrganizationSettings = {
@@ -70,6 +71,8 @@ export default function SettingsPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [activity, setActivity] = useState<ActivityEvent[]>([]);
+  const [activityError, setActivityError] = useState<string | null>(null);
 
   useEffect(() => {
     const token = getAccessToken();
@@ -111,7 +114,21 @@ export default function SettingsPage() {
       }
     }
 
+    async function loadActivity() {
+      try {
+        const items = await fetchRecentActivity(20);
+        if (!mounted) return;
+        setActivity(items);
+        setActivityError(null);
+      } catch (error: unknown) {
+        if (!mounted) return;
+        setActivity([]);
+        setActivityError(error instanceof Error ? error.message : "Failed to load activity.");
+      }
+    }
+
     void loadSettings();
+    void loadActivity();
 
     return () => {
       mounted = false;
@@ -281,6 +298,42 @@ export default function SettingsPage() {
             Settings unavailable.
           </section>
         )}
+
+        <section className="mt-8 rounded-2xl border border-slate-200 bg-white p-4 shadow-soft sm:p-6">
+          <div className="mb-4 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-lg font-semibold text-slate-950">Recent Activity</h2>
+              <p className="text-sm text-slate-600">Operational audit events for uploads, packets, billing, factoring, exports, and settings.</p>
+            </div>
+            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">Last {activity.length} events</span>
+          </div>
+
+          {activityError ? (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              {activityError}
+            </div>
+          ) : activity.length > 0 ? (
+            <div className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-100">
+              {activity.map((event) => (
+                <article key={event.id} className="grid gap-2 px-4 py-3 sm:grid-cols-[1fr_auto] sm:items-center">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900">{formatActivityAction(event.action)}</p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {event.entity_type} · {event.metadata.load_number ? `Load ${String(event.metadata.load_number)}` : event.entity_id}
+                    </p>
+                  </div>
+                  <time className="text-xs text-slate-500" dateTime={event.created_at ?? undefined}>
+                    {event.created_at ? new Date(event.created_at).toLocaleString() : "Just now"}
+                  </time>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-xl border border-slate-100 bg-slate-50 px-4 py-6 text-sm text-slate-600">
+              No activity events yet. Uploads, packet sends, billing, factoring, and settings changes will appear here.
+            </div>
+          )}
+        </section>
       </div>
     </main>
   );

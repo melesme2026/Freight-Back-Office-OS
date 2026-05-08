@@ -13,6 +13,7 @@ from app.core.dependencies import get_db_session
 from app.core.exceptions import ForbiddenError, UnauthorizedError
 from app.core.security import get_current_token_payload
 from app.schemas.common import ApiResponse
+from app.services.audit.audit_service import AuditService
 from app.services.payments.factoring_company_service import FactoringCompanyService
 
 router = APIRouter(prefix="/factoring-companies")
@@ -84,8 +85,9 @@ def list_factoring_companies(token_payload: dict[str, Any] = Depends(get_current
 def create_factoring_company(payload: FactoringCompanyRequest, token_payload: dict[str, Any] = Depends(get_current_token_payload), db: Session = Depends(get_db_session)) -> ApiResponse:
     _authorize_write(token_payload)
     service = FactoringCompanyService(db)
+    org_id = _org_id(token_payload)
     company = service.create_company(
-        organization_id=_org_id(token_payload),
+        organization_id=org_id,
         company_name=payload.company_name or "",
         contact_email=payload.contact_email,
         phone=payload.phone,
@@ -93,6 +95,16 @@ def create_factoring_company(payload: FactoringCompanyRequest, token_payload: di
         default_reserve_percent=payload.default_reserve_percent,
         default_fee_percent=payload.default_fee_percent,
     )
+    AuditService(db).log_event(
+        organization_id=org_id,
+        entity_type="factoring_company",
+        entity_id=str(company.id),
+        action="factoring_company.created",
+        actor_id=str(token_payload.get("sub")) if token_payload.get("sub") else None,
+        actor_type="staff_user",
+        metadata_json={"status": "created"},
+    )
+    db.commit()
     return ApiResponse(data=_serialize(company), meta={}, error=None)
 
 
@@ -100,5 +112,16 @@ def create_factoring_company(payload: FactoringCompanyRequest, token_payload: di
 def update_factoring_company(company_id: uuid.UUID, payload: FactoringCompanyRequest, token_payload: dict[str, Any] = Depends(get_current_token_payload), db: Session = Depends(get_db_session)) -> ApiResponse:
     _authorize_write(token_payload)
     service = FactoringCompanyService(db)
-    company = service.update_company(company_id=str(company_id), organization_id=_org_id(token_payload), **payload.model_dump(exclude_unset=True))
+    org_id = _org_id(token_payload)
+    company = service.update_company(company_id=str(company_id), organization_id=org_id, **payload.model_dump(exclude_unset=True))
+    AuditService(db).log_event(
+        organization_id=org_id,
+        entity_type="factoring_company",
+        entity_id=str(company.id),
+        action="factoring_company.updated",
+        actor_id=str(token_payload.get("sub")) if token_payload.get("sub") else None,
+        actor_type="staff_user",
+        metadata_json={"status": "updated"},
+    )
+    db.commit()
     return ApiResponse(data=_serialize(company), meta={}, error=None)

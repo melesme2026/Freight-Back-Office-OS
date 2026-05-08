@@ -18,6 +18,7 @@ from app.domain.enums.load_status import LoadStatus
 from app.domain.models.follow_up_task import FollowUpTask
 from app.schemas.common import ApiResponse
 from app.services.carrier_profile_service import CarrierProfileService
+from app.services.audit.audit_service import AuditService
 from app.services.documents.document_service import DocumentService
 from app.services.documents.storage_service import StorageService
 from app.services.email.email_service import PacketEmailService
@@ -114,6 +115,28 @@ class LoadWorkflowActionRequest(BaseModel):
 
 def _uuid_to_str(value: uuid.UUID | None) -> str | None:
     return str(value) if value is not None else None
+
+
+def _log_load_activity(
+    *,
+    db: Session,
+    organization_id: object,
+    entity_type: str,
+    entity_id: object,
+    action: str,
+    token_payload: dict[str, Any],
+    metadata: dict[str, Any] | None = None,
+) -> None:
+    actor_id = str(token_payload.get("staff_user_id") or token_payload.get("sub") or "").strip() or None
+    AuditService(db).log_event(
+        organization_id=str(organization_id),
+        entity_type=entity_type,
+        entity_id=str(entity_id),
+        action=action,
+        actor_id=actor_id,
+        actor_type="staff_user" if actor_id else "system",
+        metadata_json=metadata or {},
+    )
 
 
 def _normalize_optional_text(value: str | None) -> str | None:
@@ -1677,6 +1700,15 @@ def create_submission_packet(
     if payload.notes:
         packet.notes = payload.notes.strip()
 
+    _log_load_activity(
+        db=db,
+        organization_id=load.organization_id,
+        entity_type="submission_packet",
+        entity_id=packet.id,
+        action="packet.created",
+        token_payload=token_payload,
+        metadata={"load_id": str(load.id), "load_number": load.load_number},
+    )
     db.commit()
     return ApiResponse(data=_serialize_submission_packet(packet), meta={}, error=None)
 
@@ -1753,6 +1785,15 @@ def mark_submission_packet_sent(
     )
     if payload.notes:
         packet.notes = payload.notes.strip()
+    _log_load_activity(
+        db=db,
+        organization_id=load.organization_id,
+        entity_type="submission_packet",
+        entity_id=packet.id,
+        action="packet.sent",
+        token_payload=token_payload,
+        metadata={"load_id": str(load.id), "load_number": load.load_number, "status": "sent"},
+    )
     db.commit()
     return ApiResponse(data=_serialize_submission_packet(packet), meta={}, error=None)
 
@@ -1934,6 +1975,15 @@ def send_submission_packet_email(
     for task in packet_follow_ups:
         task.status = FollowUpTaskStatus.CANCELED
 
+    _log_load_activity(
+        db=db,
+        organization_id=load.organization_id,
+        entity_type="submission_packet",
+        entity_id=packet.id,
+        action="packet.email_sent",
+        token_payload=token_payload,
+        metadata={"load_id": str(load.id), "load_number": load.load_number, "status": "sent"},
+    )
     db.commit()
     refreshed_packet = packet_service.get_packet(
         str(packet_id), str(load_id), str(load.organization_id)
@@ -1964,6 +2014,15 @@ def mark_submission_packet_accepted(
         str(load.organization_id),
         str(token_payload.get("staff_user_id")) if token_payload.get("staff_user_id") else None,
     )
+    _log_load_activity(
+        db=db,
+        organization_id=load.organization_id,
+        entity_type="submission_packet",
+        entity_id=packet.id,
+        action="packet.accepted",
+        token_payload=token_payload,
+        metadata={"load_id": str(load.id), "load_number": load.load_number, "status": "accepted"},
+    )
     db.commit()
     return ApiResponse(data=_serialize_submission_packet(packet), meta={}, error=None)
 
@@ -1989,6 +2048,15 @@ def mark_submission_packet_rejected(
         payload.reason,
         str(token_payload.get("staff_user_id")) if token_payload.get("staff_user_id") else None,
         resubmission_required=payload.resubmission_required,
+    )
+    _log_load_activity(
+        db=db,
+        organization_id=load.organization_id,
+        entity_type="submission_packet",
+        entity_id=packet.id,
+        action="packet.rejected",
+        token_payload=token_payload,
+        metadata={"load_id": str(load.id), "load_number": load.load_number, "status": "rejected"},
     )
     db.commit()
     return ApiResponse(data=_serialize_submission_packet(packet), meta={}, error=None)
@@ -2019,6 +2087,15 @@ def download_load_invoice(
                 status_code=422,
             ) from exc
         raise
+    _log_load_activity(
+        db=db,
+        organization_id=load.organization_id,
+        entity_type="invoice",
+        entity_id=load.id,
+        action="invoice.generated",
+        token_payload=token_payload,
+        metadata={"load_id": str(load.id), "load_number": load.load_number},
+    )
     db.commit()
     filename = f"invoice-{load.load_number or load.id}.pdf"
 

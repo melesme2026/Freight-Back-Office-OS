@@ -14,6 +14,7 @@ from app.core.dependencies import get_db_session
 from app.core.exceptions import ForbiddenError
 from app.core.security import get_current_token_payload
 from app.schemas.common import ApiResponse
+from app.services.audit.audit_service import AuditService
 from app.services.notifications.operational_notification_service import OperationalNotificationService
 from app.services.payments.payment_reconciliation_service import PaymentReconciliationService
 
@@ -192,6 +193,27 @@ def _notify_payment_status(db: Session, record: Any, previous_status: str | None
         )
 
 
+def _log_payment_event(
+    *,
+    db: Session,
+    record: Any,
+    action: str,
+    token_payload: dict[str, Any],
+    previous_status: str | None = None,
+) -> None:
+    AuditService(db).log_event(
+        organization_id=str(record.organization_id),
+        entity_type="load_payment_record",
+        entity_id=str(record.id),
+        action=action,
+        actor_id=_actor_id(token_payload),
+        actor_type="staff_user" if _actor_id(token_payload) else "system",
+        metadata_json={
+            "load_id": str(record.load_id),
+            "status": getattr(getattr(record, "payment_status", None), "value", getattr(record, "payment_status", None)),
+            "previous_status": previous_status,
+        },
+    )
 
 
 @router.get("/", response_model=ApiResponse)
@@ -234,6 +256,7 @@ def patch_payment_reconciliation(
     record.updated_by_staff_user_id = uuid.UUID(_actor_id(token_payload)) if _actor_id(token_payload) else None
     db.flush()
     _notify_payment_status(db, record, str(previous_status) if previous_status else None)
+    _log_payment_event(db=db, record=record, action="payment_reconciliation.updated", token_payload=token_payload, previous_status=str(previous_status) if previous_status else None)
     return ApiResponse(data=_serialize(record))
 
 
@@ -247,6 +270,7 @@ def mark_paid(load_id: str, payload: MarkPaidRequest, db: Session = Depends(get_
     record.updated_by_staff_user_id = uuid.UUID(_actor_id(token_payload)) if _actor_id(token_payload) else None
     db.flush()
     _notify_payment_status(db, record, str(previous_status) if previous_status else None)
+    _log_payment_event(db=db, record=record, action="payment.marked_paid", token_payload=token_payload, previous_status=str(previous_status) if previous_status else None)
     return ApiResponse(data=_serialize(record))
 
 
@@ -260,6 +284,7 @@ def mark_partial_payment(load_id: str, payload: MarkPartialRequest, db: Session 
     record.updated_by_staff_user_id = uuid.UUID(_actor_id(token_payload)) if _actor_id(token_payload) else None
     db.flush()
     _notify_payment_status(db, record, str(previous_status) if previous_status else None)
+    _log_payment_event(db=db, record=record, action="payment.marked_partial", token_payload=token_payload, previous_status=str(previous_status) if previous_status else None)
     return ApiResponse(data=_serialize(record))
 
 
@@ -273,6 +298,7 @@ def mark_advance_paid(load_id: str, payload: MarkAdvanceRequest, db: Session = D
     record.updated_by_staff_user_id = uuid.UUID(_actor_id(token_payload)) if _actor_id(token_payload) else None
     db.flush()
     _notify_payment_status(db, record, str(previous_status) if previous_status else None)
+    _log_payment_event(db=db, record=record, action="factoring.advance_paid", token_payload=token_payload, previous_status=str(previous_status) if previous_status else None)
     return ApiResponse(data=_serialize(record))
 
 
@@ -286,6 +312,7 @@ def mark_reserve_pending(load_id: str, payload: MarkReservePendingRequest, db: S
     record.updated_by_staff_user_id = uuid.UUID(_actor_id(token_payload)) if _actor_id(token_payload) else None
     db.flush()
     _notify_payment_status(db, record, str(previous_status) if previous_status else None)
+    _log_payment_event(db=db, record=record, action="factoring.reserve_pending", token_payload=token_payload, previous_status=str(previous_status) if previous_status else None)
     return ApiResponse(data=_serialize(record))
 
 
@@ -299,6 +326,7 @@ def mark_reserve_paid(load_id: str, payload: MarkReservePaidRequest, db: Session
     record.updated_by_staff_user_id = uuid.UUID(_actor_id(token_payload)) if _actor_id(token_payload) else None
     db.flush()
     _notify_payment_status(db, record, str(previous_status) if previous_status else None)
+    _log_payment_event(db=db, record=record, action="factoring.reserve_paid", token_payload=token_payload, previous_status=str(previous_status) if previous_status else None)
     return ApiResponse(data=_serialize(record))
 
 
@@ -318,6 +346,7 @@ def mark_short_paid(load_id: str, payload: MarkShortPaidRequest, db: Session = D
     record.updated_by_staff_user_id = uuid.UUID(_actor_id(token_payload)) if _actor_id(token_payload) else None
     db.flush()
     _notify_payment_status(db, record, str(previous_status) if previous_status else None)
+    _log_payment_event(db=db, record=record, action="payment.short_paid", token_payload=token_payload, previous_status=str(previous_status) if previous_status else None)
     return ApiResponse(data=_serialize(record))
 
 
@@ -331,4 +360,5 @@ def mark_disputed(load_id: str, payload: MarkDisputedRequest, db: Session = Depe
     record.updated_by_staff_user_id = uuid.UUID(_actor_id(token_payload)) if _actor_id(token_payload) else None
     db.flush()
     _notify_payment_status(db, record, str(previous_status) if previous_status else None)
+    _log_payment_event(db=db, record=record, action="payment.disputed", token_payload=token_payload, previous_status=str(previous_status) if previous_status else None)
     return ApiResponse(data=_serialize(record))

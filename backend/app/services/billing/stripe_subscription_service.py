@@ -15,6 +15,7 @@ from app.core.config import Settings
 from app.core.exceptions import BillingError, NotFoundError, UnauthorizedError, ValidationError
 from app.domain.models.organization import Organization
 from app.domain.models.stripe_webhook_event import StripeWebhookEvent
+from app.services.audit.audit_service import AuditService
 from app.services.billing.subscription_enforcement import allowed_features
 from app.services.billing.subscription_plans import (
     SubscriptionPlan,
@@ -231,6 +232,14 @@ class StripeSubscriptionService:
         record.error_message = None
         self.db.add(record)
         self.db.add(organization)
+        AuditService(self.db).log_event(
+            organization_id=str(organization.id),
+            entity_type="billing_subscription",
+            entity_id=str(organization.id),
+            action="billing.subscription.changed",
+            actor_type="system",
+            metadata_json={"status": organization.subscription_status, "event_type": event_type},
+        )
         self.db.commit()
         return {
             "event_id": event_id,
