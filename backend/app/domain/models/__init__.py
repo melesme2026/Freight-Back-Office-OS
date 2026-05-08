@@ -1,5 +1,6 @@
 """Ensure all ORM models are imported so SQLAlchemy string-based relationships resolve reliably."""
 
+from app.domain.models.accounting import AccountingExportMapping, AccountingIntegrationSettings  # noqa: F401
 from app.domain.models.api_client import ApiClient  # noqa: F401
 from app.domain.models.audit_log import AuditLog  # noqa: F401
 from app.domain.models.billing_invoice import BillingInvoice  # noqa: F401
