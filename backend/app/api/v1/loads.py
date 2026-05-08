@@ -100,6 +100,16 @@ class LoadStatusTransitionRequest(BaseModel):
     notes: str | None = None
 
 
+class DriverLoadCheckInRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    status: str
+    eta_note: str | None = None
+    latitude: float | None = None
+    longitude: float | None = None
+    location_accuracy_meters: float | None = None
+
+
 class LoadWorkflowActionRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -1387,6 +1397,74 @@ def get_driver_load(
     item = service.get_load(str(load_id))
     _authorize_load_access(item=item, token_payload=token_payload)
     return ApiResponse(data=_serialize_load(item, detailed=True, db=db), meta={}, error=None)
+
+
+@router.post("/driver/loads/{load_id}/check-in", response_model=ApiResponse)
+def driver_load_check_in(
+    load_id: uuid.UUID,
+    payload: DriverLoadCheckInRequest,
+    token_payload: dict[str, Any] = Depends(get_current_token_payload),
+    db: Session = Depends(get_db_session),
+) -> ApiResponse:
+    token_role = str(token_payload.get("role") or "").lower()
+    if token_role != "driver":
+        raise ForbiddenError("Only driver accounts can update driver load check-ins")
+
+    service = LoadService(db)
+    existing = service.get_load(str(load_id))
+    _authorize_load_access(item=existing, token_payload=token_payload)
+
+    parsed_status = _parse_load_status(payload.status)
+    if parsed_status not in {LoadStatus.IN_TRANSIT, LoadStatus.DELIVERED}:
+        raise ValidationError(
+            "Driver check-ins only support in_transit or delivered statuses",
+            details={"status": payload.status},
+        )
+
+    notes_parts = [
+        "Driver mobile check-in",
+        f"status={parsed_status.value}",
+    ]
+    eta_note = _normalize_optional_text(payload.eta_note)
+    if eta_note:
+        notes_parts.append(f"eta={eta_note}")
+    if payload.latitude is not None and payload.longitude is not None:
+        notes_parts.append(
+            "location="
+            f"{round(payload.latitude, 5)},{round(payload.longitude, 5)}"
+            f" accuracy_m={round(payload.location_accuracy_meters, 1) if payload.location_accuracy_meters is not None else 'unknown'}"
+        )
+
+    engine = WorkflowEngine(db)
+    result = engine.transition_load(
+        load_id=str(load_id),
+        new_status=parsed_status,
+        actor_staff_user_id=None,
+        actor_type="driver",
+        notes="; ".join(notes_parts),
+    )
+    transitioned_load = service.get_load(str(load_id))
+
+    _log_load_activity(
+        db=db,
+        organization_id=transitioned_load.organization_id,
+        entity_type="load",
+        entity_id=transitioned_load.id,
+        action="driver.mobile_check_in",
+        token_payload=token_payload,
+        metadata={
+            "new_status": parsed_status.value,
+            "eta_note_present": bool(eta_note),
+            "location_present": payload.latitude is not None and payload.longitude is not None,
+        },
+    )
+    db.commit()
+
+    return ApiResponse(
+        data=_serialize_load(transitioned_load, detailed=True, db=db),
+        meta={"driver_check_in": True, "transition": result},
+        error=None,
+    )
 
 
 @router.get("/loads", response_model=ApiResponse)

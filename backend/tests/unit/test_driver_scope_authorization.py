@@ -190,3 +190,81 @@ def test_driver_billing_mutation_endpoints_are_blocked(db_session) -> None:
 
     with pytest.raises(UnauthorizedError):
         documents._ensure_staff_role(token_payload)
+
+
+def test_driver_mobile_check_in_requires_assigned_load(monkeypatch, db_session) -> None:
+    from app.api.v1 import loads
+
+    organization_id = uuid.uuid4()
+    driver_id = uuid.uuid4()
+
+    class FakeLoadService:
+        def __init__(self, _db) -> None:
+            pass
+
+        def get_load(self, _load_id):
+            return SimpleNamespace(
+                id=uuid.uuid4(),
+                organization_id=organization_id,
+                driver_id=uuid.uuid4(),
+            )
+
+    monkeypatch.setattr(loads, "LoadService", FakeLoadService)
+
+    with pytest.raises(UnauthorizedError):
+        loads.driver_load_check_in(
+            load_id=uuid.uuid4(),
+            payload=loads.DriverLoadCheckInRequest(status="in_transit"),
+            token_payload=_driver_token(organization_id=organization_id, driver_id=driver_id),
+            db=db_session,
+        )
+
+
+def test_driver_mobile_check_in_transitions_own_load(monkeypatch, db_session) -> None:
+    from app.api.v1 import loads
+
+    organization_id = uuid.uuid4()
+    driver_id = uuid.uuid4()
+    load_id = uuid.uuid4()
+    calls: dict[str, object] = {}
+
+    load = SimpleNamespace(id=load_id, organization_id=organization_id, driver_id=driver_id)
+
+    class FakeLoadService:
+        def __init__(self, _db) -> None:
+            pass
+
+        def get_load(self, _load_id):
+            return load
+
+    class FakeWorkflowEngine:
+        def __init__(self, _db) -> None:
+            pass
+
+        def transition_load(self, **kwargs):
+            calls.update(kwargs)
+            return {"old_status": "booked", "new_status": kwargs["new_status"].value}
+
+    monkeypatch.setattr(loads, "LoadService", FakeLoadService)
+    monkeypatch.setattr(loads, "WorkflowEngine", FakeWorkflowEngine)
+    monkeypatch.setattr(loads, "_serialize_load", lambda item, **_: {"id": str(item.id)})
+    monkeypatch.setattr(loads, "_log_load_activity", lambda **_: None)
+
+    response = loads.driver_load_check_in(
+        load_id=load_id,
+        payload=loads.DriverLoadCheckInRequest(
+            status="delivered",
+            eta_note="Arrived at consignee",
+            latitude=33.749,
+            longitude=-84.388,
+            location_accuracy_meters=25.2,
+        ),
+        token_payload=_driver_token(organization_id=organization_id, driver_id=driver_id),
+        db=db_session,
+    )
+
+    assert response.meta["driver_check_in"] is True
+    assert calls["load_id"] == str(load_id)
+    assert calls["actor_type"] == "driver"
+    assert calls["new_status"] == loads.LoadStatus.DELIVERED
+    assert "eta=Arrived at consignee" in str(calls["notes"])

@@ -56,3 +56,40 @@ test("mobile smoke: driver portal overview and uploads remain touch-friendly", a
   await expect(page.getByLabel("File or photo")).toBeVisible();
   await expectNoPageOverflow(page);
 });
+
+test("mobile smoke: PWA shell, push preferences, and ETA workflow are available", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockApi(page);
+
+  await page.goto("/manifest.webmanifest");
+  await expect(page.locator("body")).toContainText("ADWA Freight Driver");
+
+  await loginAsDriver(page);
+  await page.goto(`/driver-portal/loads/${seed.load.id}`);
+  await expect(page.getByText("Online and ready to sync")).toBeVisible();
+  await expect(page.getByText("Push reminders")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "ETA / check-in" })).toBeVisible();
+  await page.getByLabel("ETA note").fill("Arriving 3:30 PM after shipper delay");
+  await page.getByRole("button", { name: /Send in-transit/ }).click();
+  await expect(page.getByText(/In-transit \/ ETA update sent to dispatch/)).toBeVisible();
+  await expectNoPageOverflow(page);
+});
+
+test("mobile smoke: camera-first upload shows preview and success feedback", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockApi(page);
+
+  await loginAsDriver(page);
+  await page.goto("/driver-portal/uploads");
+  await page.getByLabel("Assigned load").selectOption(seed.load.id);
+  await page.getByLabel("File or photo").setInputFiles({
+    name: "pod-photo.png",
+    mimeType: "image/png",
+    buffer: Buffer.from("iVBORw0KGgo=", "base64"),
+  });
+
+  await expect(page.getByAltText("Selected document preview")).toBeVisible();
+  await page.getByRole("button", { name: "Upload Document" }).click();
+  await expect(page.getByText(/Upload successful: pod-photo.png/)).toBeVisible();
+  await expectNoPageOverflow(page);
+});

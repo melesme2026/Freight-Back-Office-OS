@@ -1,11 +1,18 @@
 "use client";
 
+/* eslint-disable @next/next/no-img-element */
+
 import { ChangeEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 
 import { ApiClientError, apiClient } from "@/lib/api-client";
 import { getAccessToken, getOrganizationId } from "@/lib/auth";
 import { labelForDocumentType, toDriverStatus } from "@/lib/driver-portal";
+import {
+  enqueueDriverUpload,
+  uploadDriverDocumentWithProgress,
+  validateDriverUploadFile,
+} from "@/lib/driver-mobile";
 
 type ChecklistItem = { type: string; required: boolean; uploaded: boolean };
 type DriverDocument = {
@@ -84,6 +91,10 @@ export default function DriverLoadDetailPage() {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [pendingReplace, setPendingReplace] = useState<{ documentType: string; file: File; message: string } | null>(null);
   const [uploadingType, setUploadingType] = useState<string | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const [selectedPreview, setSelectedPreview] = useState<{ documentType: string; url: string; name: string } | null>(null);
+  const [etaValue, setEtaValue] = useState("");
+  const [isUpdatingEta, setIsUpdatingEta] = useState(false);
   const [documents, setDocuments] = useState<DriverDocument[]>([]);
 
   const fetchLoad = useCallback(async () => {
@@ -124,36 +135,45 @@ export default function DriverLoadDetailPage() {
   }, [loadData]);
   const missingRequiredDocs = checklist.filter((item) => item.required && !item.uploaded);
 
+  useEffect(() => {
+    return () => {
+      if (selectedPreview?.url) URL.revokeObjectURL(selectedPreview.url);
+    };
+  }, [selectedPreview]);
+
   async function uploadDocument(documentType: string, event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file || !loadId) return;
 
-    const token = getAccessToken();
     const organizationId = getOrganizationId();
     if (!organizationId) return;
 
-    const allowedMime = ["application/pdf", "image/jpeg", "image/png", "image/webp", "image/jpg", "image/heic", "image/heif", "image/tiff"];
-    if (!allowedMime.includes(file.type)) {
-      setErrorMessage("Upload error: only PDF or image files are allowed.");
-      return;
-    }
-    if (file.size > 15 * 1024 * 1024) {
-      setErrorMessage("Upload error: file exceeds 15MB limit.");
+    const validationError = validateDriverUploadFile(file);
+    if (validationError) {
+      setErrorMessage(validationError);
       return;
     }
 
-    const formData = new FormData();
-    formData.append("organization_id", organizationId);
-    formData.append("document_type", documentType);
-    formData.append("load_id", loadId);
-    formData.append("file", file);
+    if (file.type.startsWith("image/")) {
+      if (selectedPreview?.url) URL.revokeObjectURL(selectedPreview.url);
+      setSelectedPreview({ documentType, url: URL.createObjectURL(file), name: file.name });
+    } else {
+      setSelectedPreview(null);
+    }
 
     try {
       setUploadingType(documentType);
       setErrorMessage(null);
       setSuccessMessage(null);
       try {
-        await apiClient.post("/driver/documents/upload", formData, { token: token ?? undefined, organizationId: organizationId ?? undefined });
+        setUploadProgress(0);
+        await uploadDriverDocumentWithProgress({
+          organizationId,
+          documentType,
+          file,
+          loadId,
+          onProgress: (progress) => setUploadProgress(progress.percent),
+        });
         setSuccessMessage(`Upload successful: ${file.name} (${labelForDocumentType(documentType)}).`);
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : "Upload error.";
@@ -166,9 +186,19 @@ export default function DriverLoadDetailPage() {
       }
       await fetchLoad();
     } catch (error: unknown) {
-      setErrorMessage(friendlyUploadError(error));
+      if (typeof window !== "undefined" && (!window.navigator.onLine || error instanceof TypeError || (error instanceof Error && error.message.toLowerCase().includes("network")))) {
+        try {
+          await enqueueDriverUpload({ file, documentType, loadId });
+          setSuccessMessage(`Offline: queued ${file.name}. It will retry when your connection returns.`);
+        } catch (queueError: unknown) {
+          setErrorMessage(queueError instanceof Error ? queueError.message : "Upload failed and could not be queued.");
+        }
+      } else {
+        setErrorMessage(friendlyUploadError(error));
+      }
     } finally {
       setUploadingType(null);
+      setUploadProgress(null);
       event.target.value = "";
     }
   }
@@ -176,18 +206,19 @@ export default function DriverLoadDetailPage() {
 
   async function handleReplaceUpload() {
     if (!pendingReplace || !loadId) return;
-    const token = getAccessToken();
     const organizationId = getOrganizationId();
     if (!organizationId) return;
-    const formData = new FormData();
-    formData.append("organization_id", organizationId);
-    formData.append("document_type", pendingReplace.documentType);
-    formData.append("load_id", loadId);
-    formData.append("file", pendingReplace.file);
-    formData.append("replace", "true");
     try {
       setUploadingType(pendingReplace.documentType);
-      await apiClient.post("/driver/documents/upload", formData, { token: token ?? undefined, organizationId: organizationId ?? undefined });
+      setUploadProgress(0);
+      await uploadDriverDocumentWithProgress({
+        organizationId,
+        documentType: pendingReplace.documentType,
+        file: pendingReplace.file,
+        loadId,
+        replace: true,
+        onProgress: (progress) => setUploadProgress(progress.percent),
+      });
       setPendingReplace(null);
       setSuccessMessage("Document replaced.");
       await fetchLoad();
@@ -195,6 +226,47 @@ export default function DriverLoadDetailPage() {
       setErrorMessage(friendlyUploadError(error));
     } finally {
       setUploadingType(null);
+      setUploadProgress(null);
+    }
+  }
+
+  async function handleDriverStatusUpdate(nextStatus: "in_transit" | "delivered") {
+    if (!loadId || isUpdatingEta) return;
+    const token = getAccessToken();
+    const organizationId = getOrganizationId();
+    if (!organizationId) return;
+
+    setIsUpdatingEta(true);
+    setErrorMessage(null);
+    try {
+      let location: { latitude: number; longitude: number; accuracy: number | null } | null = null;
+      if (typeof window !== "undefined" && "geolocation" in navigator) {
+        try {
+          const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: false, timeout: 8000, maximumAge: 300000 });
+          });
+          location = {
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+            accuracy: Number.isFinite(position.coords.accuracy) ? position.coords.accuracy : null,
+          };
+        } catch {
+          location = null;
+        }
+      }
+      await apiClient.post(`/driver/loads/${loadId}/check-in`, {
+        status: nextStatus,
+        eta_note: etaValue.trim() || null,
+        latitude: location?.latitude ?? null,
+        longitude: location?.longitude ?? null,
+        location_accuracy_meters: location?.accuracy ?? null,
+      }, { token: token ?? undefined, organizationId: organizationId ?? undefined });
+      setSuccessMessage(nextStatus === "delivered" ? "Delivery status sent to dispatch." : "In-transit / ETA update sent to dispatch.");
+      await fetchLoad();
+    } catch (error: unknown) {
+      setErrorMessage(error instanceof Error ? error.message : "Could not update load status.");
+    } finally {
+      setIsUpdatingEta(false);
     }
   }
 
@@ -211,9 +283,45 @@ export default function DriverLoadDetailPage() {
           <div className="font-semibold capitalize">Status: {status}</div>
         </div>
 
+        <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
+          <h2 className="text-lg font-semibold text-slate-900">ETA / check-in</h2>
+          <p className="mt-1 text-xs text-slate-500">Send one-time status, ETA, and optional location check-ins to dispatch. This does not enable continuous tracking.</p>
+          <label htmlFor="driver-eta" className="mt-4 block text-xs font-semibold uppercase tracking-wide text-slate-600">ETA note</label>
+          <input
+            id="driver-eta"
+            value={etaValue}
+            onChange={(event) => setEtaValue(event.target.value)}
+            placeholder="Example: Arriving 3:30 PM, delayed by shipper"
+            className="touch-target mt-2 w-full rounded-xl border border-slate-300 px-3 py-3 text-base sm:text-sm"
+          />
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            <button type="button" onClick={() => void handleDriverStatusUpdate("in_transit")} disabled={isUpdatingEta} className="touch-target rounded-xl bg-brand-600 px-4 py-3 text-sm font-semibold text-white disabled:bg-slate-300">
+              {isUpdatingEta ? "Sending..." : "Send in-transit / ETA"}
+            </button>
+            <button type="button" onClick={() => void handleDriverStatusUpdate("delivered")} disabled={isUpdatingEta} className="touch-target rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800 disabled:opacity-60">
+              Mark delivered
+            </button>
+          </div>
+        </div>
+
         {errorMessage ? <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{errorMessage}</div> : null}
         {successMessage ? <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{successMessage}</div> : null}
         {pendingReplace ? <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"><p className="font-semibold">{pendingReplace.message}</p><div className="mt-2 flex flex-col gap-2 sm:flex-row"><button type="button" className="touch-target rounded-lg bg-amber-600 px-3 py-2 text-xs font-semibold text-white" onClick={() => void handleReplaceUpload()} disabled={Boolean(uploadingType)}>Replace existing</button><button type="button" className="touch-target rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-semibold text-amber-900" onClick={() => setPendingReplace(null)} disabled={Boolean(uploadingType)}>Cancel</button></div></div> : null}
+        {selectedPreview ? (
+          <div className="mt-4 rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-700">
+            <p className="font-semibold">Camera preview: {labelForDocumentType(selectedPreview.documentType)}</p>
+            <p className="mt-1 break-all text-xs text-slate-500">{selectedPreview.name}</p>
+            <img src={selectedPreview.url} alt="Selected upload preview" className="mt-3 max-h-72 w-full rounded-xl border border-slate-200 object-contain" />
+          </div>
+        ) : null}
+        {uploadProgress !== null ? (
+          <div className="mt-4 rounded-xl border border-slate-200 bg-white p-3" aria-label="Upload progress">
+            <div className="h-3 overflow-hidden rounded-full bg-slate-200">
+              <div className="h-full rounded-full bg-brand-600 transition-all" style={{ width: `${uploadProgress}%` }} />
+            </div>
+            <p className="mt-1 text-xs font-semibold text-slate-600">Uploading: {uploadProgress}%</p>
+          </div>
+        ) : null}
 
         <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-4">
           <h2 className="text-lg font-semibold text-slate-900">Document Uploads</h2>
