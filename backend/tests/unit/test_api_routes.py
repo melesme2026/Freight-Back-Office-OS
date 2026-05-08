@@ -34,6 +34,9 @@ def test_core_feature_routes_are_registered() -> None:
         ("GET", "/api/v1/support/tickets"),
         ("GET", "/api/v1/loads"),
         ("POST", "/api/v1/documents/upload"),
+        ("POST", "/api/v1/portal/access-links"),
+        ("GET", "/api/v1/portal/loads/{load_id}"),
+        ("POST", "/api/v1/portal/loads/{load_id}/documents/upload"),
         ("PATCH", "/api/v1/drivers/{driver_id}/reactivate"),
     }
 
