@@ -16,10 +16,12 @@ from app.repositories.driver_repo import DriverRepository
 from app.repositories.load_repo import LoadRepository
 from app.schemas.common import ApiResponse
 from app.services.ai.extraction_service import ExtractionService
+from app.services.audit.audit_service import AuditService
 from app.services.documents.document_linker import DocumentLinker
 from app.services.documents.document_service import DocumentService
 from app.services.documents.storage_service import StorageService
 from app.services.notifications.operational_notification_service import OperationalNotificationService
+from app.services.organizations.quota_service import OrganizationQuotaService
 from fastapi import (
     APIRouter,
     Depends,
@@ -313,6 +315,28 @@ def _build_document_list_meta(
     }
 
 
+
+def _log_document_event(
+    *,
+    db: Session,
+    organization_id: object,
+    document_id: object,
+    action: str,
+    token_payload: dict[str, Any],
+    metadata: dict[str, Any] | None = None,
+) -> None:
+    actor_id = str(token_payload.get("sub") or "").strip() or None
+    actor_type = "staff_user" if actor_id else "system"
+    AuditService(db).log_event(
+        organization_id=str(organization_id),
+        entity_type="document",
+        entity_id=str(document_id),
+        action=action,
+        actor_id=actor_id,
+        actor_type=actor_type,
+        metadata_json=metadata or {},
+    )
+
 def _create_document_uploaded_notification(
     *,
     db: Session,
@@ -410,6 +434,11 @@ async def upload_document(
 
         file_size_bytes = storage_result.get("size")
         _validate_upload_size(file_size_bytes)
+        quota_decision = OrganizationQuotaService(db).can_upload_document(
+            organization_id=str(organization_id),
+            incoming_size_bytes=int(file_size_bytes or 0),
+            enforce=False,
+        )
         storage_bucket = storage_result.get("bucket")
         uploaded_storage_key = str(storage_key).strip()
 
@@ -452,11 +481,25 @@ async def upload_document(
                 uploaded_by_staff_user_id=server_uploaded_by_staff_user_id,
             )
         _create_document_uploaded_notification(db=db, document=item)
+        _log_document_event(
+            db=db,
+            organization_id=organization_id,
+            document_id=item.id,
+            action="document.replaced" if existing_required_doc and replace_existing else "document.uploaded",
+            token_payload=token_payload,
+            metadata={
+                "document_type": normalized_document_type,
+                "filename": file.filename,
+                "file_size_bytes": file_size_bytes,
+                "load_id": str(load_id) if load_id else None,
+                "warning": quota_decision.reason if quota_decision.warning else None,
+            },
+        )
         db.commit()
 
         return ApiResponse(
             data=_serialize_document(item),
-            meta={"uploaded": True},
+            meta={"uploaded": True, "quota": quota_decision.as_dict()},
             error=None,
         )
     except HTTPException:
@@ -591,6 +634,11 @@ async def upload_driver_document(
             )
 
         _validate_upload_size(storage_result.get("size"))
+        quota_decision = OrganizationQuotaService(db).can_upload_document(
+            organization_id=str(organization_id),
+            incoming_size_bytes=int(storage_result.get("size") or 0),
+            enforce=False,
+        )
         uploaded_storage_key = str(storage_key).strip()
 
         if existing_required_doc and replace_existing:
@@ -633,11 +681,25 @@ async def upload_driver_document(
             driver=driver,
             driver_confirmation=True,
         )
+        _log_document_event(
+            db=db,
+            organization_id=organization_id,
+            document_id=item.id,
+            action="document.replaced" if existing_required_doc and replace_existing else "document.uploaded",
+            token_payload=token_payload,
+            metadata={
+                "document_type": normalized_document_type,
+                "filename": file.filename,
+                "file_size_bytes": storage_result.get("size"),
+                "load_id": str(load_id) if load_id else None,
+                "warning": quota_decision.reason if quota_decision.warning else None,
+            },
+        )
         db.commit()
 
         return ApiResponse(
             data=_serialize_document(item),
-            meta={"uploaded": True, "driver_upload": True},
+            meta={"uploaded": True, "driver_upload": True, "quota": quota_decision.as_dict()},
             error=None,
         )
     except HTTPException:
@@ -721,6 +783,14 @@ def create_document(
         uploaded_by_staff_user_id=_uuid_to_str(payload.uploaded_by_staff_user_id),
     )
 
+    _log_document_event(
+        db=db,
+        organization_id=payload.organization_id,
+        document_id=item.id,
+        action="document.created",
+        token_payload=token_payload,
+        metadata={"document_type": payload.document_type, "filename": payload.original_filename},
+    )
     db.commit()
 
     return ApiResponse(
@@ -883,6 +953,14 @@ def update_document(
         document_id=str(document_id),
         document_type=_normalize_required_text(payload.document_type, "document_type"),
     )
+    _log_document_event(
+        db=db,
+        organization_id=updated.organization_id,
+        document_id=updated.id,
+        action="document.updated",
+        token_payload=token_payload,
+        metadata={"document_type": payload.document_type},
+    )
     db.commit()
     return ApiResponse(data=_serialize_document(updated), meta={"updated": True}, error=None)
 
@@ -899,6 +977,14 @@ def delete_document(
         organization_id=str(token_payload.get("organization_id")),
     )
     _authorize_document_mutation(item=item, token_payload=token_payload)
+    _log_document_event(
+        db=db,
+        organization_id=item.organization_id,
+        document_id=item.id,
+        action="document.deleted",
+        token_payload=token_payload,
+        metadata={"document_type": _enum_to_string(item.document_type), "filename": item.original_filename},
+    )
     service.delete_document(document_id=str(document_id))
     db.commit()
     return ApiResponse(data={"id": str(document_id), "deleted": True}, meta={}, error=None)

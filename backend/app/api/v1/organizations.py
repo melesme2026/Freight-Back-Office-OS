@@ -14,6 +14,7 @@ from app.core.security import get_current_token_payload
 from app.domain.models.organization import Organization
 from app.repositories.organization_repo import OrganizationRepository
 from app.schemas.common import ApiResponse
+from app.services.audit.audit_service import AuditService
 
 
 router = APIRouter()
@@ -349,6 +350,16 @@ def update_organization(
             org.billing_notes = _normalize_optional_text(payload.billing_notes)
 
     updated = repo.update(org)
+    AuditService(db).log_event(
+        organization_id=str(updated.id),
+        entity_type="organization",
+        entity_id=str(updated.id),
+        action="organization.settings.updated",
+        actor_id=str(token_payload.get("sub")) if token_payload.get("sub") else None,
+        actor_type="staff_user",
+        metadata_json={"status": "updated"},
+    )
+    db.commit()
 
     return ApiResponse(
         data=_serialize_organization(updated),

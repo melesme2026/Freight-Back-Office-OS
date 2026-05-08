@@ -8,6 +8,7 @@ from app.core.dependencies import get_db_session
 from app.core.exceptions import ForbiddenError, UnauthorizedError
 from app.core.security import get_current_token_payload
 from app.schemas.common import ApiResponse
+from app.services.audit.audit_service import AuditService
 from app.services.accounting.accounting_export_service import (
     KIND_COLUMNS,
     AccountingExportService,
@@ -113,6 +114,15 @@ def update_accounting_settings(
             org_id,
             payload.quickbooks.model_dump(exclude_unset=True),
         )
+    AuditService(db).log_event(
+        organization_id=org_id,
+        entity_type="accounting_settings",
+        entity_id=org_id,
+        action="accounting.settings.updated",
+        actor_id=str(token_payload.get("sub")) if token_payload.get("sub") else None,
+        actor_type="staff_user",
+        metadata_json={"quickbooks_changed": payload.quickbooks is not None, "mapping_changed": payload.mapping is not None},
+    )
     db.commit()
     return ApiResponse(data=service.settings_payload(org_id), meta={}, error=None)
 
@@ -144,14 +154,25 @@ def export_accounting_csv(
     token_payload: dict[str, Any] = Depends(get_current_token_payload),
 ) -> Response:
     _authorize_accounting_read(token_payload)
+    org_id = _org_id(token_payload)
     result = _service(db).build_csv_export(
-        _org_id(token_payload),
+        org_id,
         kind,
         date_from=date_from,
         date_to=date_to,
         status=status,
         reconciliation_status=reconciliation_status,
     )
+    AuditService(db).log_event(
+        organization_id=org_id,
+        entity_type="accounting_export",
+        entity_id=org_id,
+        action="accounting.export.generated",
+        actor_id=str(token_payload.get("sub")) if token_payload.get("sub") else None,
+        actor_type="staff_user",
+        metadata_json={"export_kind": kind, "row_count": result.row_count},
+    )
+    db.commit()
     headers = {
         "Content-Disposition": f'attachment; filename="{result.filename}"',
         "X-Export-Row-Count": str(result.row_count),

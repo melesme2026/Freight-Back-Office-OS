@@ -15,12 +15,15 @@ from app.domain.models.accounting import (
 )
 from app.domain.models.load import Load
 from app.domain.models.load_payment_record import LoadPaymentRecord
+from app.core.exceptions import ValidationError
 from app.services.accounting.quickbooks_service import QuickBooksIntegrationService
+from app.services.organizations.quota_service import OrganizationQuotaService
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 AccountingExportKind = Literal["invoices", "factoring", "settlements", "payments", "aging"]
 ZERO = Decimal("0")
+MAX_EXPORT_ROWS = 10000
 
 
 @dataclass(frozen=True)
@@ -175,6 +178,17 @@ class AccountingExportService:
                 reconciliation_status=reconciliation_status,
             )
         ]
+        quota_decision = OrganizationQuotaService(self.db).can_generate_export(
+            organization_id=org_id,
+            estimated_rows=len(rows),
+            max_rows=MAX_EXPORT_ROWS,
+            enforce=True,
+        )
+        if not quota_decision.allowed:
+            raise ValidationError(
+                "Export is too large for a synchronous CSV download",
+                details=quota_decision.as_dict(),
+            )
         output = io.StringIO(newline="")
         writer = csv.DictWriter(output, fieldnames=columns, extrasaction="ignore")
         writer.writeheader()
