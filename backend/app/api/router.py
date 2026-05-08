@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends
 
+from app.api.v1.accounting import router as accounting_router
 from app.api.v1.auth import router as auth_router
 from app.api.v1.billing_dashboard import router as billing_dashboard_router
 from app.api.v1.billing_invoices import router as billing_invoices_router
@@ -74,6 +75,9 @@ api_router.include_router(subscriptions_router, tags=["subscriptions"], dependen
 api_router.include_router(billing_invoices_router, tags=["billing-invoices"], dependencies=protected_dependencies)
 api_router.include_router(payments_router, tags=["payments"], dependencies=protected_dependencies)
 api_router.include_router(billing_dashboard_router, tags=["billing-dashboard"], dependencies=protected_dependencies)
+
+# Accounting interoperability
+api_router.include_router(accounting_router, tags=["accounting"], dependencies=protected_dependencies)
 
 # Dashboards
 api_router.include_router(reports_router, tags=["reports"], dependencies=protected_dependencies)
