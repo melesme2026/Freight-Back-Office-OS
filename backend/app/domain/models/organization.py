@@ -4,12 +4,10 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
+from app.core.database import Base
 from sqlalchemy import Boolean, DateTime, Index, String, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-
-from app.core.database import Base
-
 
 if TYPE_CHECKING:
     from app.domain.models.api_client import ApiClient
@@ -23,8 +21,8 @@ if TYPE_CHECKING:
     from app.domain.models.follow_up_task import FollowUpTask
     from app.domain.models.ledger_entry import LedgerEntry
     from app.domain.models.load import Load
-    from app.domain.models.load_payment_record import LoadPaymentRecord
     from app.domain.models.load_document import LoadDocument
+    from app.domain.models.load_payment_record import LoadPaymentRecord
     from app.domain.models.notification import Notification
     from app.domain.models.payment import Payment
     from app.domain.models.payment_method import PaymentMethod
@@ -109,119 +107,148 @@ class Organization(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     stripe_customer_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     stripe_subscription_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    plan_key: Mapped[str] = mapped_column(
+        String(30),
+        nullable=False,
+        default="none",
+        server_default="none",
+    )
+    subscription_status: Mapped[str] = mapped_column(
+        String(30),
+        nullable=False,
+        default="none",
+        server_default="none",
+    )
+    trial_start: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    trial_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    current_period_start: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    current_period_end: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    cancel_at_period_end: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default="false",
+    )
+    last_payment_status: Mapped[str | None] = mapped_column(String(30), nullable=True)
     billing_notes: Mapped[str | None] = mapped_column(String(1000), nullable=True)
 
-    customer_accounts: Mapped[list["CustomerAccount"]] = relationship(
+    customer_accounts: Mapped[list[CustomerAccount]] = relationship(
         back_populates="organization",
         cascade="all, delete-orphan",
         lazy="selectin",
     )
-    referrals: Mapped[list["Referral"]] = relationship(
+    referrals: Mapped[list[Referral]] = relationship(
         back_populates="organization",
         cascade="all, delete-orphan",
         lazy="selectin",
     )
-    staff_users: Mapped[list["StaffUser"]] = relationship(
+    staff_users: Mapped[list[StaffUser]] = relationship(
         back_populates="organization",
         cascade="all, delete-orphan",
         lazy="selectin",
     )
-    drivers: Mapped[list["Driver"]] = relationship(
+    drivers: Mapped[list[Driver]] = relationship(
         back_populates="organization",
         cascade="all, delete-orphan",
         lazy="selectin",
     )
-    brokers: Mapped[list["Broker"]] = relationship(
+    brokers: Mapped[list[Broker]] = relationship(
         back_populates="organization",
         cascade="all, delete-orphan",
         lazy="selectin",
     )
-    carrier_profile: Mapped["CarrierProfile | None"] = relationship(
+    carrier_profile: Mapped[CarrierProfile | None] = relationship(
         back_populates="organization",
         cascade="all, delete-orphan",
         uselist=False,
         lazy="selectin",
     )
-    loads: Mapped[list["Load"]] = relationship(
+    loads: Mapped[list[Load]] = relationship(
         back_populates="organization",
         cascade="all, delete-orphan",
         lazy="selectin",
     )
-    load_payment_records: Mapped[list["LoadPaymentRecord"]] = relationship(
+    load_payment_records: Mapped[list[LoadPaymentRecord]] = relationship(
         cascade="all, delete-orphan",
         lazy="selectin",
     )
-    factoring_companies: Mapped[list["FactoringCompany"]] = relationship(
+    factoring_companies: Mapped[list[FactoringCompany]] = relationship(
         back_populates="organization",
         cascade="all, delete-orphan",
         lazy="selectin",
     )
-    follow_up_tasks: Mapped[list["FollowUpTask"]] = relationship(
+    follow_up_tasks: Mapped[list[FollowUpTask]] = relationship(
         cascade="all, delete-orphan",
         lazy="selectin",
     )
-    load_documents: Mapped[list["LoadDocument"]] = relationship(
+    load_documents: Mapped[list[LoadDocument]] = relationship(
         back_populates="organization",
         cascade="all, delete-orphan",
         lazy="selectin",
     )
-    notifications: Mapped[list["Notification"]] = relationship(
+    notifications: Mapped[list[Notification]] = relationship(
         back_populates="organization",
         cascade="all, delete-orphan",
         lazy="selectin",
     )
-    workflow_events: Mapped[list["WorkflowEvent"]] = relationship(
+    workflow_events: Mapped[list[WorkflowEvent]] = relationship(
         back_populates="organization",
         cascade="all, delete-orphan",
         lazy="selectin",
     )
-    audit_logs: Mapped[list["AuditLog"]] = relationship(
+    audit_logs: Mapped[list[AuditLog]] = relationship(
         back_populates="organization",
         cascade="all, delete-orphan",
         lazy="selectin",
     )
-    service_plans: Mapped[list["ServicePlan"]] = relationship(
+    service_plans: Mapped[list[ServicePlan]] = relationship(
         back_populates="organization",
         cascade="all, delete-orphan",
         lazy="selectin",
     )
-    support_tickets: Mapped[list["SupportTicket"]] = relationship(
+    support_tickets: Mapped[list[SupportTicket]] = relationship(
         back_populates="organization",
         cascade="all, delete-orphan",
         lazy="selectin",
     )
-    api_clients: Mapped[list["ApiClient"]] = relationship(
+    api_clients: Mapped[list[ApiClient]] = relationship(
         back_populates="organization",
         cascade="all, delete-orphan",
         lazy="selectin",
     )
 
-    subscriptions: Mapped[list["Subscription"]] = relationship(
+    subscriptions: Mapped[list[Subscription]] = relationship(
         back_populates="organization",
         cascade="all, delete-orphan",
         lazy="selectin",
     )
-    billing_invoices: Mapped[list["BillingInvoice"]] = relationship(
+    billing_invoices: Mapped[list[BillingInvoice]] = relationship(
         back_populates="organization",
         cascade="all, delete-orphan",
         lazy="selectin",
     )
-    payment_methods: Mapped[list["PaymentMethod"]] = relationship(
+    payment_methods: Mapped[list[PaymentMethod]] = relationship(
         back_populates="organization",
         cascade="all, delete-orphan",
         lazy="selectin",
     )
-    payments: Mapped[list["Payment"]] = relationship(
+    payments: Mapped[list[Payment]] = relationship(
         back_populates="organization",
         cascade="all, delete-orphan",
         lazy="selectin",
     )
-    usage_records: Mapped[list["UsageRecord"]] = relationship(
+    usage_records: Mapped[list[UsageRecord]] = relationship(
         back_populates="organization",
         cascade="all, delete-orphan",
         lazy="selectin",
     )
-    ledger_entries: Mapped[list["LedgerEntry"]] = relationship(
+    ledger_entries: Mapped[list[LedgerEntry]] = relationship(
         back_populates="organization",
         cascade="all, delete-orphan",
         lazy="selectin",

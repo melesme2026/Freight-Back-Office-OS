@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends
 
 from app.api.v1.accounting import router as accounting_router
 from app.api.v1.auth import router as auth_router
+from app.api.v1.billing import router as billing_router
 from app.api.v1.billing_dashboard import router as billing_dashboard_router
 from app.api.v1.billing_invoices import router as billing_invoices_router
 from app.api.v1.carrier_profile import router as carrier_profile_router
@@ -70,6 +71,7 @@ api_router.include_router(notifications_router, tags=["notifications"], dependen
 api_router.include_router(support_router, tags=["support"], dependencies=protected_dependencies)
 
 # Product / billing
+api_router.include_router(billing_router, tags=["billing"])
 api_router.include_router(service_plans_router, tags=["service-plans"], dependencies=protected_dependencies)
 api_router.include_router(subscriptions_router, tags=["subscriptions"], dependencies=protected_dependencies)
 api_router.include_router(billing_invoices_router, tags=["billing-invoices"], dependencies=protected_dependencies)

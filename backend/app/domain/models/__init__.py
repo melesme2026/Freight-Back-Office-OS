@@ -1,6 +1,9 @@
 """Ensure all ORM models are imported so SQLAlchemy string-based relationships resolve reliably."""
 
-from app.domain.models.accounting import AccountingExportMapping, AccountingIntegrationSettings  # noqa: F401
+from app.domain.models.accounting import (  # noqa: F401
+    AccountingExportMapping,
+    AccountingIntegrationSettings,
+)
 from app.domain.models.api_client import ApiClient  # noqa: F401
 from app.domain.models.audit_log import AuditLog  # noqa: F401
 from app.domain.models.billing_invoice import BillingInvoice  # noqa: F401
@@ -8,6 +11,7 @@ from app.domain.models.billing_invoice_line import BillingInvoiceLine  # noqa: F
 from app.domain.models.broker import Broker  # noqa: F401
 from app.domain.models.carrier_profile import CarrierProfile  # noqa: F401
 from app.domain.models.customer_account import CustomerAccount  # noqa: F401
+from app.domain.models.demo_request import DemoRequest  # noqa: F401
 from app.domain.models.driver import Driver  # noqa: F401
 from app.domain.models.extracted_field import ExtractedField  # noqa: F401
 from app.domain.models.factoring_company import FactoringCompany  # noqa: F401
@@ -24,12 +28,12 @@ from app.domain.models.payment_method import PaymentMethod  # noqa: F401
 from app.domain.models.referral import Referral  # noqa: F401
 from app.domain.models.service_plan import ServicePlan  # noqa: F401
 from app.domain.models.staff_user import StaffUser  # noqa: F401
+from app.domain.models.stripe_webhook_event import StripeWebhookEvent  # noqa: F401
+from app.domain.models.submission_event import SubmissionEvent  # noqa: F401
+from app.domain.models.submission_packet import SubmissionPacket  # noqa: F401
+from app.domain.models.submission_packet_document import SubmissionPacketDocument  # noqa: F401
 from app.domain.models.subscription import Subscription  # noqa: F401
 from app.domain.models.support_ticket import SupportTicket  # noqa: F401
 from app.domain.models.usage_record import UsageRecord  # noqa: F401
 from app.domain.models.validation_issue import ValidationIssue  # noqa: F401
 from app.domain.models.workflow_event import WorkflowEvent  # noqa: F401
-from app.domain.models.submission_event import SubmissionEvent  # noqa: F401
-from app.domain.models.submission_packet import SubmissionPacket  # noqa: F401
-from app.domain.models.submission_packet_document import SubmissionPacketDocument  # noqa: F401
-from app.domain.models.demo_request import DemoRequest  # noqa: F401
