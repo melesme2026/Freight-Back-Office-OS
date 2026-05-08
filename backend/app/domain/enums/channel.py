@@ -10,3 +10,4 @@ class Channel(StrEnum):
     API = "api"
     MANUAL = "manual"
     DRIVER_PORTAL = "driver_portal"
+    EXTERNAL_PORTAL = "external_portal"

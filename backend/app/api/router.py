@@ -26,6 +26,7 @@ from app.api.v1.onboarding import router as onboarding_router
 from app.api.v1.operations import router as operations_router
 from app.api.v1.organizations import router as organizations_router
 from app.api.v1.payments import router as payments_router
+from app.api.v1.portal import router as portal_router
 from app.api.v1.referrals import router as referrals_router
 from app.api.v1.review_queue import router as review_queue_router
 from app.api.v1.reports import router as reports_router
@@ -47,6 +48,7 @@ api_router = APIRouter(prefix=settings.api_v1_prefix)
 # Core / system
 api_router.include_router(health_router, tags=["health"])
 api_router.include_router(auth_router, tags=["auth"])
+api_router.include_router(portal_router, tags=["portal"])
 api_router.include_router(demo_requests_router, tags=["demo-requests"])
 
 protected_dependencies = [Depends(get_current_token_payload)]

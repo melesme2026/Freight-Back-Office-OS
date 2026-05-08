@@ -8,3 +8,4 @@ class AuditActorType(StrEnum):
     STAFF_USER = "staff_user"
     DRIVER = "driver"
     WEBHOOK = "webhook"
+    EXTERNAL_PORTAL = "external_portal"
