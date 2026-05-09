@@ -19,6 +19,7 @@ from app.api.v1.documents import (
 from app.core.dependencies import get_db_session
 from app.core.exceptions import ForbiddenError, UnauthorizedError, ValidationError
 from app.core.security import create_action_token, decode_token, get_bearer_token, get_current_token_payload
+from app.core.request_context import audit_request_context
 from app.domain.enums.channel import Channel
 from app.domain.enums.document_type import DocumentType
 from app.domain.models.load_document import LoadDocument
@@ -202,7 +203,7 @@ def _serialize_portal_packet(packet: Any) -> dict[str, Any]:
     }
 
 
-def _log_portal_event(*, db: Session, organization_id: str, load_id: str, action: str, token_payload: dict[str, Any], metadata: dict[str, Any] | None = None) -> None:
+def _log_portal_event(*, db: Session, organization_id: str, load_id: str, action: str, token_payload: dict[str, Any], request: Request | None = None, metadata: dict[str, Any] | None = None) -> None:
     AuditService(db).log_event(
         organization_id=organization_id,
         entity_type="load",
@@ -211,6 +212,7 @@ def _log_portal_event(*, db: Session, organization_id: str, load_id: str, action
         actor_id=None,
         actor_type="external_portal",
         metadata_json={
+            **audit_request_context(request, source=action),
             "contact_email": token_payload.get("contact_email"),
             "contact_name": token_payload.get("contact_name"),
             "portal_role": token_payload.get("role"),
@@ -222,6 +224,7 @@ def _log_portal_event(*, db: Session, organization_id: str, load_id: str, action
 @router.post("/portal/access-links", response_model=ApiResponse)
 def create_portal_access_link(
     payload: PortalAccessLinkRequest,
+    request: Request = None,  # type: ignore[assignment]
     *,
     token_payload: dict[str, Any] = Depends(get_current_token_payload),
     db: Session = Depends(get_db_session),
@@ -260,6 +263,7 @@ def create_portal_access_link(
         load_id=str(load.id),
         action="portal.access_link.created",
         token_payload={"contact_email": contact_email, "contact_name": payload.contact_name, "role": f"external_{portal_role}"},
+        request=request,
         metadata={"created_by_staff_user_id": actor_id, "expires_in_hours": expires_in_hours},
     )
     db.commit()
@@ -282,6 +286,7 @@ def get_portal_scope(
 @router.get("/portal/loads/{load_id}", response_model=ApiResponse)
 def get_portal_load(
     load_id: uuid.UUID,
+    request: Request = None,  # type: ignore[assignment]
     token_payload: dict[str, Any] = Depends(_portal_payload),
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
@@ -289,7 +294,7 @@ def get_portal_load(
     load = _get_scoped_load(db=db, token_payload=token_payload)
     docs = _latest_documents_for_load(db=db, organization_id=str(load.organization_id), load_id=str(load.id))
     packets = SubmissionPacketService(db).list_packets(load_id=str(load.id), org_id=str(load.organization_id))
-    _log_portal_event(db=db, organization_id=str(load.organization_id), load_id=str(load.id), action="portal.load.viewed", token_payload=token_payload)
+    _log_portal_event(db=db, organization_id=str(load.organization_id), load_id=str(load.id), action="portal.load.viewed", token_payload=token_payload, request=request)
     db.commit()
     return ApiResponse(data={"load": _serialize_portal_load(load), "documents": [_serialize_portal_document(doc) for doc in docs], "packets": [_serialize_portal_packet(packet) for packet in packets]}, meta={}, error=None)
 
@@ -298,6 +303,7 @@ def get_portal_load(
 def download_portal_packet(
     load_id: uuid.UUID,
     packet_id: uuid.UUID,
+    request: Request = None,  # type: ignore[assignment]
     token_payload: dict[str, Any] = Depends(_portal_payload),
     db: Session = Depends(get_db_session),
 ) -> StreamingResponse:
@@ -306,7 +312,7 @@ def download_portal_packet(
         raise ForbiddenError("Packet download is not allowed for this portal link")
     load = _get_scoped_load(db=db, token_payload=token_payload)
     zip_bytes, load_number = SubmissionPacketService(db).build_packet_zip(packet_id=str(packet_id), load_id=str(load.id), org_id=str(load.organization_id))
-    _log_portal_event(db=db, organization_id=str(load.organization_id), load_id=str(load.id), action="portal.packet.downloaded", token_payload=token_payload, metadata={"packet_id": str(packet_id)})
+    _log_portal_event(db=db, organization_id=str(load.organization_id), load_id=str(load.id), action="portal.packet.downloaded", token_payload=token_payload, request=request, metadata={"packet_id": str(packet_id)})
     db.commit()
     return StreamingResponse(io.BytesIO(zip_bytes), media_type="application/zip", headers={"Content-Disposition": f'attachment; filename="portal-packet-{load_number}.zip"'})
 
@@ -315,6 +321,7 @@ def download_portal_packet(
 def download_portal_document(
     load_id: uuid.UUID,
     document_id: uuid.UUID,
+    request: Request = None,  # type: ignore[assignment]
     token_payload: dict[str, Any] = Depends(_portal_payload),
     db: Session = Depends(get_db_session),
 ):
@@ -325,7 +332,7 @@ def download_portal_document(
         raise UnauthorizedError("Document is not in portal load scope")
     if _doc_type_value(document.document_type) not in PORTAL_DOWNLOAD_DOCUMENT_TYPES:
         raise ForbiddenError("This document is not available in the portal")
-    _log_portal_event(db=db, organization_id=str(load.organization_id), load_id=str(load.id), action="portal.document.downloaded", token_payload=token_payload, metadata={"document_id": str(document.id), "document_type": _doc_type_value(document.document_type)})
+    _log_portal_event(db=db, organization_id=str(load.organization_id), load_id=str(load.id), action="portal.document.downloaded", token_payload=token_payload, request=request, metadata={"document_id": str(document.id), "document_type": _doc_type_value(document.document_type)})
     db.commit()
     return StorageService().get_file(document.storage_key, download_filename=document.original_filename, media_type=document.mime_type)
 
@@ -333,6 +340,7 @@ def download_portal_document(
 @router.post("/portal/loads/{load_id}/documents/upload", response_model=ApiResponse)
 async def upload_portal_document(
     load_id: uuid.UUID,
+    request: Request = None,  # type: ignore[assignment]
     *,
     file: UploadFile = File(...),
     document_type: str = Form(...),
@@ -368,7 +376,7 @@ async def upload_portal_document(
             mime_type=_normalize_optional_text(file.content_type),
             file_size_bytes=int(storage_result.get("size") or 0),
         )
-        _log_portal_event(db=db, organization_id=str(load.organization_id), load_id=str(load.id), action="portal.document.uploaded", token_payload=token_payload, metadata={"document_id": str(item.id), "document_type": parsed_type_value, "filename": file.filename, "file_size_bytes": storage_result.get("size")})
+        _log_portal_event(db=db, organization_id=str(load.organization_id), load_id=str(load.id), action="portal.document.uploaded", token_payload=token_payload, request=request, metadata={"document_id": str(item.id), "document_type": parsed_type_value, "filename": file.filename, "file_size_bytes": storage_result.get("size")})
         db.commit()
         return ApiResponse(data=_serialize_portal_document(item), meta={"uploaded": True, "attribution": {"actor_type": "external_portal", "contact_email": token_payload.get("contact_email")}}, error=None)
     except Exception:

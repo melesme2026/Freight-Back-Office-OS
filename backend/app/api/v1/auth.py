@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import uuid
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, Header
+from fastapi import APIRouter, Depends, Header, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
@@ -12,6 +12,7 @@ from sqlalchemy import select
 from app.core.dependencies import get_db_session
 from app.core.exceptions import AppError, UnauthorizedError, ValidationError
 from app.core.config import get_settings
+from app.core.request_context import audit_request_context
 from app.core.security import (
     create_action_token,
     decode_token,
@@ -36,6 +37,7 @@ from app.services.auth.auth_service import AuthService
 from app.services.auth.team_rbac import assert_can_manage_team, normalize_role
 from app.services.audit.audit_service import AuditService
 from app.services.auth.token_service import TokenService
+from app.services.auth.mfa_service import MfaService
 from app.services.notifications.email_service import EmailService
 from app.utils.text_utils import slugify
 
@@ -72,6 +74,7 @@ class LoginRequestBody(BaseModel):
     email: str
     password: str
     organization_id: uuid.UUID | None = None
+    mfa_code: str | None = None
 
 
 
@@ -123,6 +126,19 @@ class SignupRequestBody(BaseModel):
     password: str
     confirm_password: str
     organization_name: str
+
+
+class MfaVerifyRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    code: str
+
+
+class MfaDisableRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    current_password: str
+    code: str | None = None
 
 
 def _parse_header_organization_id(x_organization_id: str | None) -> uuid.UUID | None:
@@ -210,6 +226,47 @@ def _should_expose_auth_tokens() -> bool:
     return settings.email_dev_allow_token_response or settings.environment in {"local", "development", "test"}
 
 
+def _safe_login_audit_metadata(request: Request | None, *, email: str, success: bool, reason: str | None = None) -> dict[str, object]:
+    metadata = audit_request_context(request, source="auth.login")
+    metadata.update({"email": email.strip().lower(), "success": success})
+    if reason:
+        metadata["reason"] = reason
+    return metadata
+
+
+def _audit_auth_event(
+    db: Session,
+    *,
+    organization_id: str | uuid.UUID | None,
+    entity_id: str | uuid.UUID | None,
+    action: str,
+    request: Request = None,  # type: ignore[assignment]
+    actor_id: str | uuid.UUID | None = None,
+    metadata_json: dict[str, object] | None = None,
+) -> None:
+    if organization_id is None or entity_id is None:
+        return
+    metadata = audit_request_context(request, source=action)
+    metadata.update(metadata_json or {})
+    AuditService(db).log_event(
+        organization_id=str(organization_id),
+        actor_type="staff_user" if actor_id else "system",
+        actor_id=str(actor_id) if actor_id else None,
+        entity_type="staff_user",
+        entity_id=str(entity_id),
+        action=action,
+        metadata_json=metadata,
+    )
+
+
+def _find_single_user_for_login_audit(db: Session, *, email: str, organization_id: uuid.UUID | None) -> StaffUser | None:
+    normalized_email = email.strip().lower()
+    stmt = select(StaffUser).where(StaffUser.email == normalized_email)
+    if organization_id is not None:
+        stmt = stmt.where(StaffUser.organization_id == organization_id)
+    records = list(db.scalars(stmt).all())
+    return records[0] if len(records) == 1 else None
+
 @router.post("/auth/signup", response_model=LoginResponse)
 def signup(
     payload: SignupRequestBody,
@@ -278,6 +335,7 @@ def signup(
 @router.post("/auth/login", response_model=LoginResponse)
 def login(
     payload: LoginRequestBody,
+    request: Request = None,  # type: ignore[assignment]
     db: Session = Depends(get_db_session),
     x_organization_id: str | None = Header(default=None, alias="X-Organization-Id"),
 ) -> LoginResponse:
@@ -289,11 +347,21 @@ def login(
     auth_service = AuthService(db)
     try:
         user = auth_service.authenticate_user_for_login(
-        email=payload.email,
-        password=payload.password,
-        organization_id=hinted_organization_id,
-    )
+            email=payload.email,
+            password=payload.password,
+            organization_id=hinted_organization_id,
+        )
     except AppError as exc:
+        audit_user = _find_single_user_for_login_audit(db, email=payload.email, organization_id=hinted_organization_id)
+        _audit_auth_event(
+            db,
+            organization_id=getattr(audit_user, "organization_id", hinted_organization_id),
+            entity_id=getattr(audit_user, "id", None),
+            action="auth.login.failed",
+            request=request,
+            metadata_json=_safe_login_audit_metadata(request, email=payload.email, success=False, reason=exc.code),
+        )
+        db.commit()
         if exc.code == "multiple_organizations":
             return JSONResponse(
                 status_code=422,
@@ -304,6 +372,29 @@ def login(
                 },
             )
         raise
+    if bool(getattr(user, "mfa_enabled", False)):
+        if not MfaService.verify_totp(secret=getattr(user, "mfa_totp_secret", None), code=payload.mfa_code):
+            _audit_auth_event(
+                db,
+                organization_id=user.organization_id,
+                entity_id=user.id,
+                action="auth.login.mfa_failed",
+                request=request,
+                actor_id=user.id,
+                metadata_json=_safe_login_audit_metadata(request, email=payload.email, success=False, reason="mfa_required_or_invalid"),
+            )
+            db.commit()
+            raise UnauthorizedError("MFA code is required or invalid", details={"mfa_required": True})
+    _audit_auth_event(
+        db,
+        organization_id=user.organization_id,
+        entity_id=user.id,
+        action="auth.login.succeeded",
+        request=request,
+        actor_id=user.id,
+        metadata_json=_safe_login_audit_metadata(request, email=payload.email, success=True),
+    )
+    db.commit()
     access_token = auth_service.build_access_token(user)
 
     data = LoginResponseData(
@@ -337,6 +428,7 @@ def get_current_user(
 @router.post("/auth/change-password", response_model=ApiResponse)
 def change_password(
     payload: ChangePasswordRequest,
+    request: Request = None,  # type: ignore[assignment]
     token: str = Depends(get_bearer_token),
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
@@ -348,6 +440,14 @@ def change_password(
 
     user.password_hash = hash_password(payload.new_password)
     db.add(user)
+    _audit_auth_event(
+        db,
+        organization_id=user.organization_id,
+        entity_id=user.id,
+        action="auth.password.changed",
+        request=request,
+        actor_id=user.id,
+    )
     db.commit()
     db.refresh(user)
 
@@ -361,6 +461,7 @@ def change_password(
 @router.post("/auth/invite-user", response_model=ApiResponse)
 def invite_user(
     payload: InviteUserRequest,
+    request: Request = None,  # type: ignore[assignment]
     token: str = Depends(get_bearer_token),
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
@@ -462,7 +563,7 @@ def invite_user(
         email_status = str(email_result.get("status", "unknown"))
         invite_message = "Invite generated and email delivery was attempted."
     except ValidationError as exc:
-        if str(exc) != "Email delivery is disabled in this environment":
+        if not str(exc).startswith("Email delivery is disabled"):
             raise
         email_status = "disabled"
         invite_message = "Email delivery is disabled. Copy the activation link and send it manually."
@@ -488,6 +589,7 @@ def invite_user(
         entity_id=str(existing.id),
         action="staff_invited" if created_new_user else "staff_invite_resent",
         metadata_json={
+            **audit_request_context(request, source="auth.invite_user"),
             "email_status": email_status,
             "created_new_user": created_new_user,
             "role": normalized_role,
@@ -504,6 +606,7 @@ def invite_user(
 @router.post("/auth/activate-account", response_model=ApiResponse)
 def activate_account(
     payload: ActivateAccountRequest,
+    request: Request = None,  # type: ignore[assignment]
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
     token_payload = decode_token(payload.token, expected_token_type="activation")
@@ -521,6 +624,14 @@ def activate_account(
     user.password_hash = hash_password(payload.password)
     user.is_active = True
     db.add(user)
+    _audit_auth_event(
+        db,
+        organization_id=user.organization_id,
+        entity_id=user.id,
+        action="auth.invite.accepted",
+        request=request,
+        actor_id=user.id,
+    )
     db.commit()
     db.refresh(user)
 
@@ -530,6 +641,7 @@ def activate_account(
 @router.post("/auth/request-password-reset", response_model=ApiResponse)
 def request_password_reset(
     payload: PasswordResetRequest,
+    request: Request = None,  # type: ignore[assignment]
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
     normalized_email = payload.email.strip().lower()
@@ -580,6 +692,16 @@ def request_password_reset(
         response_data["reset_url"] = reset_url
         response_data["reset_token"] = reset_token
 
+    _audit_auth_event(
+        db,
+        organization_id=user.organization_id,
+        entity_id=user.id,
+        action="auth.password_reset.requested",
+        request=request,
+        metadata_json={"email_status": response_data["email_status"]},
+    )
+    db.commit()
+
     return ApiResponse(
         data=response_data,
         meta={},
@@ -590,6 +712,7 @@ def request_password_reset(
 @router.post("/auth/reset-password", response_model=ApiResponse)
 def reset_password(
     payload: ConfirmPasswordResetRequest,
+    request: Request = None,  # type: ignore[assignment]
     db: Session = Depends(get_db_session),
 ) -> ApiResponse:
     token_payload = decode_token(payload.token, expected_token_type="password_reset")
@@ -606,7 +729,151 @@ def reset_password(
 
     user.password_hash = hash_password(payload.new_password)
     db.add(user)
+    _audit_auth_event(
+        db,
+        organization_id=user.organization_id,
+        entity_id=user.id,
+        action="auth.password_reset.completed",
+        request=request,
+        actor_id=user.id,
+    )
     db.commit()
     db.refresh(user)
 
     return ApiResponse(data={"password_reset": True, "user_id": str(user.id)}, meta={}, error=None)
+
+
+@router.post("/auth/logout", response_model=ApiResponse)
+def logout(
+    request: Request = None,  # type: ignore[assignment]
+    token: str = Depends(get_bearer_token),
+    db: Session = Depends(get_db_session),
+) -> ApiResponse:
+    token_service = TokenService(db)
+    user = token_service.get_current_staff_user(token)
+    _audit_auth_event(
+        db,
+        organization_id=user.organization_id,
+        entity_id=user.id,
+        action="auth.logout",
+        request=request,
+        actor_id=user.id,
+    )
+    db.commit()
+    return ApiResponse(data={"logged_out": True}, meta={}, error=None)
+
+
+@router.get("/auth/mfa/status", response_model=ApiResponse)
+def get_mfa_status(
+    token: str = Depends(get_bearer_token),
+    db: Session = Depends(get_db_session),
+) -> ApiResponse:
+    user = TokenService(db).get_current_staff_user(token)
+    return ApiResponse(
+        data={
+            "mfa_enabled": bool(getattr(user, "mfa_enabled", False)),
+            "totp_configured": bool(getattr(user, "mfa_totp_secret", None)),
+            "enabled_at": user.mfa_enabled_at.isoformat() if getattr(user, "mfa_enabled_at", None) else None,
+        },
+        meta={"mfa_required_by_default": False},
+        error=None,
+    )
+
+
+@router.post("/auth/mfa/setup", response_model=ApiResponse)
+def setup_mfa(
+    request: Request = None,  # type: ignore[assignment]
+    token: str = Depends(get_bearer_token),
+    db: Session = Depends(get_db_session),
+) -> ApiResponse:
+    user = TokenService(db).get_current_staff_user(token)
+    secret = MfaService.generate_totp_secret()
+    user.mfa_totp_secret = secret
+    user.mfa_enabled = False
+    user.mfa_enabled_at = None
+    db.add(user)
+    _audit_auth_event(
+        db,
+        organization_id=user.organization_id,
+        entity_id=user.id,
+        action="auth.mfa.setup_started",
+        request=request,
+        actor_id=user.id,
+        metadata_json={"method": "totp"},
+    )
+    db.commit()
+    return ApiResponse(
+        data={
+            "mfa_enabled": False,
+            "secret": secret,
+            "provisioning_uri": MfaService.provisioning_uri(email=user.email, secret=secret),
+            "recovery_codes_supported": False,
+        },
+        meta={"setup_required_before_enforcement": True},
+        error=None,
+    )
+
+
+@router.post("/auth/mfa/enable", response_model=ApiResponse)
+def enable_mfa(
+    payload: MfaVerifyRequest,
+    request: Request = None,  # type: ignore[assignment]
+    token: str = Depends(get_bearer_token),
+    db: Session = Depends(get_db_session),
+) -> ApiResponse:
+    user = TokenService(db).get_current_staff_user(token)
+    if not MfaService.verify_totp(secret=user.mfa_totp_secret, code=payload.code):
+        _audit_auth_event(
+            db,
+            organization_id=user.organization_id,
+            entity_id=user.id,
+            action="auth.mfa.enable_failed",
+            request=request,
+            actor_id=user.id,
+            metadata_json={"reason": "invalid_code"},
+        )
+        db.commit()
+        raise UnauthorizedError("Invalid MFA verification code")
+    user.mfa_enabled = True
+    user.mfa_enabled_at = datetime.now(timezone.utc)
+    db.add(user)
+    _audit_auth_event(
+        db,
+        organization_id=user.organization_id,
+        entity_id=user.id,
+        action="auth.mfa.enabled",
+        request=request,
+        actor_id=user.id,
+        metadata_json={"method": "totp"},
+    )
+    db.commit()
+    return ApiResponse(data={"mfa_enabled": True}, meta={}, error=None)
+
+
+@router.post("/auth/mfa/disable", response_model=ApiResponse)
+def disable_mfa(
+    payload: MfaDisableRequest,
+    request: Request = None,  # type: ignore[assignment]
+    token: str = Depends(get_bearer_token),
+    db: Session = Depends(get_db_session),
+) -> ApiResponse:
+    user = TokenService(db).get_current_staff_user(token)
+    if not verify_password(payload.current_password, user.password_hash):
+        raise UnauthorizedError("Current password is incorrect")
+    if user.mfa_enabled and not MfaService.verify_totp(secret=user.mfa_totp_secret, code=payload.code):
+        raise UnauthorizedError("Valid MFA code is required to disable MFA")
+    user.mfa_enabled = False
+    user.mfa_totp_secret = None
+    user.mfa_enabled_at = None
+    db.add(user)
+    _audit_auth_event(
+        db,
+        organization_id=user.organization_id,
+        entity_id=user.id,
+        action="auth.mfa.disabled",
+        request=request,
+        actor_id=user.id,
+        metadata_json={"method": "totp"},
+    )
+    db.commit()
+    return ApiResponse(data={"mfa_enabled": False}, meta={}, error=None)

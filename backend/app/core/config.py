@@ -126,6 +126,17 @@ class Settings(BaseSettings):
     web_app_base_url: str = Field(default="http://localhost:3000")
     email_dev_allow_token_response: bool = Field(default=False)
     public_signup_enabled: bool = Field(default=True)
+    rate_limit_enabled: bool = Field(default=True, validation_alias=AliasChoices("RATE_LIMIT_ENABLED", "rate_limit_enabled"))
+    rate_limit_login_max_requests: int = Field(default=10, ge=1, le=1000)
+    rate_limit_login_window_seconds: int = Field(default=300, ge=1, le=86400)
+    rate_limit_public_max_requests: int = Field(default=30, ge=1, le=5000)
+    rate_limit_public_window_seconds: int = Field(default=300, ge=1, le=86400)
+    rate_limit_upload_max_requests: int = Field(default=60, ge=1, le=5000)
+    rate_limit_upload_window_seconds: int = Field(default=300, ge=1, le=86400)
+    rate_limit_billing_max_requests: int = Field(default=20, ge=1, le=1000)
+    rate_limit_billing_window_seconds: int = Field(default=300, ge=1, le=86400)
+    security_headers_enabled: bool = Field(default=True, validation_alias=AliasChoices("SECURITY_HEADERS_ENABLED", "security_headers_enabled"))
+    security_hsts_enabled: bool = Field(default=True, validation_alias=AliasChoices("SECURITY_HSTS_ENABLED", "security_hsts_enabled"))
     demo_request_duplicate_window_seconds: int = Field(default=900, ge=60, le=86400)
     demo_request_rate_limit_window_seconds: int = Field(default=600, ge=60, le=86400)
     demo_request_rate_limit_max_per_ip: int = Field(default=5, ge=1, le=100)
@@ -207,6 +218,9 @@ class Settings(BaseSettings):
         "smtp_use_tls",
         "smtp_use_ssl",
         "billing_enabled",
+        "rate_limit_enabled",
+        "security_headers_enabled",
+        "security_hsts_enabled",
         mode="before",
     )
     @classmethod
