@@ -162,6 +162,7 @@ class DocumentService:
         processing_status: str | ProcessingStatus | None = None,
         page: int = 1,
         page_size: int = 25,
+        include_related: bool = False,
     ) -> tuple[list[LoadDocument], int]:
         validated_page = self._validate_positive_int("page", page)
         validated_page_size = self._validate_positive_int("page_size", page_size)
@@ -181,7 +182,7 @@ class DocumentService:
             processing_status=normalized_processing_status,
             page=validated_page,
             page_size=validated_page_size,
-            include_related=True,
+            include_related=include_related,
         )
 
     # ---------------------------

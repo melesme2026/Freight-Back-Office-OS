@@ -215,9 +215,23 @@ http://127.0.0.1:8000/api/v1/health/ready
 
 ## Running Tests
 
+Fast launch-gate commands are bounded for CI and exclude broad manual smoke tests marked
+`slow`/`local_only`:
+
 ```bash
-cd backend
-pytest
+python -m pytest backend/tests/unit -q
+python -m pytest backend/tests/integration -q -m "not slow"
+python -m pytest -q -m "not slow"
+```
+
+Slow/manual launch-smoke coverage is still available intentionally. Local-only tests are
+skipped by default to keep unattended runs deterministic; opt in explicitly when validating
+the full cross-feature launch path:
+
+```bash
+python -m pytest -q -m slow
+RUN_LOCAL_ONLY_TESTS=1 python -m pytest backend/tests/integration/test_launch_smoke_flow.py -q
+RUN_LOCAL_ONLY_TESTS=1 python -m pytest -q -m local_only
 ```
 
 ---
@@ -303,8 +317,9 @@ Proprietary and private internal project unless explicitly relicensed.
   2. `docker-compose down`
   3. `docker-compose up -d --build`
   4. `cd backend && alembic upgrade head`
-  5. `pytest backend/tests/integration/test_launch_smoke_flow.py -q`
-  6. `npm --prefix frontend run typecheck && npm --prefix frontend run lint`
+  5. `python -m pytest backend/tests/integration -q -m "not slow"`
+  6. Optional manual launch smoke: `RUN_LOCAL_ONLY_TESTS=1 python -m pytest backend/tests/integration/test_launch_smoke_flow.py -q`
+  7. `npm --prefix frontend run typecheck && npm --prefix frontend run lint`
 
 Common failures:
 - Missing carrier profile before invoice generation.

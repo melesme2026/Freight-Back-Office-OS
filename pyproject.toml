@@ -42,6 +42,10 @@ dev = [
 pythonpath = ["backend"]
 testpaths = ["backend/tests"]
 addopts = "-q"
+markers = [
+  "slow: long-running tests excluded from fast launch gates",
+  "local_only(reason=None): manual tests that require RUN_LOCAL_ONLY_TESTS=1 opt-in",
+]
 
 [tool.ruff]
 line-length = 100

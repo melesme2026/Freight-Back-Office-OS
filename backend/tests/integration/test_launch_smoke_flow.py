@@ -46,6 +46,14 @@ def _driver_payload(org_id: str, driver_id: str) -> dict[str, str]:
     return {"organization_id": org_id, "role": "driver", "driver_id": driver_id, "sub": driver_id}
 
 
+@pytest.mark.slow
+@pytest.mark.local_only(
+    reason=(
+        "Broad cross-feature launch smoke exercises invoice PDF, packet ZIP, "
+        "payment reconciliation, follow-ups, dashboard, driver upload, and RBAC in one "
+        "SQLite session; run manually when validating the full launch path."
+    )
+)
 def test_launch_smoke_owner_admin_and_driver_flow(db_session):
     org_id = "00000000-0000-0000-0000-000000040001"
     customer_id = "00000000-0000-0000-0000-000000040011"
