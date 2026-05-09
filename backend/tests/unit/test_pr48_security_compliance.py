@@ -3,12 +3,11 @@ from __future__ import annotations
 import asyncio
 import time
 
-from starlette.requests import Request
-from starlette.responses import JSONResponse
-
 from app.core.middleware import RateLimitMiddleware, SecurityHeadersMiddleware
 from app.services.audit.audit_service import AuditService
 from app.services.auth.mfa_service import MfaService
+from starlette.requests import Request
+from starlette.responses import JSONResponse
 
 
 def test_audit_metadata_sanitization_redacts_nested_secrets() -> None:
@@ -46,7 +45,6 @@ def test_mfa_totp_foundation_generates_uri_and_verifies_current_code() -> None:
     assert "secret=" in uri
     assert MfaService.verify_totp(secret=secret, code=code, at_time=now)
     assert not MfaService.verify_totp(secret=secret, code="000000", at_time=now + 180)
-
 
 
 def _request(path: str, *, method: str = "POST", client_host: str = "203.0.113.10") -> Request:

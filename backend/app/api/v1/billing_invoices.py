@@ -5,16 +5,17 @@ from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
-from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel, ConfigDict
-from sqlalchemy.orm import Session
-
 from app.core.dependencies import get_db_session
 from app.core.exceptions import UnauthorizedError
 from app.core.security import get_current_token_payload
 from app.schemas.common import ApiResponse
 from app.services.billing.invoice_service import InvoiceService
+from fastapi import APIRouter, Depends, Query
+from pydantic import BaseModel, ConfigDict
+from sqlalchemy.orm import Session
 
+GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY = Depends(get_current_token_payload)
+GET_DB_SESSION_DEPENDENCY = Depends(get_db_session)
 
 router = APIRouter()
 
@@ -113,9 +114,7 @@ def _serialize_invoice_base(invoice: Any) -> dict[str, Any]:
         "id": str(invoice.id),
         "organization_id": str(invoice.organization_id),
         "customer_account_id": str(invoice.customer_account_id),
-        "subscription_id": (
-            str(invoice.subscription_id) if invoice.subscription_id else None
-        ),
+        "subscription_id": (str(invoice.subscription_id) if invoice.subscription_id else None),
         "invoice_number": invoice.invoice_number,
         "status": _enum_to_string(invoice.status),
         "currency_code": invoice.currency_code,
@@ -143,8 +142,6 @@ def _serialize_invoice_detail(invoice: Any) -> dict[str, Any]:
     payload = _serialize_invoice_base(invoice)
     payload["lines"] = [_serialize_invoice_line(line) for line in invoice.lines]
     return payload
-
-
 
 
 def _resolve_effective_org_id(
@@ -195,7 +192,9 @@ def _assert_driver_can_access_invoice(
         raise UnauthorizedError("Driver token is missing driver_id")
 
     payments = getattr(item, "payments", []) or []
-    has_driver_payment = any(str(getattr(payment, "driver_id", "")) == token_driver_id for payment in payments)
+    has_driver_payment = any(
+        str(getattr(payment, "driver_id", "")) == token_driver_id for payment in payments
+    )
     if not has_driver_payment:
         raise UnauthorizedError("Drivers may only access invoices tied to their own payments")
 
@@ -219,8 +218,8 @@ def _serialize_invoice_update(invoice: Any) -> dict[str, Any]:
 @router.post("/billing-invoices", response_model=ApiResponse)
 def create_billing_invoice(
     payload: BillingInvoiceCreateRequest,
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     _ensure_staff_role_for_mutation(token_payload)
     effective_org_id = _resolve_effective_org_id(
@@ -260,8 +259,8 @@ def list_billing_invoices(
     due_before: str | None = None,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=25, ge=1, le=200),
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     token_role = _get_token_role(token_payload)
     token_driver_id = _get_token_driver_id(token_payload)
@@ -303,8 +302,8 @@ def list_billing_invoices(
 @router.get("/billing-invoices/{invoice_id}", response_model=ApiResponse)
 def get_billing_invoice(
     invoice_id: uuid.UUID,
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     service = InvoiceService(db)
     item = service.get_invoice(str(invoice_id))
@@ -323,8 +322,8 @@ def get_billing_invoice(
 def update_billing_invoice(
     invoice_id: uuid.UUID,
     payload: BillingInvoiceUpdateRequest,
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     _ensure_staff_role_for_mutation(token_payload)
     service = InvoiceService(db)
@@ -352,8 +351,8 @@ def update_billing_invoice(
 @router.post("/billing-invoices/{invoice_id}/mark-past-due", response_model=ApiResponse)
 def mark_billing_invoice_past_due(
     invoice_id: uuid.UUID,
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     _ensure_staff_role_for_mutation(token_payload)
     service = InvoiceService(db)

@@ -28,10 +28,13 @@ from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
+GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY = Depends(get_current_token_payload)
+GET_DB_SESSION_DEPENDENCY = Depends(get_db_session)
+
 router = APIRouter()
 
-DB_SESSION_DEPENDENCY = Depends(get_db_session)
-TOKEN_PAYLOAD_DEPENDENCY = Depends(get_current_token_payload)
+DB_SESSION_DEPENDENCY = GET_DB_SESSION_DEPENDENCY
+TOKEN_PAYLOAD_DEPENDENCY = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY
 STATUS_FILTER_QUERY = Query(default=None, alias="status")
 PAGE_QUERY = Query(default=1, ge=1)
 PAGE_SIZE_QUERY = Query(default=50, ge=1, le=200)

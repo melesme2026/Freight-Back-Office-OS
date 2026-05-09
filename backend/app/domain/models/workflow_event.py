@@ -3,16 +3,14 @@ from __future__ import annotations
 import uuid
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import Enum as SqlEnum
-from sqlalchemy import ForeignKey, Index, String
-from sqlalchemy.dialects.postgresql import JSONB, UUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
-
 from app.core.database import Base
 from app.domain.enums.audit_actor_type import AuditActorType
 from app.domain.enums.load_status import LoadStatus
 from app.domain.models.organization import TimestampMixin, UUIDPrimaryKeyMixin
-
+from sqlalchemy import Enum as SqlEnum
+from sqlalchemy import ForeignKey, Index, String
+from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 if TYPE_CHECKING:
     from app.domain.models.load import Load
@@ -82,15 +80,15 @@ class WorkflowEvent(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         server_default=AuditActorType.SYSTEM.value,
     )
 
-    organization: Mapped["Organization"] = relationship(
+    organization: Mapped[Organization] = relationship(
         back_populates="workflow_events",
         lazy="selectin",
     )
-    load: Mapped["Load"] = relationship(
+    load: Mapped[Load] = relationship(
         back_populates="workflow_events",
         lazy="selectin",
     )
-    actor_staff_user: Mapped["StaffUser | None"] = relationship(
+    actor_staff_user: Mapped[StaffUser | None] = relationship(
         back_populates="workflow_events",
         lazy="selectin",
     )

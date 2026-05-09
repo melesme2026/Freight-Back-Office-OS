@@ -66,7 +66,10 @@ def test_multi_organization_login_returns_workspace_options(db_session) -> None:
         organizations = exc.details.get("organizations")
         assert isinstance(organizations, list)
         assert len(organizations) == 2
-        assert {item["organization_name"] for item in organizations} == {"Adwa Express LLC", "Adwa Driver Ops"}
+        assert {item["organization_name"] for item in organizations} == {
+            "Adwa Express LLC",
+            "Adwa Driver Ops",
+        }
         assert {item["role"] for item in organizations} == {"owner", "driver"}
     else:
         raise AssertionError("Expected multiple_organizations error for shared email login")

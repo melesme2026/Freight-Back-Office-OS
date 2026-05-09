@@ -3,14 +3,13 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta
 from typing import Any
 
-from sqlalchemy.orm import Session
-
 from app.core.exceptions import NotFoundError, ValidationError
 from app.domain.enums.billing_cycle import BillingCycle
 from app.domain.enums.subscription_status import SubscriptionStatus
 from app.domain.models.subscription import Subscription
 from app.repositories.service_plan_repo import ServicePlanRepository
 from app.repositories.subscription_repo import SubscriptionRepository
+from sqlalchemy.orm import Session
 
 
 class SubscriptionService:

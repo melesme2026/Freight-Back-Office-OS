@@ -3,13 +3,11 @@ from __future__ import annotations
 import uuid
 from typing import TYPE_CHECKING
 
+from app.core.database import Base
+from app.domain.models.organization import TimestampMixin, UUIDPrimaryKeyMixin
 from sqlalchemy import Boolean, ForeignKey, Index, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-
-from app.core.database import Base
-from app.domain.models.organization import TimestampMixin, UUIDPrimaryKeyMixin
-
 
 if TYPE_CHECKING:
     from app.domain.models.customer_account import CustomerAccount
@@ -49,27 +47,27 @@ class Driver(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         server_default="true",
     )
 
-    organization: Mapped["Organization"] = relationship(
+    organization: Mapped[Organization] = relationship(
         back_populates="drivers",
         lazy="selectin",
     )
-    customer_account: Mapped["CustomerAccount | None"] = relationship(
+    customer_account: Mapped[CustomerAccount | None] = relationship(
         back_populates="drivers",
         lazy="selectin",
     )
-    loads: Mapped[list["Load"]] = relationship(
+    loads: Mapped[list[Load]] = relationship(
         back_populates="driver",
         lazy="selectin",
     )
-    usage_records: Mapped[list["UsageRecord"]] = relationship(
+    usage_records: Mapped[list[UsageRecord]] = relationship(
         back_populates="driver",
         lazy="selectin",
     )
-    notifications: Mapped[list["Notification"]] = relationship(
+    notifications: Mapped[list[Notification]] = relationship(
         back_populates="driver",
         lazy="selectin",
     )
-    payments: Mapped[list["Payment"]] = relationship(
+    payments: Mapped[list[Payment]] = relationship(
         back_populates="driver",
         lazy="selectin",
     )

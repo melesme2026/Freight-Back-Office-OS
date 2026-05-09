@@ -2,11 +2,10 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import Select, func, select, update
-from sqlalchemy.orm import Session
-
 from app.domain.enums.payment_provider import PaymentProvider
 from app.domain.models.payment_method import PaymentMethod
+from sqlalchemy import Select, func, select, update
+from sqlalchemy.orm import Session
 
 
 class PaymentMethodRepository:
@@ -95,7 +94,9 @@ class PaymentMethodRepository:
 
         if normalized_organization_id is not None:
             stmt = stmt.where(PaymentMethod.organization_id == normalized_organization_id)
-            count_stmt = count_stmt.where(PaymentMethod.organization_id == normalized_organization_id)
+            count_stmt = count_stmt.where(
+                PaymentMethod.organization_id == normalized_organization_id
+            )
 
         if normalized_customer_account_id is not None:
             stmt = stmt.where(PaymentMethod.customer_account_id == normalized_customer_account_id)

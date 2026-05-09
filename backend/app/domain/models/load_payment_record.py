@@ -5,19 +5,19 @@ from datetime import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, DateTime, Enum as SqlEnum, ForeignKey, Index, Numeric, String, Text, UniqueConstraint
+from app.core.database import Base
+from app.domain.enums.factoring import FactoringReconciliationStatus, FactoringWorkflowStatus
+from app.domain.enums.load_payment_status import LoadPaymentStatus
+from app.domain.models.organization import TimestampMixin, UUIDPrimaryKeyMixin
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import Enum as SqlEnum
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.core.database import Base
-from app.domain.enums.load_payment_status import LoadPaymentStatus
-from app.domain.enums.factoring import FactoringReconciliationStatus, FactoringWorkflowStatus
-from app.domain.models.organization import TimestampMixin, UUIDPrimaryKeyMixin
-
 if TYPE_CHECKING:
+    from app.domain.models.factoring_company import FactoringCompany
     from app.domain.models.load import Load
     from app.domain.models.organization import Organization
-    from app.domain.models.factoring_company import FactoringCompany
     from app.domain.models.staff_user import StaffUser
 
 
@@ -42,10 +42,18 @@ class LoadPaymentRecord(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         nullable=False,
     )
 
-    gross_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False, default=Decimal("0"), server_default="0")
-    expected_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False, default=Decimal("0"), server_default="0")
-    amount_received: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False, default=Decimal("0"), server_default="0")
-    currency: Mapped[str] = mapped_column(String(3), nullable=False, default="USD", server_default="USD")
+    gross_amount: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, default=Decimal("0"), server_default="0"
+    )
+    expected_amount: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, default=Decimal("0"), server_default="0"
+    )
+    amount_received: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, default=Decimal("0"), server_default="0"
+    )
+    currency: Mapped[str] = mapped_column(
+        String(3), nullable=False, default="USD", server_default="USD"
+    )
 
     payment_status: Mapped[LoadPaymentStatus] = mapped_column(
         SqlEnum(
@@ -61,7 +69,9 @@ class LoadPaymentRecord(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
 
     paid_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    factoring_used: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+    factoring_used: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
     factoring_company_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("factoring_companies.id", ondelete="SET NULL"),
@@ -99,8 +109,12 @@ class LoadPaymentRecord(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     factoring_fee_amount: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
 
     reserve_amount: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
-    reserve_paid_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False, default=Decimal("0"), server_default="0")
-    reserve_paid_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    reserve_paid_amount: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, default=Decimal("0"), server_default="0"
+    )
+    reserve_paid_date: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     deduction_amount: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
     short_paid_amount: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
@@ -120,8 +134,16 @@ class LoadPaymentRecord(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         nullable=True,
     )
 
-    organization: Mapped["Organization"] = relationship(back_populates="load_payment_records", lazy="selectin")
-    load: Mapped["Load"] = relationship(back_populates="payment_record", lazy="selectin")
-    factoring_company: Mapped["FactoringCompany | None"] = relationship(back_populates="payment_records", lazy="selectin")
-    created_by_staff_user: Mapped["StaffUser | None"] = relationship(foreign_keys=[created_by_staff_user_id], lazy="selectin")
-    updated_by_staff_user: Mapped["StaffUser | None"] = relationship(foreign_keys=[updated_by_staff_user_id], lazy="selectin")
+    organization: Mapped[Organization] = relationship(
+        back_populates="load_payment_records", lazy="selectin"
+    )
+    load: Mapped[Load] = relationship(back_populates="payment_record", lazy="selectin")
+    factoring_company: Mapped[FactoringCompany | None] = relationship(
+        back_populates="payment_records", lazy="selectin"
+    )
+    created_by_staff_user: Mapped[StaffUser | None] = relationship(
+        foreign_keys=[created_by_staff_user_id], lazy="selectin"
+    )
+    updated_by_staff_user: Mapped[StaffUser | None] = relationship(
+        foreign_keys=[updated_by_staff_user_id], lazy="selectin"
+    )

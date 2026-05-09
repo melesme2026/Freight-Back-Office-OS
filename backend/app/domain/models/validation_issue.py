@@ -4,15 +4,13 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, DateTime, Enum as SqlEnum
-from sqlalchemy import ForeignKey, Index, String, Text
-from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
-
 from app.core.database import Base
 from app.domain.enums.validation_severity import ValidationSeverity
 from app.domain.models.organization import TimestampMixin, UUIDPrimaryKeyMixin
-
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String, Text
+from sqlalchemy import Enum as SqlEnum
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 if TYPE_CHECKING:
     from app.domain.models.load import Load
@@ -84,15 +82,15 @@ class ValidationIssue(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     resolution_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    load: Mapped["Load"] = relationship(
+    load: Mapped[Load] = relationship(
         back_populates="validation_issues",
         lazy="selectin",
     )
-    document: Mapped["LoadDocument | None"] = relationship(
+    document: Mapped[LoadDocument | None] = relationship(
         back_populates="validation_issues",
         lazy="selectin",
     )
-    resolved_by_user: Mapped["StaffUser | None"] = relationship(
+    resolved_by_user: Mapped[StaffUser | None] = relationship(
         back_populates="validation_issues_resolved",
         lazy="selectin",
     )

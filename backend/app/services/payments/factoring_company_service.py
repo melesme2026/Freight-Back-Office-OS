@@ -3,11 +3,10 @@ from __future__ import annotations
 import uuid
 from decimal import Decimal, InvalidOperation
 
-from sqlalchemy import select, func
-from sqlalchemy.orm import Session
-
 from app.core.exceptions import NotFoundError, ValidationError
 from app.domain.models.factoring_company import FactoringCompany
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session
 
 
 class FactoringCompanyService:
@@ -56,13 +55,19 @@ class FactoringCompanyService:
         self.db.flush()
         return company
 
-    def update_company(self, *, company_id: str, organization_id: str, **values: object) -> FactoringCompany:
+    def update_company(
+        self, *, company_id: str, organization_id: str, **values: object
+    ) -> FactoringCompany:
         company = self.get_company(company_id=company_id, organization_id=organization_id)
         if "company_name" in values and values["company_name"] is not None:
             company.company_name = self._required_text(str(values["company_name"]), "company_name")
         for field in ("contact_email", "phone", "notes"):
             if field in values:
-                setattr(company, field, self._clean(values[field] if isinstance(values[field], str) else None))
+                setattr(
+                    company,
+                    field,
+                    self._clean(values[field] if isinstance(values[field], str) else None),
+                )
         if "default_reserve_percent" in values and values["default_reserve_percent"] is not None:
             company.default_reserve_percent = self._percent(values["default_reserve_percent"])
         if "default_fee_percent" in values and values["default_fee_percent"] is not None:

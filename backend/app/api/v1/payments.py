@@ -5,10 +5,6 @@ from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
-from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel, ConfigDict
-from sqlalchemy.orm import Session
-
 from app.core.dependencies import get_db_session
 from app.core.exceptions import NotFoundError, UnauthorizedError, ValidationError
 from app.core.security import get_current_token_payload
@@ -16,7 +12,12 @@ from app.domain.models.payment_method import PaymentMethod
 from app.repositories.payment_method_repo import PaymentMethodRepository
 from app.schemas.common import ApiResponse
 from app.services.billing.payment_service import PaymentService
+from fastapi import APIRouter, Depends, Query
+from pydantic import BaseModel, ConfigDict
+from sqlalchemy.orm import Session
 
+GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY = Depends(get_current_token_payload)
+GET_DB_SESSION_DEPENDENCY = Depends(get_db_session)
 
 router = APIRouter()
 
@@ -163,12 +164,8 @@ def _serialize_payment(item: Any) -> dict[str, Any]:
         "id": str(item.id),
         "organization_id": str(item.organization_id),
         "customer_account_id": str(item.customer_account_id),
-        "billing_invoice_id": str(item.billing_invoice_id)
-        if item.billing_invoice_id
-        else None,
-        "payment_method_id": str(item.payment_method_id)
-        if item.payment_method_id
-        else None,
+        "billing_invoice_id": str(item.billing_invoice_id) if item.billing_invoice_id else None,
+        "payment_method_id": str(item.payment_method_id) if item.payment_method_id else None,
         "driver_id": str(item.driver_id) if item.driver_id else None,
         "recorded_by_staff_user_id": str(item.recorded_by_staff_user_id)
         if item.recorded_by_staff_user_id
@@ -186,8 +183,6 @@ def _serialize_payment(item: Any) -> dict[str, Any]:
         "created_at": _to_iso_or_none(item.created_at),
         "updated_at": _to_iso_or_none(item.updated_at),
     }
-
-
 
 
 def _resolve_effective_org_id(
@@ -256,8 +251,8 @@ def _get_payment_method_or_404(
 @router.post("/payment-methods", response_model=ApiResponse)
 def create_payment_method(
     payload: PaymentMethodCreateRequest,
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     _ensure_staff_role_for_mutation(token_payload)
     effective_org_id = _resolve_effective_org_id(
@@ -321,8 +316,8 @@ def list_payment_methods(
     is_active: bool | None = None,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=50, ge=1, le=200),
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     effective_org_id = _resolve_effective_org_id(
         organization_id=organization_id,
@@ -350,8 +345,8 @@ def list_payment_methods(
 @router.get("/payment-methods/{payment_method_id}", response_model=ApiResponse)
 def get_payment_method(
     payment_method_id: uuid.UUID,
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     token_org_id = uuid.UUID(str(token_payload.get("organization_id")))
     repo = PaymentMethodRepository(db)
@@ -369,8 +364,8 @@ def get_payment_method(
 def update_payment_method(
     payment_method_id: uuid.UUID,
     payload: PaymentMethodUpdateRequest,
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     _ensure_staff_role_for_mutation(token_payload)
     token_org_id = uuid.UUID(str(token_payload.get("organization_id")))
@@ -408,8 +403,8 @@ def update_payment_method(
 @router.post("/payments/collect", response_model=ApiResponse)
 def collect_payment(
     payload: CollectPaymentRequest,
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     _ensure_staff_role_for_mutation(token_payload)
     effective_org_id = _resolve_effective_org_id(
@@ -446,8 +441,8 @@ def list_payments(
     status: str | None = None,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=50, ge=1, le=200),
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     token_role = _get_token_role(token_payload)
     token_driver_id = _get_token_driver_id(token_payload)
@@ -485,8 +480,8 @@ def list_payments(
 @router.get("/payments/{payment_id}", response_model=ApiResponse)
 def get_payment(
     payment_id: uuid.UUID,
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     token_org_id = uuid.UUID(str(token_payload.get("organization_id")))
     service = PaymentService(db)
@@ -505,8 +500,8 @@ def get_payment(
 def mark_payment_failed(
     payment_id: uuid.UUID,
     payload: MarkPaymentFailedRequest,
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     _ensure_staff_role_for_mutation(token_payload)
     token_org_id = uuid.UUID(str(token_payload.get("organization_id")))

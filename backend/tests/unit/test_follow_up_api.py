@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import pytest
-
 from app.api.v1.follow_ups import _authorize
 from app.core.exceptions import ForbiddenError
 

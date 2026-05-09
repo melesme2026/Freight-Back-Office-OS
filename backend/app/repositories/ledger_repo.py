@@ -3,10 +3,9 @@ from __future__ import annotations
 import uuid
 from datetime import date
 
+from app.domain.models.ledger_entry import LedgerEntry
 from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session
-
-from app.domain.models.ledger_entry import LedgerEntry
 
 
 class LedgerRepository:
@@ -64,15 +63,11 @@ class LedgerRepository:
 
         if customer_account_id is not None:
             stmt = stmt.where(LedgerEntry.customer_account_id == customer_account_id)
-            count_stmt = count_stmt.where(
-                LedgerEntry.customer_account_id == customer_account_id
-            )
+            count_stmt = count_stmt.where(LedgerEntry.customer_account_id == customer_account_id)
 
         if billing_invoice_id is not None:
             stmt = stmt.where(LedgerEntry.billing_invoice_id == billing_invoice_id)
-            count_stmt = count_stmt.where(
-                LedgerEntry.billing_invoice_id == billing_invoice_id
-            )
+            count_stmt = count_stmt.where(LedgerEntry.billing_invoice_id == billing_invoice_id)
 
         if payment_id is not None:
             stmt = stmt.where(LedgerEntry.payment_id == payment_id)

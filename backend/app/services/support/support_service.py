@@ -2,11 +2,10 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlalchemy.orm import Session
-
 from app.core.exceptions import NotFoundError, UnauthorizedError, ValidationError
 from app.domain.models.support_ticket import SupportTicket
 from app.repositories.support_ticket_repo import SupportTicketRepository
+from sqlalchemy.orm import Session
 
 
 class SupportService:
@@ -58,7 +57,9 @@ class SupportService:
             organization_id=normalized_organization_id,
         )
         if ticket is None:
-            raise NotFoundError("Support ticket not found", details={"ticket_id": normalized_ticket_id})
+            raise NotFoundError(
+                "Support ticket not found", details={"ticket_id": normalized_ticket_id}
+            )
         if str(ticket.organization_id) != normalized_organization_id:
             raise UnauthorizedError("Support ticket is not in authenticated organization")
         return ticket

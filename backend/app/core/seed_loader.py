@@ -6,9 +6,6 @@ from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import select
-from sqlalchemy.orm import Session
-
 from app.core.config import get_settings
 from app.core.exceptions import ValidationError
 from app.core.security import hash_password
@@ -18,7 +15,8 @@ from app.domain.models.driver import Driver
 from app.domain.models.organization import Organization
 from app.domain.models.service_plan import ServicePlan
 from app.domain.models.staff_user import StaffUser
-
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 SEED_ROOT_DIR = Path(__file__).resolve().parents[3] / "data" / "seeds"
 
@@ -152,9 +150,7 @@ def _seed_model(
     raw_items = _load_json(filename)
     normalized_items = [normalizer(item) for item in raw_items]
 
-    missing_id_indexes = [
-        index for index, item in enumerate(normalized_items) if "id" not in item
-    ]
+    missing_id_indexes = [index for index, item in enumerate(normalized_items) if "id" not in item]
     if missing_id_indexes:
         raise ValidationError(
             "Seed items must include an id field",

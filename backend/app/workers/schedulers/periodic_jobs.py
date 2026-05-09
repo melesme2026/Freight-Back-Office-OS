@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-from celery.schedules import crontab
-
 from app.workers.celery_app import celery_app
-
+from celery.schedules import crontab
 
 celery_app.conf.beat_schedule = {
     **(celery_app.conf.beat_schedule or {}),

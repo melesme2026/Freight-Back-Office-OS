@@ -8,8 +8,7 @@ from app.core.exceptions import ValidationError
 class ValidationRule(Protocol):
     rule_code: str
 
-    def evaluate(self, *, payload: dict[str, Any]) -> list[dict[str, Any]]:
-        ...
+    def evaluate(self, *, payload: dict[str, Any]) -> list[dict[str, Any]]: ...
 
 
 class ValidationEngine:

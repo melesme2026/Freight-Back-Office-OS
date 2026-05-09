@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import pytest
-
 from app.core.exceptions import InvalidTransitionError, ValidationError
 from app.domain.enums.load_status import LoadStatus
 from app.services.documents.document_service import DocumentService
@@ -11,7 +10,9 @@ from app.services.workflow.workflow_engine import WorkflowEngine
 
 def _seed_submission_docs(db_session, load_id: str) -> None:
     document_service = DocumentService(db_session)
-    for index, document_type in enumerate(["rate_confirmation", "proof_of_delivery", "invoice"], start=1):
+    for index, document_type in enumerate(
+        ["rate_confirmation", "proof_of_delivery", "invoice"], start=1
+    ):
         document_service.create_document(
             organization_id="00000000-0000-0000-0000-000000000631",
             customer_account_id="00000000-0000-0000-0000-000000000632",
@@ -57,7 +58,9 @@ def test_submission_requires_invoice_ready_and_docs(db_session) -> None:
     )
 
     with pytest.raises(InvalidTransitionError):
-        workflow_engine.transition_load(load_id=str(load.id), new_status=LoadStatus.SUBMITTED_TO_BROKER)
+        workflow_engine.transition_load(
+            load_id=str(load.id), new_status=LoadStatus.SUBMITTED_TO_BROKER
+        )
 
     workflow_engine.transition_load(load_id=str(load.id), new_status=LoadStatus.IN_TRANSIT)
     workflow_engine.transition_load(load_id=str(load.id), new_status=LoadStatus.DELIVERED)
@@ -65,7 +68,9 @@ def test_submission_requires_invoice_ready_and_docs(db_session) -> None:
     workflow_engine.transition_load(load_id=str(load.id), new_status=LoadStatus.INVOICE_READY)
 
     with pytest.raises(ValidationError):
-        workflow_engine.transition_load(load_id=str(load.id), new_status=LoadStatus.SUBMITTED_TO_BROKER)
+        workflow_engine.transition_load(
+            load_id=str(load.id), new_status=LoadStatus.SUBMITTED_TO_BROKER
+        )
 
     _seed_submission_docs(db_session, str(load.id))
     workflow_engine.transition_load(load_id=str(load.id), new_status=LoadStatus.SUBMITTED_TO_BROKER)
@@ -93,7 +98,9 @@ def test_factoring_rejection_resubmission_and_payment_flow(db_session) -> None:
 
     workflow_engine.apply_operational_action(load_id=str(load.id), action="submit_to_factoring")
     workflow_engine.apply_operational_action(load_id=str(load.id), action="mark_packet_rejected")
-    workflow_engine.apply_operational_action(load_id=str(load.id), action="mark_resubmission_needed")
+    workflow_engine.apply_operational_action(
+        load_id=str(load.id), action="mark_resubmission_needed"
+    )
     workflow_engine.transition_load(load_id=str(load.id), new_status=LoadStatus.INVOICE_READY)
     workflow_engine.apply_operational_action(load_id=str(load.id), action="submit_to_factoring")
     workflow_engine.apply_operational_action(load_id=str(load.id), action="mark_advance_paid")

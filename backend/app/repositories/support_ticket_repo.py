@@ -2,10 +2,9 @@ from __future__ import annotations
 
 import uuid
 
+from app.domain.models.support_ticket import SupportTicket
 from sqlalchemy import Select, func, or_, select
 from sqlalchemy.orm import Session
-
-from app.domain.models.support_ticket import SupportTicket
 
 
 class SupportTicketRepository:
@@ -71,9 +70,7 @@ class SupportTicketRepository:
             else None
         )
         normalized_load_id = (
-            self._normalize_uuid(load_id, field_name="load_id")
-            if load_id is not None
-            else None
+            self._normalize_uuid(load_id, field_name="load_id") if load_id is not None else None
         )
         normalized_assigned_to_staff_user_id = (
             self._normalize_uuid(

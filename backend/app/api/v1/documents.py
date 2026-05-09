@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import uuid
 from datetime import date, datetime
-from typing import Any
+from typing import Annotated, Any
 
 from app.core.cache import operational_cache
 from app.core.config import get_settings
@@ -41,6 +41,10 @@ from fastapi import (
 )
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
+
+GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY = Depends(get_current_token_payload)
+GET_DB_SESSION_DEPENDENCY = Depends(get_db_session)
+
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -96,7 +100,9 @@ def _upload_log_context(
 ) -> dict[str, Any]:
     return {
         "organization_id": str(organization_id),
-        "customer_account_id": str(customer_account_id) if customer_account_id is not None else None,
+        "customer_account_id": str(customer_account_id)
+        if customer_account_id is not None
+        else None,
         "driver_id": str(driver_id) if driver_id is not None else None,
         "load_id": str(load_id) if load_id is not None else None,
         "document_type": document_type,
@@ -323,7 +329,6 @@ def _build_document_list_meta(
     }
 
 
-
 def _log_document_event(
     *,
     db: Session,
@@ -344,6 +349,7 @@ def _log_document_event(
         actor_type=actor_type,
         metadata_json=metadata or {},
     )
+
 
 def _create_document_uploaded_notification(
     *,
@@ -395,18 +401,18 @@ def _queue_document_processing(
 @router.post("/documents/upload", response_model=ApiResponse)
 async def upload_document(
     *,
-    organization_id: uuid.UUID = Form(...),
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    customer_account_id: uuid.UUID = Form(...),
-    source_channel: str = Form(...),
-    file: UploadFile = File(...),
-    driver_id: uuid.UUID | None = Form(None),
-    load_id: uuid.UUID | None = Form(None),
-    document_type: str | None = Form(None),
-    uploaded_by_staff_user_id: uuid.UUID | None = Form(None),
-    page_count: int | None = Form(None),
-    replace: str | None = Form(None),
-    db: Session = Depends(get_db_session),
+    organization_id: Annotated[uuid.UUID, Form()],
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    customer_account_id: Annotated[uuid.UUID, Form()],
+    source_channel: Annotated[str, Form()],
+    file: Annotated[UploadFile, File()],
+    driver_id: Annotated[uuid.UUID | None, Form()] = None,
+    load_id: Annotated[uuid.UUID | None, Form()] = None,
+    document_type: Annotated[str | None, Form()] = None,
+    uploaded_by_staff_user_id: Annotated[uuid.UUID | None, Form()] = None,
+    page_count: Annotated[int | None, Form()] = None,
+    replace: Annotated[str | None, Form()] = None,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
     background_tasks: BackgroundTasks = None,
 ) -> ApiResponse:
     _ = uploaded_by_staff_user_id
@@ -446,7 +452,11 @@ async def upload_document(
                     status_code=status.HTTP_409_CONFLICT,
                     detail={
                         "code": "duplicate_required_document",
-                        "message": f"{_document_label(parsed_document_type)} already exists for this load. Replace it?",
+                        "message": (
+                            f"{_document_label(parsed_document_type)} already exists "
+                            "for this load. "
+                            "Replace it?"
+                        ),
                         "existing_document_id": str(existing_required_doc.id),
                         "document_type": parsed_document_type.value,
                         "can_replace": True,
@@ -516,7 +526,9 @@ async def upload_document(
             db=db,
             organization_id=organization_id,
             document_id=item.id,
-            action="document.replaced" if existing_required_doc and replace_existing else "document.uploaded",
+            action="document.replaced"
+            if existing_required_doc and replace_existing
+            else "document.uploaded",
             token_payload=token_payload,
             metadata={
                 "document_type": normalized_document_type,
@@ -598,7 +610,9 @@ async def upload_document(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={
                 "code": "document_upload_failed",
-                "message": "Document upload failed. Please try again or contact support if it continues.",
+                "message": (
+                    "Document upload failed. Please try again or contact support if it continues."
+                ),
             },
         ) from exc
 
@@ -606,13 +620,13 @@ async def upload_document(
 @router.post("/driver/documents/upload", response_model=ApiResponse)
 async def upload_driver_document(
     *,
-    organization_id: uuid.UUID = Form(...),
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    file: UploadFile = File(...),
-    document_type: str = Form(...),
-    load_id: uuid.UUID | None = Form(None),
-    replace: str | None = Form(None),
-    db: Session = Depends(get_db_session),
+    organization_id: Annotated[uuid.UUID, Form()],
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    file: Annotated[UploadFile, File()],
+    document_type: Annotated[str, Form()],
+    load_id: Annotated[uuid.UUID | None, Form()] = None,
+    replace: Annotated[str | None, Form()] = None,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
     background_tasks: BackgroundTasks = None,
 ) -> ApiResponse:
     _validate_upload_file(file)
@@ -669,7 +683,11 @@ async def upload_driver_document(
                     status_code=status.HTTP_409_CONFLICT,
                     detail={
                         "code": "duplicate_required_document",
-                        "message": f"{_document_label(parsed_document_type)} already exists for this load. Replace it?",
+                        "message": (
+                            f"{_document_label(parsed_document_type)} already exists "
+                            "for this load. "
+                            "Replace it?"
+                        ),
                         "existing_document_id": str(existing_required_doc.id),
                         "document_type": parsed_document_type.value,
                         "can_replace": True,
@@ -737,7 +755,9 @@ async def upload_driver_document(
             db=db,
             organization_id=organization_id,
             document_id=item.id,
-            action="document.replaced" if existing_required_doc and replace_existing else "document.uploaded",
+            action="document.replaced"
+            if existing_required_doc and replace_existing
+            else "document.uploaded",
             token_payload=token_payload,
             metadata={
                 "document_type": normalized_document_type,
@@ -820,7 +840,9 @@ async def upload_driver_document(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail={
                 "code": "document_upload_failed",
-                "message": "Document upload failed. Please try again or contact support if it continues.",
+                "message": (
+                    "Document upload failed. Please try again or contact support if it continues."
+                ),
             },
         ) from exc
 
@@ -828,8 +850,8 @@ async def upload_driver_document(
 @router.post("/documents", response_model=ApiResponse)
 def create_document(
     payload: DocumentCreateRequest,
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     _ensure_staff_role(token_payload)
     token_org_id = token_payload.get("organization_id")
@@ -880,7 +902,7 @@ def create_document(
 def list_documents(
     *,
     organization_id: uuid.UUID | None = None,
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
     customer_account_id: uuid.UUID | None = None,
     driver_id: uuid.UUID | None = None,
     load_id: uuid.UUID | None = None,
@@ -888,7 +910,7 @@ def list_documents(
     processing_status: str | None = None,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=25, ge=1, le=500),
-    db: Session = Depends(get_db_session),
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     token_org_id = token_payload.get("organization_id")
     token_role = _get_token_role(token_payload)
@@ -934,8 +956,8 @@ def get_documents_by_load(
     *,
     page: int = Query(1, ge=1),
     page_size: int = Query(DEFAULT_LOAD_DOCUMENT_PAGE_SIZE, ge=1, le=500),
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     token_org_id = token_payload.get("organization_id")
     token_role = _get_token_role(token_payload)
@@ -975,8 +997,8 @@ def get_documents_by_load(
 @router.get("/documents/{document_id}/download")
 def download_document(
     document_id: uuid.UUID,
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ):
     service = DocumentService(db)
     item = service.get_document(str(document_id))
@@ -999,8 +1021,8 @@ def download_document(
 @router.get("/documents/{document_id}", response_model=ApiResponse)
 def get_document(
     document_id: uuid.UUID,
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     service = DocumentService(db)
     item = service.get_document(str(document_id))
@@ -1016,8 +1038,8 @@ def get_document(
 def update_document(
     document_id: uuid.UUID,
     payload: DocumentUpdateRequest,
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     service = DocumentService(db)
     item = service.get_document_in_organization(
@@ -1044,8 +1066,8 @@ def update_document(
 @router.delete("/documents/{document_id}", response_model=ApiResponse)
 def delete_document(
     document_id: uuid.UUID,
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     service = DocumentService(db)
     item = service.get_document_in_organization(
@@ -1059,7 +1081,10 @@ def delete_document(
         document_id=item.id,
         action="document.deleted",
         token_payload=token_payload,
-        metadata={"document_type": _enum_to_string(item.document_type), "filename": item.original_filename},
+        metadata={
+            "document_type": _enum_to_string(item.document_type),
+            "filename": item.original_filename,
+        },
     )
     service.delete_document(document_id=str(document_id))
     db.commit()
@@ -1070,8 +1095,8 @@ def delete_document(
 def extract_document(
     document_id: uuid.UUID,
     payload: ExtractDocumentRequest,
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     document_service = DocumentService(db)
     document = document_service.get_document_in_organization(
@@ -1103,8 +1128,8 @@ def extract_document(
 def reprocess_document(
     document_id: uuid.UUID,
     payload: ReprocessDocumentRequest,
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     service = DocumentService(db)
     document = service.get_document_in_organization(
@@ -1126,8 +1151,8 @@ def reprocess_document(
 def link_document_to_load(
     document_id: uuid.UUID,
     payload: LinkDocumentToLoadRequest,
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     document_service = DocumentService(db)
     document = document_service.get_document_in_organization(

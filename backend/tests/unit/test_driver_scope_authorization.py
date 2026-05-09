@@ -4,7 +4,6 @@ import uuid
 from types import SimpleNamespace
 
 import pytest
-
 from app.api.v1 import billing_invoices, documents, payments
 from app.core.exceptions import UnauthorizedError
 

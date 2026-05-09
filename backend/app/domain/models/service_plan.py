@@ -4,15 +4,13 @@ import uuid
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, Enum as SqlEnum
-from sqlalchemy import ForeignKey, Index, Numeric, String, Text, UniqueConstraint
-from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
-
 from app.core.database import Base
 from app.domain.enums.billing_cycle import BillingCycle
 from app.domain.models.organization import TimestampMixin, UUIDPrimaryKeyMixin
-
+from sqlalchemy import Boolean, ForeignKey, Index, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import Enum as SqlEnum
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 if TYPE_CHECKING:
     from app.domain.models.organization import Organization
@@ -85,12 +83,12 @@ class ServicePlan(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         server_default="true",
     )
 
-    organization: Mapped["Organization"] = relationship(
+    organization: Mapped[Organization] = relationship(
         back_populates="service_plans",
         lazy="selectin",
     )
 
-    subscriptions: Mapped[list["Subscription"]] = relationship(
+    subscriptions: Mapped[list[Subscription]] = relationship(
         back_populates="service_plan",
         lazy="selectin",
     )

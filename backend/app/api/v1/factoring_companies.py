@@ -5,16 +5,18 @@ from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
-from fastapi import APIRouter, Depends
-from pydantic import BaseModel, ConfigDict
-from sqlalchemy.orm import Session
-
 from app.core.dependencies import get_db_session
 from app.core.exceptions import ForbiddenError, UnauthorizedError
 from app.core.security import get_current_token_payload
 from app.schemas.common import ApiResponse
 from app.services.audit.audit_service import AuditService
 from app.services.payments.factoring_company_service import FactoringCompanyService
+from fastapi import APIRouter, Depends
+from pydantic import BaseModel, ConfigDict
+from sqlalchemy.orm import Session
+
+GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY = Depends(get_current_token_payload)
+GET_DB_SESSION_DEPENDENCY = Depends(get_db_session)
 
 router = APIRouter(prefix="/factoring-companies")
 
@@ -76,13 +78,27 @@ def _serialize(company: Any) -> dict[str, Any]:
 
 
 @router.get("", response_model=ApiResponse)
-def list_factoring_companies(token_payload: dict[str, Any] = Depends(get_current_token_payload), db: Session = Depends(get_db_session)) -> ApiResponse:
+def list_factoring_companies(
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
+) -> ApiResponse:
     service = FactoringCompanyService(db)
-    return ApiResponse(data=[_serialize(item) for item in service.list_companies(organization_id=_org_id(token_payload))], meta={}, error=None)
+    return ApiResponse(
+        data=[
+            _serialize(item)
+            for item in service.list_companies(organization_id=_org_id(token_payload))
+        ],
+        meta={},
+        error=None,
+    )
 
 
 @router.post("", response_model=ApiResponse)
-def create_factoring_company(payload: FactoringCompanyRequest, token_payload: dict[str, Any] = Depends(get_current_token_payload), db: Session = Depends(get_db_session)) -> ApiResponse:
+def create_factoring_company(
+    payload: FactoringCompanyRequest,
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
+) -> ApiResponse:
     _authorize_write(token_payload)
     service = FactoringCompanyService(db)
     org_id = _org_id(token_payload)
@@ -109,11 +125,18 @@ def create_factoring_company(payload: FactoringCompanyRequest, token_payload: di
 
 
 @router.patch("/{company_id}", response_model=ApiResponse)
-def update_factoring_company(company_id: uuid.UUID, payload: FactoringCompanyRequest, token_payload: dict[str, Any] = Depends(get_current_token_payload), db: Session = Depends(get_db_session)) -> ApiResponse:
+def update_factoring_company(
+    company_id: uuid.UUID,
+    payload: FactoringCompanyRequest,
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
+) -> ApiResponse:
     _authorize_write(token_payload)
     service = FactoringCompanyService(db)
     org_id = _org_id(token_payload)
-    company = service.update_company(company_id=str(company_id), organization_id=org_id, **payload.model_dump(exclude_unset=True))
+    company = service.update_company(
+        company_id=str(company_id), organization_id=org_id, **payload.model_dump(exclude_unset=True)
+    )
     AuditService(db).log_event(
         organization_id=org_id,
         entity_type="factoring_company",

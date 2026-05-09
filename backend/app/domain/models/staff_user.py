@@ -4,15 +4,13 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, DateTime, Enum as SqlEnum
-from sqlalchemy import ForeignKey, Index, String, Text
-from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
-
 from app.core.database import Base
 from app.domain.enums.role import Role
 from app.domain.models.organization import TimestampMixin, UUIDPrimaryKeyMixin
-
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String, Text
+from sqlalchemy import Enum as SqlEnum
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 if TYPE_CHECKING:
     from app.domain.models.load import Load
@@ -82,38 +80,38 @@ class StaffUser(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         nullable=True,
     )
 
-    organization: Mapped["Organization"] = relationship(
+    organization: Mapped[Organization] = relationship(
         back_populates="staff_users",
         lazy="selectin",
     )
 
-    reviewed_loads: Mapped[list["Load"]] = relationship(
+    reviewed_loads: Mapped[list[Load]] = relationship(
         back_populates="last_reviewed_by_user",
         foreign_keys="Load.last_reviewed_by",
         lazy="selectin",
     )
-    follow_up_owned_loads: Mapped[list["Load"]] = relationship(
+    follow_up_owned_loads: Mapped[list[Load]] = relationship(
         back_populates="follow_up_owner",
         foreign_keys="Load.follow_up_owner_id",
         lazy="selectin",
     )
-    validation_issues_resolved: Mapped[list["ValidationIssue"]] = relationship(
+    validation_issues_resolved: Mapped[list[ValidationIssue]] = relationship(
         back_populates="resolved_by_user",
         lazy="selectin",
     )
-    workflow_events: Mapped[list["WorkflowEvent"]] = relationship(
+    workflow_events: Mapped[list[WorkflowEvent]] = relationship(
         back_populates="actor_staff_user",
         lazy="selectin",
     )
-    support_tickets_assigned: Mapped[list["SupportTicket"]] = relationship(
+    support_tickets_assigned: Mapped[list[SupportTicket]] = relationship(
         back_populates="assigned_to",
         lazy="selectin",
     )
-    notifications_created: Mapped[list["Notification"]] = relationship(
+    notifications_created: Mapped[list[Notification]] = relationship(
         back_populates="created_by_staff_user",
         lazy="selectin",
     )
-    payments_recorded: Mapped[list["Payment"]] = relationship(
+    payments_recorded: Mapped[list[Payment]] = relationship(
         back_populates="recorded_by_staff_user",
         lazy="selectin",
     )

@@ -3,15 +3,14 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import select
-from sqlalchemy.orm import Session
-
 from app.core.exceptions import AppError, UnauthorizedError
-from app.domain.models.organization import Organization
 from app.core.security import create_access_token, verify_password
+from app.domain.models.organization import Organization
 from app.domain.models.staff_user import StaffUser
 from app.repositories.driver_repo import DriverRepository
 from app.repositories.staff_user_repo import StaffUserRepository
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 
 class AuthService:
@@ -79,10 +78,17 @@ class AuthService:
                 for record in organization_records
             ]
             raise AppError(
-                "This email is linked to multiple workspaces. Select the workspace you want to access.",
+                (
+                    "This email is linked to multiple workspaces. "
+                    "Select the workspace you want to access."
+                ),
                 code="multiple_organizations",
                 status_code=422,
-                details={"email": normalized_email, "organization_count": len(organizations), "organizations": organizations},
+                details={
+                    "email": normalized_email,
+                    "organization_count": len(organizations),
+                    "organizations": organizations,
+                },
             )
 
         return organization_records[0].organization_id
@@ -106,7 +112,11 @@ class AuthService:
             raise UnauthorizedError("Invalid email or password")
 
         if organization_id is not None:
-            selected = [record for record in organization_records if record.StaffUser.organization_id == organization_id]
+            selected = [
+                record
+                for record in organization_records
+                if record.StaffUser.organization_id == organization_id
+            ]
             if not selected:
                 raise AppError(
                     "Invalid workspace selection.",
@@ -115,7 +125,11 @@ class AuthService:
                 )
             organization_records = selected
 
-        password_matches = [record for record in organization_records if verify_password(password, record.StaffUser.password_hash)]
+        password_matches = [
+            record
+            for record in organization_records
+            if verify_password(password, record.StaffUser.password_hash)
+        ]
         if not password_matches:
             raise UnauthorizedError("Invalid email or password")
 
@@ -149,7 +163,9 @@ class AuthService:
             organizations_by_id: dict[uuid.UUID, dict[str, object]] = {}
             for record in password_matches:
                 org_id = record.StaffUser.organization_id
-                role_value = str(getattr(record.StaffUser.role, "value", record.StaffUser.role)).lower()
+                role_value = str(
+                    getattr(record.StaffUser.role, "value", record.StaffUser.role)
+                ).lower()
                 existing = organizations_by_id.get(org_id)
                 if existing is None:
                     organizations_by_id[org_id] = {
@@ -163,7 +179,13 @@ class AuthService:
                     roles.add(role_value)
 
             organizations = []
-            for item in sorted(organizations_by_id.values(), key=lambda value: (str(value.get("organization_name") or "").lower(), str(value["organization_id"]))):
+            for item in sorted(
+                organizations_by_id.values(),
+                key=lambda value: (
+                    str(value.get("organization_name") or "").lower(),
+                    str(value["organization_id"]),
+                ),
+            ):
                 roles = sorted(item["roles"]) if isinstance(item["roles"], set) else []
                 organizations.append(
                     {

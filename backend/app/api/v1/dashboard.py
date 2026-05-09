@@ -3,11 +3,6 @@ from __future__ import annotations
 import uuid
 from collections import defaultdict
 
-from fastapi import APIRouter, Depends
-from sqlalchemy import func, select
-from sqlalchemy.orm import Session
-from sqlalchemy.sql import Select
-
 from app.core.dependencies import get_db_session
 from app.core.exceptions import UnauthorizedError
 from app.core.security import get_current_token_payload
@@ -20,7 +15,13 @@ from app.domain.models.validation_issue import ValidationIssue
 from app.schemas.common import ApiResponse
 from app.services.loads.load_service import LoadService
 from app.services.loads.operational_queue_service import OperationalQueueService
+from fastapi import APIRouter, Depends
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session
+from sqlalchemy.sql import Select
 
+GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY = Depends(get_current_token_payload)
+GET_DB_SESSION_DEPENDENCY = Depends(get_db_session)
 
 router = APIRouter()
 
@@ -44,8 +45,8 @@ def _apply_optional_org_filter(
 def get_dashboard(
     *,
     organization_id: uuid.UUID | None = None,
-    token_payload: dict[str, object] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, object] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     _assert_operator_role(token_payload)
     token_org_id = token_payload.get("organization_id")
@@ -68,31 +69,23 @@ def get_dashboard(
     )
 
     loads_ready_to_submit_stmt = _apply_optional_org_filter(
-        select(func.count())
-        .select_from(Load)
-        .where(Load.status == LoadStatus.INVOICE_READY),
+        select(func.count()).select_from(Load).where(Load.status == LoadStatus.INVOICE_READY),
         organization_id=effective_org_id,
         model=Load,
     )
 
     loads_paid_stmt = _apply_optional_org_filter(
-        select(func.count())
-        .select_from(Load)
-        .where(Load.status == LoadStatus.FULLY_PAID),
+        select(func.count()).select_from(Load).where(Load.status == LoadStatus.FULLY_PAID),
         organization_id=effective_org_id,
         model=Load,
     )
     loads_submitted_to_broker_stmt = _apply_optional_org_filter(
-        select(func.count())
-        .select_from(Load)
-        .where(Load.status == LoadStatus.SUBMITTED_TO_BROKER),
+        select(func.count()).select_from(Load).where(Load.status == LoadStatus.SUBMITTED_TO_BROKER),
         organization_id=effective_org_id,
         model=Load,
     )
     loads_waiting_on_broker_stmt = _apply_optional_org_filter(
-        select(func.count())
-        .select_from(Load)
-        .where(Load.status == LoadStatus.SUBMITTED_TO_BROKER),
+        select(func.count()).select_from(Load).where(Load.status == LoadStatus.SUBMITTED_TO_BROKER),
         organization_id=effective_org_id,
         model=Load,
     )
@@ -104,16 +97,12 @@ def get_dashboard(
         model=Load,
     )
     loads_waiting_on_funding_stmt = _apply_optional_org_filter(
-        select(func.count())
-        .select_from(Load)
-        .where(Load.status == LoadStatus.RESERVE_PENDING),
+        select(func.count()).select_from(Load).where(Load.status == LoadStatus.RESERVE_PENDING),
         organization_id=effective_org_id,
         model=Load,
     )
     loads_funded_stmt = _apply_optional_org_filter(
-        select(func.count())
-        .select_from(Load)
-        .where(Load.status == LoadStatus.ADVANCE_PAID),
+        select(func.count()).select_from(Load).where(Load.status == LoadStatus.ADVANCE_PAID),
         organization_id=effective_org_id,
         model=Load,
     )
@@ -146,10 +135,7 @@ def get_dashboard(
         page_size=500,
     )
     prioritized = sorted(
-        (
-            (item, queue_service.evaluate_load(item))
-            for item in loads
-        ),
+        ((item, queue_service.evaluate_load(item)) for item in loads),
         key=lambda pair: pair[1].get("priority_score", 0),
         reverse=True,
     )
@@ -202,6 +188,8 @@ def get_dashboard(
         meta={},
         error=None,
     )
+
+
 def _assert_operator_role(token_payload: dict[str, object]) -> None:
     role = str(token_payload.get("role") or "").strip().lower()
     if role == "driver":

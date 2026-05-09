@@ -2,10 +2,9 @@ from __future__ import annotations
 
 import uuid
 
+from app.domain.models.organization import Organization
 from sqlalchemy import select
 from sqlalchemy.orm import Session
-
-from app.domain.models.organization import Organization
 
 
 class OrganizationRepository:

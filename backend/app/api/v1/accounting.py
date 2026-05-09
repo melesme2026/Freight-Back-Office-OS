@@ -1,21 +1,23 @@
 from __future__ import annotations
 
-# ruff: noqa: B008
 from datetime import date
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from app.core.dependencies import get_db_session
 from app.core.exceptions import ForbiddenError, UnauthorizedError
 from app.core.security import get_current_token_payload
 from app.schemas.common import ApiResponse
-from app.services.audit.audit_service import AuditService
 from app.services.accounting.accounting_export_service import (
     KIND_COLUMNS,
     AccountingExportService,
 )
+from app.services.audit.audit_service import AuditService
 from fastapi import APIRouter, Depends, Query, Response
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
+
+GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY = Depends(get_current_token_payload)
+GET_DB_SESSION_DEPENDENCY = Depends(get_db_session)
 
 router = APIRouter(prefix="/accounting")
 
@@ -87,8 +89,8 @@ def _service(db: Session) -> AccountingExportService:
 
 @router.get("/settings", response_model=ApiResponse)
 def get_accounting_settings(
-    db: Session = Depends(get_db_session),
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
+    db: Session = GET_DB_SESSION_DEPENDENCY,
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
 ) -> ApiResponse:
     _authorize_accounting_read(token_payload)
     return ApiResponse(
@@ -101,8 +103,8 @@ def get_accounting_settings(
 @router.patch("/settings", response_model=ApiResponse)
 def update_accounting_settings(
     payload: AccountingSettingsPatch,
-    db: Session = Depends(get_db_session),
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
+    db: Session = GET_DB_SESSION_DEPENDENCY,
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
 ) -> ApiResponse:
     _authorize_accounting_write(token_payload)
     service = _service(db)
@@ -121,7 +123,10 @@ def update_accounting_settings(
         action="accounting.settings.updated",
         actor_id=str(token_payload.get("sub")) if token_payload.get("sub") else None,
         actor_type="staff_user",
-        metadata_json={"quickbooks_changed": payload.quickbooks is not None, "mapping_changed": payload.mapping is not None},
+        metadata_json={
+            "quickbooks_changed": payload.quickbooks is not None,
+            "mapping_changed": payload.mapping is not None,
+        },
     )
     db.commit()
     return ApiResponse(data=service.settings_payload(org_id), meta={}, error=None)
@@ -130,8 +135,8 @@ def update_accounting_settings(
 @router.get("/exports/{kind}/preview", response_model=ApiResponse)
 def preview_accounting_export(
     kind: AccountingKindParam,
-    db: Session = Depends(get_db_session),
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
+    db: Session = GET_DB_SESSION_DEPENDENCY,
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
 ) -> ApiResponse:
     _authorize_accounting_read(token_payload)
     service = _service(db)
@@ -146,12 +151,12 @@ def preview_accounting_export(
 @router.get("/exports/{kind}.csv")
 def export_accounting_csv(
     kind: AccountingKindParam,
-    date_from: date | None = Query(default=None),
-    date_to: date | None = Query(default=None),
-    status: str | None = Query(default=None),
-    reconciliation_status: str | None = Query(default=None),
-    db: Session = Depends(get_db_session),
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
+    date_from: Annotated[date | None, Query()] = None,
+    date_to: Annotated[date | None, Query()] = None,
+    status: Annotated[str | None, Query()] = None,
+    reconciliation_status: Annotated[str | None, Query()] = None,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
 ) -> Response:
     _authorize_accounting_read(token_payload)
     org_id = _org_id(token_payload)

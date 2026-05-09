@@ -2,10 +2,9 @@ from __future__ import annotations
 
 import uuid
 
+from app.domain.models.referral import Referral
 from sqlalchemy import Select, func, or_, select
 from sqlalchemy.orm import Session
-
-from app.domain.models.referral import Referral
 
 
 class ReferralRepository:
@@ -63,7 +62,9 @@ class ReferralRepository:
 
         if normalized_customer_account_id is not None:
             stmt = stmt.where(Referral.customer_account_id == normalized_customer_account_id)
-            count_stmt = count_stmt.where(Referral.customer_account_id == normalized_customer_account_id)
+            count_stmt = count_stmt.where(
+                Referral.customer_account_id == normalized_customer_account_id
+            )
 
         if normalized_search:
             pattern = f"%{normalized_search}%"
@@ -79,11 +80,7 @@ class ReferralRepository:
         total = int(self.db.scalar(count_stmt) or 0)
 
         offset = (normalized_page - 1) * normalized_page_size
-        stmt = (
-            stmt.order_by(Referral.created_at.desc())
-            .offset(offset)
-            .limit(normalized_page_size)
-        )
+        stmt = stmt.order_by(Referral.created_at.desc()).offset(offset).limit(normalized_page_size)
 
         items = list(self.db.scalars(stmt).all())
         return items, total

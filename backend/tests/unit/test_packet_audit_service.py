@@ -16,7 +16,14 @@ DRIVER_ID = "00000000-0000-0000-0000-000000009903"
 STAFF_ID = "00000000-0000-0000-0000-000000009999"
 
 
-def _create_load(db_session, *, org_id: str, invoice_number: str = "INV-37", gross_amount: str = "1000.00", notes: str | None = None):
+def _create_load(
+    db_session,
+    *,
+    org_id: str,
+    invoice_number: str = "INV-37",
+    gross_amount: str = "1000.00",
+    notes: str | None = None,
+):
     return LoadService(db_session).create_load(
         organization_id=org_id,
         customer_account_id=CUSTOMER_ID,
@@ -44,7 +51,16 @@ def _add_doc(db_session, *, org_id: str, load, doc_type: DocumentType):
     )
 
 
-def _add_field(db_session, *, org_id: str, load, document, name: str, text: str | None = None, number: str | None = None):
+def _add_field(
+    db_session,
+    *,
+    org_id: str,
+    load,
+    document,
+    name: str,
+    text: str | None = None,
+    number: str | None = None,
+):
     field = ExtractedField(
         organization_id=org_id,
         document_id=document.id,
@@ -60,17 +76,48 @@ def _add_field(db_session, *, org_id: str, load, document, name: str, text: str 
     return field
 
 
-def _seed_complete_packet(db_session, *, org_id: str, invoice_number: str = "INV-37", gross_amount: str = "1000.00"):
-    load = _create_load(db_session, org_id=org_id, invoice_number=invoice_number, gross_amount=gross_amount)
+def _seed_complete_packet(
+    db_session, *, org_id: str, invoice_number: str = "INV-37", gross_amount: str = "1000.00"
+):
+    load = _create_load(
+        db_session, org_id=org_id, invoice_number=invoice_number, gross_amount=gross_amount
+    )
     invoice = _add_doc(db_session, org_id=org_id, load=load, doc_type=DocumentType.INVOICE)
-    ratecon = _add_doc(db_session, org_id=org_id, load=load, doc_type=DocumentType.RATE_CONFIRMATION)
+    ratecon = _add_doc(
+        db_session, org_id=org_id, load=load, doc_type=DocumentType.RATE_CONFIRMATION
+    )
     pod = _add_doc(db_session, org_id=org_id, load=load, doc_type=DocumentType.PROOF_OF_DELIVERY)
     _add_doc(db_session, org_id=org_id, load=load, doc_type=DocumentType.BILL_OF_LADING)
-    _add_field(db_session, org_id=org_id, load=load, document=invoice, name="invoice_amount", number=gross_amount)
-    _add_field(db_session, org_id=org_id, load=load, document=invoice, name="broker_reference", text="BR-123")
-    _add_field(db_session, org_id=org_id, load=load, document=ratecon, name="rate_confirmation_number", text="BR-123")
-    _add_field(db_session, org_id=org_id, load=load, document=pod, name="signature_present", text="yes")
-    packet = SubmissionPacketService(db_session).create_packet_from_load(str(load.id), org_id, STAFF_ID)
+    _add_field(
+        db_session,
+        org_id=org_id,
+        load=load,
+        document=invoice,
+        name="invoice_amount",
+        number=gross_amount,
+    )
+    _add_field(
+        db_session,
+        org_id=org_id,
+        load=load,
+        document=invoice,
+        name="broker_reference",
+        text="BR-123",
+    )
+    _add_field(
+        db_session,
+        org_id=org_id,
+        load=load,
+        document=ratecon,
+        name="rate_confirmation_number",
+        text="BR-123",
+    )
+    _add_field(
+        db_session, org_id=org_id, load=load, document=pod, name="signature_present", text="yes"
+    )
+    packet = SubmissionPacketService(db_session).create_packet_from_load(
+        str(load.id), org_id, STAFF_ID
+    )
     return load, packet, invoice, ratecon, pod
 
 
@@ -91,11 +138,15 @@ def test_packet_audit_detects_missing_documents_and_blocking_severity(db_session
 def test_packet_audit_detects_duplicate_invoice_number(db_session) -> None:
     org_id = "00000000-0000-0000-0000-000000037002"
     _create_load(db_session, org_id=org_id, invoice_number="DUP-1")
-    load, _packet, _invoice, _ratecon, _pod = _seed_complete_packet(db_session, org_id=org_id, invoice_number="DUP-1")
+    load, _packet, _invoice, _ratecon, _pod = _seed_complete_packet(
+        db_session, org_id=org_id, invoice_number="DUP-1"
+    )
 
     result = PacketAuditService(db_session).audit_load(load_id=str(load.id), org_id=org_id)
 
-    duplicate = [finding for finding in result.findings if finding.code == "duplicate_invoice_number"]
+    duplicate = [
+        finding for finding in result.findings if finding.code == "duplicate_invoice_number"
+    ]
     assert duplicate
     assert duplicate[0].severity == "blocking"
     assert result.status == "failed"
@@ -103,14 +154,19 @@ def test_packet_audit_detects_duplicate_invoice_number(db_session) -> None:
 
 def test_packet_audit_detects_amount_mismatch(db_session) -> None:
     org_id = "00000000-0000-0000-0000-000000037003"
-    load, _packet, invoice, _ratecon, _pod = _seed_complete_packet(db_session, org_id=org_id, gross_amount="1000.00")
+    load, _packet, invoice, _ratecon, _pod = _seed_complete_packet(
+        db_session, org_id=org_id, gross_amount="1000.00"
+    )
     for field in invoice.extracted_fields:
         if field.field_name == "invoice_amount":
             field.field_value_number = Decimal("900.00")
 
     result = PacketAuditService(db_session).audit_load(load_id=str(load.id), org_id=org_id)
 
-    assert any(finding.code == "amount_mismatch" and finding.severity == "warning" for finding in result.findings)
+    assert any(
+        finding.code == "amount_mismatch" and finding.severity == "warning"
+        for finding in result.findings
+    )
     assert result.status == "warning"
 
 
@@ -153,6 +209,11 @@ def test_packet_audit_detects_repeated_packet_send_attempt(db_session) -> None:
     )
     db_session.flush()
 
-    result = PacketAuditService(db_session).audit_load(load_id=str(load.id), org_id=org_id, packet_id=str(packet.id))
+    result = PacketAuditService(db_session).audit_load(
+        load_id=str(load.id), org_id=org_id, packet_id=str(packet.id)
+    )
 
-    assert any(finding.code == "repeated_packet_send" and finding.severity == "warning" for finding in result.findings)
+    assert any(
+        finding.code == "repeated_packet_send" and finding.severity == "warning"
+        for finding in result.findings
+    )

@@ -4,16 +4,17 @@ import uuid
 from datetime import date, datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel, ConfigDict
-from sqlalchemy.orm import Session
-
 from app.core.dependencies import get_db_session
 from app.core.exceptions import UnauthorizedError
 from app.core.security import get_current_token_payload
 from app.schemas.common import ApiResponse
 from app.services.billing.subscription_service import SubscriptionService
+from fastapi import APIRouter, Depends, Query
+from pydantic import BaseModel, ConfigDict
+from sqlalchemy.orm import Session
 
+GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY = Depends(get_current_token_payload)
+GET_DB_SESSION_DEPENDENCY = Depends(get_db_session)
 
 router = APIRouter()
 
@@ -87,8 +88,6 @@ def _enum_to_string(value: object | None) -> str | None:
     return str(value)
 
 
-
-
 def _resolve_effective_org_id(
     *,
     organization_id: uuid.UUID | None,
@@ -104,6 +103,8 @@ def _resolve_effective_org_id(
 def _assert_item_org(item: Any, *, token_org_id: uuid.UUID) -> None:
     if str(getattr(item, "organization_id", "")) != str(token_org_id):
         raise UnauthorizedError("Resource is not in authenticated organization")
+
+
 def _serialize_subscription(item: Any) -> dict[str, Any]:
     return {
         "id": str(item.id),
@@ -127,8 +128,8 @@ def _serialize_subscription(item: Any) -> dict[str, Any]:
 @router.post("/subscriptions", response_model=ApiResponse)
 def create_subscription(
     payload: SubscriptionCreateRequest,
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     effective_org_id = _resolve_effective_org_id(
         organization_id=payload.organization_id,
@@ -161,8 +162,8 @@ def list_subscriptions(
     status: str | None = None,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=25, ge=1, le=200),
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     effective_org_id = _resolve_effective_org_id(
         organization_id=organization_id,
@@ -193,8 +194,8 @@ def list_subscriptions(
 @router.get("/subscriptions/{subscription_id}", response_model=ApiResponse)
 def get_subscription(
     subscription_id: uuid.UUID,
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     service = SubscriptionService(db)
     item = service.get_subscription(str(subscription_id))
@@ -212,8 +213,8 @@ def get_subscription(
 def update_subscription(
     subscription_id: uuid.UUID,
     payload: SubscriptionUpdateRequest,
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     service = SubscriptionService(db)
     existing = service.get_subscription(str(subscription_id))
@@ -243,8 +244,8 @@ def update_subscription(
 def cancel_subscription(
     subscription_id: uuid.UUID,
     payload: SubscriptionCancelRequest,
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     service = SubscriptionService(db)
     existing = service.get_subscription(str(subscription_id))

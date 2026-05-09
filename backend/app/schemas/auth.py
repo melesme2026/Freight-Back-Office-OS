@@ -2,9 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
-
 from app.domain.enums.role import Role
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 
 class ApiError(BaseModel):

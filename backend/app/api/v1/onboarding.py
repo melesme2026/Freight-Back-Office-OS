@@ -4,14 +4,14 @@ import uuid
 from datetime import date, datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends
-from sqlalchemy.orm import Session
-
 from app.core.dependencies import get_db_session
 from app.core.exceptions import ValidationError
 from app.schemas.common import ApiResponse
 from app.services.onboarding.onboarding_service import OnboardingService
+from fastapi import APIRouter, Depends
+from sqlalchemy.orm import Session
 
+GET_DB_SESSION_DEPENDENCY = Depends(get_db_session)
 
 router = APIRouter()
 
@@ -65,7 +65,7 @@ def initialize_onboarding(
     customer_account_id: uuid.UUID,
     *,
     organization_id: uuid.UUID,
-    db: Session = Depends(get_db_session),
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     service = OnboardingService(db)
 
@@ -85,7 +85,7 @@ def initialize_onboarding(
 @router.get("/onboarding/{customer_account_id}", response_model=ApiResponse)
 def get_onboarding(
     customer_account_id: uuid.UUID,
-    db: Session = Depends(get_db_session),
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     service = OnboardingService(db)
     item = service.get_checklist(str(customer_account_id))
@@ -110,7 +110,7 @@ def upsert_onboarding(
     channel_connected: bool,
     go_live_ready: bool,
     completed_at: str | None = None,
-    db: Session = Depends(get_db_session),
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     service = OnboardingService(db)
 

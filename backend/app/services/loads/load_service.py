@@ -5,14 +5,13 @@ from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
-from sqlalchemy.orm import Session
-
 from app.core.exceptions import NotFoundError, ValidationError
 from app.domain.enums.channel import Channel
 from app.domain.enums.load_status import LoadStatus
 from app.domain.enums.processing_status import ProcessingStatus
 from app.domain.models.load import Load
 from app.repositories.load_repo import LoadRepository
+from sqlalchemy.orm import Session
 
 
 class LoadService:
@@ -249,11 +248,15 @@ class LoadService:
             }:
                 setattr(load, field, bool(value))
             elif field == "next_follow_up_at":
-                setattr(load, field, self._normalize_datetime(value, field_name=field, allow_none=True))
+                setattr(
+                    load, field, self._normalize_datetime(value, field_name=field, allow_none=True)
+                )
             elif field == "last_contacted_at":
                 if value is None:
                     continue
-                setattr(load, field, self._normalize_datetime(value, field_name=field, allow_none=True))
+                setattr(
+                    load, field, self._normalize_datetime(value, field_name=field, allow_none=True)
+                )
             elif field == "follow_up_owner_id":
                 if value is None or self._clean_text(value) is None:
                     setattr(load, field, None)
@@ -321,10 +324,14 @@ class LoadService:
         _ = old_status
         now = datetime.now(timezone.utc)
 
-        if new_status in {
-            LoadStatus.SUBMITTED_TO_BROKER,
-            LoadStatus.SUBMITTED_TO_FACTORING,
-        } and load.submitted_at is None:
+        if (
+            new_status
+            in {
+                LoadStatus.SUBMITTED_TO_BROKER,
+                LoadStatus.SUBMITTED_TO_FACTORING,
+            }
+            and load.submitted_at is None
+        ):
             load.submitted_at = now
 
         if new_status == LoadStatus.ADVANCE_PAID and load.funded_at is None:
@@ -337,8 +344,9 @@ class LoadService:
                 load.submitted_at = now
             load.paid_at = now
 
-
-    def _normalize_datetime(self, value: Any, *, field_name: str, allow_none: bool = False) -> datetime | None:
+    def _normalize_datetime(
+        self, value: Any, *, field_name: str, allow_none: bool = False
+    ) -> datetime | None:
         if value is None:
             if allow_none:
                 return None

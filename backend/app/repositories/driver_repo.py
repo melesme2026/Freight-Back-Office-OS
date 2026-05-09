@@ -2,10 +2,9 @@ from __future__ import annotations
 
 import uuid
 
+from app.domain.models.driver import Driver
 from sqlalchemy import Select, func, or_, select
 from sqlalchemy.orm import Session, selectinload
-
-from app.domain.models.driver import Driver
 
 
 class DriverRepository:
@@ -113,7 +112,9 @@ class DriverRepository:
 
         if normalized_customer_account_id is not None:
             stmt = stmt.where(Driver.customer_account_id == normalized_customer_account_id)
-            count_stmt = count_stmt.where(Driver.customer_account_id == normalized_customer_account_id)
+            count_stmt = count_stmt.where(
+                Driver.customer_account_id == normalized_customer_account_id
+            )
 
         if is_active is not None:
             stmt = stmt.where(Driver.is_active == is_active)
@@ -132,11 +133,7 @@ class DriverRepository:
         total = int(self.db.scalar(count_stmt) or 0)
 
         offset = (normalized_page - 1) * normalized_page_size
-        stmt = (
-            stmt.order_by(Driver.created_at.desc())
-            .offset(offset)
-            .limit(normalized_page_size)
-        )
+        stmt = stmt.order_by(Driver.created_at.desc()).offset(offset).limit(normalized_page_size)
 
         items = list(self.db.scalars(stmt).all())
         return items, total

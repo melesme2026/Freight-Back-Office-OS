@@ -4,16 +4,17 @@ import uuid
 from datetime import date, datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel, ConfigDict
-from sqlalchemy.orm import Session
-
 from app.core.dependencies import get_db_session
 from app.core.exceptions import UnauthorizedError, ValidationError
 from app.core.security import get_current_token_payload
 from app.schemas.common import ApiResponse
 from app.services.notifications.notification_service import NotificationService
+from fastapi import APIRouter, Depends, Query
+from pydantic import BaseModel, ConfigDict
+from sqlalchemy.orm import Session
 
+GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY = Depends(get_current_token_payload)
+GET_DB_SESSION_DEPENDENCY = Depends(get_db_session)
 
 router = APIRouter()
 
@@ -122,9 +123,7 @@ def _serialize_notification(item: Any) -> dict[str, Any]:
         "broker_id": str(item.broker_id) if item.broker_id else None,
         "demo_request_id": str(item.demo_request_id) if item.demo_request_id else None,
         "created_by_staff_user_id": (
-            str(item.created_by_staff_user_id)
-            if item.created_by_staff_user_id
-            else None
+            str(item.created_by_staff_user_id) if item.created_by_staff_user_id else None
         ),
         "channel": _enum_to_string(item.channel),
         "direction": item.direction,
@@ -146,8 +145,8 @@ def _serialize_notification(item: Any) -> dict[str, Any]:
 @router.post("/notifications", response_model=ApiResponse)
 def create_notification(
     payload: NotificationCreateRequest,
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     token_org_id = _get_token_org_id(token_payload)
     if str(payload.organization_id) != token_org_id:
@@ -203,8 +202,8 @@ def list_notifications(
     status: str | None = None,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=100, ge=1, le=500),
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     token_org_id = _get_token_org_id(token_payload)
     if organization_id is not None and str(organization_id) != token_org_id:
@@ -246,8 +245,8 @@ def list_notifications(
 @router.get("/notifications/{notification_id}", response_model=ApiResponse)
 def get_notification(
     notification_id: uuid.UUID,
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     token_org_id = _get_token_org_id(token_payload)
     service = NotificationService(db)
@@ -264,8 +263,8 @@ def get_notification(
 def mark_notification_sent(
     notification_id: uuid.UUID,
     payload: NotificationMarkSentRequest,
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     token_org_id = _get_token_org_id(token_payload)
     service = NotificationService(db)

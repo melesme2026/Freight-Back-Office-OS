@@ -2,9 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from sqlalchemy.orm import Session
-
 from app.repositories.load_repo import LoadRepository
+from sqlalchemy.orm import Session
 
 
 class ReviewQueueService:
@@ -51,9 +50,7 @@ class ReviewQueueService:
     @staticmethod
     def _issue_sort_rank(issue: object) -> tuple[int, str]:
         is_blocking = bool(getattr(issue, "is_blocking", False))
-        severity = ReviewQueueService._normalize_severity(
-            getattr(issue, "severity", None)
-        )
+        severity = ReviewQueueService._normalize_severity(getattr(issue, "severity", None))
 
         if is_blocking or severity == "high":
             priority = 0
@@ -99,9 +96,7 @@ class ReviewQueueService:
         )
 
         primary_title = str(getattr(primary_issue, "title", "") or "").strip()
-        primary_description = str(
-            getattr(primary_issue, "description", "") or ""
-        ).strip()
+        primary_description = str(getattr(primary_issue, "description", "") or "").strip()
 
         driver = getattr(load, "driver", None)
         customer_account = getattr(load, "customer_account", None)
@@ -124,12 +119,8 @@ class ReviewQueueService:
             "blocking_issue_count": blocking_issue_count,
             "warning_issue_count": warning_issue_count,
             "primary_issue": primary_title or primary_description or "Review required",
-            "severity": self._normalize_severity(
-                getattr(primary_issue, "severity", None)
-            ),
-            "primary_issue_is_blocking": bool(
-                getattr(primary_issue, "is_blocking", False)
-            ),
+            "severity": self._normalize_severity(getattr(primary_issue, "severity", None)),
+            "primary_issue_is_blocking": bool(getattr(primary_issue, "is_blocking", False)),
             "primary_issue_rule_code": getattr(primary_issue, "rule_code", None),
             "extraction_confidence_avg": self._safe_float(
                 getattr(load, "extraction_confidence_avg", None)
@@ -140,7 +131,6 @@ class ReviewQueueService:
                 else None
             ),
         }
-
 
     def get_load_review_context(
         self,

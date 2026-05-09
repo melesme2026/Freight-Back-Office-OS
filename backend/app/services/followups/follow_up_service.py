@@ -4,17 +4,19 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from sqlalchemy import and_, or_, select
-from sqlalchemy.orm import Session
-
 from app.core.exceptions import NotFoundError, ValidationError
-from app.domain.enums.follow_up_task import FollowUpTaskPriority, FollowUpTaskStatus, FollowUpTaskType
+from app.domain.enums.follow_up_task import (
+    FollowUpTaskPriority,
+    FollowUpTaskStatus,
+    FollowUpTaskType,
+)
 from app.domain.enums.load_payment_status import LoadPaymentStatus
 from app.domain.models.follow_up_task import FollowUpTask
 from app.domain.models.load import Load
 from app.domain.models.load_payment_record import LoadPaymentRecord
-from app.domain.models.organization import Organization
 from app.domain.models.submission_packet import SubmissionPacket
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 PAYMENT_TASK_TYPES = {
     FollowUpTaskType.PAYMENT_OVERDUE,
@@ -34,8 +36,20 @@ class FollowUpService:
         now = datetime.now(timezone.utc)
         generated: list[FollowUpTask] = []
 
-        packets = list(self.db.scalars(select(SubmissionPacket).where(SubmissionPacket.load_id == load.id, SubmissionPacket.organization_id == load.organization_id)).all())
-        payment_record = self.db.scalar(select(LoadPaymentRecord).where(LoadPaymentRecord.load_id == load.id, LoadPaymentRecord.organization_id == load.organization_id))
+        packets = list(
+            self.db.scalars(
+                select(SubmissionPacket).where(
+                    SubmissionPacket.load_id == load.id,
+                    SubmissionPacket.organization_id == load.organization_id,
+                )
+            ).all()
+        )
+        payment_record = self.db.scalar(
+            select(LoadPaymentRecord).where(
+                LoadPaymentRecord.load_id == load.id,
+                LoadPaymentRecord.organization_id == load.organization_id,
+            )
+        )
 
         for packet in packets:
             sent_at = self._utc(getattr(packet, "sent_at", None))
@@ -51,16 +65,23 @@ class FollowUpService:
                             task_type=FollowUpTaskType.PACKET_FOLLOW_UP,
                             title="Follow up on submitted packet",
                             description="Packet was submitted but not yet accepted.",
-                            recommended_action="Follow up with broker/factor on packet acceptance status.",
+                            recommended_action=(
+                                "Follow up with broker/factor on packet acceptance status."
+                            ),
                             due_at=due_at,
-                            priority=self.compute_followup_priority(base=FollowUpTaskPriority.NORMAL, days_past_due=age_days),
+                            priority=self.compute_followup_priority(
+                                base=FollowUpTaskPriority.NORMAL, days_past_due=age_days
+                            ),
                             submission_packet_id=str(packet.id),
                         )
                     )
 
         if payment_record is not None:
             status = payment_record.payment_status
-            submitted_at = self._utc(load.submitted_at or (packets[0].sent_at if packets and packets[0].sent_at else None))
+            submitted_at = self._utc(
+                load.submitted_at
+                or (packets[0].sent_at if packets and packets[0].sent_at else None)
+            )
 
             if status in {LoadPaymentStatus.PAID}:
                 self._cancel_open_payment_tasks(load.id, load.organization_id)
@@ -75,7 +96,9 @@ class FollowUpService:
                                 task_type=FollowUpTaskType.PAYMENT_OVERDUE,
                                 title="Payment overdue",
                                 description="Payment is still pending beyond expected terms.",
-                                recommended_action="Follow up with broker/factor about payment status.",
+                                recommended_action=(
+                                    "Follow up with broker/factor about payment status."
+                                ),
                                 due_at=due_at,
                                 priority=FollowUpTaskPriority.HIGH,
                                 payment_record_id=str(payment_record.id),
@@ -94,7 +117,9 @@ class FollowUpService:
                             description="Factoring reserve has not been released.",
                             recommended_action="Follow up on reserve payment status.",
                             due_at=reserve_due,
-                            priority=self.compute_followup_priority(base=FollowUpTaskPriority.NORMAL, days_past_due=age_days),
+                            priority=self.compute_followup_priority(
+                                base=FollowUpTaskPriority.NORMAL, days_past_due=age_days
+                            ),
                             payment_record_id=str(payment_record.id),
                         )
                     )
@@ -106,8 +131,12 @@ class FollowUpService:
                             load_id=str(load.id),
                             task_type=FollowUpTaskType.PARTIAL_PAYMENT_FOLLOW_UP,
                             title="Follow up on remaining balance",
-                            description="Payment was received but there is still an outstanding balance.",
-                            recommended_action="Follow up with broker/factor to collect remaining balance.",
+                            description=(
+                                "Payment was received but there is still an outstanding balance."
+                            ),
+                            recommended_action=(
+                                "Follow up with broker/factor to collect remaining balance."
+                            ),
                             due_at=now,
                             priority=FollowUpTaskPriority.NORMAL,
                             payment_record_id=str(payment_record.id),
@@ -122,7 +151,9 @@ class FollowUpService:
                             task_type=FollowUpTaskType.SHORT_PAY_FOLLOW_UP,
                             title="Resolve short-pay",
                             description="Payment was short-paid versus expected amount.",
-                            recommended_action="Resolve short-pay with broker/factor and collect difference.",
+                            recommended_action=(
+                                "Resolve short-pay with broker/factor and collect difference."
+                            ),
                             due_at=now,
                             priority=FollowUpTaskPriority.URGENT,
                             payment_record_id=str(payment_record.id),
@@ -137,7 +168,9 @@ class FollowUpService:
                             task_type=FollowUpTaskType.DISPUTE_FOLLOW_UP,
                             title="Resolve payment dispute",
                             description="Payment is currently disputed.",
-                            recommended_action="Follow up to resolve dispute and confirm next action.",
+                            recommended_action=(
+                                "Follow up to resolve dispute and confirm next action."
+                            ),
                             due_at=now,
                             priority=FollowUpTaskPriority.URGENT,
                             payment_record_id=str(payment_record.id),
@@ -153,7 +186,9 @@ class FollowUpService:
         created_or_updated = 0
         for load in loads:
             try:
-                created_or_updated += len(self.generate_followups_for_load(str(load.id), str(org_uuid)))
+                created_or_updated += len(
+                    self.generate_followups_for_load(str(load.id), str(org_uuid))
+                )
             except Exception:
                 continue
         return {"loads_processed": len(loads), "tasks_created_or_updated": created_or_updated}
@@ -163,7 +198,9 @@ class FollowUpService:
         if filters.get("status"):
             stmt = stmt.where(FollowUpTask.status == FollowUpTaskStatus(str(filters["status"])))
         if filters.get("priority"):
-            stmt = stmt.where(FollowUpTask.priority == FollowUpTaskPriority(str(filters["priority"])))
+            stmt = stmt.where(
+                FollowUpTask.priority == FollowUpTaskPriority(str(filters["priority"]))
+            )
         if filters.get("task_type"):
             stmt = stmt.where(FollowUpTask.task_type == FollowUpTaskType(str(filters["task_type"])))
         if filters.get("due_before"):
@@ -171,7 +208,10 @@ class FollowUpService:
         if filters.get("load_id"):
             stmt = stmt.where(FollowUpTask.load_id == uuid.UUID(str(filters["load_id"])))
         if filters.get("assigned_to_staff_user_id"):
-            stmt = stmt.where(FollowUpTask.assigned_to_staff_user_id == uuid.UUID(str(filters["assigned_to_staff_user_id"])))
+            stmt = stmt.where(
+                FollowUpTask.assigned_to_staff_user_id
+                == uuid.UUID(str(filters["assigned_to_staff_user_id"]))
+            )
         return list(self.db.scalars(stmt.order_by(FollowUpTask.due_at.asc())).all())
 
     def complete_followup(self, task_id: str, org_id: str, actor: str | None) -> FollowUpTask:
@@ -180,7 +220,9 @@ class FollowUpService:
         task.completed_at = datetime.now(timezone.utc)
         return task
 
-    def snooze_followup(self, task_id: str, org_id: str, until: datetime, actor: str | None) -> FollowUpTask:
+    def snooze_followup(
+        self, task_id: str, org_id: str, until: datetime, actor: str | None
+    ) -> FollowUpTask:
         task = self._get_task(task_id, org_id)
         if until <= datetime.now(timezone.utc):
             raise ValidationError("Snooze time must be in the future")
@@ -213,8 +255,10 @@ class FollowUpService:
             FollowUpTask.task_type == task_type,
             FollowUpTask.created_by_system.is_(True),
             FollowUpTask.status.in_([FollowUpTaskStatus.OPEN, FollowUpTaskStatus.SNOOZED]),
-            FollowUpTask.submission_packet_id == (uuid.UUID(submission_packet_id) if submission_packet_id else None),
-            FollowUpTask.payment_record_id == (uuid.UUID(payment_record_id) if payment_record_id else None),
+            FollowUpTask.submission_packet_id
+            == (uuid.UUID(submission_packet_id) if submission_packet_id else None),
+            FollowUpTask.payment_record_id
+            == (uuid.UUID(payment_record_id) if payment_record_id else None),
         ]
         existing = self.db.scalar(select(FollowUpTask).where(*clause))
         if existing:
@@ -242,7 +286,9 @@ class FollowUpService:
         self.db.add(task)
         return task
 
-    def compute_followup_priority(self, *, base: FollowUpTaskPriority, days_past_due: int) -> FollowUpTaskPriority:
+    def compute_followup_priority(
+        self, *, base: FollowUpTaskPriority, days_past_due: int
+    ) -> FollowUpTaskPriority:
         if base == FollowUpTaskPriority.URGENT:
             return base
         if days_past_due >= 14:

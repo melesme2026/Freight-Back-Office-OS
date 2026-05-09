@@ -3,7 +3,6 @@ from __future__ import annotations
 import logging
 import sys
 
-
 LOGGER_NAME = "freight-backoffice"
 LOG_FORMAT = "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
 

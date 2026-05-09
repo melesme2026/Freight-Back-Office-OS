@@ -4,12 +4,15 @@ import asyncio
 import logging
 from types import SimpleNamespace
 
-from app.api.v1.loads import _generate_and_persist_invoice_pdf, download_load_invoice
-from app.api.v1.loads import _build_load_packet_readiness
+from app.api.v1.loads import (
+    _build_load_packet_readiness,
+    _generate_and_persist_invoice_pdf,
+    download_load_invoice,
+)
 from app.domain.enums.document_type import DocumentType
+from app.services.carrier_profile_service import CarrierProfileService
 from app.services.documents.document_service import DocumentService
 from app.services.documents.storage_service import StorageService
-from app.services.carrier_profile_service import CarrierProfileService
 from app.services.loads.load_service import LoadService
 from app.services.loads.operational_queue_service import OperationalQueueService
 from app.services.loads.packet_readiness import calculate_packet_readiness
@@ -32,7 +35,6 @@ def _create_ready_for_invoice_load(db_session):
         driver_id="00000000-0000-0000-0000-000000000453",
         load_number="INV-451",
     )
-
 
     CarrierProfileService(db_session).upsert_profile(
         str(load.organization_id),

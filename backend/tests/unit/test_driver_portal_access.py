@@ -4,14 +4,18 @@ import asyncio
 from io import BytesIO
 
 import pytest
-from starlette.datastructures import UploadFile
-
 from app.api.v1.documents import upload_driver_document
 from app.api.v1.load_payment_reconciliation import _authorize_payment_read, _authorize_payment_write
-from app.api.v1.loads import _authorize_load_access, _authorize_submission_download, _authorize_submission_read, list_driver_loads
+from app.api.v1.loads import (
+    _authorize_load_access,
+    _authorize_submission_download,
+    _authorize_submission_read,
+    list_driver_loads,
+)
 from app.core.exceptions import ForbiddenError, UnauthorizedError
 from app.domain.models.driver import Driver
 from app.services.loads.load_service import LoadService
+from starlette.datastructures import UploadFile
 
 
 def _seed_load(db_session, *, organization_id: str, driver_id: str, load_number: str):
@@ -62,7 +66,6 @@ def test_driver_only_load_visibility(db_session) -> None:
     assert str(items[0].driver_id) == driver_a
 
 
-
 def test_driver_load_endpoint_uses_token_driver_scope(db_session) -> None:
     org_id = "00000000-0000-0000-0000-000000010301"
     driver_a = "00000000-0000-0000-0000-000000010311"
@@ -105,7 +108,9 @@ def test_cross_driver_access_denied(db_session) -> None:
 
     _seed_driver(db_session, organization_id=org_id, driver_id=driver_a)
     _seed_driver(db_session, organization_id=org_id, driver_id=driver_b)
-    other_driver_load = _seed_load(db_session, organization_id=org_id, driver_id=driver_b, load_number="LD-OTHER")
+    other_driver_load = _seed_load(
+        db_session, organization_id=org_id, driver_id=driver_b, load_number="LD-OTHER"
+    )
 
     with pytest.raises(UnauthorizedError):
         _authorize_load_access(
@@ -121,7 +126,9 @@ def test_upload_restricted_to_assigned_load(db_session) -> None:
 
     _seed_driver(db_session, organization_id=org_id, driver_id=driver_a)
     _seed_driver(db_session, organization_id=org_id, driver_id=driver_b)
-    target_load = _seed_load(db_session, organization_id=org_id, driver_id=driver_b, load_number="LD-NOT-MINE")
+    target_load = _seed_load(
+        db_session, organization_id=org_id, driver_id=driver_b, load_number="LD-NOT-MINE"
+    )
 
     with pytest.raises(UnauthorizedError):
         asyncio.run(

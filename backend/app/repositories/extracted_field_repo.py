@@ -2,10 +2,9 @@ from __future__ import annotations
 
 import uuid
 
+from app.domain.models.extracted_field import ExtractedField
 from sqlalchemy import Select, delete, func, select
 from sqlalchemy.orm import Session
-
-from app.domain.models.extracted_field import ExtractedField
 
 
 class ExtractedFieldRepository:
@@ -63,9 +62,7 @@ class ExtractedFieldRepository:
             else None
         )
         normalized_load_id = (
-            self._normalize_uuid(load_id, field_name="load_id")
-            if load_id is not None
-            else None
+            self._normalize_uuid(load_id, field_name="load_id") if load_id is not None else None
         )
         normalized_field_name = field_name.strip() if field_name else None
 
@@ -74,7 +71,9 @@ class ExtractedFieldRepository:
 
         if normalized_organization_id is not None:
             stmt = stmt.where(ExtractedField.organization_id == normalized_organization_id)
-            count_stmt = count_stmt.where(ExtractedField.organization_id == normalized_organization_id)
+            count_stmt = count_stmt.where(
+                ExtractedField.organization_id == normalized_organization_id
+            )
 
         if normalized_document_id is not None:
             stmt = stmt.where(ExtractedField.document_id == normalized_document_id)

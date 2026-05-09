@@ -4,9 +4,12 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 import pytest
-
 from app.core.exceptions import NotFoundError
-from app.domain.enums.follow_up_task import FollowUpTaskPriority, FollowUpTaskStatus, FollowUpTaskType
+from app.domain.enums.follow_up_task import (
+    FollowUpTaskPriority,
+    FollowUpTaskStatus,
+    FollowUpTaskType,
+)
 from app.domain.enums.load_payment_status import LoadPaymentStatus
 from app.domain.models.submission_packet import SubmissionPacket
 from app.services.followups.follow_up_service import FollowUpService
@@ -86,7 +89,11 @@ def test_paid_cancels_payment_followups(db_session):
     service.generate_followups_for_load(str(load.id), ORG_ID)
     tasks = service.list_followups(ORG_ID, {"load_id": str(load.id)})
 
-    assert any(task.task_type == FollowUpTaskType.PAYMENT_OVERDUE and task.status == FollowUpTaskStatus.CANCELED for task in tasks)
+    assert any(
+        task.task_type == FollowUpTaskType.PAYMENT_OVERDUE
+        and task.status == FollowUpTaskStatus.CANCELED
+        for task in tasks
+    )
 
 
 def test_reserve_pending_partial_short_disputed(db_session):
@@ -123,7 +130,11 @@ def test_duplicate_generation_does_not_duplicate_open_tasks(db_session):
 
     service.generate_followups_for_load(str(load.id), ORG_ID)
     service.generate_followups_for_load(str(load.id), ORG_ID)
-    tasks = [t for t in service.list_followups(ORG_ID, {"load_id": str(load.id)}) if t.task_type == FollowUpTaskType.PAYMENT_OVERDUE]
+    tasks = [
+        t
+        for t in service.list_followups(ORG_ID, {"load_id": str(load.id)})
+        if t.task_type == FollowUpTaskType.PAYMENT_OVERDUE
+    ]
 
     assert len(tasks) == 1
 
@@ -136,7 +147,9 @@ def test_complete_snooze_cancel_changes_status(db_session):
     service = FollowUpService(db_session)
     task = service.generate_followups_for_load(str(load.id), ORG_ID)[0]
 
-    snoozed = service.snooze_followup(str(task.id), ORG_ID, datetime.now(timezone.utc) + timedelta(days=1), None)
+    snoozed = service.snooze_followup(
+        str(task.id), ORG_ID, datetime.now(timezone.utc) + timedelta(days=1), None
+    )
     assert snoozed.status == FollowUpTaskStatus.SNOOZED
 
     completed = service.complete_followup(str(task.id), ORG_ID, None)

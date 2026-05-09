@@ -37,6 +37,9 @@ from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY = Depends(get_current_token_payload)
+GET_DB_SESSION_DEPENDENCY = Depends(get_db_session)
+
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
@@ -137,7 +140,9 @@ def _log_load_activity(
     token_payload: dict[str, Any],
     metadata: dict[str, Any] | None = None,
 ) -> None:
-    actor_id = str(token_payload.get("staff_user_id") or token_payload.get("sub") or "").strip() or None
+    actor_id = (
+        str(token_payload.get("staff_user_id") or token_payload.get("sub") or "").strip() or None
+    )
     AuditService(db).log_event(
         organization_id=str(organization_id),
         entity_type=entity_type,
@@ -487,7 +492,10 @@ def _build_default_packet_email(
 ) -> tuple[str, str]:
     load_number = _string_or_na(getattr(load, "load_number", None))
     invoice_number = _string_or_na(getattr(load, "invoice_number", None))
-    amount = f"{_string_or_na(getattr(load, 'gross_amount', None))} {_string_or_na(getattr(load, 'currency_code', None))}"
+    amount = (
+        f"{_string_or_na(getattr(load, 'gross_amount', None))} "
+        f"{_string_or_na(getattr(load, 'currency_code', None))}"
+    )
     subject = f"Billing Packet | Load {load_number} | Invoice {invoice_number}"
     sender_name = carrier_name or "Carrier"
     body = "\n".join(
@@ -508,7 +516,11 @@ def _build_default_packet_email(
             f"Pickup: {_string_or_na(getattr(load, 'pickup_location', None))}",
             f"Delivery: {_string_or_na(getattr(load, 'delivery_location', None))}",
             "",
-            "Please confirm receipt and advise if any additional documentation is required. Payment/remit instructions are included with the invoice or carrier profile on file.",
+            (
+                "Please confirm receipt and advise if any additional documentation is required. "
+                "Payment/remit instructions are included with the invoice or "
+                "carrier profile on file."
+            ),
             "",
             "Thank you,",
             sender_name,
@@ -1207,6 +1219,7 @@ def _build_professional_invoice_pdf(*, load: Any, carrier_profile: dict[str, str
 
     return bytes(pdf)
 
+
 def _generate_and_persist_invoice_pdf(*, db: Session, load: Any) -> bytes:
     template_function_name = "_build_professional_invoice_pdf"
     logger.info(
@@ -1253,7 +1266,10 @@ def _generate_and_persist_invoice_pdf(*, db: Session, load: Any) -> bytes:
             load_id=str(load.id),
         )
         logger.info(
-            "Generated invoice PDF reused existing document: load_id=%s document_id=%s document_type=%s",
+            (
+                "Generated invoice PDF reused existing document: "
+                "load_id=%s document_id=%s document_type=%s"
+            ),
             load.id,
             getattr(invoice_document, "id", None),
             getattr(getattr(invoice_document, "document_type", None), "value", None),
@@ -1296,8 +1312,8 @@ def _assert_staff_load_management_role(token_payload: dict[str, Any]) -> None:
 @router.post("/loads", response_model=ApiResponse)
 def create_load(
     payload: LoadCreateRequest,
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     _assert_staff_load_management_role(token_payload)
     token_org_id = token_payload.get("organization_id")
@@ -1358,10 +1374,10 @@ def create_load(
 @router.get("/driver/loads", response_model=ApiResponse)
 def list_driver_loads(
     *,
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=25, ge=1, le=200),
-    db: Session = Depends(get_db_session),
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     token_role = str(token_payload.get("role") or "").lower()
     token_driver_id = token_payload.get("driver_id")
@@ -1389,8 +1405,8 @@ def list_driver_loads(
 @router.get("/driver/loads/{load_id}", response_model=ApiResponse)
 def get_driver_load(
     load_id: uuid.UUID,
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     token_role = str(token_payload.get("role") or "").lower()
     if token_role != "driver":
@@ -1406,8 +1422,8 @@ def get_driver_load(
 def driver_load_check_in(
     load_id: uuid.UUID,
     payload: DriverLoadCheckInRequest,
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     token_role = str(token_payload.get("role") or "").lower()
     if token_role != "driver":
@@ -1432,10 +1448,15 @@ def driver_load_check_in(
     if eta_note:
         notes_parts.append(f"eta={eta_note}")
     if payload.latitude is not None and payload.longitude is not None:
+        accuracy = (
+            round(payload.location_accuracy_meters, 1)
+            if payload.location_accuracy_meters is not None
+            else "unknown"
+        )
         notes_parts.append(
             "location="
             f"{round(payload.latitude, 5)},{round(payload.longitude, 5)}"
-            f" accuracy_m={round(payload.location_accuracy_meters, 1) if payload.location_accuracy_meters is not None else 'unknown'}"
+            f" accuracy_m={accuracy}"
         )
 
     engine = WorkflowEngine(db)
@@ -1474,7 +1495,7 @@ def driver_load_check_in(
 def list_loads(
     *,
     organization_id: uuid.UUID | None = None,
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
     customer_account_id: uuid.UUID | None = None,
     driver_id: uuid.UUID | None = None,
     status: str | None = None,
@@ -1485,7 +1506,7 @@ def list_loads(
     queue: str | None = None,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=25, ge=1, le=200),
-    db: Session = Depends(get_db_session),
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     _assert_staff_load_management_role(token_payload)
     token_org_id = token_payload.get("organization_id")
@@ -1560,8 +1581,8 @@ def list_loads(
 @router.get("/loads/{load_id}", response_model=ApiResponse)
 def get_load(
     load_id: uuid.UUID,
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     service = LoadService(db)
     item = service.get_load(str(load_id))
@@ -1578,8 +1599,8 @@ def get_load(
 def update_load(
     load_id: uuid.UUID,
     payload: LoadUpdateRequest,
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     service = LoadService(db)
     existing = service.get_load(str(load_id))
@@ -1630,8 +1651,8 @@ def update_load(
 def transition_load_status(
     load_id: uuid.UUID,
     payload: LoadStatusTransitionRequest,
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     service = LoadService(db)
     existing = service.get_load(str(load_id))
@@ -1685,8 +1706,8 @@ def transition_load_status(
 def execute_load_workflow_action(
     load_id: uuid.UUID,
     payload: LoadWorkflowActionRequest,
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     service = LoadService(db)
     existing = service.get_load(str(load_id))
@@ -1723,23 +1744,25 @@ def execute_load_workflow_action(
 @router.get("/loads/{load_id}/packet-audit", response_model=ApiResponse)
 def get_load_packet_audit(
     load_id: uuid.UUID,
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     _authorize_submission_read(token_payload)
     service = LoadService(db)
     load = service.get_load(str(load_id))
     _authorize_load_access(item=load, token_payload=token_payload)
 
-    audit = PacketAuditService(db).audit_load(load_id=str(load_id), org_id=str(load.organization_id))
+    audit = PacketAuditService(db).audit_load(
+        load_id=str(load_id), org_id=str(load.organization_id)
+    )
     return ApiResponse(data=audit.to_dict(), meta={}, error=None)
 
 
 @router.get("/loads/{load_id}/submission-packets", response_model=ApiResponse)
 def list_submission_packets(
     load_id: uuid.UUID,
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     _authorize_submission_read(token_payload)
     service = LoadService(db)
@@ -1762,8 +1785,8 @@ def list_submission_packets(
 def create_submission_packet(
     load_id: uuid.UUID,
     payload: SubmissionPacketCreateRequest,
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     _authorize_submission_write(token_payload)
     service = LoadService(db)
@@ -1798,8 +1821,8 @@ def create_submission_packet(
 def get_submission_packet(
     load_id: uuid.UUID,
     packet_id: uuid.UUID,
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     _authorize_submission_read(token_payload)
     service = LoadService(db)
@@ -1818,8 +1841,8 @@ def get_submission_packet(
 def download_submission_packet_zip(
     load_id: uuid.UUID,
     packet_id: uuid.UUID,
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> StreamingResponse:
     service = LoadService(db)
     load = service.get_load(str(load_id))
@@ -1844,8 +1867,8 @@ def mark_submission_packet_sent(
     load_id: uuid.UUID,
     packet_id: uuid.UUID,
     payload: SubmissionPacketMarkSentRequest,
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     _authorize_submission_write(token_payload)
     service = LoadService(db)
@@ -1885,8 +1908,8 @@ def mark_submission_packet_sent(
 def get_submission_packet_email_history(
     load_id: uuid.UUID,
     packet_id: uuid.UUID,
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     _authorize_submission_read(token_payload)
     service = LoadService(db)
@@ -1905,8 +1928,8 @@ def send_submission_packet_email(
     load_id: uuid.UUID,
     packet_id: uuid.UUID,
     payload: SubmissionPacketSendEmailRequest,
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     _authorize_submission_write(token_payload)
     service = LoadService(db)
@@ -1946,7 +1969,10 @@ def send_submission_packet_email(
             str(load.id),
             str(packet.id),
             "packet_email_failed",
-            f"Packet email failed for {normalized_to_email}; subject={normalized_subject}; attachments=0.",
+            (
+                f"Packet email failed for {normalized_to_email}; "
+                f"subject={normalized_subject}; attachments=0."
+            ),
             actor_id,
         )
         db.commit()
@@ -1960,12 +1986,18 @@ def send_submission_packet_email(
             str(load.id),
             str(packet.id),
             "packet_email_failed",
-            f"Packet email blocked by audit for {normalized_to_email}; subject={normalized_subject}; attachments={len(attachments)}.",
+            (
+                f"Packet email blocked by audit for {normalized_to_email}; "
+                f"subject={normalized_subject}; attachments={len(attachments)}."
+            ),
             actor_id,
         )
         db.commit()
         raise ValidationError(
-            "Billing packet audit found blocking issues. Fix the audit findings before emailing the packet.",
+            (
+                "Billing packet audit found blocking issues. "
+                "Fix the audit findings before emailing the packet."
+            ),
             details={"packet_audit": packet_audit.to_dict()},
         )
 
@@ -1991,7 +2023,10 @@ def send_submission_packet_email(
     if not bool(send_result.get("accepted")):
         error_message = str(send_result.get("error_message") or "Failed to send packet email.")
         logger.warning(
-            "Billing packet email failed: organization_id=%s load_id=%s recipient=%s attachment_count=%s",
+            (
+                "Billing packet email failed: organization_id=%s load_id=%s "
+                "recipient=%s attachment_count=%s"
+            ),
             load.organization_id,
             load.id,
             normalized_to_email,
@@ -2002,13 +2037,17 @@ def send_submission_packet_email(
             str(load.id),
             str(packet.id),
             "packet_email_failed",
-            f"Packet email {sanitized_result['status']} for {normalized_to_email}; subject={normalized_subject}; attachments={attachment_count}.",
+            (
+                f"Packet email {sanitized_result['status']} for {normalized_to_email}; "
+                f"subject={normalized_subject}; attachments={attachment_count}."
+            ),
             actor_id,
         )
         db.commit()
         if "disabled" in error_message.lower():
             raise ConflictError(
-                "Email sending is disabled or not configured. Download the packet ZIP or try again after email is configured."
+                "Email sending is disabled or not configured. "
+                "Download the packet ZIP or try again after email is configured."
             )
         raise ValidationError(
             "Packet email could not be sent. Check email configuration and try again."
@@ -2018,7 +2057,10 @@ def send_submission_packet_email(
     provider_message_id = _normalize_optional_text(
         str(send_result.get("provider_message_id") or "")
     )
-    success_message = f"Packet email sent to {normalized_to_email} via {provider}; subject={normalized_subject}; attachments={attachment_count}."
+    success_message = (
+        f"Packet email sent to {normalized_to_email} via {provider}; "
+        f"subject={normalized_subject}; attachments={attachment_count}."
+    )
     if provider_message_id:
         success_message = f"{success_message} Provider message id: {provider_message_id}."
     packet_service._add_event(  # noqa: SLF001
@@ -2082,8 +2124,8 @@ def send_submission_packet_email(
 def mark_submission_packet_accepted(
     load_id: uuid.UUID,
     packet_id: uuid.UUID,
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     _authorize_submission_write(token_payload)
     service = LoadService(db)
@@ -2115,8 +2157,8 @@ def mark_submission_packet_rejected(
     load_id: uuid.UUID,
     packet_id: uuid.UUID,
     payload: SubmissionPacketMarkRejectedRequest,
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     _authorize_submission_write(token_payload)
     service = LoadService(db)
@@ -2146,8 +2188,8 @@ def mark_submission_packet_rejected(
 @router.get("/loads/{load_id}/invoice")
 def download_load_invoice(
     load_id: uuid.UUID,
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> StreamingResponse:
     service = LoadService(db)
     load = service.get_load(str(load_id))
@@ -2193,8 +2235,8 @@ def export_loads_csv(
     organization_id: uuid.UUID | None = None,
     driver_id: uuid.UUID | None = None,
     status: str | None = None,
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ):
     token_org_id = token_payload.get("organization_id")
     if not token_org_id:

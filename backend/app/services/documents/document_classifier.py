@@ -115,7 +115,13 @@ class DocumentClassifier:
         )
         scores[DocumentType.PROOF_OF_DELIVERY] += self._filename_hint_score(
             filename,
-            ["pod", "proof_of_delivery", "proof-of-delivery", "signed_delivery", "delivery_receipt"],
+            [
+                "pod",
+                "proof_of_delivery",
+                "proof-of-delivery",
+                "signed_delivery",
+                "delivery_receipt",
+            ],
             0.20,
         )
         scores[DocumentType.INVOICE] += self._filename_hint_score(

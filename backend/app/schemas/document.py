@@ -4,11 +4,10 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
-
 from app.domain.enums.channel import Channel
 from app.domain.enums.document_type import DocumentType
 from app.domain.enums.processing_status import ProcessingStatus
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ApiError(BaseModel):

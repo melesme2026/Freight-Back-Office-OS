@@ -4,17 +4,18 @@ import uuid
 from datetime import date, datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel, ConfigDict
-from sqlalchemy.orm import Session
-
 from app.core.dependencies import get_db_session
 from app.core.exceptions import UnauthorizedError, ValidationError
 from app.core.security import get_current_token_payload
 from app.schemas.common import ApiResponse
 from app.services.support.support_service import SupportService
 from app.services.support.ticket_routing_service import TicketRoutingService
+from fastapi import APIRouter, Depends, Query
+from pydantic import BaseModel, ConfigDict
+from sqlalchemy.orm import Session
 
+GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY = Depends(get_current_token_payload)
+GET_DB_SESSION_DEPENDENCY = Depends(get_db_session)
 
 router = APIRouter()
 
@@ -112,9 +113,7 @@ def _serialize_support_ticket(item: Any) -> dict[str, Any]:
     return {
         "id": str(item.id),
         "organization_id": str(item.organization_id),
-        "customer_account_id": str(item.customer_account_id)
-        if item.customer_account_id
-        else None,
+        "customer_account_id": str(item.customer_account_id) if item.customer_account_id else None,
         "driver_id": str(item.driver_id) if item.driver_id else None,
         "load_id": str(item.load_id) if item.load_id else None,
         "assigned_to_staff_user_id": str(item.assigned_to_staff_user_id)
@@ -133,8 +132,8 @@ def _serialize_support_ticket(item: Any) -> dict[str, Any]:
 @router.post("/support/tickets", response_model=ApiResponse)
 def create_support_ticket(
     payload: SupportTicketCreateRequest,
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     token_org_id = _get_token_org_id(token_payload)
     if str(payload.organization_id) != token_org_id:
@@ -206,8 +205,8 @@ def list_support_tickets(
     search: str | None = None,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=50, ge=1, le=200),
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     token_org_id = _get_token_org_id(token_payload)
     if organization_id is not None and str(organization_id) != token_org_id:
@@ -247,8 +246,8 @@ def list_support_tickets(
 @router.get("/support/tickets/{ticket_id}", response_model=ApiResponse)
 def get_support_ticket(
     ticket_id: uuid.UUID,
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     token_org_id = _get_token_org_id(token_payload)
     token_role = _get_token_role(token_payload)
@@ -278,8 +277,8 @@ def get_support_ticket(
 def update_support_ticket(
     ticket_id: uuid.UUID,
     payload: SupportTicketUpdateRequest,
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     token_org_id = _get_token_org_id(token_payload)
     token_role = _get_token_role(token_payload)

@@ -20,7 +20,7 @@ class DateRange:
     def contains(self, value: date) -> bool:
         return self.start_date <= value <= self.end_date
 
-    def overlaps(self, other: "DateRange") -> bool:
+    def overlaps(self, other: DateRange) -> bool:
         return not (self.end_date < other.start_date or other.end_date < self.start_date)
 
     def as_dict(self) -> dict[str, str | int]:

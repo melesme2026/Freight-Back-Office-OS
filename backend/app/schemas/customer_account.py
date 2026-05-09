@@ -3,9 +3,8 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
-
 from app.domain.enums.customer_account_status import CustomerAccountStatus
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 
 class ApiError(BaseModel):

@@ -4,15 +4,15 @@ import uuid
 from datetime import date, datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel, ConfigDict
-from sqlalchemy.orm import Session
-
 from app.core.dependencies import get_db_session
 from app.core.exceptions import ValidationError
 from app.schemas.common import ApiResponse
 from app.services.onboarding.referral_service import ReferralService
+from fastapi import APIRouter, Depends, Query
+from pydantic import BaseModel, ConfigDict
+from sqlalchemy.orm import Session
 
+GET_DB_SESSION_DEPENDENCY = Depends(get_db_session)
 
 router = APIRouter()
 
@@ -94,7 +94,7 @@ def _serialize_referral(item: Any) -> dict[str, Any]:
 @router.post("/referrals", response_model=ApiResponse)
 def create_referral(
     payload: ReferralCreateRequest,
-    db: Session = Depends(get_db_session),
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     service = ReferralService(db)
     item = service.create_referral(
@@ -124,7 +124,7 @@ def list_referrals(
     search: str | None = None,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=25, ge=1, le=200),
-    db: Session = Depends(get_db_session),
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     service = ReferralService(db)
     items, total = service.list_referrals(
@@ -149,7 +149,7 @@ def list_referrals(
 @router.get("/referrals/{referral_id}", response_model=ApiResponse)
 def get_referral(
     referral_id: uuid.UUID,
-    db: Session = Depends(get_db_session),
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     service = ReferralService(db)
     item = service.get_referral(str(referral_id))
@@ -165,7 +165,7 @@ def get_referral(
 def update_referral(
     referral_id: uuid.UUID,
     payload: ReferralUpdateRequest,
-    db: Session = Depends(get_db_session),
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     service = ReferralService(db)
     item = service.update_referral(

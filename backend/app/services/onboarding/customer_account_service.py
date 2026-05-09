@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-from sqlalchemy.orm import Session
-
 from app.core.exceptions import DuplicateRecordError, NotFoundError, ValidationError
 from app.domain.enums.customer_account_status import CustomerAccountStatus
 from app.domain.models.customer_account import CustomerAccount
 from app.repositories.customer_account_repo import CustomerAccountRepository
+from sqlalchemy.orm import Session
 
 
 class CustomerAccountService:
@@ -34,10 +33,7 @@ class CustomerAccountService:
 
         if normalized_account_code:
             existing = self.customer_account_repo.get_by_account_code(normalized_account_code)
-            if (
-                existing is not None
-                and str(existing.organization_id) == normalized_organization_id
-            ):
+            if existing is not None and str(existing.organization_id) == normalized_organization_id:
                 raise DuplicateRecordError(
                     "Customer account code already exists",
                     details={
@@ -58,9 +54,7 @@ class CustomerAccountService:
             notes=self._clean_text(notes),
         )
         created = self.customer_account_repo.create(customer_account)
-        return (
-            self.customer_account_repo.get_by_id(created.id, include_related=True) or created
-        )
+        return self.customer_account_repo.get_by_id(created.id, include_related=True) or created
 
     def get_customer_account(self, customer_account_id: str) -> CustomerAccount:
         customer_account = self.customer_account_repo.get_by_id(
@@ -151,9 +145,7 @@ class CustomerAccountService:
             setattr(customer_account, field, value)
 
         updated = self.customer_account_repo.update(customer_account)
-        return (
-            self.customer_account_repo.get_by_id(updated.id, include_related=True) or updated
-        )
+        return self.customer_account_repo.get_by_id(updated.id, include_related=True) or updated
 
     @staticmethod
     def _clean_text(value: str | None) -> str | None:

@@ -4,8 +4,6 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy.orm import Session
-
 from app.core.exceptions import NotFoundError, ValidationError
 from app.domain.enums.audit_actor_type import AuditActorType
 from app.domain.enums.load_status import LoadStatus
@@ -17,6 +15,7 @@ from app.services.notifications.notification_service import NotificationService
 from app.services.workflow.event_publisher import EventPublisher
 from app.services.workflow.state_machine import LoadStateMachine
 from app.services.workflow.transitions import LoadTransitionApplier
+from sqlalchemy.orm import Session
 
 
 class WorkflowEngine:
@@ -343,7 +342,9 @@ class WorkflowEngine:
 
         if target_status in {LoadStatus.SUBMITTED_TO_BROKER, LoadStatus.SUBMITTED_TO_FACTORING}:
             document_types = [
-                document.document_type for document in (load.documents or []) if document.document_type
+                document.document_type
+                for document in (load.documents or [])
+                if document.document_type
             ]
             readiness = calculate_packet_readiness(document_types=document_types)
             missing_submission_docs = readiness["missing_required_documents"]["submission"]
@@ -359,7 +360,10 @@ class WorkflowEngine:
                     },
                 )
 
-        if target_status in {LoadStatus.SUBMITTED_TO_BROKER, LoadStatus.SUBMITTED_TO_FACTORING} and current_status not in {
+        if target_status in {
+            LoadStatus.SUBMITTED_TO_BROKER,
+            LoadStatus.SUBMITTED_TO_FACTORING,
+        } and current_status not in {
             LoadStatus.INVOICE_READY,
             LoadStatus.RESUBMISSION_NEEDED,
         }:
@@ -372,7 +376,12 @@ class WorkflowEngine:
                 },
             )
 
-        if target_status in {LoadStatus.PACKET_REJECTED, LoadStatus.RESUBMISSION_NEEDED, LoadStatus.ADVANCE_PAID, LoadStatus.RESERVE_PENDING}:
+        if target_status in {
+            LoadStatus.PACKET_REJECTED,
+            LoadStatus.RESUBMISSION_NEEDED,
+            LoadStatus.ADVANCE_PAID,
+            LoadStatus.RESERVE_PENDING,
+        }:
             if not self._has_factoring_path(load=load, current_status=current_status):
                 raise ValidationError(
                     "Factoring lifecycle updates require a factoring submission path",
@@ -383,7 +392,10 @@ class WorkflowEngine:
                     },
                 )
 
-        if target_status in {LoadStatus.FULLY_PAID, LoadStatus.SHORT_PAID, LoadStatus.DISPUTED} and load.submitted_at is None:
+        if (
+            target_status in {LoadStatus.FULLY_PAID, LoadStatus.SHORT_PAID, LoadStatus.DISPUTED}
+            and load.submitted_at is None
+        ):
             raise ValidationError(
                 "Payment/dispute states require prior broker/factoring submission",
                 details={
@@ -405,7 +417,8 @@ class WorkflowEngine:
             return True
 
         return any(
-            str(getattr(event, "new_status", "")).strip().lower() == LoadStatus.SUBMITTED_TO_FACTORING.value
+            str(getattr(event, "new_status", "")).strip().lower()
+            == LoadStatus.SUBMITTED_TO_FACTORING.value
             for event in (load.workflow_events or [])
         )
 

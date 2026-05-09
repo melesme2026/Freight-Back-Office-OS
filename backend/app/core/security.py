@@ -3,17 +3,17 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from fastapi import Depends
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from jose import JWTError, ExpiredSignatureError, jwt
-from passlib.context import CryptContext
-
 from app.core.config import Settings, get_settings
 from app.core.exceptions import UnauthorizedError, ValidationError
-
+from fastapi import Depends
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from jose import ExpiredSignatureError, JWTError, jwt
+from passlib.context import CryptContext
 
 password_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 bearer_scheme = HTTPBearer(auto_error=False)
+
+HTTP_BEARER_SCHEME_DEPENDENCY = Depends(bearer_scheme)
 
 _RESERVED_TOKEN_CLAIMS = {"sub", "iat", "exp", "type"}
 
@@ -56,9 +56,7 @@ def _create_token(
 
     app_settings = settings or get_settings()
     now = datetime.now(timezone.utc)
-    expire = now + (
-        expires_delta or timedelta(minutes=app_settings.jwt_expire_minutes)
-    )
+    expire = now + (expires_delta or timedelta(minutes=app_settings.jwt_expire_minutes))
 
     payload: dict[str, Any] = {
         "sub": normalized_subject,
@@ -119,7 +117,7 @@ def decode_token(
 
 
 def get_bearer_token(
-    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+    credentials: HTTPAuthorizationCredentials | None = HTTP_BEARER_SCHEME_DEPENDENCY,
 ) -> str:
     if credentials is None:
         raise UnauthorizedError("Missing bearer token")
@@ -134,10 +132,14 @@ def get_bearer_token(
     return token
 
 
+GET_BEARER_TOKEN_DEPENDENCY = Depends(get_bearer_token)
+
+
 def get_current_token_payload(
-    token: str = Depends(get_bearer_token),
+    token: str = GET_BEARER_TOKEN_DEPENDENCY,
 ) -> dict[str, Any]:
     return decode_token(token)
+
 
 def create_access_token(
     subject: str,

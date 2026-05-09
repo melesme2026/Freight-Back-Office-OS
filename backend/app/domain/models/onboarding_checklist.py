@@ -4,15 +4,13 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, DateTime, Enum as SqlEnum
-from sqlalchemy import ForeignKey, Index
-from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
-
 from app.core.database import Base
 from app.domain.enums.onboarding_status import OnboardingStatus
 from app.domain.models.organization import TimestampMixin, UUIDPrimaryKeyMixin
-
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index
+from sqlalchemy import Enum as SqlEnum
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 if TYPE_CHECKING:
     from app.domain.models.customer_account import CustomerAccount
@@ -90,8 +88,8 @@ class OnboardingChecklist(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         nullable=True,
     )
 
-    organization: Mapped["Organization"] = relationship(lazy="selectin")
-    customer_account: Mapped["CustomerAccount"] = relationship(
+    organization: Mapped[Organization] = relationship(lazy="selectin")
+    customer_account: Mapped[CustomerAccount] = relationship(
         back_populates="onboarding_checklist",
         lazy="selectin",
     )

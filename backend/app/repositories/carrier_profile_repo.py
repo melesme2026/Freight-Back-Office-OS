@@ -2,10 +2,9 @@ from __future__ import annotations
 
 import uuid
 
+from app.domain.models.carrier_profile import CarrierProfile
 from sqlalchemy import select
 from sqlalchemy.orm import Session
-
-from app.domain.models.carrier_profile import CarrierProfile
 
 
 class CarrierProfileRepository:
@@ -13,7 +12,9 @@ class CarrierProfileRepository:
         self.db = db
 
     def get_by_organization_id(self, organization_id: uuid.UUID | str) -> CarrierProfile | None:
-        stmt = select(CarrierProfile).where(CarrierProfile.organization_id == uuid.UUID(str(organization_id)))
+        stmt = select(CarrierProfile).where(
+            CarrierProfile.organization_id == uuid.UUID(str(organization_id))
+        )
         return self.db.scalar(stmt)
 
     def create(self, item: CarrierProfile) -> CarrierProfile:

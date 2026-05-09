@@ -16,20 +16,11 @@ class TemplateService:
 
         templates = {
             "load_received": (
-                "Your load documents were received successfully. "
-                "Load: {load_number}"
+                "Your load documents were received successfully. Load: {load_number}"
             ),
-            "invoice_submitted": (
-                "Your invoice has been submitted. "
-                "Invoice: {invoice_number}"
-            ),
-            "payment_received": (
-                "Payment received successfully. "
-                "Amount: {amount}"
-            ),
-            "generic_status_update": (
-                "Status update: {status}"
-            ),
+            "invoice_submitted": ("Your invoice has been submitted. Invoice: {invoice_number}"),
+            "payment_received": ("Payment received successfully. Amount: {amount}"),
+            "generic_status_update": ("Status update: {status}"),
         }
 
         template = templates.get(normalized_template_name, "{message}")

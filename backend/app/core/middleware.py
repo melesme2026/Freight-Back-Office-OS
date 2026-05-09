@@ -4,16 +4,13 @@ import time
 import uuid
 from collections.abc import Callable
 
+from app.core.config import get_settings
+from app.core.constants import REQUEST_ID_HEADER
+from app.core.request_context import client_ip
 from fastapi import Request, Response
 from fastapi.responses import JSONResponse
-
-from app.core.config import get_settings
-from app.core.request_context import client_ip
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
-
-from app.core.constants import REQUEST_ID_HEADER
-
 
 PROCESS_TIME_HEADER = "X-Process-Time-Ms"
 
@@ -113,7 +110,9 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         "frame-src https://js.stripe.com https://checkout.stripe.com"
     )
 
-    async def dispatch(self, request: Request, call_next: Callable[[Request], Response]) -> Response:
+    async def dispatch(
+        self, request: Request, call_next: Callable[[Request], Response]
+    ) -> Response:
         response = await call_next(request)
         settings = get_settings()
         if not settings.security_headers_enabled:
@@ -121,10 +120,14 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
         response.headers.setdefault("X-Frame-Options", "DENY")
         response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
-        response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=()")
+        response.headers.setdefault(
+            "Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=()"
+        )
         response.headers.setdefault("Content-Security-Policy", self.CSP)
         if settings.environment == "production" and settings.security_hsts_enabled:
-            response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+            response.headers.setdefault(
+                "Strict-Transport-Security", "max-age=31536000; includeSubDomains"
+            )
         return response
 
 
@@ -145,33 +148,67 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         if "/webhook" in path or "/webhooks" in path:
             return None
         if path.endswith("/auth/login"):
-            return ("auth_login", settings.rate_limit_login_max_requests, settings.rate_limit_login_window_seconds)
+            return (
+                "auth_login",
+                settings.rate_limit_login_max_requests,
+                settings.rate_limit_login_window_seconds,
+            )
         if path.endswith("/auth/request-password-reset") or path.endswith("/auth/reset-password"):
-            return ("password_reset", settings.rate_limit_login_max_requests, settings.rate_limit_login_window_seconds)
+            return (
+                "password_reset",
+                settings.rate_limit_login_max_requests,
+                settings.rate_limit_login_window_seconds,
+            )
         if path.endswith("/demo-requests"):
-            return ("demo_requests", settings.rate_limit_public_max_requests, settings.rate_limit_public_window_seconds)
+            return (
+                "demo_requests",
+                settings.rate_limit_public_max_requests,
+                settings.rate_limit_public_window_seconds,
+            )
         if path.endswith("/billing/checkout-session"):
-            return ("billing_checkout", settings.rate_limit_billing_max_requests, settings.rate_limit_billing_window_seconds)
+            return (
+                "billing_checkout",
+                settings.rate_limit_billing_max_requests,
+                settings.rate_limit_billing_window_seconds,
+            )
         if "/portal/" in path:
             if path.endswith("/documents/upload"):
-                return ("portal_upload", settings.rate_limit_upload_max_requests, settings.rate_limit_upload_window_seconds)
-            return ("portal", settings.rate_limit_public_max_requests, settings.rate_limit_public_window_seconds)
+                return (
+                    "portal_upload",
+                    settings.rate_limit_upload_max_requests,
+                    settings.rate_limit_upload_window_seconds,
+                )
+            return (
+                "portal",
+                settings.rate_limit_public_max_requests,
+                settings.rate_limit_public_window_seconds,
+            )
         if path.endswith("/documents") or "/documents/upload" in path:
-            return ("document_upload", settings.rate_limit_upload_max_requests, settings.rate_limit_upload_window_seconds)
+            return (
+                "document_upload",
+                settings.rate_limit_upload_max_requests,
+                settings.rate_limit_upload_window_seconds,
+            )
         return None
 
     @classmethod
     def reset(cls) -> None:
         cls._buckets.clear()
 
-    async def dispatch(self, request: Request, call_next: Callable[[Request], Response]) -> Response:
+    async def dispatch(
+        self, request: Request, call_next: Callable[[Request], Response]
+    ) -> Response:
         policy = self._policy_for_path(request.url.path)
         if policy is None or request.method.upper() == "OPTIONS":
             return await call_next(request)
 
         policy_name, max_requests, window_seconds = policy
         ip = client_ip(request) or "unknown"
-        actor_hint = request.headers.get("authorization", "")[-16:] if request.headers.get("authorization") else "anonymous"
+        actor_hint = (
+            request.headers.get("authorization", "")[-16:]
+            if request.headers.get("authorization")
+            else "anonymous"
+        )
         key = f"{policy_name}:{ip}:{actor_hint}"
         now = time.time()
         count, reset_at = self._buckets.get(key, (0, now + window_seconds))
@@ -194,7 +231,11 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                     "error": {
                         "code": "rate_limited",
                         "message": "Too many requests. Please wait and try again.",
-                        "details": {"policy": policy_name, "limit": max_requests, "window_seconds": window_seconds},
+                        "details": {
+                            "policy": policy_name,
+                            "limit": max_requests,
+                            "window_seconds": window_seconds,
+                        },
                     },
                 },
             )

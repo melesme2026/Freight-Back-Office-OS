@@ -3,13 +3,12 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy.orm import Session
-
 from app.core.exceptions import NotFoundError, ValidationError
 from app.domain.enums.onboarding_status import OnboardingStatus
 from app.domain.models.onboarding_checklist import OnboardingChecklist
 from app.repositories.customer_account_repo import CustomerAccountRepository
 from app.repositories.onboarding_repo import OnboardingRepository
+from sqlalchemy.orm import Session
 
 
 class OnboardingService:

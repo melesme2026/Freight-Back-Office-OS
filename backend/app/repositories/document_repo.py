@@ -45,9 +45,7 @@ class DocumentRepository:
         file_hash_sha256: str,
         include_related: bool = False,
     ) -> LoadDocument | None:
-        stmt = select(LoadDocument).where(
-            LoadDocument.file_hash_sha256 == file_hash_sha256
-        )
+        stmt = select(LoadDocument).where(LoadDocument.file_hash_sha256 == file_hash_sha256)
 
         if include_related:
             stmt = self._apply_related(stmt)
@@ -88,9 +86,7 @@ class DocumentRepository:
             else None
         )
         normalized_load_id = (
-            self._normalize_uuid(load_id, field_name="load_id")
-            if load_id is not None
-            else None
+            self._normalize_uuid(load_id, field_name="load_id") if load_id is not None else None
         )
 
         stmt = select(LoadDocument)
@@ -127,9 +123,7 @@ class DocumentRepository:
 
         if processing_status is not None:
             stmt = stmt.where(LoadDocument.processing_status == processing_status)
-            count_stmt = count_stmt.where(
-                LoadDocument.processing_status == processing_status
-            )
+            count_stmt = count_stmt.where(LoadDocument.processing_status == processing_status)
 
         total = int(self.db.scalar(count_stmt) or 0)
 
@@ -142,7 +136,6 @@ class DocumentRepository:
 
         items = list(self.db.scalars(stmt).all())
         return items, total
-
 
     def find_required_document_for_load(
         self,

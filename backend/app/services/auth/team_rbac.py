@@ -16,7 +16,9 @@ OWNER_ADMIN_ROLES = {Role.OWNER.value, Role.ADMIN.value}
 
 
 class TeamPermissionError(AppError):
-    def __init__(self, message: str, *, code: str, details: dict[str, object] | None = None) -> None:
+    def __init__(
+        self, message: str, *, code: str, details: dict[str, object] | None = None
+    ) -> None:
         super().__init__(message, code=code, status_code=403, details=details)
 
 
@@ -37,7 +39,9 @@ def assert_can_manage_team(actor_role: object | None) -> None:
         )
 
 
-def can_modify_staff(actor_role: object | None, target_role: object | None, action: TeamAction) -> bool:
+def can_modify_staff(
+    actor_role: object | None, target_role: object | None, action: TeamAction
+) -> bool:
     actor = normalize_role(actor_role)
     target = normalize_role(target_role)
 
@@ -45,15 +49,30 @@ def can_modify_staff(actor_role: object | None, target_role: object | None, acti
         return False
 
     if actor == Role.OWNER.value:
-        return target in {Role.ADMIN.value, Role.OPS_MANAGER.value, Role.OPS_AGENT.value, Role.BILLING_ADMIN.value, Role.SUPPORT_AGENT.value, Role.VIEWER.value}
+        return target in {
+            Role.ADMIN.value,
+            Role.OPS_MANAGER.value,
+            Role.OPS_AGENT.value,
+            Role.BILLING_ADMIN.value,
+            Role.SUPPORT_AGENT.value,
+            Role.VIEWER.value,
+        }
 
     if actor == Role.ADMIN.value:
-        return target in {Role.OPS_MANAGER.value, Role.OPS_AGENT.value, Role.BILLING_ADMIN.value, Role.SUPPORT_AGENT.value, Role.VIEWER.value}
+        return target in {
+            Role.OPS_MANAGER.value,
+            Role.OPS_AGENT.value,
+            Role.BILLING_ADMIN.value,
+            Role.SUPPORT_AGENT.value,
+            Role.VIEWER.value,
+        }
 
     return False
 
 
-def assert_can_modify_staff(actor_role: object | None, target_role: object | None, action: TeamAction) -> None:
+def assert_can_modify_staff(
+    actor_role: object | None, target_role: object | None, action: TeamAction
+) -> None:
     target = normalize_role(target_role)
     if target == Role.OWNER.value:
         raise TeamPermissionError(

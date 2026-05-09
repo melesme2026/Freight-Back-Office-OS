@@ -50,9 +50,7 @@ class PricingService:
         load_count: int = 0,
         driver_count: int = 0,
     ) -> Decimal:
-        return self.calculate_base_price(
-            service_plan=service_plan
-        ) + self.calculate_usage_price(
+        return self.calculate_base_price(service_plan=service_plan) + self.calculate_usage_price(
             service_plan=service_plan,
             load_count=load_count,
             driver_count=driver_count,

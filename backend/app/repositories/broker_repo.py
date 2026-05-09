@@ -2,10 +2,9 @@ from __future__ import annotations
 
 import uuid
 
+from app.domain.models.broker import Broker
 from sqlalchemy import Select, func, or_, select
 from sqlalchemy.orm import Session
-
-from app.domain.models.broker import Broker
 
 
 class BrokerRepository:
@@ -72,11 +71,7 @@ class BrokerRepository:
         total = int(self.db.scalar(count_stmt) or 0)
 
         offset = (normalized_page - 1) * normalized_page_size
-        stmt = (
-            stmt.order_by(Broker.created_at.desc())
-            .offset(offset)
-            .limit(normalized_page_size)
-        )
+        stmt = stmt.order_by(Broker.created_at.desc()).offset(offset).limit(normalized_page_size)
 
         items = list(self.db.scalars(stmt).all())
         return items, total

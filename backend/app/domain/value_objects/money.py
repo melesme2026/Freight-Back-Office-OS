@@ -1,8 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from decimal import Decimal, ROUND_HALF_UP
-
+from decimal import ROUND_HALF_UP, Decimal
 
 TWOPLACES = Decimal("0.01")
 
@@ -27,15 +26,15 @@ class Money:
         decimal_value = Decimal(str(value))
         return decimal_value.quantize(TWOPLACES, rounding=ROUND_HALF_UP)
 
-    def add(self, other: "Money") -> "Money":
+    def add(self, other: Money) -> Money:
         self._assert_same_currency(other)
         return Money(amount=self.amount + other.amount, currency_code=self.currency_code)
 
-    def subtract(self, other: "Money") -> "Money":
+    def subtract(self, other: Money) -> Money:
         self._assert_same_currency(other)
         return Money(amount=self.amount - other.amount, currency_code=self.currency_code)
 
-    def multiply(self, factor: Decimal | int | float | str) -> "Money":
+    def multiply(self, factor: Decimal | int | float | str) -> Money:
         multiplier = Decimal(str(factor))
         return Money(amount=self.amount * multiplier, currency_code=self.currency_code)
 
@@ -48,11 +47,9 @@ class Money:
             "currency_code": self.currency_code,
         }
 
-    def _assert_same_currency(self, other: "Money") -> None:
+    def _assert_same_currency(self, other: Money) -> None:
         if self.currency_code != other.currency_code:
-            raise ValueError(
-                f"Currency mismatch: {self.currency_code} != {other.currency_code}"
-            )
+            raise ValueError(f"Currency mismatch: {self.currency_code} != {other.currency_code}")
 
     def __str__(self) -> str:
         return f"{self.currency_code} {self.amount:.2f}"

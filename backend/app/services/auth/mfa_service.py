@@ -52,10 +52,12 @@ class MfaService:
         digest = hmac.new(key, msg, hashlib.sha1).digest()
         offset = digest[-1] & 0x0F
         code_int = struct.unpack(">I", digest[offset : offset + 4])[0] & 0x7FFFFFFF
-        return str(code_int % (10 ** cls.CODE_DIGITS)).zfill(cls.CODE_DIGITS)
+        return str(code_int % (10**cls.CODE_DIGITS)).zfill(cls.CODE_DIGITS)
 
     @classmethod
-    def verify_totp(cls, *, secret: str | None, code: str | None, at_time: int | None = None) -> bool:
+    def verify_totp(
+        cls, *, secret: str | None, code: str | None, at_time: int | None = None
+    ) -> bool:
         if not secret or not code:
             return False
         normalized_code = str(code).strip().replace(" ", "")

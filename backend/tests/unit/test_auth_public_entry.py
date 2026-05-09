@@ -1,12 +1,6 @@
 from __future__ import annotations
 
 import pytest
-from app.core.config import get_settings
-from app.domain.models.driver import Driver
-from app.domain.models.staff_user import StaffUser
-from app.domain.enums.role import Role
-from app.core.exceptions import UnauthorizedError
-from app.core.security import create_action_token
 from app.api.v1.auth import (
     ActivateAccountRequest,
     ConfirmPasswordResetRequest,
@@ -20,6 +14,12 @@ from app.api.v1.auth import (
     signup,
 )
 from app.api.v1.staff_users import StaffUserCreateRequest, create_staff_user
+from app.core.config import get_settings
+from app.core.exceptions import UnauthorizedError
+from app.core.security import create_action_token
+from app.domain.enums.role import Role
+from app.domain.models.driver import Driver
+from app.domain.models.staff_user import StaffUser
 
 
 def test_signup_creates_owner_session(db_session) -> None:
@@ -147,7 +147,9 @@ def test_admin_cannot_invite_owner_role(db_session) -> None:
         db=db_session,
     )
     admin_token = activate_account(
-        ActivateAccountRequest(token=admin_invite.data["activation_token"], password="AdminPass123!"),
+        ActivateAccountRequest(
+            token=admin_invite.data["activation_token"], password="AdminPass123!"
+        ),
         db=db_session,
     )
     assert admin_token.data["activated"] is True
@@ -212,8 +214,9 @@ def test_direct_staff_create_rejects_privileged_or_driver_roles(db_session) -> N
         except UnauthorizedError:
             continue
         else:
-            raise AssertionError(f"Expected UnauthorizedError for direct role creation: {disallowed_role}")
-
+            raise AssertionError(
+                f"Expected UnauthorizedError for direct role creation: {disallowed_role}"
+            )
 
     try:
         create_staff_user(
@@ -246,7 +249,7 @@ def test_activation_rejects_mismatched_organization_token(db_session) -> None:
     )
 
     organization_id = owner_signup.data.user.organization_id
-    invite_response = invite_user(
+    invite_user(
         InviteUserRequest(
             email="ops@tokenguard.com",
             full_name="Ops User",
@@ -275,7 +278,9 @@ def test_activation_rejects_mismatched_organization_token(db_session) -> None:
     except UnauthorizedError:
         pass
     else:
-        raise AssertionError("Expected UnauthorizedError for mismatched activation token organization")
+        raise AssertionError(
+            "Expected UnauthorizedError for mismatched activation token organization"
+        )
 
 
 @pytest.fixture(autouse=True)
@@ -302,7 +307,9 @@ def test_public_signup_can_be_disabled(db_session, monkeypatch) -> None:
         )
 
 
-def test_invite_returns_manual_link_when_email_disabled_outside_dev(db_session, monkeypatch) -> None:
+def test_invite_returns_manual_link_when_email_disabled_outside_dev(
+    db_session, monkeypatch
+) -> None:
     monkeypatch.setenv("PUBLIC_SIGNUP_ENABLED", "true")
     monkeypatch.setenv("EMAIL_ENABLED", "false")
     monkeypatch.setenv("EMAIL_DEV_ALLOW_TOKEN_RESPONSE", "false")

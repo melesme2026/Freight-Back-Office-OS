@@ -3,12 +3,10 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
-from sqlalchemy.orm import Session
-
 from app.core.exceptions import ValidationError
 from app.domain.models.audit_log import AuditLog
 from app.repositories.audit_repo import AuditRepository
-
+from sqlalchemy.orm import Session
 
 SENSITIVE_METADATA_MARKERS = (
     "password",
@@ -84,7 +82,9 @@ class AuditService:
         return value
 
     @classmethod
-    def _sanitize_metadata(cls, value: dict[str, Any] | list[Any] | None) -> dict[str, Any] | list[Any] | None:
+    def _sanitize_metadata(
+        cls, value: dict[str, Any] | list[Any] | None
+    ) -> dict[str, Any] | list[Any] | None:
         if value is None:
             return None
         sanitized = cls._sanitize_value(value)

@@ -18,10 +18,14 @@ class LoadTransitionApplier:
 
         load.status = new_status
 
-        if new_status in {
-            LoadStatus.SUBMITTED_TO_BROKER,
-            LoadStatus.SUBMITTED_TO_FACTORING,
-        } and load.submitted_at is None:
+        if (
+            new_status
+            in {
+                LoadStatus.SUBMITTED_TO_BROKER,
+                LoadStatus.SUBMITTED_TO_FACTORING,
+            }
+            and load.submitted_at is None
+        ):
             load.submitted_at = now
 
         if new_status == LoadStatus.ADVANCE_PAID and load.funded_at is None:

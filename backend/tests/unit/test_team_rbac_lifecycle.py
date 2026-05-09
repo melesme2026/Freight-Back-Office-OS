@@ -3,8 +3,7 @@ from __future__ import annotations
 import uuid
 
 import pytest
-
-from app.api.v1.auth import InviteUserRequest, invite_user, login, LoginRequestBody
+from app.api.v1.auth import InviteUserRequest, LoginRequestBody, invite_user, login
 from app.api.v1.staff_users import (
     StaffUserRemoveRequest,
     StaffUserUpdateRequest,
@@ -62,7 +61,9 @@ def test_owner_can_invite_staff_and_audit_is_created(db_session) -> None:
     owner = _seed_user(db_session, org_id=org_id, role=Role.OWNER, email="owner@invite.org")
     db_session.commit()
 
-    token = create_access_token(subject=str(owner.id), additional_claims={"organization_id": str(org_id), "role": "owner"})
+    token = create_access_token(
+        subject=str(owner.id), additional_claims={"organization_id": str(org_id), "role": "owner"}
+    )
     response = invite_user(
         InviteUserRequest(
             organization_id=org_id,
@@ -130,7 +131,11 @@ def test_cannot_remove_final_active_admin_or_owner(db_session) -> None:
             db=db_session,
         )
 
-    assert exc_info.value.code in {"cannot_modify_owner", "final_admin_required", "cannot_remove_self_as_final_admin"}
+    assert exc_info.value.code in {
+        "cannot_modify_owner",
+        "final_admin_required",
+        "cannot_remove_self_as_final_admin",
+    }
 
     updated_staff = update_staff_user(
         staff.id,
@@ -163,8 +168,16 @@ def test_removed_and_disabled_users_cannot_login(db_session) -> None:
     org_id = uuid.uuid4()
     _seed_org(db_session, org_id, name="Login Org", slug="login-org")
     owner = _seed_user(db_session, org_id=org_id, role=Role.OWNER, email="owner@login.org")
-    disabled = _seed_user(db_session, org_id=org_id, role=Role.OPS_AGENT, email="disabled@login.org", is_active=False)
-    removed = _seed_user(db_session, org_id=org_id, role=Role.BILLING_ADMIN, email="removed@login.org", is_active=True)
+    disabled = _seed_user(
+        db_session, org_id=org_id, role=Role.OPS_AGENT, email="disabled@login.org", is_active=False
+    )
+    removed = _seed_user(
+        db_session,
+        org_id=org_id,
+        role=Role.BILLING_ADMIN,
+        email="removed@login.org",
+        is_active=True,
+    )
     db_session.commit()
 
     remove_staff_user(
@@ -175,9 +188,17 @@ def test_removed_and_disabled_users_cannot_login(db_session) -> None:
     )
 
     with pytest.raises(AppError):
-        login(LoginRequestBody(email=disabled.email, password="Pass123!", organization_id=org_id), db=db_session, x_organization_id=None)
+        login(
+            LoginRequestBody(email=disabled.email, password="Pass123!", organization_id=org_id),
+            db=db_session,
+            x_organization_id=None,
+        )
     with pytest.raises(AppError):
-        login(LoginRequestBody(email=removed.email, password="Pass123!", organization_id=org_id), db=db_session, x_organization_id=None)
+        login(
+            LoginRequestBody(email=removed.email, password="Pass123!", organization_id=org_id),
+            db=db_session,
+            x_organization_id=None,
+        )
 
 
 def test_removed_members_hidden_from_default_team_list_and_audited(db_session) -> None:
@@ -222,7 +243,9 @@ def test_invite_operations_manager_alias_persists_as_ops_manager(db_session) -> 
     owner = _seed_user(db_session, org_id=org_id, role=Role.OWNER, email="owner@alias.org")
     db_session.commit()
 
-    token = create_access_token(subject=str(owner.id), additional_claims={"organization_id": str(org_id), "role": "owner"})
+    token = create_access_token(
+        subject=str(owner.id), additional_claims={"organization_id": str(org_id), "role": "owner"}
+    )
     response = invite_user(
         InviteUserRequest(
             organization_id=org_id,
@@ -233,7 +256,11 @@ def test_invite_operations_manager_alias_persists_as_ops_manager(db_session) -> 
         token=token,
         db=db_session,
     )
-    invited = db_session.query(StaffUser).filter(StaffUser.id == uuid.UUID(response.data["user_id"])).one()
+    invited = (
+        db_session.query(StaffUser)
+        .filter(StaffUser.id == uuid.UUID(response.data["user_id"]))
+        .one()
+    )
     assert str(getattr(invited.role, "value", invited.role)) == Role.OPS_MANAGER.value
 
 

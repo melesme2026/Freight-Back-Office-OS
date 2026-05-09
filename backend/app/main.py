@@ -1,15 +1,20 @@
 from __future__ import annotations
 
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-
+import app.domain.models  # noqa: F401
 from app.api.router import api_router
 from app.core.config import get_settings
 from app.core.exceptions import register_exception_handlers
 from app.core.logging import configure_logging
-from app.core.middleware import CacheControlMiddleware, ProcessTimeMiddleware, RateLimitMiddleware, RequestContextMiddleware, SecurityHeadersMiddleware
+from app.core.middleware import (
+    CacheControlMiddleware,
+    ProcessTimeMiddleware,
+    RateLimitMiddleware,
+    RequestContextMiddleware,
+    SecurityHeadersMiddleware,
+)
 from app.lifespan import lifespan
-import app.domain.models  # noqa: F401
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 
 def create_app() -> FastAPI:

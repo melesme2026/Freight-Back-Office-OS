@@ -37,9 +37,7 @@ def test_missing_signature_rule_flags_missing_signature() -> None:
     results = rule.evaluate(
         payload={
             "document_type": "bill_of_lading",
-            "extracted_fields": [
-                {"field_name": "signature_present", "field_value_text": "no"}
-            ],
+            "extracted_fields": [{"field_name": "signature_present", "field_value_text": "no"}],
         }
     )
 

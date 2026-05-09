@@ -1,11 +1,10 @@
 from __future__ import annotations
 
+import uuid
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
-import uuid
 
 import pytest
-
 from app.api.v1.operations import _require_command_center_access
 from app.core.exceptions import ForbiddenError
 from app.domain.enums.document_type import DocumentType
@@ -32,14 +31,32 @@ BROKER_ID = "00000000-0000-0000-0000-000000043301"
 def _seed_parties(db_session, org_id: str = ORG_ID) -> None:
     db_session.add_all(
         [
-            Driver(id=uuid.UUID(DRIVER_ID), organization_id=org_id, customer_account_id=CUSTOMER_ID, full_name="Command Driver", phone="555-4301"),
-            Broker(id=uuid.UUID(BROKER_ID), organization_id=org_id, name="Command Broker", mc_number="MC43"),
+            Driver(
+                id=uuid.UUID(DRIVER_ID),
+                organization_id=org_id,
+                customer_account_id=CUSTOMER_ID,
+                full_name="Command Driver",
+                phone="555-4301",
+            ),
+            Broker(
+                id=uuid.UUID(BROKER_ID),
+                organization_id=org_id,
+                name="Command Broker",
+                mc_number="MC43",
+            ),
         ]
     )
     db_session.flush()
 
 
-def _make_load(db_session, *, load_number: str, org_id: str = ORG_ID, status: LoadStatus = LoadStatus.DELIVERED, delivery_days_ago: int = 5):
+def _make_load(
+    db_session,
+    *,
+    load_number: str,
+    org_id: str = ORG_ID,
+    status: LoadStatus = LoadStatus.DELIVERED,
+    delivery_days_ago: int = 5,
+):
     load = LoadService(db_session).create_load(
         organization_id=org_id,
         customer_account_id=CUSTOMER_ID,
@@ -75,8 +92,17 @@ def _add_document(db_session, load, document_type: DocumentType) -> None:
     db_session.expire_all()
 
 
-def _payment(db_session, load, *, expected: str = "2500", received: str = "0", status: LoadPaymentStatus = LoadPaymentStatus.AWAITING_PAYMENT):
-    record = PaymentReconciliationService(db_session).get_or_create_for_load(str(load.id), str(load.organization_id))
+def _payment(
+    db_session,
+    load,
+    *,
+    expected: str = "2500",
+    received: str = "0",
+    status: LoadPaymentStatus = LoadPaymentStatus.AWAITING_PAYMENT,
+):
+    record = PaymentReconciliationService(db_session).get_or_create_for_load(
+        str(load.id), str(load.organization_id)
+    )
     record.expected_amount = Decimal(expected)
     record.amount_received = Decimal(received)
     record.payment_status = status
@@ -115,7 +141,9 @@ def test_command_center_generates_alerts_tasks_missing_docs_and_collections(db_s
     _add_document(db_session, overdue, DocumentType.RATE_CONFIRMATION)
     _add_document(db_session, overdue, DocumentType.PROOF_OF_DELIVERY)
     _add_document(db_session, overdue, DocumentType.INVOICE)
-    record = _payment(db_session, overdue, expected="6000", received="0", status=LoadPaymentStatus.DISPUTED)
+    record = _payment(
+        db_session, overdue, expected="6000", received="0", status=LoadPaymentStatus.DISPUTED
+    )
     record.factoring_status = FactoringWorkflowStatus.RESERVE_PENDING
     record.reserve_amount = Decimal("500")
     record.reserve_paid_amount = Decimal("0")
@@ -130,8 +158,17 @@ def test_command_center_generates_alerts_tasks_missing_docs_and_collections(db_s
     assert data["collections"]["summary"]["unpaid_total"] == "6000.00"
 
     alert_types = {alert["type"] for alert in data["alerts"]}
-    assert {"missing_pod", "blocked_packet_send", "invoice_overdue", "factoring_issue", "packet_intelligence_blocker"}.issubset(alert_types)
-    assert any(task["type"] == "missing_document" and task["severity"] == "critical" for task in data["tasks"]["items"])
+    assert {
+        "missing_pod",
+        "blocked_packet_send",
+        "invoice_overdue",
+        "factoring_issue",
+        "packet_intelligence_blocker",
+    }.issubset(alert_types)
+    assert any(
+        task["type"] == "missing_document" and task["severity"] == "critical"
+        for task in data["tasks"]["items"]
+    )
     assert any(task["type"] == "follow_up_overdue_invoice" for task in data["tasks"]["items"])
     assert data["priority_cards"][0]["key"] == "critical_alerts"
 
@@ -153,17 +190,37 @@ def test_command_center_is_org_scoped(db_session):
 
 def test_command_center_prioritizes_blocked_packets_and_overdue_collections(db_session):
     _seed_parties(db_session)
-    blocked = _make_load(db_session, load_number="CMD-BLOCKED", status=LoadStatus.PACKET_REJECTED, delivery_days_ago=2)
-    db_session.add(SubmissionPacket(organization_id=ORG_ID, load_id=blocked.id, packet_reference="PKT-BLOCKED", status="failed"))
+    blocked = _make_load(
+        db_session,
+        load_number="CMD-BLOCKED",
+        status=LoadStatus.PACKET_REJECTED,
+        delivery_days_ago=2,
+    )
+    db_session.add(
+        SubmissionPacket(
+            organization_id=ORG_ID,
+            load_id=blocked.id,
+            packet_reference="PKT-BLOCKED",
+            status="failed",
+        )
+    )
 
-    mild = _make_load(db_session, load_number="CMD-MILD", status=LoadStatus.BOOKED, delivery_days_ago=1)
+    mild = _make_load(
+        db_session, load_number="CMD-MILD", status=LoadStatus.BOOKED, delivery_days_ago=1
+    )
     _add_document(db_session, mild, DocumentType.RATE_CONFIRMATION)
 
     overdue = _make_load(db_session, load_number="CMD-AGED", delivery_days_ago=90)
     _add_document(db_session, overdue, DocumentType.RATE_CONFIRMATION)
     _add_document(db_session, overdue, DocumentType.PROOF_OF_DELIVERY)
     _add_document(db_session, overdue, DocumentType.INVOICE)
-    _payment(db_session, overdue, expected="7000", received="0", status=LoadPaymentStatus.AWAITING_PAYMENT)
+    _payment(
+        db_session,
+        overdue,
+        expected="7000",
+        received="0",
+        status=LoadPaymentStatus.AWAITING_PAYMENT,
+    )
 
     data = DispatcherCommandCenterService(db_session).get_command_center(org_id=ORG_ID)
 
@@ -187,13 +244,21 @@ def test_ai_operations_assistant_explains_invoice_risk_broker_behavior_and_colle
     _add_document(db_session, old_invoice, DocumentType.RATE_CONFIRMATION)
     _add_document(db_session, old_invoice, DocumentType.PROOF_OF_DELIVERY)
     _add_document(db_session, old_invoice, DocumentType.INVOICE)
-    old_record = _payment(db_session, old_invoice, expected="8200", received="0", status=LoadPaymentStatus.AWAITING_PAYMENT)
+    _payment(
+        db_session,
+        old_invoice,
+        expected="8200",
+        received="0",
+        status=LoadPaymentStatus.AWAITING_PAYMENT,
+    )
 
     disputed = _make_load(db_session, load_number="AI-DISPUTED", delivery_days_ago=50)
     _add_document(db_session, disputed, DocumentType.RATE_CONFIRMATION)
     _add_document(db_session, disputed, DocumentType.PROOF_OF_DELIVERY)
     _add_document(db_session, disputed, DocumentType.INVOICE)
-    disputed_record = _payment(db_session, disputed, expected="3000", received="500", status=LoadPaymentStatus.DISPUTED)
+    disputed_record = _payment(
+        db_session, disputed, expected="3000", received="500", status=LoadPaymentStatus.DISPUTED
+    )
     disputed_record.reconciliation_status = FactoringReconciliationStatus.PARTIALLY_RECONCILED
     disputed_record.factoring_status = FactoringWorkflowStatus.RESERVE_PENDING
     disputed_record.reserve_amount = Decimal("750")
@@ -203,7 +268,9 @@ def test_ai_operations_assistant_explains_invoice_risk_broker_behavior_and_colle
     _add_document(db_session, paid, DocumentType.RATE_CONFIRMATION)
     _add_document(db_session, paid, DocumentType.PROOF_OF_DELIVERY)
     _add_document(db_session, paid, DocumentType.INVOICE)
-    paid_record = _payment(db_session, paid, expected="2000", received="2000", status=LoadPaymentStatus.PAID)
+    paid_record = _payment(
+        db_session, paid, expected="2000", received="2000", status=LoadPaymentStatus.PAID
+    )
     paid_record.reconciliation_status = FactoringReconciliationStatus.RECONCILED
     paid_record.paid_date = datetime.now(timezone.utc) - timedelta(days=20)
 
@@ -220,11 +287,17 @@ def test_ai_operations_assistant_explains_invoice_risk_broker_behavior_and_colle
     assert risk_by_load["AI-OLD"]["risk_level"] == "critical"
     assert any("more than 60 days" in reason for reason in risk_by_load["AI-OLD"]["risk_reasons"])
     assert risk_by_load["AI-DISPUTED"]["risk_level"] in {"high", "critical"}
-    assert any("Payment status is disputed" in reason for reason in risk_by_load["AI-DISPUTED"]["risk_reasons"])
+    assert any(
+        "Payment status is disputed" in reason
+        for reason in risk_by_load["AI-DISPUTED"]["risk_reasons"]
+    )
 
     collections = assistant["collections_priorities"]
     assert collections[0]["priority_score"] >= collections[1]["priority_score"]
-    assert {collections[0]["load_number"], collections[1]["load_number"]} == {"AI-OLD", "AI-DISPUTED"}
+    assert {collections[0]["load_number"], collections[1]["load_number"]} == {
+        "AI-OLD",
+        "AI-DISPUTED",
+    }
     assert collections[0]["collection_rank_reason"]
     assert any(item["recommended_action"] for item in collections)
 
@@ -248,8 +321,12 @@ def test_ai_operations_assistant_remains_org_scoped(db_session):
     _add_document(db_session, org_load, DocumentType.INVOICE)
     _payment(db_session, org_load, expected="1000", received="0")
 
-    other_load = _make_load(db_session, load_number="AI-OTHER", org_id=OTHER_ORG_ID, delivery_days_ago=90)
-    _payment(db_session, other_load, expected="9000", received="0", status=LoadPaymentStatus.DISPUTED)
+    other_load = _make_load(
+        db_session, load_number="AI-OTHER", org_id=OTHER_ORG_ID, delivery_days_ago=90
+    )
+    _payment(
+        db_session, other_load, expected="9000", received="0", status=LoadPaymentStatus.DISPUTED
+    )
 
     data = DispatcherCommandCenterService(db_session).get_command_center(org_id=ORG_ID)
     assistant = data["ai_operations_assistant"]

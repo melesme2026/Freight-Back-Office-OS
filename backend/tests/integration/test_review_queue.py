@@ -4,7 +4,6 @@ from app.domain.enums.validation_severity import ValidationSeverity
 from app.domain.models.validation_issue import ValidationIssue
 from app.services.loads.load_service import LoadService
 from app.services.review.review_queue_service import ReviewQueueService
-from app.services.validation.validation_orchestrator import ValidationOrchestrator
 
 
 def test_review_queue_includes_loads_with_unresolved_issues(db_session) -> None:

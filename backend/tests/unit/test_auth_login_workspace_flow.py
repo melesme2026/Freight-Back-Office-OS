@@ -2,9 +2,7 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi.responses import JSONResponse
 import pytest
-
 from app.api.v1.auth import LoginRequestBody, get_current_user, login
 from app.core.exceptions import AppError
 from app.core.security import decode_token, hash_password
@@ -12,6 +10,7 @@ from app.domain.enums.role import Role
 from app.domain.models.driver import Driver
 from app.domain.models.organization import Organization
 from app.domain.models.staff_user import StaffUser
+from fastapi.responses import JSONResponse
 
 
 def _seed_org(db_session, org_id: uuid.UUID, *, name: str, slug: str) -> None:
@@ -28,7 +27,9 @@ def _seed_org(db_session, org_id: uuid.UUID, *, name: str, slug: str) -> None:
     )
 
 
-def _seed_user(db_session, *, org_id: uuid.UUID, email: str, role: Role, password: str) -> StaffUser:
+def _seed_user(
+    db_session, *, org_id: uuid.UUID, email: str, role: Role, password: str
+) -> StaffUser:
     user = StaffUser(
         id=uuid.uuid4(),
         organization_id=org_id,
@@ -45,10 +46,16 @@ def _seed_user(db_session, *, org_id: uuid.UUID, email: str, role: Role, passwor
 def test_single_workspace_staff_login_succeeds(db_session) -> None:
     org_id = uuid.uuid4()
     _seed_org(db_session, org_id, name="Adwa Express LLC", slug="adwa-express")
-    _seed_user(db_session, org_id=org_id, email="staff@example.com", role=Role.OWNER, password="Owner123!")
+    _seed_user(
+        db_session, org_id=org_id, email="staff@example.com", role=Role.OWNER, password="Owner123!"
+    )
     db_session.commit()
 
-    response = login(LoginRequestBody(email="staff@example.com", password="Owner123!"), db=db_session, x_organization_id=None)
+    response = login(
+        LoginRequestBody(email="staff@example.com", password="Owner123!"),
+        db=db_session,
+        x_organization_id=None,
+    )
 
     assert response.data.user.organization_id == str(org_id)
     assert response.data.user.role == Role.OWNER.value
@@ -60,7 +67,13 @@ def test_single_workspace_staff_login_succeeds(db_session) -> None:
 def test_single_workspace_driver_login_and_me_include_driver_context(db_session) -> None:
     org_id = uuid.uuid4()
     _seed_org(db_session, org_id, name="Adwa Driver Ops", slug="adwa-driver-ops")
-    user = _seed_user(db_session, org_id=org_id, email="driver@example.com", role=Role.DRIVER, password="Driver123!")
+    user = _seed_user(
+        db_session,
+        org_id=org_id,
+        email="driver@example.com",
+        role=Role.DRIVER,
+        password="Driver123!",
+    )
     driver = Driver(
         id=uuid.uuid4(),
         organization_id=org_id,
@@ -73,7 +86,11 @@ def test_single_workspace_driver_login_and_me_include_driver_context(db_session)
     db_session.add(driver)
     db_session.commit()
 
-    response = login(LoginRequestBody(email="driver@example.com", password="Driver123!"), db=db_session, x_organization_id=None)
+    response = login(
+        LoginRequestBody(email="driver@example.com", password="Driver123!"),
+        db=db_session,
+        x_organization_id=None,
+    )
     claims = decode_token(response.data.access_token)
     assert claims.get("organization_id") == str(org_id)
     assert claims.get("driver_id") == str(driver.id)
@@ -88,7 +105,13 @@ def test_single_workspace_driver_login_and_me_include_driver_context(db_session)
 def test_inactive_driver_login_is_blocked_with_friendly_message(db_session) -> None:
     org_id = uuid.uuid4()
     _seed_org(db_session, org_id, name="Inactive Driver Org", slug="inactive-driver-org")
-    _seed_user(db_session, org_id=org_id, email="inactive-driver@example.com", role=Role.DRIVER, password="Driver123!")
+    _seed_user(
+        db_session,
+        org_id=org_id,
+        email="inactive-driver@example.com",
+        role=Role.DRIVER,
+        password="Driver123!",
+    )
     db_session.add(
         Driver(
             id=uuid.uuid4(),
@@ -118,8 +141,12 @@ def test_multi_workspace_login_requires_explicit_organization_selection(db_sessi
     org_b = uuid.uuid4()
     _seed_org(db_session, org_a, name="Adwa Express LLC", slug="adwa-express")
     _seed_org(db_session, org_b, name="Adwa Driver Ops", slug="adwa-driver-ops")
-    _seed_user(db_session, org_id=org_a, email="multi@example.com", role=Role.OWNER, password="Owner123!")
-    _seed_user(db_session, org_id=org_b, email="multi@example.com", role=Role.DRIVER, password="Owner123!")
+    _seed_user(
+        db_session, org_id=org_a, email="multi@example.com", role=Role.OWNER, password="Owner123!"
+    )
+    _seed_user(
+        db_session, org_id=org_b, email="multi@example.com", role=Role.DRIVER, password="Owner123!"
+    )
     db_session.add(
         Driver(
             id=uuid.uuid4(),
@@ -133,7 +160,11 @@ def test_multi_workspace_login_requires_explicit_organization_selection(db_sessi
     )
     db_session.commit()
 
-    initial = login(LoginRequestBody(email="multi@example.com", password="Owner123!"), db=db_session, x_organization_id=None)
+    initial = login(
+        LoginRequestBody(email="multi@example.com", password="Owner123!"),
+        db=db_session,
+        x_organization_id=None,
+    )
     assert isinstance(initial, JSONResponse)
     assert initial.status_code == 422
     payload = initial.body.decode("utf-8")
@@ -154,13 +185,17 @@ def test_multi_workspace_login_requires_explicit_organization_selection(db_sessi
 def test_multi_workspace_login_rejects_invalid_organization_id(db_session) -> None:
     org_a = uuid.uuid4()
     _seed_org(db_session, org_a, name="Adwa Express LLC", slug="adwa-express")
-    _seed_user(db_session, org_id=org_a, email="multi@example.com", role=Role.OWNER, password="Owner123!")
+    _seed_user(
+        db_session, org_id=org_a, email="multi@example.com", role=Role.OWNER, password="Owner123!"
+    )
     db_session.commit()
 
     invalid_org = uuid.uuid4()
     with pytest.raises(AppError) as exc_info:
         login(
-            LoginRequestBody(email="multi@example.com", password="Owner123!", organization_id=invalid_org),
+            LoginRequestBody(
+                email="multi@example.com", password="Owner123!", organization_id=invalid_org
+            ),
             db=db_session,
             x_organization_id=None,
         )

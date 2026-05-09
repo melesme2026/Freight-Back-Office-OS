@@ -4,13 +4,11 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
+from app.core.database import Base
+from app.domain.models.organization import TimestampMixin, UUIDPrimaryKeyMixin
 from sqlalchemy import DateTime, ForeignKey, Index, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-
-from app.core.database import Base
-from app.domain.models.organization import TimestampMixin, UUIDPrimaryKeyMixin
-
 
 if TYPE_CHECKING:
     from app.domain.models.customer_account import CustomerAccount
@@ -77,20 +75,20 @@ class SupportTicket(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         nullable=True,
     )
 
-    organization: Mapped["Organization"] = relationship(
+    organization: Mapped[Organization] = relationship(
         back_populates="support_tickets",
         lazy="selectin",
     )
-    customer_account: Mapped["CustomerAccount | None"] = relationship(
+    customer_account: Mapped[CustomerAccount | None] = relationship(
         back_populates="support_tickets",
         lazy="selectin",
     )
-    driver: Mapped["Driver | None"] = relationship(lazy="selectin")
-    load: Mapped["Load | None"] = relationship(
+    driver: Mapped[Driver | None] = relationship(lazy="selectin")
+    load: Mapped[Load | None] = relationship(
         back_populates="support_tickets",
         lazy="selectin",
     )
-    assigned_to: Mapped["StaffUser | None"] = relationship(
+    assigned_to: Mapped[StaffUser | None] = relationship(
         back_populates="support_tickets_assigned",
         lazy="selectin",
     )

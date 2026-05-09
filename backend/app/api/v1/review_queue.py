@@ -5,17 +5,18 @@ from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
-from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel, ConfigDict
-from sqlalchemy.orm import Session
-
 from app.core.dependencies import get_db_session
 from app.core.exceptions import UnauthorizedError
 from app.core.security import get_current_token_payload
 from app.schemas.common import ApiResponse
 from app.services.review.human_review_service import HumanReviewService
 from app.services.review.review_queue_service import ReviewQueueService
+from fastapi import APIRouter, Depends, Query
+from pydantic import BaseModel, ConfigDict
+from sqlalchemy.orm import Session
 
+GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY = Depends(get_current_token_payload)
+GET_DB_SESSION_DEPENDENCY = Depends(get_db_session)
 
 router = APIRouter()
 
@@ -77,9 +78,7 @@ def _serialize_extracted_field(item: Any) -> dict[str, Any]:
         "confidence_score": _to_decimal_string(item.confidence_score),
         "is_human_corrected": item.is_human_corrected,
         "corrected_by_staff_user_id": (
-            str(item.corrected_by_staff_user_id)
-            if item.corrected_by_staff_user_id
-            else None
+            str(item.corrected_by_staff_user_id) if item.corrected_by_staff_user_id else None
         ),
         "corrected_at": _to_iso_or_none(item.corrected_at),
         "created_at": _to_iso_or_none(item.created_at),
@@ -99,9 +98,7 @@ def _serialize_validation_issue(item: Any) -> dict[str, Any]:
         "is_blocking": item.is_blocking,
         "is_resolved": item.is_resolved,
         "resolved_by_staff_user_id": (
-            str(item.resolved_by_staff_user_id)
-            if item.resolved_by_staff_user_id
-            else None
+            str(item.resolved_by_staff_user_id) if item.resolved_by_staff_user_id else None
         ),
         "resolved_at": _to_iso_or_none(item.resolved_at),
         "resolution_notes": item.resolution_notes,
@@ -149,8 +146,8 @@ def get_review_queue(
     organization_id: uuid.UUID | None = None,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=25, ge=1, le=200),
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     token_org_id = token_payload.get("organization_id")
     effective_org_id = organization_id or uuid.UUID(str(token_org_id))
@@ -179,8 +176,8 @@ def get_review_queue(
 def correct_extracted_field(
     field_id: uuid.UUID,
     payload: CorrectExtractedFieldRequest,
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     token_org_id = token_payload.get("organization_id")
     reviewer_staff_user_id = str(token_payload.get("sub") or "").strip()
@@ -209,8 +206,8 @@ def correct_extracted_field(
 def resolve_validation_issue(
     issue_id: uuid.UUID,
     payload: ResolveValidationIssueRequest,
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     token_org_id = token_payload.get("organization_id")
     reviewer_staff_user_id = str(token_payload.get("sub") or "").strip()
@@ -236,8 +233,8 @@ def resolve_validation_issue(
 def mark_load_reviewed(
     load_id: uuid.UUID,
     payload: MarkLoadReviewedRequest | None = None,
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     _ = payload
     reviewer_staff_user_id = str(token_payload.get("sub") or "").strip()
@@ -262,8 +259,8 @@ def mark_load_reviewed(
 @router.get("/review-queue/loads/{load_id}/context", response_model=ApiResponse)
 def get_load_review_context(
     load_id: uuid.UUID,
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     token_org_id = token_payload.get("organization_id")
 

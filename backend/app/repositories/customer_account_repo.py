@@ -2,11 +2,10 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import Select, func, or_, select
-from sqlalchemy.orm import Session, selectinload
-
 from app.domain.enums.customer_account_status import CustomerAccountStatus
 from app.domain.models.customer_account import CustomerAccount
+from sqlalchemy import Select, func, or_, select
+from sqlalchemy.orm import Session, selectinload
 
 
 class CustomerAccountRepository:
@@ -82,7 +81,9 @@ class CustomerAccountRepository:
 
         if normalized_organization_id is not None:
             stmt = stmt.where(CustomerAccount.organization_id == normalized_organization_id)
-            count_stmt = count_stmt.where(CustomerAccount.organization_id == normalized_organization_id)
+            count_stmt = count_stmt.where(
+                CustomerAccount.organization_id == normalized_organization_id
+            )
 
         if status is not None:
             stmt = stmt.where(CustomerAccount.status == status)

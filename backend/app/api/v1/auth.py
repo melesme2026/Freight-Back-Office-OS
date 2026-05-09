@@ -3,15 +3,9 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, Header, Request
-from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ConfigDict
-from sqlalchemy.orm import Session
-from sqlalchemy import select
-
+from app.core.config import get_settings
 from app.core.dependencies import get_db_session
 from app.core.exceptions import AppError, UnauthorizedError, ValidationError
-from app.core.config import get_settings
 from app.core.request_context import audit_request_context
 from app.core.security import (
     create_action_token,
@@ -20,6 +14,12 @@ from app.core.security import (
     hash_password,
     verify_password,
 )
+from app.domain.enums.role import Role
+from app.domain.models.organization import Organization
+from app.domain.models.staff_user import StaffUser
+from app.repositories.driver_repo import DriverRepository
+from app.repositories.organization_repo import OrganizationRepository
+from app.repositories.staff_user_repo import StaffUserRepository
 from app.schemas.auth import (
     CurrentUserResponse,
     LoginResponse,
@@ -27,20 +27,21 @@ from app.schemas.auth import (
     StaffUserAuthView,
 )
 from app.schemas.common import ApiResponse
-from app.repositories.staff_user_repo import StaffUserRepository
-from app.domain.models.staff_user import StaffUser
-from app.domain.models.organization import Organization
-from app.domain.enums.role import Role
-from app.repositories.organization_repo import OrganizationRepository
-from app.repositories.driver_repo import DriverRepository
-from app.services.auth.auth_service import AuthService
-from app.services.auth.team_rbac import assert_can_manage_team, normalize_role
 from app.services.audit.audit_service import AuditService
-from app.services.auth.token_service import TokenService
+from app.services.auth.auth_service import AuthService
 from app.services.auth.mfa_service import MfaService
+from app.services.auth.team_rbac import assert_can_manage_team, normalize_role
+from app.services.auth.token_service import TokenService
 from app.services.notifications.email_service import EmailService
 from app.utils.text_utils import slugify
+from fastapi import APIRouter, Depends, Header, Request
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, ConfigDict
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 
+GET_BEARER_TOKEN_DEPENDENCY = Depends(get_bearer_token)
+GET_DB_SESSION_DEPENDENCY = Depends(get_db_session)
 
 router = APIRouter()
 
@@ -77,15 +78,11 @@ class LoginRequestBody(BaseModel):
     mfa_code: str | None = None
 
 
-
-
 class ChangePasswordRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     current_password: str
     new_password: str
-
-
 
 
 class InviteUserRequest(BaseModel):
@@ -223,10 +220,16 @@ def _build_unique_org_slug(repo: OrganizationRepository, organization_name: str)
 
 def _should_expose_auth_tokens() -> bool:
     settings = get_settings()
-    return settings.email_dev_allow_token_response or settings.environment in {"local", "development", "test"}
+    return settings.email_dev_allow_token_response or settings.environment in {
+        "local",
+        "development",
+        "test",
+    }
 
 
-def _safe_login_audit_metadata(request: Request | None, *, email: str, success: bool, reason: str | None = None) -> dict[str, object]:
+def _safe_login_audit_metadata(
+    request: Request | None, *, email: str, success: bool, reason: str | None = None
+) -> dict[str, object]:
     metadata = audit_request_context(request, source="auth.login")
     metadata.update({"email": email.strip().lower(), "success": success})
     if reason:
@@ -259,7 +262,9 @@ def _audit_auth_event(
     )
 
 
-def _find_single_user_for_login_audit(db: Session, *, email: str, organization_id: uuid.UUID | None) -> StaffUser | None:
+def _find_single_user_for_login_audit(
+    db: Session, *, email: str, organization_id: uuid.UUID | None
+) -> StaffUser | None:
     normalized_email = email.strip().lower()
     stmt = select(StaffUser).where(StaffUser.email == normalized_email)
     if organization_id is not None:
@@ -267,14 +272,17 @@ def _find_single_user_for_login_audit(db: Session, *, email: str, organization_i
     records = list(db.scalars(stmt).all())
     return records[0] if len(records) == 1 else None
 
+
 @router.post("/auth/signup", response_model=LoginResponse)
 def signup(
     payload: SignupRequestBody,
-    db: Session = Depends(get_db_session),
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> LoginResponse:
     settings = get_settings()
     if not settings.public_signup_enabled:
-        raise UnauthorizedError("Public organization signup is disabled. Contact support to request workspace access.")
+        raise UnauthorizedError(
+            "Public organization signup is disabled. Contact support to request workspace access."
+        )
 
     normalized_full_name = _normalize_required_text(payload.full_name, "full_name")
     normalized_email = _normalize_email(payload.email)
@@ -283,11 +291,15 @@ def signup(
     if payload.password != payload.confirm_password:
         raise ValidationError("Passwords do not match", details={"field": "confirm_password"})
     if len(payload.password.strip()) < 8:
-        raise ValidationError("Password must be at least 8 characters", details={"field": "password"})
+        raise ValidationError(
+            "Password must be at least 8 characters", details={"field": "password"}
+        )
 
     existing_email = db.scalar(select(StaffUser).where(StaffUser.email == normalized_email))
     if existing_email is not None:
-        raise ValidationError("An account with this email already exists", details={"email": normalized_email})
+        raise ValidationError(
+            "An account with this email already exists", details={"email": normalized_email}
+        )
 
     organization_repo = OrganizationRepository(db)
     organization = Organization(
@@ -336,7 +348,7 @@ def signup(
 def login(
     payload: LoginRequestBody,
     request: Request = None,  # type: ignore[assignment]
-    db: Session = Depends(get_db_session),
+    db: Session = GET_DB_SESSION_DEPENDENCY,
     x_organization_id: str | None = Header(default=None, alias="X-Organization-Id"),
 ) -> LoginResponse:
     hinted_organization_id = _resolve_organization_id(
@@ -352,14 +364,18 @@ def login(
             organization_id=hinted_organization_id,
         )
     except AppError as exc:
-        audit_user = _find_single_user_for_login_audit(db, email=payload.email, organization_id=hinted_organization_id)
+        audit_user = _find_single_user_for_login_audit(
+            db, email=payload.email, organization_id=hinted_organization_id
+        )
         _audit_auth_event(
             db,
             organization_id=getattr(audit_user, "organization_id", hinted_organization_id),
             entity_id=getattr(audit_user, "id", None),
             action="auth.login.failed",
             request=request,
-            metadata_json=_safe_login_audit_metadata(request, email=payload.email, success=False, reason=exc.code),
+            metadata_json=_safe_login_audit_metadata(
+                request, email=payload.email, success=False, reason=exc.code
+            ),
         )
         db.commit()
         if exc.code == "multiple_organizations":
@@ -373,7 +389,9 @@ def login(
             )
         raise
     if bool(getattr(user, "mfa_enabled", False)):
-        if not MfaService.verify_totp(secret=getattr(user, "mfa_totp_secret", None), code=payload.mfa_code):
+        if not MfaService.verify_totp(
+            secret=getattr(user, "mfa_totp_secret", None), code=payload.mfa_code
+        ):
             _audit_auth_event(
                 db,
                 organization_id=user.organization_id,
@@ -381,10 +399,14 @@ def login(
                 action="auth.login.mfa_failed",
                 request=request,
                 actor_id=user.id,
-                metadata_json=_safe_login_audit_metadata(request, email=payload.email, success=False, reason="mfa_required_or_invalid"),
+                metadata_json=_safe_login_audit_metadata(
+                    request, email=payload.email, success=False, reason="mfa_required_or_invalid"
+                ),
             )
             db.commit()
-            raise UnauthorizedError("MFA code is required or invalid", details={"mfa_required": True})
+            raise UnauthorizedError(
+                "MFA code is required or invalid", details={"mfa_required": True}
+            )
     _audit_auth_event(
         db,
         organization_id=user.organization_id,
@@ -408,8 +430,8 @@ def login(
 
 @router.get("/auth/me", response_model=CurrentUserResponse)
 def get_current_user(
-    token: str = Depends(get_bearer_token),
-    db: Session = Depends(get_db_session),
+    token: str = GET_BEARER_TOKEN_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> CurrentUserResponse:
     token_service = TokenService(db)
     payload = token_service.decode_access_token(token)
@@ -419,7 +441,10 @@ def get_current_user(
         raise UnauthorizedError("Unable to resolve current user")
 
     return CurrentUserResponse(
-        data=_serialize_staff_user(user, driver_id=str(payload.get("driver_id")).strip() if payload.get("driver_id") else None),
+        data=_serialize_staff_user(
+            user,
+            driver_id=str(payload.get("driver_id")).strip() if payload.get("driver_id") else None,
+        ),
         meta={},
         error=None,
     )
@@ -429,8 +454,8 @@ def get_current_user(
 def change_password(
     payload: ChangePasswordRequest,
     request: Request = None,  # type: ignore[assignment]
-    token: str = Depends(get_bearer_token),
-    db: Session = Depends(get_db_session),
+    token: str = GET_BEARER_TOKEN_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     token_service = TokenService(db)
     user = token_service.get_current_staff_user(token)
@@ -462,8 +487,8 @@ def change_password(
 def invite_user(
     payload: InviteUserRequest,
     request: Request = None,  # type: ignore[assignment]
-    token: str = Depends(get_bearer_token),
-    db: Session = Depends(get_db_session),
+    token: str = GET_BEARER_TOKEN_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     token_service = TokenService(db)
     requester = token_service.get_current_staff_user(token)
@@ -542,7 +567,9 @@ def invite_user(
     )
 
     settings = get_settings()
-    activation_url = f"{settings.web_app_base_url.rstrip('/')}/activate-account?token={activation_token}"
+    activation_url = (
+        f"{settings.web_app_base_url.rstrip('/')}/activate-account?token={activation_token}"
+    )
     email_service = EmailService()
     email_status = "unknown"
     invite_message = "Invite generated."
@@ -566,7 +593,9 @@ def invite_user(
         if not str(exc).startswith("Email delivery is disabled"):
             raise
         email_status = "disabled"
-        invite_message = "Email delivery is disabled. Copy the activation link and send it manually."
+        invite_message = (
+            "Email delivery is disabled. Copy the activation link and send it manually."
+        )
         email_error_message = str(exc)
 
     response_data: dict[str, str | bool] = {
@@ -607,7 +636,7 @@ def invite_user(
 def activate_account(
     payload: ActivateAccountRequest,
     request: Request = None,  # type: ignore[assignment]
-    db: Session = Depends(get_db_session),
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     token_payload = decode_token(payload.token, expected_token_type="activation")
     user_id = token_payload.get("sub")
@@ -642,13 +671,15 @@ def activate_account(
 def request_password_reset(
     payload: PasswordResetRequest,
     request: Request = None,  # type: ignore[assignment]
-    db: Session = Depends(get_db_session),
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     normalized_email = payload.email.strip().lower()
     organization_id = payload.organization_id
 
     if organization_id is None:
-        stmt = select(StaffUser.organization_id).where(StaffUser.email == normalized_email).distinct()
+        stmt = (
+            select(StaffUser.organization_id).where(StaffUser.email == normalized_email).distinct()
+        )
         organization_ids = list(db.scalars(stmt).all())
         if len(organization_ids) != 1:
             return ApiResponse(data={"reset_requested": True}, meta={}, error=None)
@@ -713,7 +744,7 @@ def request_password_reset(
 def reset_password(
     payload: ConfirmPasswordResetRequest,
     request: Request = None,  # type: ignore[assignment]
-    db: Session = Depends(get_db_session),
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     token_payload = decode_token(payload.token, expected_token_type="password_reset")
     user_id = token_payload.get("sub")
@@ -746,8 +777,8 @@ def reset_password(
 @router.post("/auth/logout", response_model=ApiResponse)
 def logout(
     request: Request = None,  # type: ignore[assignment]
-    token: str = Depends(get_bearer_token),
-    db: Session = Depends(get_db_session),
+    token: str = GET_BEARER_TOKEN_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     token_service = TokenService(db)
     user = token_service.get_current_staff_user(token)
@@ -765,15 +796,17 @@ def logout(
 
 @router.get("/auth/mfa/status", response_model=ApiResponse)
 def get_mfa_status(
-    token: str = Depends(get_bearer_token),
-    db: Session = Depends(get_db_session),
+    token: str = GET_BEARER_TOKEN_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     user = TokenService(db).get_current_staff_user(token)
     return ApiResponse(
         data={
             "mfa_enabled": bool(getattr(user, "mfa_enabled", False)),
             "totp_configured": bool(getattr(user, "mfa_totp_secret", None)),
-            "enabled_at": user.mfa_enabled_at.isoformat() if getattr(user, "mfa_enabled_at", None) else None,
+            "enabled_at": user.mfa_enabled_at.isoformat()
+            if getattr(user, "mfa_enabled_at", None)
+            else None,
         },
         meta={"mfa_required_by_default": False},
         error=None,
@@ -783,8 +816,8 @@ def get_mfa_status(
 @router.post("/auth/mfa/setup", response_model=ApiResponse)
 def setup_mfa(
     request: Request = None,  # type: ignore[assignment]
-    token: str = Depends(get_bearer_token),
-    db: Session = Depends(get_db_session),
+    token: str = GET_BEARER_TOKEN_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     user = TokenService(db).get_current_staff_user(token)
     secret = MfaService.generate_totp_secret()
@@ -818,8 +851,8 @@ def setup_mfa(
 def enable_mfa(
     payload: MfaVerifyRequest,
     request: Request = None,  # type: ignore[assignment]
-    token: str = Depends(get_bearer_token),
-    db: Session = Depends(get_db_session),
+    token: str = GET_BEARER_TOKEN_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     user = TokenService(db).get_current_staff_user(token)
     if not MfaService.verify_totp(secret=user.mfa_totp_secret, code=payload.code):
@@ -854,13 +887,15 @@ def enable_mfa(
 def disable_mfa(
     payload: MfaDisableRequest,
     request: Request = None,  # type: ignore[assignment]
-    token: str = Depends(get_bearer_token),
-    db: Session = Depends(get_db_session),
+    token: str = GET_BEARER_TOKEN_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     user = TokenService(db).get_current_staff_user(token)
     if not verify_password(payload.current_password, user.password_hash):
         raise UnauthorizedError("Current password is incorrect")
-    if user.mfa_enabled and not MfaService.verify_totp(secret=user.mfa_totp_secret, code=payload.code):
+    if user.mfa_enabled and not MfaService.verify_totp(
+        secret=user.mfa_totp_secret, code=payload.code
+    ):
         raise UnauthorizedError("Valid MFA code is required to disable MFA")
     user.mfa_enabled = False
     user.mfa_totp_secret = None

@@ -5,13 +5,11 @@ from datetime import date
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 
+from app.core.database import Base
+from app.domain.models.organization import TimestampMixin, UUIDPrimaryKeyMixin
 from sqlalchemy import Date, ForeignKey, Index, Numeric, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-
-from app.core.database import Base
-from app.domain.models.organization import TimestampMixin, UUIDPrimaryKeyMixin
-
 
 if TYPE_CHECKING:
     from app.domain.models.billing_invoice import BillingInvoice
@@ -67,19 +65,19 @@ class LedgerEntry(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         nullable=True,
     )
 
-    organization: Mapped["Organization"] = relationship(
+    organization: Mapped[Organization] = relationship(
         back_populates="ledger_entries",
         lazy="selectin",
     )
-    customer_account: Mapped["CustomerAccount | None"] = relationship(
+    customer_account: Mapped[CustomerAccount | None] = relationship(
         back_populates="ledger_entries",
         lazy="selectin",
     )
-    billing_invoice: Mapped["BillingInvoice | None"] = relationship(
+    billing_invoice: Mapped[BillingInvoice | None] = relationship(
         back_populates="ledger_entries",
         lazy="selectin",
     )
-    payment: Mapped["Payment | None"] = relationship(
+    payment: Mapped[Payment | None] = relationship(
         back_populates="ledger_entries",
         lazy="selectin",
     )

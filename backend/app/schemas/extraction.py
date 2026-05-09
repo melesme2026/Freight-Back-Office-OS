@@ -4,9 +4,8 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
-
 from app.domain.enums.document_type import DocumentType
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ApiError(BaseModel):

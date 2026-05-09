@@ -3,12 +3,11 @@ from __future__ import annotations
 import uuid
 from typing import TYPE_CHECKING
 
+from app.core.database import Base
+from app.domain.models.organization import TimestampMixin, UUIDPrimaryKeyMixin
 from sqlalchemy import ForeignKey, Index, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-
-from app.core.database import Base
-from app.domain.models.organization import TimestampMixin, UUIDPrimaryKeyMixin
 
 if TYPE_CHECKING:
     from app.domain.models.load import Load
@@ -48,7 +47,9 @@ class SubmissionEvent(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         nullable=True,
     )
 
-    organization: Mapped["Organization"] = relationship(lazy="selectin")
-    load: Mapped["Load"] = relationship(lazy="selectin")
-    submission_packet: Mapped["SubmissionPacket | None"] = relationship(back_populates="events", lazy="selectin")
-    created_by_staff_user: Mapped["StaffUser | None"] = relationship(lazy="selectin")
+    organization: Mapped[Organization] = relationship(lazy="selectin")
+    load: Mapped[Load] = relationship(lazy="selectin")
+    submission_packet: Mapped[SubmissionPacket | None] = relationship(
+        back_populates="events", lazy="selectin"
+    )
+    created_by_staff_user: Mapped[StaffUser | None] = relationship(lazy="selectin")

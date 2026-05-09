@@ -4,13 +4,17 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, DateTime, Enum as SqlEnum, ForeignKey, Index, String, Text
+from app.core.database import Base
+from app.domain.enums.follow_up_task import (
+    FollowUpTaskPriority,
+    FollowUpTaskStatus,
+    FollowUpTaskType,
+)
+from app.domain.models.organization import TimestampMixin, UUIDPrimaryKeyMixin
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String, Text
+from sqlalchemy import Enum as SqlEnum
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-
-from app.core.database import Base
-from app.domain.enums.follow_up_task import FollowUpTaskPriority, FollowUpTaskStatus, FollowUpTaskType
-from app.domain.models.organization import TimestampMixin, UUIDPrimaryKeyMixin
 
 if TYPE_CHECKING:
     from app.domain.models.load import Load
@@ -33,10 +37,20 @@ class FollowUpTask(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         Index("ix_follow_up_tasks_task_type", "task_type"),
     )
 
-    organization_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False)
-    load_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("loads.id", ondelete="CASCADE"), nullable=False)
-    submission_packet_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("submission_packets.id", ondelete="SET NULL"), nullable=True)
-    payment_record_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("load_payment_records.id", ondelete="SET NULL"), nullable=True)
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False
+    )
+    load_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("loads.id", ondelete="CASCADE"), nullable=False
+    )
+    submission_packet_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("submission_packets.id", ondelete="SET NULL"), nullable=True
+    )
+    payment_record_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("load_payment_records.id", ondelete="SET NULL"),
+        nullable=True,
+    )
 
     task_type: Mapped[FollowUpTaskType] = mapped_column(
         SqlEnum(
@@ -79,11 +93,19 @@ class FollowUpTask(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     due_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     snoozed_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    assigned_to_staff_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("staff_users.id", ondelete="SET NULL"), nullable=True)
-    created_by_system: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default="true")
+    assigned_to_staff_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("staff_users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_by_system: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default="true"
+    )
 
-    organization: Mapped["Organization"] = relationship(back_populates="follow_up_tasks", lazy="selectin")
-    load: Mapped["Load"] = relationship(back_populates="follow_up_tasks", lazy="selectin")
-    submission_packet: Mapped["SubmissionPacket | None"] = relationship(lazy="selectin")
-    payment_record: Mapped["LoadPaymentRecord | None"] = relationship(lazy="selectin")
-    assigned_to_staff_user: Mapped["StaffUser | None"] = relationship(foreign_keys=[assigned_to_staff_user_id], lazy="selectin")
+    organization: Mapped[Organization] = relationship(
+        back_populates="follow_up_tasks", lazy="selectin"
+    )
+    load: Mapped[Load] = relationship(back_populates="follow_up_tasks", lazy="selectin")
+    submission_packet: Mapped[SubmissionPacket | None] = relationship(lazy="selectin")
+    payment_record: Mapped[LoadPaymentRecord | None] = relationship(lazy="selectin")
+    assigned_to_staff_user: Mapped[StaffUser | None] = relationship(
+        foreign_keys=[assigned_to_staff_user_id], lazy="selectin"
+    )

@@ -40,9 +40,17 @@ def test_document_type_aliases_cover_new_packet_supporting_documents(db_session)
     assert service._normalize_document_type("lumper_receipt") == DocumentType.LUMPER_RECEIPT
     assert service._normalize_document_type("detention support") == DocumentType.DETENTION_SUPPORT
     assert service._normalize_document_type("scale_ticket") == DocumentType.SCALE_TICKET
-    assert service._normalize_document_type("accessorial_support") == DocumentType.ACCESSORIAL_SUPPORT
+    assert (
+        service._normalize_document_type("accessorial_support") == DocumentType.ACCESSORIAL_SUPPORT
+    )
     assert service._normalize_document_type("payment_remittance") == DocumentType.PAYMENT_REMITTANCE
-    assert service._normalize_document_type("notice_of_assignment") == DocumentType.NOTICE_OF_ASSIGNMENT
+    assert (
+        service._normalize_document_type("notice_of_assignment")
+        == DocumentType.NOTICE_OF_ASSIGNMENT
+    )
     assert service._normalize_document_type("w9") == DocumentType.W9
-    assert service._normalize_document_type("certificate_of_insurance") == DocumentType.CERTIFICATE_OF_INSURANCE
+    assert (
+        service._normalize_document_type("certificate_of_insurance")
+        == DocumentType.CERTIFICATE_OF_INSURANCE
+    )
     assert service._normalize_document_type("damage_claim_photo") == DocumentType.DAMAGE_CLAIM_PHOTO

@@ -340,7 +340,9 @@ class LLMService:
             ),
             self._text_field(
                 "signature_present",
-                "true" if re.search(r"\bsigned\b|\bsignature\b", text, flags=re.IGNORECASE) else None,
+                "true"
+                if re.search(r"\bsigned\b|\bsignature\b", text, flags=re.IGNORECASE)
+                else None,
                 "0.70",
             ),
         ]

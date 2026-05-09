@@ -4,13 +4,14 @@ from datetime import datetime, timezone
 from decimal import Decimal
 
 import pytest
-
+from app.api.v1.factoring_companies import _authorize_write as _authorize_factoring_company_write
 from app.api.v1.load_payment_reconciliation import _authorize_payment_write
 from app.core.exceptions import ForbiddenError, NotFoundError
+from app.domain.enums.factoring import FactoringReconciliationStatus, FactoringWorkflowStatus
 from app.domain.enums.load_payment_status import LoadPaymentStatus
 from app.services.loads.load_service import LoadService
+from app.services.payments.factoring_company_service import FactoringCompanyService
 from app.services.payments.payment_reconciliation_service import PaymentReconciliationService
-
 
 ORG_ID = "00000000-0000-0000-0000-000000008001"
 OTHER_ORG_ID = "00000000-0000-0000-0000-000000008002"
@@ -60,7 +61,9 @@ def test_advance_paid_sets_advance_paid(db_session) -> None:
     load = _make_load(db_session)
     service = PaymentReconciliationService(db_session)
 
-    record = service.mark_advance_paid(str(load.id), ORG_ID, Decimal("800.00"), datetime.now(timezone.utc), "Acme Factor")
+    record = service.mark_advance_paid(
+        str(load.id), ORG_ID, Decimal("800.00"), datetime.now(timezone.utc), "Acme Factor"
+    )
 
     assert record.payment_status == LoadPaymentStatus.ADVANCE_PAID
 
@@ -79,7 +82,9 @@ def test_reserve_paid_updates_correctly(db_session) -> None:
     service = PaymentReconciliationService(db_session)
     service.mark_reserve_pending(str(load.id), ORG_ID, Decimal("300.00"))
 
-    record = service.mark_reserve_paid(str(load.id), ORG_ID, Decimal("300.00"), datetime.now(timezone.utc))
+    record = service.mark_reserve_paid(
+        str(load.id), ORG_ID, Decimal("300.00"), datetime.now(timezone.utc)
+    )
 
     assert record.reserve_paid_amount == Decimal("300.00")
     assert record.payment_status == LoadPaymentStatus.AWAITING_PAYMENT
@@ -89,7 +94,9 @@ def test_short_paid_calculates_delta(db_session) -> None:
     load = _make_load(db_session)
     service = PaymentReconciliationService(db_session)
 
-    record = service.mark_short_paid(str(load.id), ORG_ID, Decimal("1200.00"), Decimal("1500.00"), "Lumpar fee deduction")
+    record = service.mark_short_paid(
+        str(load.id), ORG_ID, Decimal("1200.00"), Decimal("1500.00"), "Lumpar fee deduction"
+    )
 
     assert record.short_paid_amount == Decimal("300.00")
     assert record.payment_status == LoadPaymentStatus.SHORT_PAID
@@ -116,9 +123,6 @@ def test_cross_org_denied(db_session) -> None:
 
     with pytest.raises(NotFoundError):
         service.get_or_create_for_load(str(load.id), OTHER_ORG_ID)
-
-from app.domain.enums.factoring import FactoringReconciliationStatus, FactoringWorkflowStatus
-from app.services.payments.factoring_company_service import FactoringCompanyService
 
 
 def test_factoring_company_assignment_applies_defaults(db_session) -> None:
@@ -183,8 +187,6 @@ def test_reconciliation_status_validation(db_session) -> None:
     assert record.factoring_status == FactoringWorkflowStatus.RECONCILED
     with pytest.raises(ValueError):
         service.set_reconciliation_status(str(load.id), ORG_ID, "closed")
-
-from app.api.v1.factoring_companies import _authorize_write as _authorize_factoring_company_write
 
 
 def test_driver_cannot_modify_factoring_companies() -> None:
