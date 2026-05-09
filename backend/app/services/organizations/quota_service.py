@@ -4,12 +4,10 @@ import uuid
 from dataclasses import dataclass
 from typing import Any
 
-from sqlalchemy import func, select
-from sqlalchemy.orm import Session
-
 from app.domain.models.load_document import LoadDocument
 from app.domain.models.staff_user import StaffUser
-
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session
 
 DEFAULT_QUOTAS: dict[str, int] = {
     "storage_bytes": 5 * 1024 * 1024 * 1024,
@@ -64,9 +62,9 @@ class OrganizationQuotaService:
         org_uuid = uuid.UUID(str(organization_id))
         return int(
             self.db.scalar(
-                select(func.count()).select_from(LoadDocument).where(
-                    LoadDocument.organization_id == org_uuid
-                )
+                select(func.count())
+                .select_from(LoadDocument)
+                .where(LoadDocument.organization_id == org_uuid)
             )
             or 0
         )
@@ -75,7 +73,9 @@ class OrganizationQuotaService:
         org_uuid = uuid.UUID(str(organization_id))
         return int(
             self.db.scalar(
-                select(func.count()).select_from(StaffUser).where(
+                select(func.count())
+                .select_from(StaffUser)
+                .where(
                     StaffUser.organization_id == org_uuid,
                     StaffUser.removed_at.is_(None),
                 )
@@ -95,10 +95,17 @@ class OrganizationQuotaService:
         document_usage = self.document_count(organization_id) + 1
         document_limit = self.quotas["document_count"]
         over_limit = storage_usage > storage_limit or document_usage > document_limit
-        warning = over_limit or storage_usage >= int(storage_limit * WARNING_THRESHOLD) or document_usage >= int(document_limit * WARNING_THRESHOLD)
+        warning = (
+            over_limit
+            or storage_usage >= int(storage_limit * WARNING_THRESHOLD)
+            or document_usage >= int(document_limit * WARNING_THRESHOLD)
+        )
         reason = None
         if over_limit:
-            reason = "Organization is over the default document/storage quota. Upload is allowed unless enforcement is enabled."
+            reason = (
+                "Organization is over the default document/storage quota. "
+                "Upload is allowed unless enforcement is enabled."
+            )
         elif warning:
             reason = "Organization is approaching the default document/storage quota."
         return QuotaDecision(
@@ -123,7 +130,9 @@ class OrganizationQuotaService:
         return QuotaDecision(
             allowed=(not over_limit or not enforce),
             warning=warning or over_limit,
-            reason="Export row count exceeds the operational safety limit." if over_limit else ("Export is approaching the operational safety limit." if warning else None),
+            reason="Export row count exceeds the operational safety limit."
+            if over_limit
+            else ("Export is approaching the operational safety limit." if warning else None),
             usage=estimated_rows,
             limit=max_rows,
         )

@@ -3,12 +3,11 @@ from __future__ import annotations
 import uuid
 from typing import TYPE_CHECKING
 
+from app.core.database import Base
+from app.domain.models.organization import UUIDPrimaryKeyMixin
 from sqlalchemy import ForeignKey, Index, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-
-from app.core.database import Base
-from app.domain.models.organization import UUIDPrimaryKeyMixin
 
 if TYPE_CHECKING:
     from app.domain.models.load_document import LoadDocument
@@ -35,5 +34,7 @@ class SubmissionPacketDocument(UUIDPrimaryKeyMixin, Base):
     document_type: Mapped[str] = mapped_column(String(100), nullable=False)
     filename_snapshot: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
-    submission_packet: Mapped["SubmissionPacket"] = relationship(back_populates="documents", lazy="selectin")
-    document: Mapped["LoadDocument"] = relationship(lazy="selectin")
+    submission_packet: Mapped[SubmissionPacket] = relationship(
+        back_populates="documents", lazy="selectin"
+    )
+    document: Mapped[LoadDocument] = relationship(lazy="selectin")

@@ -4,15 +4,14 @@ import asyncio
 from io import BytesIO
 
 import pytest
-from fastapi import HTTPException
-from starlette.datastructures import UploadFile
-
 from app.api.v1.documents import upload_document, upload_driver_document
 from app.domain.models.customer_account import CustomerAccount
 from app.domain.models.driver import Driver
 from app.domain.models.organization import Organization
 from app.services.documents.document_service import DocumentService
 from app.services.loads.load_service import LoadService
+from fastapi import HTTPException
+from starlette.datastructures import UploadFile
 
 
 def _seed_base(db_session):
@@ -20,8 +19,26 @@ def _seed_base(db_session):
     customer_id = "00000000-0000-0000-0000-000000077011"
     driver_id = "00000000-0000-0000-0000-000000077021"
     db_session.add(Organization(id=org_id, name="Dup Org", slug="dup-org"))
-    db_session.add(CustomerAccount(id=customer_id, organization_id=org_id, account_name="Dup Customer", account_code="DUP", status="active"))
-    db_session.add(Driver(id=driver_id, organization_id=org_id, customer_account_id=customer_id, full_name="Dup Driver", phone="5557700", email=None, is_active=True))
+    db_session.add(
+        CustomerAccount(
+            id=customer_id,
+            organization_id=org_id,
+            account_name="Dup Customer",
+            account_code="DUP",
+            status="active",
+        )
+    )
+    db_session.add(
+        Driver(
+            id=driver_id,
+            organization_id=org_id,
+            customer_account_id=customer_id,
+            full_name="Dup Driver",
+            phone="5557700",
+            email=None,
+            is_active=True,
+        )
+    )
     db_session.flush()
     load = LoadService(db_session).create_load(
         organization_id=org_id,
@@ -40,10 +57,18 @@ def test_owner_duplicate_required_doc_returns_409_contract(db_session):
     async def _upload(replace: str | None = None):
         return await upload_document(
             organization_id=org_id,
-            token_payload={"organization_id": org_id, "role": "owner", "sub": "00000000-0000-0000-0000-000000009999"},
+            token_payload={
+                "organization_id": org_id,
+                "role": "owner",
+                "sub": "00000000-0000-0000-0000-000000009999",
+            },
             customer_account_id=customer_id,
             source_channel="manual",
-            file=UploadFile(filename="pod.pdf", file=BytesIO(b"pod-one"), headers={"content-type": "application/pdf"}),
+            file=UploadFile(
+                filename="pod.pdf",
+                file=BytesIO(b"pod-one"),
+                headers={"content-type": "application/pdf"},
+            ),
             driver_id=driver_id,
             load_id=load_id,
             document_type="proof_of_delivery",
@@ -68,34 +93,54 @@ def test_owner_duplicate_required_doc_returns_409_contract(db_session):
 def test_owner_replace_keeps_single_required_document(db_session):
     org_id, customer_id, driver_id, load_id = _seed_base(db_session)
 
-    asyncio.run(upload_document(
-        organization_id=org_id,
-        token_payload={"organization_id": org_id, "role": "owner", "sub": "00000000-0000-0000-0000-000000009999"},
-        customer_account_id=customer_id,
-        source_channel="manual",
-        file=UploadFile(filename="pod.pdf", file=BytesIO(b"pod-one"), headers={"content-type": "application/pdf"}),
-        driver_id=driver_id,
-        load_id=load_id,
-        document_type="proof_of_delivery",
-        uploaded_by_staff_user_id=None,
-        page_count=None,
-        replace=None,
-        db=db_session,
-    ))
-    asyncio.run(upload_document(
-        organization_id=org_id,
-        token_payload={"organization_id": org_id, "role": "owner", "sub": "00000000-0000-0000-0000-000000009999"},
-        customer_account_id=customer_id,
-        source_channel="manual",
-        file=UploadFile(filename="pod-2.pdf", file=BytesIO(b"pod-two"), headers={"content-type": "application/pdf"}),
-        driver_id=driver_id,
-        load_id=load_id,
-        document_type="proof_of_delivery",
-        uploaded_by_staff_user_id=None,
-        page_count=None,
-        replace="true",
-        db=db_session,
-    ))
+    asyncio.run(
+        upload_document(
+            organization_id=org_id,
+            token_payload={
+                "organization_id": org_id,
+                "role": "owner",
+                "sub": "00000000-0000-0000-0000-000000009999",
+            },
+            customer_account_id=customer_id,
+            source_channel="manual",
+            file=UploadFile(
+                filename="pod.pdf",
+                file=BytesIO(b"pod-one"),
+                headers={"content-type": "application/pdf"},
+            ),
+            driver_id=driver_id,
+            load_id=load_id,
+            document_type="proof_of_delivery",
+            uploaded_by_staff_user_id=None,
+            page_count=None,
+            replace=None,
+            db=db_session,
+        )
+    )
+    asyncio.run(
+        upload_document(
+            organization_id=org_id,
+            token_payload={
+                "organization_id": org_id,
+                "role": "owner",
+                "sub": "00000000-0000-0000-0000-000000009999",
+            },
+            customer_account_id=customer_id,
+            source_channel="manual",
+            file=UploadFile(
+                filename="pod-2.pdf",
+                file=BytesIO(b"pod-two"),
+                headers={"content-type": "application/pdf"},
+            ),
+            driver_id=driver_id,
+            load_id=load_id,
+            document_type="proof_of_delivery",
+            uploaded_by_staff_user_id=None,
+            page_count=None,
+            replace="true",
+            db=db_session,
+        )
+    )
 
     docs, _ = DocumentService(db_session).list_documents(
         organization_id=org_id,
@@ -109,39 +154,62 @@ def test_owner_replace_keeps_single_required_document(db_session):
 
 def test_driver_duplicate_and_replace_flow(db_session):
     org_id, _, driver_id, load_id = _seed_base(db_session)
-    payload = {"organization_id": org_id, "role": "driver", "driver_id": driver_id, "sub": driver_id}
+    payload = {
+        "organization_id": org_id,
+        "role": "driver",
+        "driver_id": driver_id,
+        "sub": driver_id,
+    }
 
-    asyncio.run(upload_driver_document(
-        organization_id=org_id,
-        token_payload=payload,
-        file=UploadFile(filename="pod.pdf", file=BytesIO(b"pod-one"), headers={"content-type": "application/pdf"}),
-        document_type="proof_of_delivery",
-        load_id=load_id,
-        replace=None,
-        db=db_session,
-    ))
-
-    with pytest.raises(HTTPException) as exc:
-        asyncio.run(upload_driver_document(
+    asyncio.run(
+        upload_driver_document(
             organization_id=org_id,
             token_payload=payload,
-            file=UploadFile(filename="pod.pdf", file=BytesIO(b"pod-two"), headers={"content-type": "application/pdf"}),
+            file=UploadFile(
+                filename="pod.pdf",
+                file=BytesIO(b"pod-one"),
+                headers={"content-type": "application/pdf"},
+            ),
             document_type="proof_of_delivery",
             load_id=load_id,
             replace=None,
             db=db_session,
-        ))
+        )
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        asyncio.run(
+            upload_driver_document(
+                organization_id=org_id,
+                token_payload=payload,
+                file=UploadFile(
+                    filename="pod.pdf",
+                    file=BytesIO(b"pod-two"),
+                    headers={"content-type": "application/pdf"},
+                ),
+                document_type="proof_of_delivery",
+                load_id=load_id,
+                replace=None,
+                db=db_session,
+            )
+        )
     assert exc.value.status_code == 409
 
-    replaced = asyncio.run(upload_driver_document(
-        organization_id=org_id,
-        token_payload=payload,
-        file=UploadFile(filename="pod3.pdf", file=BytesIO(b"pod-three"), headers={"content-type": "application/pdf"}),
-        document_type="proof_of_delivery",
-        load_id=load_id,
-        replace="true",
-        db=db_session,
-    ))
+    replaced = asyncio.run(
+        upload_driver_document(
+            organization_id=org_id,
+            token_payload=payload,
+            file=UploadFile(
+                filename="pod3.pdf",
+                file=BytesIO(b"pod-three"),
+                headers={"content-type": "application/pdf"},
+            ),
+            document_type="proof_of_delivery",
+            load_id=load_id,
+            replace="true",
+            db=db_session,
+        )
+    )
     assert replaced.meta["driver_upload"] is True
 
 

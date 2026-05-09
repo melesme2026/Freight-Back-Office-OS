@@ -4,13 +4,12 @@ from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
-from sqlalchemy.orm import Session
-
 from app.core.exceptions import BillingError, NotFoundError, ValidationError
 from app.domain.enums.invoice_status import InvoiceStatus
 from app.domain.models.billing_invoice import BillingInvoice
 from app.domain.models.billing_invoice_line import BillingInvoiceLine
 from app.repositories.billing_invoice_repo import BillingInvoiceRepository
+from sqlalchemy.orm import Session
 
 
 class InvoiceService:
@@ -83,7 +82,9 @@ class InvoiceService:
                     details={"line_index": index},
                 )
 
-            line_type = self._require_text(line.get("line_type"), field_name=f"lines[{index}].line_type")
+            line_type = self._require_text(
+                line.get("line_type"), field_name=f"lines[{index}].line_type"
+            )
             description = self._require_text(
                 line.get("description"),
                 field_name=f"lines[{index}].description",
@@ -176,7 +177,9 @@ class InvoiceService:
             subscription_id=self._clean_text(subscription_id),
             driver_id=self._clean_text(driver_id),
             status=self._normalize_status(status, allow_none=True),
-            due_before=self._normalize_datetime(due_before, field_name="due_before", allow_none=True),
+            due_before=self._normalize_datetime(
+                due_before, field_name="due_before", allow_none=True
+            ),
             page=page,
             page_size=page_size,
         )
@@ -215,7 +218,13 @@ class InvoiceService:
                     field,
                     self._normalize_date(value, field_name=field, allow_none=True),
                 )
-            elif field in {"subtotal_amount", "tax_amount", "total_amount", "amount_paid", "amount_due"}:
+            elif field in {
+                "subtotal_amount",
+                "tax_amount",
+                "total_amount",
+                "amount_paid",
+                "amount_due",
+            }:
                 if value is None:
                     continue
                 setattr(invoice, field, self._normalize_decimal(value, field_name=field))
@@ -235,7 +244,9 @@ class InvoiceService:
     ) -> BillingInvoice:
         invoice = self.get_invoice(invoice_id)
 
-        payment_amount = self._normalize_decimal(amount, field_name="amount").quantize(Decimal("0.01"))
+        payment_amount = self._normalize_decimal(amount, field_name="amount").quantize(
+            Decimal("0.01")
+        )
         if payment_amount <= Decimal("0.00"):
             raise BillingError(
                 "Payment amount must be greater than 0",
@@ -253,11 +264,14 @@ class InvoiceService:
                 },
             )
 
-        normalized_paid_at = self._normalize_datetime(
-            paid_at,
-            field_name="paid_at",
-            allow_none=True,
-        ) or datetime.utcnow()
+        normalized_paid_at = (
+            self._normalize_datetime(
+                paid_at,
+                field_name="paid_at",
+                allow_none=True,
+            )
+            or datetime.utcnow()
+        )
 
         invoice.amount_paid = (Decimal(str(invoice.amount_paid)) + payment_amount).quantize(
             Decimal("0.01")

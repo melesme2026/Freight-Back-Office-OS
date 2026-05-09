@@ -3,10 +3,9 @@ from __future__ import annotations
 import uuid
 from datetime import date
 
+from app.domain.models.usage_record import UsageRecord
 from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session
-
-from app.domain.models.usage_record import UsageRecord
 
 
 class UsageRecordRepository:
@@ -65,9 +64,7 @@ class UsageRecordRepository:
 
         if customer_account_id is not None:
             stmt = stmt.where(UsageRecord.customer_account_id == customer_account_id)
-            count_stmt = count_stmt.where(
-                UsageRecord.customer_account_id == customer_account_id
-            )
+            count_stmt = count_stmt.where(UsageRecord.customer_account_id == customer_account_id)
 
         if subscription_id is not None:
             stmt = stmt.where(UsageRecord.subscription_id == subscription_id)

@@ -11,10 +11,9 @@ from app.domain.models.driver import Driver
 from app.domain.models.load import Load
 from app.domain.models.load_document import LoadDocument
 from app.domain.models.load_payment_record import LoadPaymentRecord
-from sqlalchemy.orm import Session
-
 from app.services.notifications.email_service import EmailService
 from app.services.notifications.notification_service import NotificationService
+from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +42,10 @@ class OperationalNotificationService:
                 "A document was uploaded in Freight Back Office OS.",
                 f"Document: {document_label}",
                 f"Load: {load_label}",
-                f"Driver: {getattr(driver or document.driver, 'full_name', None) or 'Not assigned'}",
+                (
+                    "Driver: "
+                    f"{getattr(driver or document.driver, 'full_name', None) or 'Not assigned'}"
+                ),
                 f"Filename: {document.original_filename or 'Not provided'}",
             ]
         )
@@ -173,6 +175,7 @@ class OperationalNotificationService:
         )
 
     def invoice_submitted(self, *, load: Load) -> None:
+        broker_name = getattr(load.broker, "name", None) or load.broker_name_raw or "Not provided"
         self._create_and_deliver(
             organization_id=str(load.organization_id),
             event_type="invoice_submitted",
@@ -183,7 +186,7 @@ class OperationalNotificationService:
                     "A load invoice was marked submitted.",
                     f"Load: {self._load_label(load)}",
                     f"Invoice: {load.invoice_number or 'Not provided'}",
-                    f"Broker: {getattr(load.broker, 'name', None) or load.broker_name_raw or 'Not provided'}",
+                    f"Broker: {broker_name}",
                 ]
             ),
             customer_account_id=self._str(load.customer_account_id),

@@ -17,19 +17,25 @@ class DummyLoad:
 def test_state_machine_allows_valid_transition() -> None:
     machine = LoadStateMachine()
 
-    assert machine.can_transition(
-        current_status=LoadStatus.BOOKED,
-        new_status=LoadStatus.IN_TRANSIT,
-    ) is True
+    assert (
+        machine.can_transition(
+            current_status=LoadStatus.BOOKED,
+            new_status=LoadStatus.IN_TRANSIT,
+        )
+        is True
+    )
 
 
 def test_state_machine_blocks_invalid_transition() -> None:
     machine = LoadStateMachine()
 
-    assert machine.can_transition(
-        current_status=LoadStatus.BOOKED,
-        new_status=LoadStatus.FULLY_PAID,
-    ) is False
+    assert (
+        machine.can_transition(
+            current_status=LoadStatus.BOOKED,
+            new_status=LoadStatus.FULLY_PAID,
+        )
+        is False
+    )
 
 
 def test_transition_applier_sets_submitted_timestamp() -> None:

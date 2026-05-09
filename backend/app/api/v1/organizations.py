@@ -4,10 +4,6 @@ import uuid
 from datetime import date, datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends
-from pydantic import BaseModel, ConfigDict
-from sqlalchemy.orm import Session
-
 from app.core.dependencies import get_db_session
 from app.core.exceptions import NotFoundError, UnauthorizedError, ValidationError
 from app.core.security import get_current_token_payload
@@ -15,7 +11,12 @@ from app.domain.models.organization import Organization
 from app.repositories.organization_repo import OrganizationRepository
 from app.schemas.common import ApiResponse
 from app.services.audit.audit_service import AuditService
+from fastapi import APIRouter, Depends
+from pydantic import BaseModel, ConfigDict
+from sqlalchemy.orm import Session
 
+GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY = Depends(get_current_token_payload)
+GET_DB_SESSION_DEPENDENCY = Depends(get_db_session)
 
 router = APIRouter()
 
@@ -59,7 +60,18 @@ class OrganizationUpdateRequest(BaseModel):
 
 
 ALLOWED_BILLING_PROVIDERS = {"stripe", "manual", "none"}
-ALLOWED_BILLING_STATUSES = {"trial", "trialing", "active", "manual_active", "inactive", "past_due", "unpaid", "canceled", "incomplete", "none"}
+ALLOWED_BILLING_STATUSES = {
+    "trial",
+    "trialing",
+    "active",
+    "manual_active",
+    "inactive",
+    "past_due",
+    "unpaid",
+    "canceled",
+    "incomplete",
+    "none",
+}
 ALLOWED_PLAN_CODES = {"starter", "growth", "fleet", "enterprise", "none"}
 
 
@@ -199,7 +211,7 @@ def _assert_token_org_access(
 @router.post("/organizations", response_model=ApiResponse)
 def create_organization(
     payload: OrganizationCreateRequest,
-    db: Session = Depends(get_db_session),
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     repo = OrganizationRepository(db)
 
@@ -227,7 +239,9 @@ def create_organization(
         billing_status=_normalize_billing_status(payload.billing_status) or "trial",
         plan_code=normalized_plan_code,
         plan_key=normalized_plan_code,
-        subscription_status="trialing" if (_normalize_billing_status(payload.billing_status) or "trial") in {"trial", "trialing"} else (_normalize_billing_status(payload.billing_status) or "none"),
+        subscription_status="trialing"
+        if (_normalize_billing_status(payload.billing_status) or "trial") in {"trial", "trialing"}
+        else (_normalize_billing_status(payload.billing_status) or "none"),
         stripe_customer_id=_normalize_optional_text(payload.stripe_customer_id),
         stripe_subscription_id=_normalize_optional_text(payload.stripe_subscription_id),
         billing_notes=_normalize_optional_text(payload.billing_notes),
@@ -243,8 +257,8 @@ def create_organization(
 
 @router.get("/organizations", response_model=ApiResponse)
 def list_organizations(
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     repo = OrganizationRepository(db)
     token_org_id = str(token_payload.get("organization_id") or "").strip()
@@ -263,8 +277,8 @@ def list_organizations(
 @router.get("/organizations/{organization_id}", response_model=ApiResponse)
 def get_organization(
     organization_id: uuid.UUID,
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     _assert_token_org_access(token_payload=token_payload, organization_id=organization_id)
     repo = OrganizationRepository(db)
@@ -281,8 +295,8 @@ def get_organization(
 def update_organization(
     organization_id: uuid.UUID,
     payload: OrganizationUpdateRequest,
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     _assert_token_org_access(token_payload=token_payload, organization_id=organization_id)
     repo = OrganizationRepository(db)
@@ -330,11 +344,17 @@ def update_organization(
         _assert_billing_admin_role(token_payload)
 
         if payload.billing_provider is not None:
-            org.billing_provider = _normalize_billing_provider(payload.billing_provider) or org.billing_provider
+            org.billing_provider = (
+                _normalize_billing_provider(payload.billing_provider) or org.billing_provider
+            )
 
         if payload.billing_status is not None:
-            org.billing_status = _normalize_billing_status(payload.billing_status) or org.billing_status
-            org.subscription_status = "trialing" if org.billing_status == "trial" else org.billing_status
+            org.billing_status = (
+                _normalize_billing_status(payload.billing_status) or org.billing_status
+            )
+            org.subscription_status = (
+                "trialing" if org.billing_status == "trial" else org.billing_status
+            )
 
         if payload.plan_code is not None:
             org.plan_code = _normalize_plan_code(payload.plan_code) or org.plan_code

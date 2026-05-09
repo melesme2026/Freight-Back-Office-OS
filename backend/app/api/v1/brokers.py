@@ -4,17 +4,18 @@ import uuid
 from datetime import date, datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel, ConfigDict
-from sqlalchemy.orm import Session
-
 from app.core.dependencies import get_db_session
 from app.core.exceptions import ForbiddenError, NotFoundError, UnauthorizedError, ValidationError
 from app.core.security import get_current_token_payload
 from app.domain.models.broker import Broker
 from app.repositories.broker_repo import BrokerRepository
 from app.schemas.common import ApiResponse
+from fastapi import APIRouter, Depends, Query
+from pydantic import BaseModel, ConfigDict
+from sqlalchemy.orm import Session
 
+GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY = Depends(get_current_token_payload)
+GET_DB_SESSION_DEPENDENCY = Depends(get_db_session)
 
 router = APIRouter()
 
@@ -129,8 +130,8 @@ def _assert_staff_dashboard_role(token_payload: dict[str, Any]) -> None:
 @router.post("/brokers", response_model=ApiResponse)
 def create_broker(
     payload: BrokerCreateRequest,
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     effective_org_id = _resolve_effective_org_id(
         organization_id=payload.organization_id,
@@ -166,8 +167,8 @@ def list_brokers(
     search: str | None = None,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=25, ge=1, le=200),
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     effective_org_id = _resolve_effective_org_id(
         organization_id=organization_id,
@@ -197,8 +198,8 @@ def list_brokers(
 @router.get("/brokers/{broker_id}", response_model=ApiResponse)
 def get_broker(
     broker_id: uuid.UUID,
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     token_org_id = uuid.UUID(str(token_payload.get("organization_id")))
     repo = BrokerRepository(db)
@@ -215,8 +216,8 @@ def get_broker(
 def update_broker(
     broker_id: uuid.UUID,
     payload: BrokerUpdateRequest,
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     token_org_id = uuid.UUID(str(token_payload.get("organization_id")))
     repo = BrokerRepository(db)

@@ -2,15 +2,16 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, Request
-from sqlalchemy.orm import Session
-
 from app.core.config import Settings, get_settings
 from app.core.dependencies import get_db_session
 from app.core.exceptions import ValidationError
 from app.schemas.common import ApiResponse
 from app.services.ingestion.api_ingestion_service import ApiIngestionService
+from fastapi import APIRouter, Depends, Request
+from sqlalchemy.orm import Session
 
+GET_DB_SESSION_DEPENDENCY = Depends(get_db_session)
+GET_SETTINGS_DEPENDENCY = Depends(get_settings)
 
 router = APIRouter()
 
@@ -41,8 +42,8 @@ def _ensure_payment_webhooks_enabled(settings: Settings) -> None:
 @router.post("/webhooks/payment", response_model=ApiResponse)
 async def payment_webhook(
     request: Request,
-    db: Session = Depends(get_db_session),
-    settings: Settings = Depends(get_settings),
+    db: Session = GET_DB_SESSION_DEPENDENCY,
+    settings: Settings = GET_SETTINGS_DEPENDENCY,
 ) -> ApiResponse:
     _ensure_payment_webhooks_enabled(settings)
 

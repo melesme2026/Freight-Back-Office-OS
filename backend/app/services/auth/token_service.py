@@ -3,12 +3,11 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
-from sqlalchemy.orm import Session
-
 from app.core.exceptions import UnauthorizedError
 from app.core.security import decode_token
 from app.domain.models.staff_user import StaffUser
 from app.repositories.staff_user_repo import StaffUserRepository
+from sqlalchemy.orm import Session
 
 
 class TokenService:

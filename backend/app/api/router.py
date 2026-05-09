@@ -1,15 +1,13 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
-
 from app.api.v1.accounting import router as accounting_router
 from app.api.v1.activity import router as activity_router
 from app.api.v1.auth import router as auth_router
 from app.api.v1.billing import router as billing_router
 from app.api.v1.billing_dashboard import router as billing_dashboard_router
 from app.api.v1.billing_invoices import router as billing_invoices_router
-from app.api.v1.carrier_profile import router as carrier_profile_router
 from app.api.v1.brokers import router as brokers_router
+from app.api.v1.carrier_profile import router as carrier_profile_router
 from app.api.v1.customer_accounts import router as customer_accounts_router
 from app.api.v1.dashboard import router as dashboard_router
 from app.api.v1.demo_requests import router as demo_requests_router
@@ -19,8 +17,8 @@ from app.api.v1.factoring_companies import router as factoring_companies_router
 from app.api.v1.factoring_dashboard import router as factoring_dashboard_router
 from app.api.v1.follow_ups import router as follow_ups_router
 from app.api.v1.health import router as health_router
-from app.api.v1.loads import router as loads_router
 from app.api.v1.load_payment_reconciliation import router as load_payment_reconciliation_router
+from app.api.v1.loads import router as loads_router
 from app.api.v1.notifications import router as notifications_router
 from app.api.v1.onboarding import router as onboarding_router
 from app.api.v1.operations import router as operations_router
@@ -28,8 +26,8 @@ from app.api.v1.organizations import router as organizations_router
 from app.api.v1.payments import router as payments_router
 from app.api.v1.portal import router as portal_router
 from app.api.v1.referrals import router as referrals_router
-from app.api.v1.review_queue import router as review_queue_router
 from app.api.v1.reports import router as reports_router
+from app.api.v1.review_queue import router as review_queue_router
 from app.api.v1.service_plans import router as service_plans_router
 from app.api.v1.staff_users import router as staff_users_router
 from app.api.v1.subscriptions import router as subscriptions_router
@@ -39,9 +37,12 @@ from app.api.v1.webhooks_payment import router as webhooks_payment_router
 from app.api.v1.webhooks_whatsapp import router as webhooks_whatsapp_router
 from app.core.config import get_settings
 from app.core.security import get_current_token_payload
-
+from fastapi import APIRouter, Depends
 
 settings = get_settings()
+
+
+GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY = Depends(get_current_token_payload)
 
 api_router = APIRouter(prefix=settings.api_v1_prefix)
 
@@ -51,40 +52,76 @@ api_router.include_router(auth_router, tags=["auth"])
 api_router.include_router(portal_router, tags=["portal"])
 api_router.include_router(demo_requests_router, tags=["demo-requests"])
 
-protected_dependencies = [Depends(get_current_token_payload)]
+protected_dependencies = [GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY]
 
 # Tenant / account setup
-api_router.include_router(organizations_router, tags=["organizations"], dependencies=protected_dependencies)
-api_router.include_router(customer_accounts_router, tags=["customer-accounts"], dependencies=protected_dependencies)
-api_router.include_router(onboarding_router, tags=["onboarding"], dependencies=protected_dependencies)
+api_router.include_router(
+    organizations_router, tags=["organizations"], dependencies=protected_dependencies
+)
+api_router.include_router(
+    customer_accounts_router, tags=["customer-accounts"], dependencies=protected_dependencies
+)
+api_router.include_router(
+    onboarding_router, tags=["onboarding"], dependencies=protected_dependencies
+)
 api_router.include_router(referrals_router, tags=["referrals"], dependencies=protected_dependencies)
-api_router.include_router(staff_users_router, tags=["staff-users"], dependencies=protected_dependencies)
+api_router.include_router(
+    staff_users_router, tags=["staff-users"], dependencies=protected_dependencies
+)
 
 # Operational entities
 api_router.include_router(drivers_router, tags=["drivers"], dependencies=protected_dependencies)
 api_router.include_router(brokers_router, tags=["brokers"], dependencies=protected_dependencies)
-api_router.include_router(carrier_profile_router, tags=["carrier-profile"], dependencies=protected_dependencies)
+api_router.include_router(
+    carrier_profile_router, tags=["carrier-profile"], dependencies=protected_dependencies
+)
 api_router.include_router(loads_router, tags=["loads"], dependencies=protected_dependencies)
-api_router.include_router(load_payment_reconciliation_router, tags=["load-payment-reconciliation"], dependencies=protected_dependencies)
-api_router.include_router(factoring_companies_router, tags=["factoring-companies"], dependencies=protected_dependencies)
-api_router.include_router(factoring_dashboard_router, tags=["factoring-dashboard"], dependencies=protected_dependencies)
-api_router.include_router(follow_ups_router, tags=["follow-ups"], dependencies=protected_dependencies)
+api_router.include_router(
+    load_payment_reconciliation_router,
+    tags=["load-payment-reconciliation"],
+    dependencies=protected_dependencies,
+)
+api_router.include_router(
+    factoring_companies_router, tags=["factoring-companies"], dependencies=protected_dependencies
+)
+api_router.include_router(
+    factoring_dashboard_router, tags=["factoring-dashboard"], dependencies=protected_dependencies
+)
+api_router.include_router(
+    follow_ups_router, tags=["follow-ups"], dependencies=protected_dependencies
+)
 api_router.include_router(documents_router, tags=["documents"], dependencies=protected_dependencies)
-api_router.include_router(review_queue_router, tags=["review-queue"], dependencies=protected_dependencies)
-api_router.include_router(notifications_router, tags=["notifications"], dependencies=protected_dependencies)
+api_router.include_router(
+    review_queue_router, tags=["review-queue"], dependencies=protected_dependencies
+)
+api_router.include_router(
+    notifications_router, tags=["notifications"], dependencies=protected_dependencies
+)
 api_router.include_router(support_router, tags=["support"], dependencies=protected_dependencies)
-api_router.include_router(operations_router, tags=["operations"], dependencies=protected_dependencies)
+api_router.include_router(
+    operations_router, tags=["operations"], dependencies=protected_dependencies
+)
 
 # Product / billing
 api_router.include_router(billing_router, tags=["billing"])
-api_router.include_router(service_plans_router, tags=["service-plans"], dependencies=protected_dependencies)
-api_router.include_router(subscriptions_router, tags=["subscriptions"], dependencies=protected_dependencies)
-api_router.include_router(billing_invoices_router, tags=["billing-invoices"], dependencies=protected_dependencies)
+api_router.include_router(
+    service_plans_router, tags=["service-plans"], dependencies=protected_dependencies
+)
+api_router.include_router(
+    subscriptions_router, tags=["subscriptions"], dependencies=protected_dependencies
+)
+api_router.include_router(
+    billing_invoices_router, tags=["billing-invoices"], dependencies=protected_dependencies
+)
 api_router.include_router(payments_router, tags=["payments"], dependencies=protected_dependencies)
-api_router.include_router(billing_dashboard_router, tags=["billing-dashboard"], dependencies=protected_dependencies)
+api_router.include_router(
+    billing_dashboard_router, tags=["billing-dashboard"], dependencies=protected_dependencies
+)
 
 # Accounting interoperability
-api_router.include_router(accounting_router, tags=["accounting"], dependencies=protected_dependencies)
+api_router.include_router(
+    accounting_router, tags=["accounting"], dependencies=protected_dependencies
+)
 
 # Dashboards
 api_router.include_router(activity_router, tags=["activity"], dependencies=protected_dependencies)

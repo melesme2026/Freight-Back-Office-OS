@@ -5,16 +5,16 @@ from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
-from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel, ConfigDict
-from sqlalchemy.orm import Session
-
 from app.core.dependencies import get_db_session
 from app.core.exceptions import NotFoundError, ValidationError
 from app.domain.models.service_plan import ServicePlan
 from app.repositories.service_plan_repo import ServicePlanRepository
 from app.schemas.common import ApiResponse
+from fastapi import APIRouter, Depends, Query
+from pydantic import BaseModel, ConfigDict
+from sqlalchemy.orm import Session
 
+GET_DB_SESSION_DEPENDENCY = Depends(get_db_session)
 
 router = APIRouter()
 
@@ -160,7 +160,7 @@ def _get_service_plan_or_404(
 @router.post("/service-plans", response_model=ApiResponse)
 def create_service_plan(
     payload: ServicePlanCreateRequest,
-    db: Session = Depends(get_db_session),
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     repo = ServicePlanRepository(db)
 
@@ -215,7 +215,7 @@ def list_service_plans(
     search: str | None = None,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=25, ge=1, le=200),
-    db: Session = Depends(get_db_session),
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     repo = ServicePlanRepository(db)
     items, total = repo.list(
@@ -241,7 +241,7 @@ def list_service_plans(
 @router.get("/service-plans/{service_plan_id}", response_model=ApiResponse)
 def get_service_plan(
     service_plan_id: uuid.UUID,
-    db: Session = Depends(get_db_session),
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     repo = ServicePlanRepository(db)
     item = _get_service_plan_or_404(repo, service_plan_id)
@@ -257,7 +257,7 @@ def get_service_plan(
 def update_service_plan(
     service_plan_id: uuid.UUID,
     payload: ServicePlanUpdateRequest,
-    db: Session = Depends(get_db_session),
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     repo = ServicePlanRepository(db)
     item = _get_service_plan_or_404(repo, service_plan_id)

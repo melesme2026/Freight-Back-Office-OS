@@ -3,10 +3,9 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
-
 from app.domain.enums.audit_actor_type import AuditActorType
 from app.domain.enums.load_status import LoadStatus
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ApiError(BaseModel):

@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-from sqlalchemy.orm import Session
-
 from app.core.exceptions import NotFoundError, ValidationError
 from app.domain.models.referral import Referral
 from app.repositories.referral_repo import ReferralRepository
+from sqlalchemy.orm import Session
 
 
 class ReferralService:

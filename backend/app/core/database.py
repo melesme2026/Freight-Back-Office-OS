@@ -5,11 +5,10 @@ from contextlib import contextmanager
 from functools import lru_cache
 from typing import Any
 
+from app.core.config import get_settings
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
-
-from app.core.config import get_settings
 
 
 class Base(DeclarativeBase):

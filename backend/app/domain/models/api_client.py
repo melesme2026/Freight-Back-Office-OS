@@ -4,13 +4,11 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
+from app.core.database import Base
+from app.domain.models.organization import TimestampMixin, UUIDPrimaryKeyMixin
 from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-
-from app.core.database import Base
-from app.domain.models.organization import TimestampMixin, UUIDPrimaryKeyMixin
-
 
 if TYPE_CHECKING:
     from app.domain.models.organization import Organization
@@ -47,7 +45,7 @@ class ApiClient(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         nullable=True,
     )
 
-    organization: Mapped["Organization"] = relationship(
+    organization: Mapped[Organization] = relationship(
         back_populates="api_clients",
         lazy="selectin",
     )

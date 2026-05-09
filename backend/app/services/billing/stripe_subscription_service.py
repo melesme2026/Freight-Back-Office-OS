@@ -321,9 +321,7 @@ class StripeSubscriptionService:
     def _find_organization_for_object(self, obj: dict[str, Any]) -> Organization | None:
         metadata = obj.get("metadata") if isinstance(obj.get("metadata"), dict) else {}
         org_id = str(
-            metadata.get("organization_id")
-            or obj.get("client_reference_id")
-            or "",
+            metadata.get("organization_id") or obj.get("client_reference_id") or "",
         ).strip()
         if org_id:
             org = self.db.get(Organization, org_id)
@@ -371,12 +369,16 @@ class StripeSubscriptionService:
 
     def _apply_checkout_session(self, obj: dict[str, Any], organization: Organization) -> None:
         metadata = obj.get("metadata") if isinstance(obj.get("metadata"), dict) else {}
-        plan_key = str(
-            metadata.get("plan_key")
-            or organization.plan_key
-            or organization.plan_code
-            or "none",
-        ).strip().lower()
+        plan_key = (
+            str(
+                metadata.get("plan_key")
+                or organization.plan_key
+                or organization.plan_code
+                or "none",
+            )
+            .strip()
+            .lower()
+        )
         subscription_id = str(obj.get("subscription") or "").strip() or None
         customer_id = str(obj.get("customer") or "").strip() or None
         organization.billing_provider = "stripe"
@@ -392,12 +394,16 @@ class StripeSubscriptionService:
 
     def _apply_subscription(self, obj: dict[str, Any], organization: Organization) -> None:
         metadata = obj.get("metadata") if isinstance(obj.get("metadata"), dict) else {}
-        plan_key = str(
-            metadata.get("plan_key")
-            or organization.plan_key
-            or organization.plan_code
-            or "none",
-        ).strip().lower()
+        plan_key = (
+            str(
+                metadata.get("plan_key")
+                or organization.plan_key
+                or organization.plan_code
+                or "none",
+            )
+            .strip()
+            .lower()
+        )
         stripe_status = str(obj.get("status") or "none").strip().lower()
         status = STATUS_MAP.get(stripe_status, "incomplete")
         if obj.get("customer"):

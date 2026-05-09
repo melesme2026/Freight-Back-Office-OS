@@ -4,13 +4,12 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy.orm import Session
-
 from app.core.exceptions import ValidationError
 from app.domain.enums.audit_actor_type import AuditActorType
 from app.domain.enums.load_status import LoadStatus
 from app.domain.models.workflow_event import WorkflowEvent
 from app.repositories.workflow_event_repo import WorkflowEventRepository
+from sqlalchemy.orm import Session
 
 
 class EventPublisher:

@@ -2,13 +2,15 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, Query
-from sqlalchemy.orm import Session
-
 from app.core.dependencies import get_db_session
 from app.core.security import get_current_token_payload
 from app.schemas.common import ApiResponse
 from app.services.audit.activity_service import ActivityService, organization_id_from_token
+from fastapi import APIRouter, Depends, Query
+from sqlalchemy.orm import Session
+
+GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY = Depends(get_current_token_payload)
+GET_DB_SESSION_DEPENDENCY = Depends(get_db_session)
 
 router = APIRouter(prefix="/activity")
 
@@ -19,8 +21,8 @@ def list_activity(
     limit: int = Query(default=25, ge=1, le=100),
     entity_type: str | None = Query(default=None, max_length=100),
     action: str | None = Query(default=None, max_length=100),
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     organization_id = organization_id_from_token(token_payload)
     items, meta = ActivityService(db).list_recent_activity(

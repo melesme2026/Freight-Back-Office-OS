@@ -4,16 +4,17 @@ import uuid
 from datetime import date, datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel, ConfigDict
-from sqlalchemy.orm import Session
-
 from app.core.dependencies import get_db_session
 from app.core.exceptions import ForbiddenError, UnauthorizedError, ValidationError
 from app.core.security import get_current_token_payload
 from app.schemas.common import ApiResponse
 from app.services.onboarding.customer_account_service import CustomerAccountService
+from fastapi import APIRouter, Depends, Query
+from pydantic import BaseModel, ConfigDict
+from sqlalchemy.orm import Session
 
+GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY = Depends(get_current_token_payload)
+GET_DB_SESSION_DEPENDENCY = Depends(get_db_session)
 
 router = APIRouter()
 
@@ -119,8 +120,8 @@ def _assert_staff_dashboard_role(token_payload: dict[str, Any]) -> None:
 @router.post("/customer-accounts", response_model=ApiResponse)
 def create_customer_account(
     payload: CustomerAccountCreateRequest,
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     _assert_staff_dashboard_role(token_payload)
     token_org_id = token_payload.get("organization_id")
@@ -152,12 +153,12 @@ def create_customer_account(
 def list_customer_accounts(
     *,
     organization_id: uuid.UUID | None = None,
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
     status: str | None = None,
     search: str | None = None,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=25, ge=1, le=200),
-    db: Session = Depends(get_db_session),
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     _assert_staff_dashboard_role(token_payload)
     token_org_id = token_payload.get("organization_id")
@@ -188,8 +189,8 @@ def list_customer_accounts(
 @router.get("/customer-accounts/{customer_account_id}", response_model=ApiResponse)
 def get_customer_account(
     customer_account_id: uuid.UUID,
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     service = CustomerAccountService(db)
     item = service.get_customer_account(str(customer_account_id))
@@ -209,8 +210,8 @@ def get_customer_account(
 def update_customer_account(
     customer_account_id: uuid.UUID,
     payload: CustomerAccountUpdateRequest,
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     service = CustomerAccountService(db)
     existing = service.get_customer_account(str(customer_account_id))

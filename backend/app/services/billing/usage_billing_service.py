@@ -3,10 +3,9 @@ from __future__ import annotations
 from datetime import date
 from decimal import Decimal
 
-from sqlalchemy.orm import Session
-
 from app.domain.models.usage_record import UsageRecord
 from app.repositories.usage_record_repo import UsageRecordRepository
+from sqlalchemy.orm import Session
 
 
 class UsageBillingService:

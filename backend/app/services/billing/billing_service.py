@@ -4,14 +4,13 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy.orm import Session
-
 from app.domain.enums.invoice_status import InvoiceStatus
 from app.domain.enums.payment_status import PaymentStatus
 from app.domain.enums.subscription_status import SubscriptionStatus
 from app.repositories.billing_invoice_repo import BillingInvoiceRepository
 from app.repositories.payment_repo import PaymentRepository
 from app.repositories.subscription_repo import SubscriptionRepository
+from sqlalchemy.orm import Session
 
 
 class BillingService:
@@ -44,16 +43,12 @@ class BillingService:
             include_related=True,
         )
 
-        open_invoices_count = sum(
-            1 for invoice in invoices if invoice.status == InvoiceStatus.OPEN
-        )
+        open_invoices_count = sum(1 for invoice in invoices if invoice.status == InvoiceStatus.OPEN)
         past_due_invoices_count = sum(
             1 for invoice in invoices if invoice.status == InvoiceStatus.PAST_DUE
         )
         active_subscriptions_count = sum(
-            1
-            for subscription in subscriptions
-            if subscription.status == SubscriptionStatus.ACTIVE
+            1 for subscription in subscriptions if subscription.status == SubscriptionStatus.ACTIVE
         )
 
         now = datetime.now(timezone.utc)

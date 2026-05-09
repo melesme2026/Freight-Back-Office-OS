@@ -4,17 +4,19 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 import pytest
-
 from app.api.v1.reports import _authorize_reports_read
 from app.core.exceptions import ForbiddenError
-from app.domain.enums.follow_up_task import FollowUpTaskPriority, FollowUpTaskStatus, FollowUpTaskType
+from app.domain.enums.follow_up_task import (
+    FollowUpTaskPriority,
+    FollowUpTaskStatus,
+    FollowUpTaskType,
+)
 from app.domain.enums.load_payment_status import LoadPaymentStatus
 from app.domain.models.follow_up_task import FollowUpTask
 from app.domain.models.submission_packet import SubmissionPacket
 from app.services.loads.load_service import LoadService
 from app.services.payments.payment_reconciliation_service import PaymentReconciliationService
 from app.services.reports.money_dashboard_service import MoneyDashboardService
-
 
 ORG_ID = "00000000-0000-0000-0000-000000008001"
 OTHER_ORG_ID = "00000000-0000-0000-0000-000000008002"
@@ -31,7 +33,18 @@ def _make_load(db_session, *, organization_id: str = ORG_ID, load_number: str = 
     )
 
 
-def _payment(db_session, *, load_id: str, org_id: str, expected: str, received: str, status: LoadPaymentStatus, factoring: bool = False, reserve: str = "0", advance: str = "0"):
+def _payment(
+    db_session,
+    *,
+    load_id: str,
+    org_id: str,
+    expected: str,
+    received: str,
+    status: LoadPaymentStatus,
+    factoring: bool = False,
+    reserve: str = "0",
+    advance: str = "0",
+):
     service = PaymentReconciliationService(db_session)
     record = service.get_or_create_for_load(str(load_id), org_id)
     record.expected_amount = Decimal(expected)
@@ -49,8 +62,22 @@ def test_money_dashboard_summary_and_outstanding(db_session):
     load_paid = _make_load(db_session, load_number="LD-PAID")
     load_unpaid = _make_load(db_session, load_number="LD-UNPAID")
 
-    _payment(db_session, load_id=load_paid.id, org_id=ORG_ID, expected="1000", received="1000", status=LoadPaymentStatus.PAID)
-    _payment(db_session, load_id=load_unpaid.id, org_id=ORG_ID, expected="2000", received="500", status=LoadPaymentStatus.PARTIALLY_PAID)
+    _payment(
+        db_session,
+        load_id=load_paid.id,
+        org_id=ORG_ID,
+        expected="1000",
+        received="1000",
+        status=LoadPaymentStatus.PAID,
+    )
+    _payment(
+        db_session,
+        load_id=load_unpaid.id,
+        org_id=ORG_ID,
+        expected="2000",
+        received="500",
+        status=LoadPaymentStatus.PARTIALLY_PAID,
+    )
 
     data = MoneyDashboardService(db_session).get_money_dashboard(ORG_ID)
 
@@ -63,7 +90,14 @@ def test_money_dashboard_summary_and_outstanding(db_session):
 
 def test_overdue_and_aging_buckets_use_submission_sent_at(db_session):
     load = _make_load(db_session, load_number="LD-OLD")
-    _payment(db_session, load_id=load.id, org_id=ORG_ID, expected="1200", received="0", status=LoadPaymentStatus.AWAITING_PAYMENT)
+    _payment(
+        db_session,
+        load_id=load.id,
+        org_id=ORG_ID,
+        expected="1200",
+        received="0",
+        status=LoadPaymentStatus.AWAITING_PAYMENT,
+    )
 
     packet = SubmissionPacket(
         organization_id=ORG_ID,
@@ -166,8 +200,22 @@ def test_cross_org_data_excluded(db_session):
     load_org = _make_load(db_session, organization_id=ORG_ID, load_number="LD-A")
     load_other = _make_load(db_session, organization_id=OTHER_ORG_ID, load_number="LD-B")
 
-    _payment(db_session, load_id=load_org.id, org_id=ORG_ID, expected="100", received="0", status=LoadPaymentStatus.AWAITING_PAYMENT)
-    _payment(db_session, load_id=load_other.id, org_id=OTHER_ORG_ID, expected="999", received="0", status=LoadPaymentStatus.AWAITING_PAYMENT)
+    _payment(
+        db_session,
+        load_id=load_org.id,
+        org_id=ORG_ID,
+        expected="100",
+        received="0",
+        status=LoadPaymentStatus.AWAITING_PAYMENT,
+    )
+    _payment(
+        db_session,
+        load_id=load_other.id,
+        org_id=OTHER_ORG_ID,
+        expected="999",
+        received="0",
+        status=LoadPaymentStatus.AWAITING_PAYMENT,
+    )
 
     data = MoneyDashboardService(db_session).get_money_dashboard(ORG_ID)
     assert Decimal(str(data["summary"]["total_expected"])) == Decimal("100")

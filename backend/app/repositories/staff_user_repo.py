@@ -2,11 +2,10 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import Select, func, or_, select
-from sqlalchemy.orm import Session, selectinload
-
 from app.domain.enums.role import Role
 from app.domain.models.staff_user import StaffUser
+from sqlalchemy import Select, func, or_, select
+from sqlalchemy.orm import Session, selectinload
 
 
 class StaffUserRepository:
@@ -120,11 +119,7 @@ class StaffUserRepository:
         total = int(self.db.scalar(count_stmt) or 0)
 
         offset = (normalized_page - 1) * normalized_page_size
-        stmt = (
-            stmt.order_by(StaffUser.created_at.desc())
-            .offset(offset)
-            .limit(normalized_page_size)
-        )
+        stmt = stmt.order_by(StaffUser.created_at.desc()).offset(offset).limit(normalized_page_size)
 
         items = list(self.db.scalars(stmt).all())
         return items, total

@@ -3,8 +3,6 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 
-from sqlalchemy.orm import Session
-
 from app.core.exceptions import BillingError, NotFoundError, ValidationError
 from app.domain.enums.payment_provider import PaymentProvider
 from app.domain.enums.payment_status import PaymentStatus
@@ -12,6 +10,7 @@ from app.domain.models.payment import Payment
 from app.repositories.payment_method_repo import PaymentMethodRepository
 from app.repositories.payment_repo import PaymentRepository
 from app.services.billing.invoice_service import InvoiceService
+from sqlalchemy.orm import Session
 
 
 class PaymentService:

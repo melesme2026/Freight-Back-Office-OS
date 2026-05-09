@@ -4,16 +4,14 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, Enum as SqlEnum
-from sqlalchemy import ForeignKey, Index, String, Text
-from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
-
 from app.core.database import Base
 from app.domain.enums.channel import Channel
 from app.domain.enums.notification_status import NotificationStatus
 from app.domain.models.organization import TimestampMixin, UUIDPrimaryKeyMixin
-
+from sqlalchemy import DateTime, ForeignKey, Index, String, Text
+from sqlalchemy import Enum as SqlEnum
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 if TYPE_CHECKING:
     from app.domain.models.customer_account import CustomerAccount
@@ -122,23 +120,23 @@ class Notification(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    organization: Mapped["Organization | None"] = relationship(
+    organization: Mapped[Organization | None] = relationship(
         back_populates="notifications",
         lazy="selectin",
     )
-    customer_account: Mapped["CustomerAccount | None"] = relationship(
+    customer_account: Mapped[CustomerAccount | None] = relationship(
         back_populates="notifications",
         lazy="selectin",
     )
-    driver: Mapped["Driver | None"] = relationship(
+    driver: Mapped[Driver | None] = relationship(
         back_populates="notifications",
         lazy="selectin",
     )
-    load: Mapped["Load | None"] = relationship(
+    load: Mapped[Load | None] = relationship(
         back_populates="notifications",
         lazy="selectin",
     )
-    created_by_staff_user: Mapped["StaffUser | None"] = relationship(
+    created_by_staff_user: Mapped[StaffUser | None] = relationship(
         back_populates="notifications_created",
         lazy="selectin",
     )

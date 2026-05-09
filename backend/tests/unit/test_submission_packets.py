@@ -5,7 +5,6 @@ import zipfile
 from types import SimpleNamespace
 
 import pytest
-
 from app.api.v1.loads import _authorize_submission_download, _authorize_submission_write
 from app.core.exceptions import ForbiddenError, NotFoundError, ValidationError
 from app.domain.enums.document_type import DocumentType
@@ -45,7 +44,9 @@ def _seed_load_with_docs(db_session, *, organization_id: str, include_invoice: b
 
 
 def test_create_packet_fails_when_required_documents_missing(db_session) -> None:
-    load = _seed_load_with_docs(db_session, organization_id="00000000-0000-0000-0000-000000009901", include_invoice=False)
+    load = _seed_load_with_docs(
+        db_session, organization_id="00000000-0000-0000-0000-000000009901", include_invoice=False
+    )
 
     service = SubmissionPacketService(db_session)
     with pytest.raises(ValidationError) as exc:
@@ -74,20 +75,28 @@ def test_create_packet_succeeds_and_snapshots_documents(db_session) -> None:
 def test_mark_sent_accepted_rejected_create_events(db_session) -> None:
     load = _seed_load_with_docs(db_session, organization_id="00000000-0000-0000-0000-000000009921")
     service = SubmissionPacketService(db_session)
-    packet = service.create_packet_from_load(str(load.id), "00000000-0000-0000-0000-000000009921", None)
+    packet = service.create_packet_from_load(
+        str(load.id), "00000000-0000-0000-0000-000000009921", None
+    )
 
     sent = service.mark_sent(
         str(packet.id),
         str(load.id),
         "00000000-0000-0000-0000-000000009921",
-        {"destination_type": "broker", "destination_name": "Broker", "destination_email": "billing@broker.test"},
+        {
+            "destination_type": "broker",
+            "destination_name": "Broker",
+            "destination_email": "billing@broker.test",
+        },
         None,
     )
     assert sent.status == "sent"
     assert sent.sent_at is not None
     assert any(event.event_type == "packet_sent" for event in sent.events)
 
-    accepted = service.mark_accepted(str(packet.id), str(load.id), "00000000-0000-0000-0000-000000009921", None)
+    accepted = service.mark_accepted(
+        str(packet.id), str(load.id), "00000000-0000-0000-0000-000000009921", None
+    )
     assert accepted.status == "accepted"
     assert any(event.event_type == "packet_accepted" for event in accepted.events)
 
@@ -106,7 +115,9 @@ def test_mark_sent_accepted_rejected_create_events(db_session) -> None:
 def test_cross_org_access_denied(db_session) -> None:
     load = _seed_load_with_docs(db_session, organization_id="00000000-0000-0000-0000-000000009931")
     service = SubmissionPacketService(db_session)
-    packet = service.create_packet_from_load(str(load.id), "00000000-0000-0000-0000-000000009931", None)
+    packet = service.create_packet_from_load(
+        str(load.id), "00000000-0000-0000-0000-000000009931", None
+    )
 
     with pytest.raises(NotFoundError):
         service.get_packet(str(packet.id), str(load.id), "00000000-0000-0000-0000-000000009932")
@@ -129,7 +140,7 @@ def test_build_packet_zip_success(db_session) -> None:
         linked_document = packet_doc.document
         storage.save_bytes(
             relative_path=linked_document.storage_key,
-            content=f"file-{packet_doc.document_type}".encode("utf-8"),
+            content=f"file-{packet_doc.document_type}".encode(),
             overwrite=True,
         )
 
@@ -217,11 +228,19 @@ def test_build_packet_zip_uses_latest_valid_document_after_replace(db_session) -
     document_service = DocumentService(db_session)
     storage = StorageService()
 
-    docs, _ = document_service.list_documents(organization_id=org_id, load_id=str(load.id), document_type=DocumentType.PROOF_OF_DELIVERY, page=1, page_size=10)
+    docs, _ = document_service.list_documents(
+        organization_id=org_id,
+        load_id=str(load.id),
+        document_type=DocumentType.PROOF_OF_DELIVERY,
+        page=1,
+        page_size=10,
+    )
     original_pod = docs[0]
     storage.save_bytes(relative_path=original_pod.storage_key, content=b"old-pod", overwrite=True)
 
-    replaced_pod_key = storage.save_bytes(relative_path="uploads/replaced-pod.pdf", content=b"new-pod", overwrite=True)
+    replaced_pod_key = storage.save_bytes(
+        relative_path="uploads/replaced-pod.pdf", content=b"new-pod", overwrite=True
+    )
     document_service.create_document(
         organization_id=org_id,
         customer_account_id="00000000-0000-0000-0000-000000009902",
@@ -241,9 +260,13 @@ def test_build_packet_zip_uses_latest_valid_document_after_replace(db_session) -
         linked_document = packet_doc.document
         if packet_doc.document_type == DocumentType.PROOF_OF_DELIVERY.value:
             continue
-        storage.save_bytes(relative_path=linked_document.storage_key, content=b"present", overwrite=True)
+        storage.save_bytes(
+            relative_path=linked_document.storage_key, content=b"present", overwrite=True
+        )
 
-    zip_bytes, _ = packet_service.build_packet_zip(packet_id=str(packet.id), load_id=str(load.id), org_id=org_id)
+    zip_bytes, _ = packet_service.build_packet_zip(
+        packet_id=str(packet.id), load_id=str(load.id), org_id=org_id
+    )
     with zipfile.ZipFile(io.BytesIO(zip_bytes)) as archive:
         assert archive.read("pod-LD-001.pdf") == b"new-pod"
 
@@ -258,10 +281,14 @@ def test_build_packet_zip_missing_snapshot_file_returns_controlled_error(db_sess
         linked_document = packet_doc.document
         if packet_doc.document_type == DocumentType.PROOF_OF_DELIVERY.value:
             continue
-        storage.save_bytes(relative_path=linked_document.storage_key, content=b"present", overwrite=True)
+        storage.save_bytes(
+            relative_path=linked_document.storage_key, content=b"present", overwrite=True
+        )
 
     with pytest.raises(ValidationError) as exc:
-        SubmissionPacketService(db_session).build_packet_zip(packet_id=str(packet.id), load_id=str(load.id), org_id=org_id)
+        SubmissionPacketService(db_session).build_packet_zip(
+            packet_id=str(packet.id), load_id=str(load.id), org_id=org_id
+        )
 
     assert exc.value.message == "Submission packet snapshot document file is missing"
     assert exc.value.details["document_type"] in {

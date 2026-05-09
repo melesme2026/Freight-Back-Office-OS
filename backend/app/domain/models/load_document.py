@@ -4,17 +4,15 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, Enum as SqlEnum
-from sqlalchemy import Float, ForeignKey, Index, Integer, String
-from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
-
 from app.core.database import Base
 from app.domain.enums.channel import Channel
 from app.domain.enums.document_type import DocumentType
 from app.domain.enums.processing_status import ProcessingStatus
 from app.domain.models.organization import TimestampMixin, UUIDPrimaryKeyMixin
-
+from sqlalchemy import DateTime, Float, ForeignKey, Index, Integer, String
+from sqlalchemy import Enum as SqlEnum
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 if TYPE_CHECKING:
     from app.domain.models.customer_account import CustomerAccount
@@ -124,30 +122,30 @@ class LoadDocument(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         nullable=True,
     )
 
-    organization: Mapped["Organization"] = relationship(
+    organization: Mapped[Organization] = relationship(
         back_populates="load_documents",
         lazy="selectin",
     )
-    customer_account: Mapped["CustomerAccount"] = relationship(
+    customer_account: Mapped[CustomerAccount] = relationship(
         lazy="selectin",
     )
-    driver: Mapped["Driver | None"] = relationship(
+    driver: Mapped[Driver | None] = relationship(
         lazy="selectin",
     )
-    load: Mapped["Load | None"] = relationship(
+    load: Mapped[Load | None] = relationship(
         back_populates="documents",
         lazy="selectin",
     )
-    uploaded_by_staff_user: Mapped["StaffUser | None"] = relationship(
+    uploaded_by_staff_user: Mapped[StaffUser | None] = relationship(
         lazy="selectin",
     )
 
-    extracted_fields: Mapped[list["ExtractedField"]] = relationship(
+    extracted_fields: Mapped[list[ExtractedField]] = relationship(
         back_populates="document",
         cascade="all, delete-orphan",
         lazy="selectin",
     )
-    validation_issues: Mapped[list["ValidationIssue"]] = relationship(
+    validation_issues: Mapped[list[ValidationIssue]] = relationship(
         back_populates="document",
         lazy="selectin",
     )

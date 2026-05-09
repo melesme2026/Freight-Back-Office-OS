@@ -4,11 +4,10 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
-
 from app.domain.enums.invoice_status import InvoiceStatus
 from app.domain.enums.payment_status import PaymentStatus
 from app.domain.enums.subscription_status import SubscriptionStatus
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ApiError(BaseModel):

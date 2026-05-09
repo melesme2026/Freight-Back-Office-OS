@@ -2,9 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from sqlalchemy.orm import Session
-
 from app.repositories.load_repo import LoadRepository
+from sqlalchemy.orm import Session
 
 
 class DriverLoadTimelineService:

@@ -73,7 +73,9 @@ def test_invoice_generation_fails_when_carrier_profile_missing(db_session) -> No
         raise AssertionError("Expected ValidationError when carrier profile is missing")
 
 
-def test_invoice_generation_fails_with_structured_missing_fields_when_profile_incomplete(db_session) -> None:
+def test_invoice_generation_fails_with_structured_missing_fields_when_profile_incomplete(
+    db_session,
+) -> None:
     load = _seed_load(db_session)
     profile = CarrierProfileService(db_session).upsert_profile(
         str(load.organization_id),

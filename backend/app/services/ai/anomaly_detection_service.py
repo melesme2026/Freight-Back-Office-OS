@@ -25,9 +25,7 @@ class AnomalyDetectionService:
         issues: list[dict[str, Any]] = []
 
         field_names = {
-            item.get("field_name")
-            for item in extracted_fields
-            if item.get("field_name")
+            item.get("field_name") for item in extracted_fields if item.get("field_name")
         }
 
         if "document_type" not in field_names:

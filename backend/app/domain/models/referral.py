@@ -3,13 +3,11 @@ from __future__ import annotations
 import uuid
 from typing import TYPE_CHECKING
 
+from app.core.database import Base
+from app.domain.models.organization import TimestampMixin, UUIDPrimaryKeyMixin
 from sqlalchemy import ForeignKey, Index, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-
-from app.core.database import Base
-from app.domain.models.organization import TimestampMixin, UUIDPrimaryKeyMixin
-
 
 if TYPE_CHECKING:
     from app.domain.models.customer_account import CustomerAccount
@@ -38,11 +36,11 @@ class Referral(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     referred_by_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    organization: Mapped["Organization"] = relationship(
+    organization: Mapped[Organization] = relationship(
         back_populates="referrals",
         lazy="selectin",
     )
-    customer_account: Mapped["CustomerAccount | None"] = relationship(
+    customer_account: Mapped[CustomerAccount | None] = relationship(
         back_populates="referrals",
         lazy="selectin",
     )

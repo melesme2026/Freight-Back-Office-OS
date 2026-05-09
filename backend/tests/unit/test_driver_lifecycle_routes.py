@@ -3,7 +3,6 @@ from __future__ import annotations
 import uuid
 
 import pytest
-
 from app.api.v1.auth import LoginRequestBody, login
 from app.api.v1.drivers import (
     DriverCreateRequest,
@@ -51,7 +50,9 @@ def _seed_customer(db_session, *, org_id: uuid.UUID) -> uuid.UUID:
     return customer_id
 
 
-def _seed_driver_staff_user(db_session, *, org_id: uuid.UUID, email: str, password: str = "Driver123!") -> None:
+def _seed_driver_staff_user(
+    db_session, *, org_id: uuid.UUID, email: str, password: str = "Driver123!"
+) -> None:
     db_session.add(
         StaffUser(
             id=uuid.uuid4(),
@@ -154,7 +155,11 @@ def test_reactivate_driver_restores_login_and_preserves_driver_id(db_session) ->
     db_session.commit()
 
     with pytest.raises(AppError):
-        login(LoginRequestBody(email="reactivate@example.com", password="Driver123!"), db=db_session, x_organization_id=None)
+        login(
+            LoginRequestBody(email="reactivate@example.com", password="Driver123!"),
+            db=db_session,
+            x_organization_id=None,
+        )
 
     reactivated_response = reactivate_driver(
         driver.id,
@@ -164,7 +169,11 @@ def test_reactivate_driver_restores_login_and_preserves_driver_id(db_session) ->
     assert reactivated_response.data["id"] == str(driver.id)
     assert reactivated_response.data["is_active"] is True
 
-    post_reactivate_login = login(LoginRequestBody(email="reactivate@example.com", password="Driver123!"), db=db_session, x_organization_id=None)
+    post_reactivate_login = login(
+        LoginRequestBody(email="reactivate@example.com", password="Driver123!"),
+        db=db_session,
+        x_organization_id=None,
+    )
     assert post_reactivate_login.data.user.organization_id == str(org_id)
 
 

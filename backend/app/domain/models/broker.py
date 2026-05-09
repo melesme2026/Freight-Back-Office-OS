@@ -3,13 +3,11 @@ from __future__ import annotations
 import uuid
 from typing import TYPE_CHECKING
 
+from app.core.database import Base
+from app.domain.models.organization import TimestampMixin, UUIDPrimaryKeyMixin
 from sqlalchemy import ForeignKey, Index, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-
-from app.core.database import Base
-from app.domain.models.organization import TimestampMixin, UUIDPrimaryKeyMixin
-
 
 if TYPE_CHECKING:
     from app.domain.models.load import Load
@@ -42,17 +40,14 @@ class Broker(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     payment_terms_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    organization: Mapped["Organization"] = relationship(
+    organization: Mapped[Organization] = relationship(
         back_populates="brokers",
         lazy="selectin",
     )
-    loads: Mapped[list["Load"]] = relationship(
+    loads: Mapped[list[Load]] = relationship(
         back_populates="broker",
         lazy="selectin",
     )
 
     def __repr__(self) -> str:
-        return (
-            f"Broker(id={self.id!s}, name={self.name!r}, "
-            f"mc_number={self.mc_number!r})"
-        )
+        return f"Broker(id={self.id!s}, name={self.name!r}, mc_number={self.mc_number!r})"

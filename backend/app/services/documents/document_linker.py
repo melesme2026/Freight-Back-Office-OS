@@ -2,12 +2,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from sqlalchemy.orm import Session
-
 from app.core.exceptions import NotFoundError
 from app.repositories.document_repo import DocumentRepository
 from app.repositories.load_repo import LoadRepository
 from app.services.documents.document_service import DocumentService
+from sqlalchemy.orm import Session
 
 
 class DocumentLinker:

@@ -28,7 +28,9 @@ class MissingSignatureRule:
                     "rule_code": self.rule_code,
                     "severity": "warning",
                     "title": "Signature not detected",
-                    "description": "No signature detection field was found for a signed delivery document.",
+                    "description": (
+                        "No signature detection field was found for a signed delivery document."
+                    ),
                     "is_blocking": False,
                 }
             ]

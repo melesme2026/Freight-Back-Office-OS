@@ -2,11 +2,10 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import Select, func, select
-from sqlalchemy.orm import Session, selectinload
-
 from app.domain.enums.payment_status import PaymentStatus
 from app.domain.models.payment import Payment
+from sqlalchemy import Select, func, select
+from sqlalchemy.orm import Session, selectinload
 
 
 class PaymentRepository:
@@ -106,11 +105,15 @@ class PaymentRepository:
 
         if normalized_customer_account_id is not None:
             stmt = stmt.where(Payment.customer_account_id == normalized_customer_account_id)
-            count_stmt = count_stmt.where(Payment.customer_account_id == normalized_customer_account_id)
+            count_stmt = count_stmt.where(
+                Payment.customer_account_id == normalized_customer_account_id
+            )
 
         if normalized_billing_invoice_id is not None:
             stmt = stmt.where(Payment.billing_invoice_id == normalized_billing_invoice_id)
-            count_stmt = count_stmt.where(Payment.billing_invoice_id == normalized_billing_invoice_id)
+            count_stmt = count_stmt.where(
+                Payment.billing_invoice_id == normalized_billing_invoice_id
+            )
 
         if normalized_payment_method_id is not None:
             stmt = stmt.where(Payment.payment_method_id == normalized_payment_method_id)
@@ -127,11 +130,7 @@ class PaymentRepository:
         total = int(self.db.scalar(count_stmt) or 0)
 
         offset = (normalized_page - 1) * normalized_page_size
-        stmt = (
-            stmt.order_by(Payment.created_at.desc())
-            .offset(offset)
-            .limit(normalized_page_size)
-        )
+        stmt = stmt.order_by(Payment.created_at.desc()).offset(offset).limit(normalized_page_size)
 
         items = list(self.db.scalars(stmt).all())
         return items, total

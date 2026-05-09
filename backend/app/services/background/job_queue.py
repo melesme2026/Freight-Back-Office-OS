@@ -133,9 +133,7 @@ class InProcessJobQueue:
             with self._lock:
                 record.last_error = str(exc)
                 record.status = (
-                    JobStatus.FAILED
-                    if record.attempts >= record.max_attempts
-                    else JobStatus.QUEUED
+                    JobStatus.FAILED if record.attempts >= record.max_attempts else JobStatus.QUEUED
                 )
                 record.updated_at = datetime.now(timezone.utc)
             return record

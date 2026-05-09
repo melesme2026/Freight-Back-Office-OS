@@ -2,11 +2,10 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy.orm import Session
-
 from app.core.exceptions import ValidationError
 from app.domain.models.carrier_profile import CarrierProfile
 from app.repositories.carrier_profile_repo import CarrierProfileRepository
+from sqlalchemy.orm import Session
 
 
 class CarrierProfileService:

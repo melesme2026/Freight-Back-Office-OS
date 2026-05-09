@@ -2,12 +2,11 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import Select, func, select
-from sqlalchemy.orm import Session
-
 from app.domain.enums.channel import Channel
 from app.domain.enums.notification_status import NotificationStatus
 from app.domain.models.notification import Notification
+from sqlalchemy import Select, func, select
+from sqlalchemy.orm import Session
 
 
 class NotificationRepository:
@@ -87,9 +86,7 @@ class NotificationRepository:
             else None
         )
         normalized_load_id = (
-            self._normalize_uuid(load_id, field_name="load_id")
-            if load_id is not None
-            else None
+            self._normalize_uuid(load_id, field_name="load_id") if load_id is not None else None
         )
         normalized_channel = self._normalize_channel(channel)
         normalized_status = self._normalize_status(status)
@@ -126,9 +123,7 @@ class NotificationRepository:
 
         offset = (normalized_page - 1) * normalized_page_size
         stmt = (
-            stmt.order_by(Notification.created_at.desc())
-            .offset(offset)
-            .limit(normalized_page_size)
+            stmt.order_by(Notification.created_at.desc()).offset(offset).limit(normalized_page_size)
         )
 
         items = list(self.db.scalars(stmt).all())

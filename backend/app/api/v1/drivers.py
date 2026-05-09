@@ -4,17 +4,24 @@ import uuid
 from datetime import date, datetime
 from typing import Any
 
+from app.core.dependencies import get_db_session
+from app.core.exceptions import (
+    AppError,
+    ForbiddenError,
+    NotFoundError,
+    UnauthorizedError,
+    ValidationError,
+)
+from app.core.security import get_current_token_payload
+from app.domain.models.driver import Driver
+from app.repositories.driver_repo import DriverRepository
+from app.schemas.common import ApiResponse
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
-from app.core.dependencies import get_db_session
-from app.core.exceptions import AppError, ForbiddenError, NotFoundError, UnauthorizedError, ValidationError
-from app.domain.models.driver import Driver
-from app.repositories.driver_repo import DriverRepository
-from app.schemas.common import ApiResponse
-from app.core.security import get_current_token_payload
-
+GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY = Depends(get_current_token_payload)
+GET_DB_SESSION_DEPENDENCY = Depends(get_db_session)
 
 router = APIRouter()
 
@@ -93,6 +100,7 @@ def _serialize_driver(item: Any) -> dict[str, Any]:
         "updated_at": _to_iso_or_none(item.updated_at),
     }
 
+
 def _email_conflict_state(
     repo: DriverRepository,
     *,
@@ -136,8 +144,8 @@ def _assert_staff_dashboard_role(token_payload: dict[str, Any]) -> None:
 @router.post("/drivers", response_model=ApiResponse)
 def create_driver(
     payload: DriverCreateRequest,
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     repo = DriverRepository(db)
 
@@ -158,7 +166,10 @@ def create_driver(
         )
     if inactive_driver is not None:
         raise AppError(
-            "A deactivated driver with this email already exists. Reactivate this driver instead?",
+            (
+                "A deactivated driver with this email already exists. "
+                "Reactivate this driver instead?"
+            ),
             code="driver_reactivation_required",
             status_code=409,
             details={"driver_id": str(inactive_driver.id), "email": inactive_driver.email},
@@ -187,13 +198,13 @@ def create_driver(
 def list_drivers(
     *,
     organization_id: uuid.UUID | None = None,
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
     customer_account_id: uuid.UUID | None = None,
     is_active: bool | None = None,
     search: str | None = None,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=25, ge=1, le=200),
-    db: Session = Depends(get_db_session),
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     repo = DriverRepository(db)
     _assert_staff_dashboard_role(token_payload)
@@ -226,8 +237,8 @@ def list_drivers(
 @router.get("/drivers/{driver_id}", response_model=ApiResponse)
 def get_driver(
     driver_id: uuid.UUID,
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     repo = DriverRepository(db)
     item = _get_driver_or_404(repo, driver_id)
@@ -247,8 +258,8 @@ def get_driver(
 def update_driver(
     driver_id: uuid.UUID,
     payload: DriverUpdateRequest,
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     repo = DriverRepository(db)
     item = _get_driver_or_404(repo, driver_id)
@@ -277,7 +288,10 @@ def update_driver(
             )
         if inactive_driver is not None:
             raise AppError(
-                "A deactivated driver with this email already exists. Reactivate this driver instead?",
+                (
+                    "A deactivated driver with this email already exists. "
+                    "Reactivate this driver instead?"
+                ),
                 code="driver_reactivation_required",
                 status_code=409,
                 details={"driver_id": str(inactive_driver.id), "email": inactive_driver.email},
@@ -300,8 +314,8 @@ def update_driver(
 @router.patch("/drivers/{driver_id}/reactivate", response_model=ApiResponse)
 def reactivate_driver(
     driver_id: uuid.UUID,
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     repo = DriverRepository(db)
     item = _get_driver_or_404(repo, driver_id)

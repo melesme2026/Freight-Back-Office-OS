@@ -3,16 +3,14 @@ from __future__ import annotations
 import uuid
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, Enum as SqlEnum
-from sqlalchemy import ForeignKey, Index, Integer, String, UniqueConstraint
-from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
-
 from app.core.database import Base
 from app.domain.enums.payment_method_type import PaymentMethodType
 from app.domain.enums.payment_provider import PaymentProvider
 from app.domain.models.organization import TimestampMixin, UUIDPrimaryKeyMixin
-
+from sqlalchemy import Boolean, ForeignKey, Index, Integer, String, UniqueConstraint
+from sqlalchemy import Enum as SqlEnum
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 if TYPE_CHECKING:
     from app.domain.models.customer_account import CustomerAccount
@@ -90,12 +88,12 @@ class PaymentMethod(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         server_default="true",
     )
 
-    organization: Mapped["Organization"] = relationship(lazy="selectin")
-    customer_account: Mapped["CustomerAccount"] = relationship(
+    organization: Mapped[Organization] = relationship(lazy="selectin")
+    customer_account: Mapped[CustomerAccount] = relationship(
         back_populates="payment_methods",
         lazy="selectin",
     )
-    payments: Mapped[list["Payment"]] = relationship(
+    payments: Mapped[list[Payment]] = relationship(
         back_populates="payment_method",
         lazy="selectin",
     )

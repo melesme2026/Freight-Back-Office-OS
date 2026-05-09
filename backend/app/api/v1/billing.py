@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-# ruff: noqa: B008
 import uuid
 from typing import Any
 
@@ -16,6 +15,10 @@ from app.services.billing.stripe_subscription_service import StripeSubscriptionS
 from fastapi import APIRouter, Depends, Header, Request
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
+
+GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY = Depends(get_current_token_payload)
+GET_DB_SESSION_DEPENDENCY = Depends(get_db_session)
+GET_SETTINGS_DEPENDENCY = Depends(get_settings)
 
 router = APIRouter(prefix="/billing")
 
@@ -54,9 +57,9 @@ def _get_token_organization(db: Session, token_payload: dict[str, Any]) -> Organ
 
 @router.get("/status", response_model=ApiResponse)
 def get_billing_status(
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
-    settings: Settings = Depends(get_settings),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
+    settings: Settings = GET_SETTINGS_DEPENDENCY,
 ) -> ApiResponse:
     organization = _get_token_organization(db, token_payload)
     service = StripeSubscriptionService(db, settings)
@@ -66,9 +69,9 @@ def get_billing_status(
 @router.post("/checkout-session", response_model=ApiResponse)
 def create_checkout_session(
     payload: CheckoutSessionRequest,
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
-    settings: Settings = Depends(get_settings),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
+    settings: Settings = GET_SETTINGS_DEPENDENCY,
 ) -> ApiResponse:
     _require_owner_admin(token_payload)
     organization = _get_token_organization(db, token_payload)
@@ -91,8 +94,8 @@ def create_checkout_session(
 async def stripe_webhook(
     request: Request,
     stripe_signature: str | None = Header(default=None, alias="Stripe-Signature"),
-    db: Session = Depends(get_db_session),
-    settings: Settings = Depends(get_settings),
+    db: Session = GET_DB_SESSION_DEPENDENCY,
+    settings: Settings = GET_SETTINGS_DEPENDENCY,
 ) -> ApiResponse:
     payload = await request.body()
     service = StripeSubscriptionService(db, settings)

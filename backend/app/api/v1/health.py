@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, status
-from fastapi.responses import JSONResponse
-
 from app.core.config import get_settings
 from app.core.healthchecks import check_database_health, check_redis_health, check_storage_health
 from app.schemas.common import ApiResponse
-
+from fastapi import APIRouter, status
+from fastapi.responses import JSONResponse
 
 router = APIRouter()
 
@@ -38,9 +36,20 @@ def _email_check() -> dict[str, object]:
             if not value
         ]
         if missing:
-            return {"ok": False, "enabled": True, "provider": "smtp", "message": "smtp_config_missing", "missing": missing}
+            return {
+                "ok": False,
+                "enabled": True,
+                "provider": "smtp",
+                "message": "smtp_config_missing",
+                "missing": missing,
+            }
 
-    return {"ok": True, "enabled": True, "provider": settings.email_provider, "message": "configured"}
+    return {
+        "ok": True,
+        "enabled": True,
+        "provider": settings.email_provider,
+        "message": "configured",
+    }
 
 
 def _build_readiness_payload() -> tuple[dict[str, object], bool]:

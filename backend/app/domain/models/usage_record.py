@@ -5,13 +5,11 @@ from datetime import date
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 
+from app.core.database import Base
+from app.domain.models.organization import TimestampMixin, UUIDPrimaryKeyMixin
 from sqlalchemy import Date, ForeignKey, Index, Numeric, String
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-
-from app.core.database import Base
-from app.domain.models.organization import TimestampMixin, UUIDPrimaryKeyMixin
-
 
 if TYPE_CHECKING:
     from app.domain.models.billing_invoice_line import BillingInvoiceLine
@@ -76,27 +74,27 @@ class UsageRecord(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         nullable=True,
     )
 
-    organization: Mapped["Organization"] = relationship(
+    organization: Mapped[Organization] = relationship(
         back_populates="usage_records",
         lazy="selectin",
     )
-    customer_account: Mapped["CustomerAccount"] = relationship(
+    customer_account: Mapped[CustomerAccount] = relationship(
         back_populates="usage_records",
         lazy="selectin",
     )
-    subscription: Mapped["Subscription"] = relationship(
+    subscription: Mapped[Subscription] = relationship(
         back_populates="usage_records",
         lazy="selectin",
     )
-    driver: Mapped["Driver | None"] = relationship(
+    driver: Mapped[Driver | None] = relationship(
         back_populates="usage_records",
         lazy="selectin",
     )
-    load: Mapped["Load | None"] = relationship(
+    load: Mapped[Load | None] = relationship(
         back_populates="usage_records",
         lazy="selectin",
     )
-    invoice_lines: Mapped[list["BillingInvoiceLine"]] = relationship(
+    invoice_lines: Mapped[list[BillingInvoiceLine]] = relationship(
         back_populates="usage_record",
         lazy="selectin",
     )

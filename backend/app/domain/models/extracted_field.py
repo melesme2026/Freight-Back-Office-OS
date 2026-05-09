@@ -5,13 +5,11 @@ from datetime import date
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 
+from app.core.database import Base
+from app.domain.models.organization import TimestampMixin, UUIDPrimaryKeyMixin
 from sqlalchemy import Boolean, Date, ForeignKey, Index, Numeric, String, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-
-from app.core.database import Base
-from app.domain.models.organization import TimestampMixin, UUIDPrimaryKeyMixin
-
 
 if TYPE_CHECKING:
     from app.domain.models.load import Load
@@ -74,15 +72,15 @@ class ExtractedField(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     corrected_at: Mapped[date | None] = mapped_column(Date, nullable=True)
 
-    document: Mapped["LoadDocument"] = relationship(
+    document: Mapped[LoadDocument] = relationship(
         back_populates="extracted_fields",
         lazy="selectin",
     )
-    load: Mapped["Load | None"] = relationship(
+    load: Mapped[Load | None] = relationship(
         back_populates="extracted_fields",
         lazy="selectin",
     )
-    corrected_by_staff_user: Mapped["StaffUser | None"] = relationship(lazy="selectin")
+    corrected_by_staff_user: Mapped[StaffUser | None] = relationship(lazy="selectin")
 
     def __repr__(self) -> str:
         return (

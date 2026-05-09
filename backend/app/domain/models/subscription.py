@@ -4,15 +4,13 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, DateTime, Enum as SqlEnum
-from sqlalchemy import ForeignKey, Index, String, Text
-from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
-
 from app.core.database import Base
 from app.domain.enums.subscription_status import SubscriptionStatus
 from app.domain.models.organization import TimestampMixin, UUIDPrimaryKeyMixin
-
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String, Text
+from sqlalchemy import Enum as SqlEnum
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 if TYPE_CHECKING:
     from app.domain.models.billing_invoice import BillingInvoice
@@ -89,21 +87,21 @@ class Subscription(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     billing_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    organization: Mapped["Organization"] = relationship(lazy="selectin")
-    customer_account: Mapped["CustomerAccount"] = relationship(
+    organization: Mapped[Organization] = relationship(lazy="selectin")
+    customer_account: Mapped[CustomerAccount] = relationship(
         back_populates="subscriptions",
         lazy="selectin",
     )
-    service_plan: Mapped["ServicePlan"] = relationship(
+    service_plan: Mapped[ServicePlan] = relationship(
         back_populates="subscriptions",
         lazy="selectin",
     )
-    usage_records: Mapped[list["UsageRecord"]] = relationship(
+    usage_records: Mapped[list[UsageRecord]] = relationship(
         back_populates="subscription",
         cascade="all, delete-orphan",
         lazy="selectin",
     )
-    billing_invoices: Mapped[list["BillingInvoice"]] = relationship(
+    billing_invoices: Mapped[list[BillingInvoice]] = relationship(
         back_populates="subscription",
         lazy="selectin",
     )

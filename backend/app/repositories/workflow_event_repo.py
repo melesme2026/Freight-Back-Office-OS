@@ -2,10 +2,9 @@ from __future__ import annotations
 
 import uuid
 
+from app.domain.models.workflow_event import WorkflowEvent
 from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session, selectinload
-
-from app.domain.models.workflow_event import WorkflowEvent
 
 
 class WorkflowEventRepository:

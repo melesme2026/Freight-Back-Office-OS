@@ -60,9 +60,7 @@ class TimestampMixin:
 
 class Organization(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "organizations"
-    __table_args__ = (
-        Index("ix_organizations_is_active", "is_active"),
-    )
+    __table_args__ = (Index("ix_organizations_is_active", "is_active"),)
 
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     slug: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Iterable
 
 from app.domain.enums.document_type import DocumentType
 
@@ -23,9 +23,7 @@ BASELINE_RULE_SET = ReadinessRuleSet(
         DocumentType.PROOF_OF_DELIVERY,
         DocumentType.INVOICE,
     ),
-    recommended_for_submission=(
-        DocumentType.BILL_OF_LADING,
-    ),
+    recommended_for_submission=(DocumentType.BILL_OF_LADING,),
 )
 
 
@@ -63,15 +61,25 @@ def calculate_packet_readiness(
     submission_required_values = [_document_value(value) for value in rule_set.submission_required]
     recommended_values = [_document_value(value) for value in rule_set.recommended_for_submission]
 
-    present_invoice_required = sorted(value for value in invoice_required_values if value in present)
-    missing_invoice_required = sorted(value for value in invoice_required_values if value not in present)
+    present_invoice_required = sorted(
+        value for value in invoice_required_values if value in present
+    )
+    missing_invoice_required = sorted(
+        value for value in invoice_required_values if value not in present
+    )
 
-    present_submission_required = sorted(value for value in submission_required_values if value in present)
-    missing_submission_required = sorted(value for value in submission_required_values if value not in present)
+    present_submission_required = sorted(
+        value for value in submission_required_values if value in present
+    )
+    missing_submission_required = sorted(
+        value for value in submission_required_values if value not in present
+    )
 
     optional_present = sorted(
         value
-        for value in (_document_value(document_type) for document_type in READINESS_OPTIONAL_DOCUMENT_TYPES)
+        for value in (
+            _document_value(document_type) for document_type in READINESS_OPTIONAL_DOCUMENT_TYPES
+        )
         if value in present
     )
 
@@ -93,9 +101,7 @@ def calculate_packet_readiness(
         )
 
     if missing_recommended:
-        notes.append(
-            "Recommended documents still missing: " + ", ".join(missing_recommended)
-        )
+        notes.append("Recommended documents still missing: " + ", ".join(missing_recommended))
 
     if ready_to_submit:
         readiness_state = "ready_to_submit"

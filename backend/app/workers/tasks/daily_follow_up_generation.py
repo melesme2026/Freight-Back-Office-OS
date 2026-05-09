@@ -28,5 +28,7 @@ def daily_follow_up_generation() -> dict[str, int]:
                 logger.exception("daily_follow_up_generation failed for org %s: %s", org.id, exc)
                 continue
 
-    logger.info("daily_follow_up_generation completed org_count=%s tasks=%s", org_count, total_tasks)
+    logger.info(
+        "daily_follow_up_generation completed org_count=%s tasks=%s", org_count, total_tasks
+    )
     return {"organizations_processed": org_count, "tasks_created_or_updated": total_tasks}

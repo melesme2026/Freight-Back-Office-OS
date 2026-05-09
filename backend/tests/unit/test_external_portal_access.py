@@ -4,8 +4,6 @@ import asyncio
 from io import BytesIO
 
 import pytest
-from starlette.datastructures import Headers, UploadFile
-
 from app.api.v1.portal import (
     PortalAccessLinkRequest,
     create_portal_access_link,
@@ -19,6 +17,7 @@ from app.domain.models.customer_account import CustomerAccount
 from app.domain.models.driver import Driver
 from app.domain.models.organization import Organization
 from app.services.loads.load_service import LoadService
+from starlette.datastructures import Headers, UploadFile
 
 
 def _seed_org_graph(db_session, *, org_id: str, customer_id: str, driver_id: str) -> None:
@@ -55,7 +54,9 @@ def _seed_load(db_session, *, org_id: str, customer_id: str, driver_id: str, loa
     )
 
 
-def _portal_payload_for(load, *, email: str = "broker@example.com", allow_upload: bool = True) -> dict[str, object]:
+def _portal_payload_for(
+    load, *, email: str = "broker@example.com", allow_upload: bool = True
+) -> dict[str, object]:
     return {
         "organization_id": str(load.organization_id),
         "customer_account_id": str(load.customer_account_id),
@@ -72,11 +73,19 @@ def test_staff_can_create_scoped_expiring_portal_access_link(db_session) -> None
     customer_id = "00000000-0000-0000-0000-000000045002"
     driver_id = "00000000-0000-0000-0000-000000045003"
     _seed_org_graph(db_session, org_id=org_id, customer_id=customer_id, driver_id=driver_id)
-    load = _seed_load(db_session, org_id=org_id, customer_id=customer_id, driver_id=driver_id, load_number="PR45")
+    load = _seed_load(
+        db_session, org_id=org_id, customer_id=customer_id, driver_id=driver_id, load_number="PR45"
+    )
 
     response = create_portal_access_link(
-        PortalAccessLinkRequest(load_id=load.id, contact_email="Broker@Example.com", role="broker", expires_in_hours=12),
-        token_payload={"organization_id": org_id, "role": "admin", "sub": "00000000-0000-0000-0000-000000045099"},
+        PortalAccessLinkRequest(
+            load_id=load.id, contact_email="Broker@Example.com", role="broker", expires_in_hours=12
+        ),
+        token_payload={
+            "organization_id": org_id,
+            "role": "admin",
+            "sub": "00000000-0000-0000-0000-000000045099",
+        },
         db=db_session,
     )
 
@@ -95,14 +104,30 @@ def test_portal_load_access_is_single_load_scoped(db_session) -> None:
     customer_id = "00000000-0000-0000-0000-000000045102"
     driver_id = "00000000-0000-0000-0000-000000045103"
     _seed_org_graph(db_session, org_id=org_id, customer_id=customer_id, driver_id=driver_id)
-    allowed_load = _seed_load(db_session, org_id=org_id, customer_id=customer_id, driver_id=driver_id, load_number="ALLOWED")
-    other_load = _seed_load(db_session, org_id=org_id, customer_id=customer_id, driver_id=driver_id, load_number="DENIED")
+    allowed_load = _seed_load(
+        db_session,
+        org_id=org_id,
+        customer_id=customer_id,
+        driver_id=driver_id,
+        load_number="ALLOWED",
+    )
+    other_load = _seed_load(
+        db_session,
+        org_id=org_id,
+        customer_id=customer_id,
+        driver_id=driver_id,
+        load_number="DENIED",
+    )
 
-    response = get_portal_load(load_id=allowed_load.id, token_payload=_portal_payload_for(allowed_load), db=db_session)
+    response = get_portal_load(
+        load_id=allowed_load.id, token_payload=_portal_payload_for(allowed_load), db=db_session
+    )
     assert response.data["load"]["load_number"] == "ALLOWED"
 
     with pytest.raises(UnauthorizedError):
-        get_portal_load(load_id=other_load.id, token_payload=_portal_payload_for(allowed_load), db=db_session)
+        get_portal_load(
+            load_id=other_load.id, token_payload=_portal_payload_for(allowed_load), db=db_session
+        )
 
 
 def test_portal_org_tampering_is_denied(db_session) -> None:
@@ -111,7 +136,13 @@ def test_portal_org_tampering_is_denied(db_session) -> None:
     customer_id = "00000000-0000-0000-0000-000000045202"
     driver_id = "00000000-0000-0000-0000-000000045203"
     _seed_org_graph(db_session, org_id=org_id, customer_id=customer_id, driver_id=driver_id)
-    load = _seed_load(db_session, org_id=org_id, customer_id=customer_id, driver_id=driver_id, load_number="TAMPER")
+    load = _seed_load(
+        db_session,
+        org_id=org_id,
+        customer_id=customer_id,
+        driver_id=driver_id,
+        load_number="TAMPER",
+    )
     tampered = _portal_payload_for(load)
     tampered["organization_id"] = other_org_id
 
@@ -122,8 +153,14 @@ def test_portal_org_tampering_is_denied(db_session) -> None:
 def test_external_portal_role_cannot_create_access_links(db_session) -> None:
     with pytest.raises(ForbiddenError):
         create_portal_access_link(
-            PortalAccessLinkRequest(load_id="00000000-0000-0000-0000-000000045301", contact_email="x@example.com"),
-            token_payload={"organization_id": "00000000-0000-0000-0000-000000045300", "role": "external_broker", "sub": "portal"},
+            PortalAccessLinkRequest(
+                load_id="00000000-0000-0000-0000-000000045301", contact_email="x@example.com"
+            ),
+            token_payload={
+                "organization_id": "00000000-0000-0000-0000-000000045300",
+                "role": "external_broker",
+                "sub": "portal",
+            },
             db=db_session,
         )
 
@@ -133,7 +170,13 @@ def test_portal_upload_is_attributed_and_audit_logged(db_session) -> None:
     customer_id = "00000000-0000-0000-0000-000000045402"
     driver_id = "00000000-0000-0000-0000-000000045403"
     _seed_org_graph(db_session, org_id=org_id, customer_id=customer_id, driver_id=driver_id)
-    load = _seed_load(db_session, org_id=org_id, customer_id=customer_id, driver_id=driver_id, load_number="UPLOAD")
+    load = _seed_load(
+        db_session,
+        org_id=org_id,
+        customer_id=customer_id,
+        driver_id=driver_id,
+        load_number="UPLOAD",
+    )
 
     response = asyncio.run(
         upload_portal_document(
@@ -153,7 +196,9 @@ def test_portal_upload_is_attributed_and_audit_logged(db_session) -> None:
     assert response.meta["attribution"]["contact_email"] == "ap@example.com"
     assert response.data["document_type"] == "lumper_receipt"
 
-    audit_logs = db_session.query(AuditLog).filter(AuditLog.action == "portal.document.uploaded").all()
+    audit_logs = (
+        db_session.query(AuditLog).filter(AuditLog.action == "portal.document.uploaded").all()
+    )
     assert len(audit_logs) == 1
     assert audit_logs[0].actor_type == "external_portal"
     assert audit_logs[0].metadata_json["contact_email"] == "ap@example.com"
@@ -186,13 +231,23 @@ def test_portal_upload_can_be_disabled_by_scope(db_session) -> None:
     customer_id = "00000000-0000-0000-0000-000000045502"
     driver_id = "00000000-0000-0000-0000-000000045503"
     _seed_org_graph(db_session, org_id=org_id, customer_id=customer_id, driver_id=driver_id)
-    load = _seed_load(db_session, org_id=org_id, customer_id=customer_id, driver_id=driver_id, load_number="NOUPLOAD")
+    load = _seed_load(
+        db_session,
+        org_id=org_id,
+        customer_id=customer_id,
+        driver_id=driver_id,
+        load_number="NOUPLOAD",
+    )
 
     with pytest.raises(ForbiddenError):
         asyncio.run(
             upload_portal_document(
                 load_id=load.id,
-                file=UploadFile(filename="doc.pdf", file=BytesIO(b"disabled-upload"), headers=Headers({"content-type": "application/pdf"})),
+                file=UploadFile(
+                    filename="doc.pdf",
+                    file=BytesIO(b"disabled-upload"),
+                    headers=Headers({"content-type": "application/pdf"}),
+                ),
                 document_type="other",
                 token_payload=_portal_payload_for(load, allow_upload=False),
                 db=db_session,

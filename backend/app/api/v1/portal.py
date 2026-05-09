@@ -3,12 +3,7 @@ from __future__ import annotations
 import io
 import uuid
 from datetime import timedelta
-from typing import Any
-
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
-from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy.orm import Session
+from typing import Annotated, Any
 
 from app.api.v1.documents import (
     MAX_UPLOAD_FILE_SIZE_BYTES,
@@ -18,8 +13,13 @@ from app.api.v1.documents import (
 )
 from app.core.dependencies import get_db_session
 from app.core.exceptions import ForbiddenError, UnauthorizedError, ValidationError
-from app.core.security import create_action_token, decode_token, get_bearer_token, get_current_token_payload
 from app.core.request_context import audit_request_context
+from app.core.security import (
+    create_action_token,
+    decode_token,
+    get_bearer_token,
+    get_current_token_payload,
+)
 from app.domain.enums.channel import Channel
 from app.domain.enums.document_type import DocumentType
 from app.domain.models.load_document import LoadDocument
@@ -30,7 +30,16 @@ from app.services.documents.document_service import DocumentService
 from app.services.documents.storage_service import StorageService
 from app.services.loads.packet_readiness import calculate_packet_readiness
 from app.services.loads.submission_packet_service import SubmissionPacketService
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import desc, select
+from sqlalchemy.orm import Session
+
+GET_BEARER_TOKEN_DEPENDENCY = Depends(get_bearer_token)
+GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY = Depends(get_current_token_payload)
+GET_DB_SESSION_DEPENDENCY = Depends(get_db_session)
+
 
 router = APIRouter()
 
@@ -63,7 +72,9 @@ class PortalAccessLinkRequest(BaseModel):
     contact_email: str
     contact_name: str | None = None
     role: str = "broker"
-    expires_in_hours: int = Field(default=DEFAULT_PORTAL_EXPIRY_HOURS, ge=1, le=MAX_PORTAL_EXPIRY_HOURS)
+    expires_in_hours: int = Field(
+        default=DEFAULT_PORTAL_EXPIRY_HOURS, ge=1, le=MAX_PORTAL_EXPIRY_HOURS
+    )
     allow_packet_download: bool = True
     allow_document_upload: bool = True
 
@@ -71,7 +82,9 @@ class PortalAccessLinkRequest(BaseModel):
 def _normalize_role(role: str) -> str:
     normalized = (role or "").strip().lower()
     if normalized not in PORTAL_ROLES:
-        raise ValidationError("Invalid portal role", details={"role": role, "allowed_roles": sorted(PORTAL_ROLES)})
+        raise ValidationError(
+            "Invalid portal role", details={"role": role, "allowed_roles": sorted(PORTAL_ROLES)}
+        )
     return normalized
 
 
@@ -82,7 +95,7 @@ def _normalize_email(value: str) -> str:
     return normalized
 
 
-def _portal_payload(token: str = Depends(get_bearer_token)) -> dict[str, Any]:
+def _portal_payload(token: str = GET_BEARER_TOKEN_DEPENDENCY) -> dict[str, Any]:
     payload = decode_token(token, expected_token_type=PORTAL_TOKEN_TYPE)
     role = str(payload.get("role") or "").strip().lower()
     if not role.startswith("external_"):
@@ -92,6 +105,9 @@ def _portal_payload(token: str = Depends(get_bearer_token)) -> dict[str, Any]:
     if missing:
         raise UnauthorizedError("Portal token is missing required scope")
     return payload
+
+
+PORTAL_PAYLOAD_DEPENDENCY = Depends(_portal_payload)
 
 
 def _staff_actor_id(token_payload: dict[str, Any]) -> str | None:
@@ -130,7 +146,9 @@ def _doc_type_value(value: object | None) -> str | None:
 
 def _serialize_portal_load(load: Any) -> dict[str, Any]:
     documents = list(getattr(load, "documents", None) or [])
-    doc_types = [_doc_type_value(getattr(document, "document_type", None)) for document in documents]
+    doc_types = [
+        _doc_type_value(getattr(document, "document_type", None)) for document in documents
+    ]
     return {
         "id": str(load.id),
         "load_number": load.load_number,
@@ -141,7 +159,9 @@ def _serialize_portal_load(load: Any) -> dict[str, Any]:
         "pickup_location": load.pickup_location,
         "delivery_location": load.delivery_location,
         "broker_name": getattr(getattr(load, "broker", None), "name", None) or load.broker_name_raw,
-        "customer_account_name": getattr(getattr(load, "customer_account", None), "account_name", None),
+        "customer_account_name": getattr(
+            getattr(load, "customer_account", None), "account_name", None
+        ),
         "rate_confirmation_number": load.rate_confirmation_number,
         "bol_number": load.bol_number,
         "invoice_number": load.invoice_number,
@@ -149,7 +169,9 @@ def _serialize_portal_load(load: Any) -> dict[str, Any]:
         "has_ratecon": bool(load.has_ratecon),
         "has_bol": bool(load.has_bol),
         "has_invoice": bool(load.has_invoice),
-        "packet_readiness": calculate_packet_readiness(document_types=[doc for doc in doc_types if doc]),
+        "packet_readiness": calculate_packet_readiness(
+            document_types=[doc for doc in doc_types if doc]
+        ),
         "submitted_at": _to_iso_or_none(load.submitted_at),
         "paid_at": _to_iso_or_none(load.paid_at),
         "updated_at": _to_iso_or_none(load.updated_at),
@@ -172,10 +194,15 @@ def _serialize_portal_document(document: LoadDocument) -> dict[str, Any]:
     }
 
 
-def _latest_documents_for_load(*, db: Session, organization_id: str, load_id: str) -> list[LoadDocument]:
+def _latest_documents_for_load(
+    *, db: Session, organization_id: str, load_id: str
+) -> list[LoadDocument]:
     stmt = (
         select(LoadDocument)
-        .where(LoadDocument.organization_id == uuid.UUID(organization_id), LoadDocument.load_id == uuid.UUID(load_id))
+        .where(
+            LoadDocument.organization_id == uuid.UUID(organization_id),
+            LoadDocument.load_id == uuid.UUID(load_id),
+        )
         .order_by(desc(LoadDocument.received_at), desc(LoadDocument.created_at))
     )
     return list(db.scalars(stmt).all())
@@ -203,7 +230,16 @@ def _serialize_portal_packet(packet: Any) -> dict[str, Any]:
     }
 
 
-def _log_portal_event(*, db: Session, organization_id: str, load_id: str, action: str, token_payload: dict[str, Any], request: Request | None = None, metadata: dict[str, Any] | None = None) -> None:
+def _log_portal_event(
+    *,
+    db: Session,
+    organization_id: str,
+    load_id: str,
+    action: str,
+    token_payload: dict[str, Any],
+    request: Request | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> None:
     AuditService(db).log_event(
         organization_id=organization_id,
         entity_type="load",
@@ -226,8 +262,8 @@ def create_portal_access_link(
     payload: PortalAccessLinkRequest,
     request: Request = None,  # type: ignore[assignment]
     *,
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     actor_id = _staff_actor_id(token_payload)
     load = LoadRepository(db).get_by_id(payload.load_id, include_related=True)
@@ -262,13 +298,23 @@ def create_portal_access_link(
         organization_id=str(load.organization_id),
         load_id=str(load.id),
         action="portal.access_link.created",
-        token_payload={"contact_email": contact_email, "contact_name": payload.contact_name, "role": f"external_{portal_role}"},
+        token_payload={
+            "contact_email": contact_email,
+            "contact_name": payload.contact_name,
+            "role": f"external_{portal_role}",
+        },
         request=request,
         metadata={"created_by_staff_user_id": actor_id, "expires_in_hours": expires_in_hours},
     )
     db.commit()
     return ApiResponse(
-        data={"access_token": portal_token, "token_type": "Bearer", "expires_in_hours": expires_in_hours, "load_id": str(load.id), "role": f"external_{portal_role}"},
+        data={
+            "access_token": portal_token,
+            "token_type": "Bearer",
+            "expires_in_hours": expires_in_hours,
+            "load_id": str(load.id),
+            "role": f"external_{portal_role}",
+        },
         meta={},
         error=None,
     )
@@ -276,27 +322,66 @@ def create_portal_access_link(
 
 @router.get("/portal/me", response_model=ApiResponse)
 def get_portal_scope(
-    token_payload: dict[str, Any] = Depends(_portal_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = PORTAL_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     load = _get_scoped_load(db=db, token_payload=token_payload)
-    return ApiResponse(data={"scope": {k: token_payload.get(k) for k in ("organization_id", "customer_account_id", "broker_id", "load_id", "role", "contact_email", "contact_name", "allow_packet_download", "allow_document_upload")}, "load": _serialize_portal_load(load)}, meta={}, error=None)
+    return ApiResponse(
+        data={
+            "scope": {
+                k: token_payload.get(k)
+                for k in (
+                    "organization_id",
+                    "customer_account_id",
+                    "broker_id",
+                    "load_id",
+                    "role",
+                    "contact_email",
+                    "contact_name",
+                    "allow_packet_download",
+                    "allow_document_upload",
+                )
+            },
+            "load": _serialize_portal_load(load),
+        },
+        meta={},
+        error=None,
+    )
 
 
 @router.get("/portal/loads/{load_id}", response_model=ApiResponse)
 def get_portal_load(
     load_id: uuid.UUID,
     request: Request = None,  # type: ignore[assignment]
-    token_payload: dict[str, Any] = Depends(_portal_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = PORTAL_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     _assert_load_id_scope(load_id, token_payload)
     load = _get_scoped_load(db=db, token_payload=token_payload)
-    docs = _latest_documents_for_load(db=db, organization_id=str(load.organization_id), load_id=str(load.id))
-    packets = SubmissionPacketService(db).list_packets(load_id=str(load.id), org_id=str(load.organization_id))
-    _log_portal_event(db=db, organization_id=str(load.organization_id), load_id=str(load.id), action="portal.load.viewed", token_payload=token_payload, request=request)
+    docs = _latest_documents_for_load(
+        db=db, organization_id=str(load.organization_id), load_id=str(load.id)
+    )
+    packets = SubmissionPacketService(db).list_packets(
+        load_id=str(load.id), org_id=str(load.organization_id)
+    )
+    _log_portal_event(
+        db=db,
+        organization_id=str(load.organization_id),
+        load_id=str(load.id),
+        action="portal.load.viewed",
+        token_payload=token_payload,
+        request=request,
+    )
     db.commit()
-    return ApiResponse(data={"load": _serialize_portal_load(load), "documents": [_serialize_portal_document(doc) for doc in docs], "packets": [_serialize_portal_packet(packet) for packet in packets]}, meta={}, error=None)
+    return ApiResponse(
+        data={
+            "load": _serialize_portal_load(load),
+            "documents": [_serialize_portal_document(doc) for doc in docs],
+            "packets": [_serialize_portal_packet(packet) for packet in packets],
+        },
+        meta={},
+        error=None,
+    )
 
 
 @router.get("/portal/loads/{load_id}/packets/{packet_id}/download")
@@ -304,17 +389,31 @@ def download_portal_packet(
     load_id: uuid.UUID,
     packet_id: uuid.UUID,
     request: Request = None,  # type: ignore[assignment]
-    token_payload: dict[str, Any] = Depends(_portal_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = PORTAL_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> StreamingResponse:
     _assert_load_id_scope(load_id, token_payload)
     if not bool(token_payload.get("allow_packet_download", True)):
         raise ForbiddenError("Packet download is not allowed for this portal link")
     load = _get_scoped_load(db=db, token_payload=token_payload)
-    zip_bytes, load_number = SubmissionPacketService(db).build_packet_zip(packet_id=str(packet_id), load_id=str(load.id), org_id=str(load.organization_id))
-    _log_portal_event(db=db, organization_id=str(load.organization_id), load_id=str(load.id), action="portal.packet.downloaded", token_payload=token_payload, request=request, metadata={"packet_id": str(packet_id)})
+    zip_bytes, load_number = SubmissionPacketService(db).build_packet_zip(
+        packet_id=str(packet_id), load_id=str(load.id), org_id=str(load.organization_id)
+    )
+    _log_portal_event(
+        db=db,
+        organization_id=str(load.organization_id),
+        load_id=str(load.id),
+        action="portal.packet.downloaded",
+        token_payload=token_payload,
+        request=request,
+        metadata={"packet_id": str(packet_id)},
+    )
     db.commit()
-    return StreamingResponse(io.BytesIO(zip_bytes), media_type="application/zip", headers={"Content-Disposition": f'attachment; filename="portal-packet-{load_number}.zip"'})
+    return StreamingResponse(
+        io.BytesIO(zip_bytes),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="portal-packet-{load_number}.zip"'},
+    )
 
 
 @router.get("/portal/loads/{load_id}/documents/{document_id}/download")
@@ -322,19 +421,36 @@ def download_portal_document(
     load_id: uuid.UUID,
     document_id: uuid.UUID,
     request: Request = None,  # type: ignore[assignment]
-    token_payload: dict[str, Any] = Depends(_portal_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = PORTAL_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ):
     _assert_load_id_scope(load_id, token_payload)
     load = _get_scoped_load(db=db, token_payload=token_payload)
     document = DocumentService(db).get_document(str(document_id))
-    if str(document.organization_id) != str(load.organization_id) or str(document.load_id) != str(load.id):
+    if str(document.organization_id) != str(load.organization_id) or str(document.load_id) != str(
+        load.id
+    ):
         raise UnauthorizedError("Document is not in portal load scope")
     if _doc_type_value(document.document_type) not in PORTAL_DOWNLOAD_DOCUMENT_TYPES:
         raise ForbiddenError("This document is not available in the portal")
-    _log_portal_event(db=db, organization_id=str(load.organization_id), load_id=str(load.id), action="portal.document.downloaded", token_payload=token_payload, request=request, metadata={"document_id": str(document.id), "document_type": _doc_type_value(document.document_type)})
+    _log_portal_event(
+        db=db,
+        organization_id=str(load.organization_id),
+        load_id=str(load.id),
+        action="portal.document.downloaded",
+        token_payload=token_payload,
+        request=request,
+        metadata={
+            "document_id": str(document.id),
+            "document_type": _doc_type_value(document.document_type),
+        },
+    )
     db.commit()
-    return StorageService().get_file(document.storage_key, download_filename=document.original_filename, media_type=document.mime_type)
+    return StorageService().get_file(
+        document.storage_key,
+        download_filename=document.original_filename,
+        media_type=document.mime_type,
+    )
 
 
 @router.post("/portal/loads/{load_id}/documents/upload", response_model=ApiResponse)
@@ -342,10 +458,10 @@ async def upload_portal_document(
     load_id: uuid.UUID,
     request: Request = None,  # type: ignore[assignment]
     *,
-    file: UploadFile = File(...),
-    document_type: str = Form(...),
-    token_payload: dict[str, Any] = Depends(_portal_payload),
-    db: Session = Depends(get_db_session),
+    file: Annotated[UploadFile, File()],
+    document_type: Annotated[str, Form()],
+    token_payload: dict[str, Any] = PORTAL_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     _assert_load_id_scope(load_id, token_payload)
     if not bool(token_payload.get("allow_document_upload", True)):
@@ -376,9 +492,32 @@ async def upload_portal_document(
             mime_type=_normalize_optional_text(file.content_type),
             file_size_bytes=int(storage_result.get("size") or 0),
         )
-        _log_portal_event(db=db, organization_id=str(load.organization_id), load_id=str(load.id), action="portal.document.uploaded", token_payload=token_payload, request=request, metadata={"document_id": str(item.id), "document_type": parsed_type_value, "filename": file.filename, "file_size_bytes": storage_result.get("size")})
+        _log_portal_event(
+            db=db,
+            organization_id=str(load.organization_id),
+            load_id=str(load.id),
+            action="portal.document.uploaded",
+            token_payload=token_payload,
+            request=request,
+            metadata={
+                "document_id": str(item.id),
+                "document_type": parsed_type_value,
+                "filename": file.filename,
+                "file_size_bytes": storage_result.get("size"),
+            },
+        )
         db.commit()
-        return ApiResponse(data=_serialize_portal_document(item), meta={"uploaded": True, "attribution": {"actor_type": "external_portal", "contact_email": token_payload.get("contact_email")}}, error=None)
+        return ApiResponse(
+            data=_serialize_portal_document(item),
+            meta={
+                "uploaded": True,
+                "attribution": {
+                    "actor_type": "external_portal",
+                    "contact_email": token_payload.get("contact_email"),
+                },
+            },
+            error=None,
+        )
     except Exception:
         db.rollback()
         if uploaded_storage_key:

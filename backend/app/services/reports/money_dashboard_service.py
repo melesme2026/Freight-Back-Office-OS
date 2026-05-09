@@ -4,16 +4,14 @@ from collections import defaultdict
 from datetime import date, datetime, timezone
 from decimal import Decimal
 
-from sqlalchemy import Select, select
-from sqlalchemy.orm import Session
-
 from app.domain.enums.follow_up_task import FollowUpTaskPriority, FollowUpTaskStatus
 from app.domain.enums.load_payment_status import LoadPaymentStatus
 from app.domain.models.follow_up_task import FollowUpTask
 from app.domain.models.load import Load
 from app.domain.models.load_payment_record import LoadPaymentRecord
 from app.domain.models.submission_packet import SubmissionPacket
-
+from sqlalchemy import Select, select
+from sqlalchemy.orm import Session
 
 ZERO = Decimal("0")
 OVERDUE_THRESHOLD_DAYS = 30
@@ -75,7 +73,9 @@ class MoneyDashboardService:
 
         for record in payment_records:
             load = loads.get(record.load_id)
-            reference_date = self._aging_reference_date(record=record, load=load, packet_sent_at=packets.get(record.load_id))
+            reference_date = self._aging_reference_date(
+                record=record, load=load, packet_sent_at=packets.get(record.load_id)
+            )
 
             if not self._within_range(reference_date, date_from=date_from, date_to=date_to):
                 continue
@@ -106,7 +106,9 @@ class MoneyDashboardService:
                 short_paid_count += 1
 
             if record.payment_status == LoadPaymentStatus.RESERVE_PENDING:
-                reserve_pending_amount += (record.reserve_amount or ZERO) - (record.reserve_paid_amount or ZERO)
+                reserve_pending_amount += (record.reserve_amount or ZERO) - (
+                    record.reserve_paid_amount or ZERO
+                )
 
             if record.factoring_used:
                 factoring_loads_count += 1
@@ -121,9 +123,15 @@ class MoneyDashboardService:
             age_days = max((now.date() - reference_date).days, 0)
             bucket_key = self._age_bucket_key(age_days)
             aging_buckets[bucket_key]["count"] = int(aging_buckets[bucket_key]["count"]) + 1
-            aging_buckets[bucket_key]["amount"] = Decimal(str(aging_buckets[bucket_key]["amount"])) + outstanding_amount
+            aging_buckets[bucket_key]["amount"] = (
+                Decimal(str(aging_buckets[bucket_key]["amount"])) + outstanding_amount
+            )
 
-            if age_days > OVERDUE_THRESHOLD_DAYS and record.payment_status != LoadPaymentStatus.PAID and outstanding_amount > ZERO:
+            if (
+                age_days > OVERDUE_THRESHOLD_DAYS
+                and record.payment_status != LoadPaymentStatus.PAID
+                and outstanding_amount > ZERO
+            ):
                 overdue_count += 1
                 overdue_amount += outstanding_amount
 
@@ -161,7 +169,11 @@ class MoneyDashboardService:
         return {
             "summary": summary,
             "aging_buckets": [
-                {"bucket": item["bucket"], "count": int(item["count"]), "amount": str(Decimal(str(item["amount"])))}
+                {
+                    "bucket": item["bucket"],
+                    "count": int(item["count"]),
+                    "amount": str(Decimal(str(item["amount"]))),
+                }
                 for item in aging_buckets.values()
             ],
             "status_breakdown": normalized_status_breakdown,
@@ -179,7 +191,9 @@ class MoneyDashboardService:
                 "direct_unpaid_total": str(direct_unpaid_total),
             },
             "needs_attention": self._needs_attention(org_id),
-            "recent_cash_activity": self._recent_cash_activity(payment_records, loads=loads, date_from=date_from, date_to=date_to),
+            "recent_cash_activity": self._recent_cash_activity(
+                payment_records, loads=loads, date_from=date_from, date_to=date_to
+            ),
         }
 
     def _load_payment_records(self, org_id: str) -> list[LoadPaymentRecord]:
@@ -191,10 +205,14 @@ class MoneyDashboardService:
         return list(self.db.execute(stmt).scalars().all())
 
     def _load_loads(self, org_id: str, load_ids: list[object]) -> dict[object, Load]:
-        stmt: Select[tuple[Load]] = select(Load).where(Load.organization_id == org_id).where(Load.id.in_(load_ids))
+        stmt: Select[tuple[Load]] = (
+            select(Load).where(Load.organization_id == org_id).where(Load.id.in_(load_ids))
+        )
         return {item.id: item for item in self.db.execute(stmt).scalars().all()}
 
-    def _latest_submission_sent_by_load(self, org_id: str, load_ids: list[object]) -> dict[object, datetime]:
+    def _latest_submission_sent_by_load(
+        self, org_id: str, load_ids: list[object]
+    ) -> dict[object, datetime]:
         stmt: Select[tuple[SubmissionPacket]] = (
             select(SubmissionPacket)
             .where(SubmissionPacket.organization_id == org_id)
@@ -224,12 +242,16 @@ class MoneyDashboardService:
         load_map = self._load_loads(org_id, load_ids) if load_ids else {}
 
         return {
-            "urgent_count": sum(1 for item in tasks if item.priority == FollowUpTaskPriority.URGENT),
+            "urgent_count": sum(
+                1 for item in tasks if item.priority == FollowUpTaskPriority.URGENT
+            ),
             "overdue_followups_count": len(tasks),
             "top_items": [
                 {
                     "load_id": str(item.load_id),
-                    "load_number": load_map.get(item.load_id).load_number if load_map.get(item.load_id) else None,
+                    "load_number": load_map.get(item.load_id).load_number
+                    if load_map.get(item.load_id)
+                    else None,
                     "task_type": item.task_type.value,
                     "priority": item.priority.value,
                     "due_at": item.due_at.isoformat(),
@@ -336,10 +358,7 @@ class MoneyDashboardService:
         ]
 
     def _empty_status_breakdown(self) -> list[dict[str, object]]:
-        return [
-            {"status": status.value, "count": 0, "amount": "0"}
-            for status in LoadPaymentStatus
-        ]
+        return [{"status": status.value, "count": 0, "amount": "0"} for status in LoadPaymentStatus]
 
     def _empty_factoring_vs_direct(self) -> dict[str, object]:
         return {

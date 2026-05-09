@@ -4,7 +4,6 @@ from datetime import datetime, timezone
 from decimal import Decimal
 
 import pytest
-
 from app.core.exceptions import BillingError
 from app.services.billing.invoice_service import InvoiceService
 from app.services.billing.payment_service import PaymentService

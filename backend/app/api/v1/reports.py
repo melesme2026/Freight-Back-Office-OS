@@ -4,9 +4,6 @@ import uuid
 from datetime import date
 from typing import Any
 
-from fastapi import APIRouter, Depends
-from sqlalchemy.orm import Session
-
 from app.core.dependencies import get_db_session
 from app.core.exceptions import ForbiddenError, UnauthorizedError
 from app.core.security import get_current_token_payload
@@ -14,7 +11,11 @@ from app.domain.enums.factoring import FactoringWorkflowStatus
 from app.schemas.common import ApiResponse
 from app.services.reports.money_dashboard_service import MoneyDashboardService
 from app.services.reports.operational_analytics_service import OperationalAnalyticsService
+from fastapi import APIRouter, Depends
+from sqlalchemy.orm import Session
 
+GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY = Depends(get_current_token_payload)
+GET_DB_SESSION_DEPENDENCY = Depends(get_db_session)
 
 router = APIRouter()
 
@@ -31,8 +32,8 @@ def get_money_dashboard(
     organization_id: uuid.UUID | None = None,
     date_from: date | None = None,
     date_to: date | None = None,
-    token_payload: dict[str, object] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, object] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     _authorize_reports_read(token_payload)
 
@@ -60,8 +61,8 @@ def get_operational_analytics(
     broker_id: uuid.UUID | None = None,
     driver_id: uuid.UUID | None = None,
     factoring_status: FactoringWorkflowStatus | None = None,
-    token_payload: dict[str, object] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, object] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     _authorize_reports_read(token_payload)
 

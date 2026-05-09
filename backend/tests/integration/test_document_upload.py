@@ -61,7 +61,9 @@ def test_document_sync_marks_submission_ready_without_bol(db_session) -> None:
         driver_id="00000000-0000-0000-0000-000000000423",
     )
 
-    for index, document_type in enumerate(["rate_confirmation", "proof_of_delivery", "invoice"], start=1):
+    for index, document_type in enumerate(
+        ["rate_confirmation", "proof_of_delivery", "invoice"], start=1
+    ):
         document_service.create_document(
             organization_id="00000000-0000-0000-0000-000000000421",
             customer_account_id="00000000-0000-0000-0000-000000000422",

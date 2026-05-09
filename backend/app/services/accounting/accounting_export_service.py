@@ -9,13 +9,13 @@ from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import Literal
 
+from app.core.exceptions import ValidationError
 from app.domain.models.accounting import (
     AccountingExportMapping,
     AccountingIntegrationSettings,
 )
 from app.domain.models.load import Load
 from app.domain.models.load_payment_record import LoadPaymentRecord
-from app.core.exceptions import ValidationError
 from app.services.accounting.quickbooks_service import QuickBooksIntegrationService
 from app.services.organizations.quota_service import OrganizationQuotaService
 from sqlalchemy import select
@@ -168,9 +168,7 @@ class AccountingExportService:
         mapping = self.get_or_create_mapping(org_id)
         rows: list[dict[str, str]] = []
         try:
-            source_rows = self._base_rows(
-                org_id, mapping, max_source_rows=MAX_EXPORT_ROWS + 1
-            )
+            source_rows = self._base_rows(org_id, mapping, max_source_rows=MAX_EXPORT_ROWS + 1)
         except TypeError as exc:
             if "max_source_rows" not in str(exc):
                 raise
@@ -270,9 +268,7 @@ class AccountingExportService:
         for record in records:
             load = record.load
             expected = self._decimal(
-                record.expected_amount
-                or record.gross_amount
-                or getattr(load, "gross_amount", None)
+                record.expected_amount or record.gross_amount or getattr(load, "gross_amount", None)
             )
             received = self._decimal(record.amount_received)
             reserve = self._decimal(record.reserve_amount)
@@ -287,9 +283,7 @@ class AccountingExportService:
             reference_date = record.paid_date.date() if record.paid_date else load.delivery_date
             aging_days = max((now - reference_date).days, 0) if reference_date else 0
             broker_customer = (
-                getattr(getattr(load, "broker", None), "name", None)
-                or load.broker_name_raw
-                or ""
+                getattr(getattr(load, "broker", None), "name", None) or load.broker_name_raw or ""
             )
             factoring_company = (
                 getattr(getattr(record, "factoring_company", None), "company_name", None)

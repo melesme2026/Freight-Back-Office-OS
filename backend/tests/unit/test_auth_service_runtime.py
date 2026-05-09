@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import uuid
 
-from app.core.security import decode_token, hash_password
 from app.core.exceptions import UnauthorizedError
-from app.domain.enums.role import Role
+from app.core.security import decode_token, hash_password
 from app.domain.enums.customer_account_status import CustomerAccountStatus
+from app.domain.enums.role import Role
 from app.domain.models.customer_account import CustomerAccount
 from app.domain.models.driver import Driver
 from app.domain.models.organization import Organization

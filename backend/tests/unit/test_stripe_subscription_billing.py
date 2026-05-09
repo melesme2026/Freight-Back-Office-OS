@@ -110,7 +110,9 @@ def test_owner_checkout_allowed_and_creates_session(db_session, monkeypatch) -> 
         captured.body = request.data
         assert timeout == 10
         assert request.headers["Authorization"] == "Bearer sk_test_safe"
-        return _FakeStripeResponse({"id": "cs_test_123", "url": "https://checkout.stripe.test/session"})
+        return _FakeStripeResponse(
+            {"id": "cs_test_123", "url": "https://checkout.stripe.test/session"}
+        )
 
     monkeypatch.setattr("app.services.billing.stripe_subscription_service.urlopen", fake_urlopen)
 

@@ -2,13 +2,12 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlalchemy import select
-from sqlalchemy.orm import Session
-
 from app.core.exceptions import NotFoundError, UnauthorizedError, ValidationError
 from app.domain.enums.notification_status import NotificationStatus
 from app.domain.models.notification import Notification
 from app.repositories.notification_repo import NotificationRepository
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 
 
 class NotificationService:
@@ -82,7 +81,8 @@ class NotificationService:
         demo_request_id: str | None = None,
     ) -> Notification | None:
         stmt = select(Notification).where(
-            Notification.message_type == self._require_text(message_type, field_name="message_type"),
+            Notification.message_type
+            == self._require_text(message_type, field_name="message_type"),
             Notification.channel == self._require_text(channel, field_name="channel"),
         )
         if self._clean_text(organization_id) is None:
@@ -165,7 +165,9 @@ class NotificationService:
             else self.db.get(Notification, notification_id)
         )
         if notification is None:
-            raise NotFoundError("Notification not found", details={"notification_id": notification_id})
+            raise NotFoundError(
+                "Notification not found", details={"notification_id": notification_id}
+            )
         notification.status = NotificationStatus.SENT
         notification.sent_at = datetime.now(timezone.utc)
         if provider_message_id:
@@ -217,7 +219,9 @@ class NotificationService:
             else self.db.get(Notification, notification_id)
         )
         if notification is None:
-            raise NotFoundError("Notification not found", details={"notification_id": notification_id})
+            raise NotFoundError(
+                "Notification not found", details={"notification_id": notification_id}
+            )
         notification.status = NotificationStatus.FAILED
         notification.failed_at = datetime.now(timezone.utc)
         notification.error_message = self._clean_text(error_message)

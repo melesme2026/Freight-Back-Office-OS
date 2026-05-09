@@ -5,25 +5,23 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, Date, DateTime, Enum as SqlEnum
-from sqlalchemy import ForeignKey, Index, Numeric, String, Text
-from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
-
 from app.core.database import Base
 from app.domain.enums.channel import Channel
 from app.domain.enums.load_status import LoadStatus
 from app.domain.enums.processing_status import ProcessingStatus
 from app.domain.models.organization import TimestampMixin, UUIDPrimaryKeyMixin
-
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Index, Numeric, String, Text
+from sqlalchemy import Enum as SqlEnum
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 if TYPE_CHECKING:
     from app.domain.models.broker import Broker
     from app.domain.models.customer_account import CustomerAccount
     from app.domain.models.driver import Driver
     from app.domain.models.extracted_field import ExtractedField
-    from app.domain.models.load_document import LoadDocument
     from app.domain.models.follow_up_task import FollowUpTask
+    from app.domain.models.load_document import LoadDocument
     from app.domain.models.load_payment_record import LoadPaymentRecord
     from app.domain.models.notification import Notification
     from app.domain.models.organization import Organization
@@ -205,71 +203,71 @@ class Load(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    organization: Mapped["Organization"] = relationship(
+    organization: Mapped[Organization] = relationship(
         back_populates="loads",
         lazy="selectin",
     )
-    customer_account: Mapped["CustomerAccount"] = relationship(
+    customer_account: Mapped[CustomerAccount] = relationship(
         back_populates="loads",
         lazy="selectin",
     )
-    driver: Mapped["Driver"] = relationship(
+    driver: Mapped[Driver] = relationship(
         back_populates="loads",
         lazy="selectin",
     )
-    broker: Mapped["Broker | None"] = relationship(
+    broker: Mapped[Broker | None] = relationship(
         back_populates="loads",
         lazy="selectin",
     )
-    last_reviewed_by_user: Mapped["StaffUser | None"] = relationship(
+    last_reviewed_by_user: Mapped[StaffUser | None] = relationship(
         back_populates="reviewed_loads",
         foreign_keys=[last_reviewed_by],
         lazy="selectin",
     )
-    follow_up_owner: Mapped["StaffUser | None"] = relationship(
+    follow_up_owner: Mapped[StaffUser | None] = relationship(
         back_populates="follow_up_owned_loads",
         foreign_keys=[follow_up_owner_id],
         lazy="selectin",
     )
 
-    documents: Mapped[list["LoadDocument"]] = relationship(
+    documents: Mapped[list[LoadDocument]] = relationship(
         back_populates="load",
         cascade="all, delete-orphan",
         lazy="selectin",
     )
-    extracted_fields: Mapped[list["ExtractedField"]] = relationship(
+    extracted_fields: Mapped[list[ExtractedField]] = relationship(
         back_populates="load",
         lazy="selectin",
     )
-    validation_issues: Mapped[list["ValidationIssue"]] = relationship(
-        back_populates="load",
-        cascade="all, delete-orphan",
-        lazy="selectin",
-    )
-    workflow_events: Mapped[list["WorkflowEvent"]] = relationship(
+    validation_issues: Mapped[list[ValidationIssue]] = relationship(
         back_populates="load",
         cascade="all, delete-orphan",
         lazy="selectin",
     )
-    notifications: Mapped[list["Notification"]] = relationship(
+    workflow_events: Mapped[list[WorkflowEvent]] = relationship(
+        back_populates="load",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
+    notifications: Mapped[list[Notification]] = relationship(
         back_populates="load",
         lazy="selectin",
     )
-    support_tickets: Mapped[list["SupportTicket"]] = relationship(
+    support_tickets: Mapped[list[SupportTicket]] = relationship(
         back_populates="load",
         lazy="selectin",
     )
-    usage_records: Mapped[list["UsageRecord"]] = relationship(
+    usage_records: Mapped[list[UsageRecord]] = relationship(
         back_populates="load",
         lazy="selectin",
     )
-    payment_record: Mapped["LoadPaymentRecord | None"] = relationship(
+    payment_record: Mapped[LoadPaymentRecord | None] = relationship(
         back_populates="load",
         uselist=False,
         cascade="all, delete-orphan",
         lazy="selectin",
     )
-    follow_up_tasks: Mapped[list["FollowUpTask"]] = relationship(
+    follow_up_tasks: Mapped[list[FollowUpTask]] = relationship(
         back_populates="load",
         cascade="all, delete-orphan",
         lazy="selectin",

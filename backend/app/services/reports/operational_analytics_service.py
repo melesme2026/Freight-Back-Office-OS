@@ -104,12 +104,27 @@ class OperationalAnalyticsService:
                 "factoring_status": factoring_status,
             },
             "metric_definitions": {
-                "revenue": "Sum of load payment record expected_amount for loads in the selected date range.",
+                "revenue": (
+                    "Sum of load payment record expected_amount for loads in "
+                    "the selected date range."
+                ),
                 "paid_revenue": "Sum of amount_received for records with payment_status=paid.",
-                "unpaid_revenue": "Sum of max(expected_amount - amount_received, 0) for records that are not fully paid.",
-                "factored_revenue": "Sum of expected_amount where factoring_used is true or factoring_status is not not_factored.",
-                "aging": "Days since submitted_at, otherwise delivery_date, pickup_date, or record created_at for unpaid balances.",
-                "profitability": "Revenue and collection performance only; margin is not calculated without actual expense data.",
+                "unpaid_revenue": (
+                    "Sum of max(expected_amount - amount_received, 0) for records "
+                    "that are not fully paid."
+                ),
+                "factored_revenue": (
+                    "Sum of expected_amount where factoring_used is true or "
+                    "factoring_status is not not_factored."
+                ),
+                "aging": (
+                    "Days since submitted_at, otherwise delivery_date, pickup_date, "
+                    "or record created_at for unpaid balances."
+                ),
+                "profitability": (
+                    "Revenue and collection performance only; margin is not calculated "
+                    "without actual expense data."
+                ),
             },
             "revenue": revenue,
             "unpaid_invoices": unpaid,
@@ -164,7 +179,10 @@ class OperationalAnalyticsService:
         if driver_id:
             stmt = stmt.where(Load.driver_id == driver_id)
         if factoring_status:
-            stmt = stmt.where(LoadPaymentRecord.factoring_status == self._coerce_factoring_status(factoring_status))
+            stmt = stmt.where(
+                LoadPaymentRecord.factoring_status
+                == self._coerce_factoring_status(factoring_status)
+            )
 
         records = list(self.db.scalars(stmt).unique().all())
         filtered: list[LoadPaymentRecord] = []
@@ -191,31 +209,69 @@ class OperationalAnalyticsService:
         for record in records:
             load = record.load
             if load.broker_id:
-                brokers[str(load.broker_id)] = load.broker.name if load.broker else (load.broker_name_raw or "Unknown broker")
+                brokers[str(load.broker_id)] = (
+                    load.broker.name if load.broker else (load.broker_name_raw or "Unknown broker")
+                )
             if load.driver_id:
-                drivers[str(load.driver_id)] = load.driver.full_name if load.driver else "Unknown driver"
+                drivers[str(load.driver_id)] = (
+                    load.driver.full_name if load.driver else "Unknown driver"
+                )
         return {
-            "brokers": [{"id": key, "name": brokers[key]} for key in sorted(brokers, key=lambda item: brokers[item].lower())],
-            "drivers": [{"id": key, "name": drivers[key]} for key in sorted(drivers, key=lambda item: drivers[item].lower())],
+            "brokers": [
+                {"id": key, "name": brokers[key]}
+                for key in sorted(brokers, key=lambda item: brokers[item].lower())
+            ],
+            "drivers": [
+                {"id": key, "name": drivers[key]}
+                for key in sorted(drivers, key=lambda item: drivers[item].lower())
+            ],
             "factoring_statuses": [status.value for status in FactoringWorkflowStatus],
         }
 
     def _build_revenue(self, records: list[LoadPaymentRecord]) -> dict[str, Any]:
         total = sum((self._expected(record) for record in records), ZERO)
         received = sum((self._received(record) for record in records), ZERO)
-        paid = sum((self._received(record) for record in records if record.payment_status in PAID_STATUSES), ZERO)
-        unpaid = sum((self._outstanding(record) for record in records if record.payment_status in UNPAID_STATUSES), ZERO)
-        factored = sum((self._expected(record) for record in records if self._is_factored(record)), ZERO)
+        paid = sum(
+            (
+                self._received(record)
+                for record in records
+                if record.payment_status in PAID_STATUSES
+            ),
+            ZERO,
+        )
+        unpaid = sum(
+            (
+                self._outstanding(record)
+                for record in records
+                if record.payment_status in UNPAID_STATUSES
+            ),
+            ZERO,
+        )
+        factored = sum(
+            (self._expected(record) for record in records if self._is_factored(record)), ZERO
+        )
         invoice_count = len(records)
         average = total / invoice_count if invoice_count else ZERO
-        trends: dict[str, dict[str, Any]] = defaultdict(lambda: {"month": "", "revenue": ZERO, "paid_revenue": ZERO, "unpaid_revenue": ZERO, "invoice_count": 0})
+        trends: dict[str, dict[str, Any]] = defaultdict(
+            lambda: {
+                "month": "",
+                "revenue": ZERO,
+                "paid_revenue": ZERO,
+                "unpaid_revenue": ZERO,
+                "invoice_count": 0,
+            }
+        )
         for record in records:
             month = self._reference_date(record).strftime("%Y-%m")
             row = trends[month]
             row["month"] = month
             row["revenue"] += self._expected(record)
-            row["paid_revenue"] += self._received(record) if record.payment_status in PAID_STATUSES else ZERO
-            row["unpaid_revenue"] += self._outstanding(record) if record.payment_status in UNPAID_STATUSES else ZERO
+            row["paid_revenue"] += (
+                self._received(record) if record.payment_status in PAID_STATUSES else ZERO
+            )
+            row["unpaid_revenue"] += (
+                self._outstanding(record) if record.payment_status in UNPAID_STATUSES else ZERO
+            )
             row["invoice_count"] += 1
         return {
             "total_revenue": self._money(total),
@@ -229,21 +285,43 @@ class OperationalAnalyticsService:
         }
 
     def _build_unpaid(self, records: list[LoadPaymentRecord], *, today: date) -> dict[str, Any]:
-        unpaid_records = [record for record in records if self._outstanding(record) > ZERO and record.payment_status in UNPAID_STATUSES]
-        overdue_records = [record for record in unpaid_records if self._age_days(record, today=today) > 0]
-        partial_records = [record for record in unpaid_records if record.payment_status in PARTIAL_STATUSES]
+        unpaid_records = [
+            record
+            for record in records
+            if self._outstanding(record) > ZERO and record.payment_status in UNPAID_STATUSES
+        ]
+        overdue_records = [
+            record for record in unpaid_records if self._age_days(record, today=today) > 0
+        ]
+        partial_records = [
+            record for record in unpaid_records if record.payment_status in PARTIAL_STATUSES
+        ]
         return {
             "unpaid_count": len(unpaid_records),
             "partially_paid_count": len(partial_records),
             "overdue_count": len(overdue_records),
-            "unpaid_total": self._money(sum((self._outstanding(record) for record in unpaid_records), ZERO)),
-            "partially_paid_total": self._money(sum((self._outstanding(record) for record in partial_records), ZERO)),
-            "overdue_total": self._money(sum((self._outstanding(record) for record in overdue_records), ZERO)),
-            "items": [self._invoice_item(record, today=today) for record in sorted(unpaid_records, key=lambda item: self._age_days(item, today=today), reverse=True)[:50]],
+            "unpaid_total": self._money(
+                sum((self._outstanding(record) for record in unpaid_records), ZERO)
+            ),
+            "partially_paid_total": self._money(
+                sum((self._outstanding(record) for record in partial_records), ZERO)
+            ),
+            "overdue_total": self._money(
+                sum((self._outstanding(record) for record in overdue_records), ZERO)
+            ),
+            "items": [
+                self._invoice_item(record, today=today)
+                for record in sorted(
+                    unpaid_records, key=lambda item: self._age_days(item, today=today), reverse=True
+                )[:50]
+            ],
         }
 
     def _build_aging(self, records: list[LoadPaymentRecord], *, today: date) -> dict[str, Any]:
-        buckets = {key: {"bucket": key, "label": label, "count": 0, "balance": ZERO} for key, label, _, _ in AGING_BUCKETS}
+        buckets = {
+            key: {"bucket": key, "label": label, "count": 0, "balance": ZERO}
+            for key, label, _, _ in AGING_BUCKETS
+        }
         for record in records:
             balance = self._outstanding(record)
             if balance <= ZERO or record.payment_status not in UNPAID_STATUSES:
@@ -258,41 +336,127 @@ class OperationalAnalyticsService:
             "total_balance": self._money(sum((Decimal(str(row["balance"])) for row in rows), ZERO)),
         }
 
-    def _build_collections(self, records: list[LoadPaymentRecord], *, today: date) -> dict[str, Any]:
-        unpaid_records = [record for record in records if self._outstanding(record) > ZERO and record.payment_status in UNPAID_STATUSES]
-        overdue_records = [record for record in unpaid_records if self._age_days(record, today=today) > 0]
-        reserve_pending = sum((max((record.reserve_amount or ZERO) - (record.reserve_paid_amount or ZERO), ZERO) for record in records), ZERO)
-        unreconciled = [record for record in records if record.reconciliation_status != FactoringReconciliationStatus.RECONCILED]
+    def _build_collections(
+        self, records: list[LoadPaymentRecord], *, today: date
+    ) -> dict[str, Any]:
+        unpaid_records = [
+            record
+            for record in records
+            if self._outstanding(record) > ZERO and record.payment_status in UNPAID_STATUSES
+        ]
+        overdue_records = [
+            record for record in unpaid_records if self._age_days(record, today=today) > 0
+        ]
+        reserve_pending = sum(
+            (
+                max((record.reserve_amount or ZERO) - (record.reserve_paid_amount or ZERO), ZERO)
+                for record in records
+            ),
+            ZERO,
+        )
+        unreconciled = [
+            record
+            for record in records
+            if record.reconciliation_status != FactoringReconciliationStatus.RECONCILED
+        ]
         return {
-            "unpaid_total": self._money(sum((self._outstanding(record) for record in unpaid_records), ZERO)),
-            "overdue_balance": self._money(sum((self._outstanding(record) for record in overdue_records), ZERO)),
+            "unpaid_total": self._money(
+                sum((self._outstanding(record) for record in unpaid_records), ZERO)
+            ),
+            "overdue_balance": self._money(
+                sum((self._outstanding(record) for record in overdue_records), ZERO)
+            ),
             "reserve_pending_total": self._money(reserve_pending),
             "unreconciled_count": len(unreconciled),
-            "unreconciled_balance": self._money(sum((self._outstanding(record) for record in unreconciled), ZERO)),
-            "dispute_count": sum(1 for record in records if record.payment_status == LoadPaymentStatus.DISPUTED),
-            "short_paid_count": sum(1 for record in records if record.payment_status == LoadPaymentStatus.SHORT_PAID),
+            "unreconciled_balance": self._money(
+                sum((self._outstanding(record) for record in unreconciled), ZERO)
+            ),
+            "dispute_count": sum(
+                1 for record in records if record.payment_status == LoadPaymentStatus.DISPUTED
+            ),
+            "short_paid_count": sum(
+                1 for record in records if record.payment_status == LoadPaymentStatus.SHORT_PAID
+            ),
             "risk_summary": self._risk_summary(unpaid_records, today=today),
-            "oldest_invoices": [self._invoice_item(record, today=today) for record in sorted(unpaid_records, key=lambda item: self._age_days(item, today=today), reverse=True)[:10]],
+            "oldest_invoices": [
+                self._invoice_item(record, today=today)
+                for record in sorted(
+                    unpaid_records, key=lambda item: self._age_days(item, today=today), reverse=True
+                )[:10]
+            ],
         }
 
-    def _group_by_driver(self, records: list[LoadPaymentRecord], *, today: date) -> list[dict[str, Any]]:
-        return self._group_records(records, today=today, key_func=lambda record: (str(record.load.driver_id), record.load.driver.full_name if record.load.driver else "Unknown driver"))
+    def _group_by_driver(
+        self, records: list[LoadPaymentRecord], *, today: date
+    ) -> list[dict[str, Any]]:
+        return self._group_records(
+            records,
+            today=today,
+            key_func=lambda record: (
+                str(record.load.driver_id),
+                record.load.driver.full_name if record.load.driver else "Unknown driver",
+            ),
+        )
 
-    def _group_by_broker(self, records: list[LoadPaymentRecord], *, today: date) -> list[dict[str, Any]]:
-        return self._group_records(records, today=today, key_func=lambda record: (str(record.load.broker_id) if record.load.broker_id else "unassigned", record.load.broker.name if record.load.broker else (record.load.broker_name_raw or "Unassigned broker")), include_payment_speed=True)
+    def _group_by_broker(
+        self, records: list[LoadPaymentRecord], *, today: date
+    ) -> list[dict[str, Any]]:
+        return self._group_records(
+            records,
+            today=today,
+            key_func=lambda record: (
+                str(record.load.broker_id) if record.load.broker_id else "unassigned",
+                record.load.broker.name
+                if record.load.broker
+                else (record.load.broker_name_raw or "Unassigned broker"),
+            ),
+            include_payment_speed=True,
+        )
 
-    def _group_by_lane(self, records: list[LoadPaymentRecord], *, today: date) -> list[dict[str, Any]]:
-        return self._group_records(records, today=today, key_func=lambda record: (self._lane_key(record.load), self._lane_label(record.load)))
+    def _group_by_lane(
+        self, records: list[LoadPaymentRecord], *, today: date
+    ) -> list[dict[str, Any]]:
+        return self._group_records(
+            records,
+            today=today,
+            key_func=lambda record: (self._lane_key(record.load), self._lane_label(record.load)),
+        )
 
-    def _group_records(self, records: list[LoadPaymentRecord], *, today: date, key_func, include_payment_speed: bool = False) -> list[dict[str, Any]]:
+    def _group_records(
+        self,
+        records: list[LoadPaymentRecord],
+        *,
+        today: date,
+        key_func,
+        include_payment_speed: bool = False,
+    ) -> list[dict[str, Any]]:
         grouped: dict[str, dict[str, Any]] = {}
         paid_speed_days: dict[str, list[int]] = defaultdict(list)
         for record in records:
             key, label = key_func(record)
-            row = grouped.setdefault(key, {"id": key, "name": label, "revenue": ZERO, "paid_revenue": ZERO, "unpaid_balance": ZERO, "factored_revenue": ZERO, "load_count": 0, "overdue_balance": ZERO, "overdue_count": 0, "dispute_count": 0, "unreconciled_count": 0})
+            row = grouped.setdefault(
+                key,
+                {
+                    "id": key,
+                    "name": label,
+                    "revenue": ZERO,
+                    "paid_revenue": ZERO,
+                    "unpaid_balance": ZERO,
+                    "factored_revenue": ZERO,
+                    "load_count": 0,
+                    "overdue_balance": ZERO,
+                    "overdue_count": 0,
+                    "dispute_count": 0,
+                    "unreconciled_count": 0,
+                },
+            )
             row["revenue"] += self._expected(record)
-            row["paid_revenue"] += self._received(record) if record.payment_status in PAID_STATUSES else ZERO
-            row["unpaid_balance"] += self._outstanding(record) if record.payment_status in UNPAID_STATUSES else ZERO
+            row["paid_revenue"] += (
+                self._received(record) if record.payment_status in PAID_STATUSES else ZERO
+            )
+            row["unpaid_balance"] += (
+                self._outstanding(record) if record.payment_status in UNPAID_STATUSES else ZERO
+            )
             row["factored_revenue"] += self._expected(record) if self._is_factored(record) else ZERO
             row["load_count"] += 1
             if self._age_days(record, today=today) > 0 and self._outstanding(record) > ZERO:
@@ -303,29 +467,47 @@ class OperationalAnalyticsService:
             if record.reconciliation_status != FactoringReconciliationStatus.RECONCILED:
                 row["unreconciled_count"] += 1
             if include_payment_speed and record.paid_date:
-                paid_speed_days[key].append(max((record.paid_date.date() - self._reference_date(record)).days, 0))
+                paid_speed_days[key].append(
+                    max((record.paid_date.date() - self._reference_date(record)).days, 0)
+                )
         rows = []
         for key, row in grouped.items():
             load_count = int(row["load_count"])
             row["average_load_value"] = row["revenue"] / load_count if load_count else ZERO
-            row["profitability_note"] = "Revenue-only view; margin is not calculated because actual expenses are not available."
+            row["profitability_note"] = (
+                "Revenue-only view; margin is not calculated because actual expenses "
+                "are not available."
+            )
             if include_payment_speed:
                 speeds = paid_speed_days.get(key, [])
-                row["average_payment_days"] = round(sum(speeds) / len(speeds), 1) if speeds else None
+                row["average_payment_days"] = (
+                    round(sum(speeds) / len(speeds), 1) if speeds else None
+                )
             rows.append(self._serialize_row(row))
         return sorted(rows, key=lambda row: Decimal(str(row["revenue"])), reverse=True)[:25]
 
     def _risk_summary(self, records: list[LoadPaymentRecord], *, today: date) -> dict[str, Any]:
-        high = [record for record in records if self._age_days(record, today=today) > 60 or record.payment_status in {LoadPaymentStatus.DISPUTED, LoadPaymentStatus.SHORT_PAID}]
+        high = [
+            record
+            for record in records
+            if self._age_days(record, today=today) > 60
+            or record.payment_status in {LoadPaymentStatus.DISPUTED, LoadPaymentStatus.SHORT_PAID}
+        ]
         medium = [record for record in records if 31 <= self._age_days(record, today=today) <= 60]
         low = [record for record in records if self._age_days(record, today=today) <= 30]
         return {
             "high_risk_count": len(high),
-            "high_risk_balance": self._money(sum((self._outstanding(record) for record in high), ZERO)),
+            "high_risk_balance": self._money(
+                sum((self._outstanding(record) for record in high), ZERO)
+            ),
             "medium_risk_count": len(medium),
-            "medium_risk_balance": self._money(sum((self._outstanding(record) for record in medium), ZERO)),
+            "medium_risk_balance": self._money(
+                sum((self._outstanding(record) for record in medium), ZERO)
+            ),
             "low_risk_count": len(low),
-            "low_risk_balance": self._money(sum((self._outstanding(record) for record in low), ZERO)),
+            "low_risk_balance": self._money(
+                sum((self._outstanding(record) for record in low), ZERO)
+            ),
         }
 
     def _invoice_item(self, record: LoadPaymentRecord, *, today: date) -> dict[str, Any]:
@@ -371,7 +553,10 @@ class OperationalAnalyticsService:
         return "current"
 
     def _lane_key(self, load: Load) -> str:
-        return f"{self._normalize_location(load.pickup_location)}->{self._normalize_location(load.delivery_location)}"
+        return (
+            f"{self._normalize_location(load.pickup_location)}->"
+            f"{self._normalize_location(load.delivery_location)}"
+        )
 
     def _lane_label(self, load: Load) -> str:
         pickup = load.pickup_location or "Unknown pickup"
@@ -385,7 +570,9 @@ class OperationalAnalyticsService:
         return FactoringWorkflowStatus(value)
 
     def _is_factored(self, record: LoadPaymentRecord) -> bool:
-        return bool(record.factoring_used or record.factoring_status != FactoringWorkflowStatus.NOT_FACTORED)
+        return bool(
+            record.factoring_used or record.factoring_status != FactoringWorkflowStatus.NOT_FACTORED
+        )
 
     def _expected(self, record: LoadPaymentRecord) -> Decimal:
         return record.expected_amount or ZERO
@@ -397,7 +584,10 @@ class OperationalAnalyticsService:
         return max(self._expected(record) - self._received(record), ZERO)
 
     def _serialize_row(self, row: dict[str, Any]) -> dict[str, Any]:
-        return {key: self._money(value) if isinstance(value, Decimal) else value for key, value in row.items()}
+        return {
+            key: self._money(value) if isinstance(value, Decimal) else value
+            for key, value in row.items()
+        }
 
     def _money(self, value: Decimal) -> str:
         return str(value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))

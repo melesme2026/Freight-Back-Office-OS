@@ -3,15 +3,16 @@ from __future__ import annotations
 import uuid
 from decimal import Decimal, InvalidOperation
 
-from fastapi import APIRouter, Depends
-from sqlalchemy.orm import Session
-
 from app.core.dependencies import get_db_session
 from app.core.exceptions import UnauthorizedError
 from app.core.security import get_current_token_payload
 from app.schemas.common import ApiResponse
 from app.services.billing.billing_service import BillingService
+from fastapi import APIRouter, Depends
+from sqlalchemy.orm import Session
 
+GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY = Depends(get_current_token_payload)
+GET_DB_SESSION_DEPENDENCY = Depends(get_db_session)
 
 router = APIRouter()
 
@@ -36,8 +37,8 @@ def _to_decimal_string(value: object | None) -> str | None:
 def get_billing_dashboard(
     *,
     organization_id: uuid.UUID | None = None,
-    token_payload: dict[str, object] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, object] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     _assert_operator_role(token_payload)
     token_org_id = token_payload.get("organization_id")
@@ -61,6 +62,8 @@ def get_billing_dashboard(
         meta={},
         error=None,
     )
+
+
 def _assert_operator_role(token_payload: dict[str, object]) -> None:
     role = str(token_payload.get("role") or "").strip().lower()
     if role == "driver":

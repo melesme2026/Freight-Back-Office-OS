@@ -3,9 +3,8 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
-
 from app.domain.enums.validation_severity import ValidationSeverity
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ApiError(BaseModel):

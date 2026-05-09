@@ -8,7 +8,6 @@ from app.domain.enums.document_type import DocumentType
 from app.domain.enums.load_status import LoadStatus
 from app.services.loads.packet_readiness import calculate_packet_readiness
 
-
 QUEUE_ORDER: tuple[str, ...] = (
     "disputed_or_short_paid",
     "payment_overdue",
@@ -58,9 +57,15 @@ class OperationalQueueService:
         entered_at = self._state_anchor(load, status)
         days_in_state = self._days_between(entered_at, current_time)
         follow_up_days = FOLLOW_UP_DAYS_BY_STATUS.get(status)
-        is_overdue = bool(follow_up_days is not None and days_in_state is not None and days_in_state >= follow_up_days)
+        is_overdue = bool(
+            follow_up_days is not None
+            and days_in_state is not None
+            and days_in_state >= follow_up_days
+        )
 
-        queue_memberships = self._queue_memberships(load, status=status, readiness=readiness, is_overdue=is_overdue)
+        queue_memberships = self._queue_memberships(
+            load, status=status, readiness=readiness, is_overdue=is_overdue
+        )
         primary_queue = next((queue for queue in QUEUE_ORDER if queue in queue_memberships), "none")
 
         next_action = self._next_action(
@@ -122,8 +127,12 @@ class OperationalQueueService:
     ) -> set[str]:
         queues: set[str] = set()
 
-        missing_submission = list((readiness.get("missing_required_documents") or {}).get("submission") or [])
-        missing_invoice = list((readiness.get("missing_required_documents") or {}).get("invoice") or [])
+        missing_submission = list(
+            (readiness.get("missing_required_documents") or {}).get("submission") or []
+        )
+        missing_invoice = list(
+            (readiness.get("missing_required_documents") or {}).get("invoice") or []
+        )
 
         if status in {LoadStatus.SHORT_PAID, LoadStatus.DISPUTED}:
             queues.add("disputed_or_short_paid")
@@ -169,7 +178,9 @@ class OperationalQueueService:
         readiness: dict[str, Any],
         is_overdue: bool,
     ) -> NextActionRule:
-        missing_submission = list((readiness.get("missing_required_documents") or {}).get("submission") or [])
+        missing_submission = list(
+            (readiness.get("missing_required_documents") or {}).get("submission") or []
+        )
 
         if status == LoadStatus.DISPUTED:
             return _NEXT_ACTIONS["resolve_dispute"]

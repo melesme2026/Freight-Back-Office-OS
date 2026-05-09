@@ -3,15 +3,13 @@ from __future__ import annotations
 import uuid
 from typing import TYPE_CHECKING
 
+from app.core.database import Base
+from app.domain.enums.customer_account_status import CustomerAccountStatus
+from app.domain.models.organization import TimestampMixin, UUIDPrimaryKeyMixin
 from sqlalchemy import Enum as SqlEnum
 from sqlalchemy import ForeignKey, Index, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-
-from app.core.database import Base
-from app.domain.enums.customer_account_status import CustomerAccountStatus
-from app.domain.models.organization import TimestampMixin, UUIDPrimaryKeyMixin
-
 
 if TYPE_CHECKING:
     from app.domain.models.billing_invoice import BillingInvoice
@@ -75,63 +73,63 @@ class CustomerAccount(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     billing_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    organization: Mapped["Organization"] = relationship(
+    organization: Mapped[Organization] = relationship(
         back_populates="customer_accounts",
         lazy="selectin",
     )
-    onboarding_checklist: Mapped["OnboardingChecklist | None"] = relationship(
+    onboarding_checklist: Mapped[OnboardingChecklist | None] = relationship(
         back_populates="customer_account",
         cascade="all, delete-orphan",
         uselist=False,
         lazy="selectin",
     )
-    referrals: Mapped[list["Referral"]] = relationship(
+    referrals: Mapped[list[Referral]] = relationship(
         back_populates="customer_account",
         lazy="selectin",
     )
-    drivers: Mapped[list["Driver"]] = relationship(
-        back_populates="customer_account",
-        cascade="all, delete-orphan",
-        lazy="selectin",
-    )
-    loads: Mapped[list["Load"]] = relationship(
-        back_populates="customer_account",
-        lazy="selectin",
-    )
-    subscriptions: Mapped[list["Subscription"]] = relationship(
+    drivers: Mapped[list[Driver]] = relationship(
         back_populates="customer_account",
         cascade="all, delete-orphan",
         lazy="selectin",
     )
-    billing_invoices: Mapped[list["BillingInvoice"]] = relationship(
+    loads: Mapped[list[Load]] = relationship(
+        back_populates="customer_account",
+        lazy="selectin",
+    )
+    subscriptions: Mapped[list[Subscription]] = relationship(
         back_populates="customer_account",
         cascade="all, delete-orphan",
         lazy="selectin",
     )
-    payment_methods: Mapped[list["PaymentMethod"]] = relationship(
+    billing_invoices: Mapped[list[BillingInvoice]] = relationship(
         back_populates="customer_account",
         cascade="all, delete-orphan",
         lazy="selectin",
     )
-    payments: Mapped[list["Payment"]] = relationship(
+    payment_methods: Mapped[list[PaymentMethod]] = relationship(
         back_populates="customer_account",
         cascade="all, delete-orphan",
         lazy="selectin",
     )
-    ledger_entries: Mapped[list["LedgerEntry"]] = relationship(
-        back_populates="customer_account",
-        lazy="selectin",
-    )
-    usage_records: Mapped[list["UsageRecord"]] = relationship(
+    payments: Mapped[list[Payment]] = relationship(
         back_populates="customer_account",
         cascade="all, delete-orphan",
         lazy="selectin",
     )
-    notifications: Mapped[list["Notification"]] = relationship(
+    ledger_entries: Mapped[list[LedgerEntry]] = relationship(
         back_populates="customer_account",
         lazy="selectin",
     )
-    support_tickets: Mapped[list["SupportTicket"]] = relationship(
+    usage_records: Mapped[list[UsageRecord]] = relationship(
+        back_populates="customer_account",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
+    notifications: Mapped[list[Notification]] = relationship(
+        back_populates="customer_account",
+        lazy="selectin",
+    )
+    support_tickets: Mapped[list[SupportTicket]] = relationship(
         back_populates="customer_account",
         lazy="selectin",
     )

@@ -5,11 +5,7 @@ from app.main import create_app
 
 def test_core_feature_routes_are_registered() -> None:
     app = create_app()
-    routes = {
-        (method, route.path)
-        for route in app.routes
-        for method in (route.methods or set())
-    }
+    routes = {(method, route.path) for route in app.routes for method in (route.methods or set())}
 
     expected_routes = {
         ("GET", "/health"),

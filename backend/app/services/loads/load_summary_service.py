@@ -3,11 +3,10 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy.orm import Session
-
 from app.domain.enums.load_status import LoadStatus
 from app.repositories.load_repo import LoadRepository
 from app.repositories.validation_repo import ValidationRepository
+from sqlalchemy.orm import Session
 
 
 class LoadSummaryService:
@@ -58,8 +57,7 @@ class LoadSummaryService:
             "warning_issue_count": warning_issue_count,
             "unresolved_issue_count": unresolved_issue_count,
             "is_ready_for_submission": (
-                normalized_status in {LoadStatus.INVOICE_READY}
-                and blocking_issue_count == 0
+                normalized_status in {LoadStatus.INVOICE_READY} and blocking_issue_count == 0
             ),
         }
 

@@ -33,8 +33,14 @@ class EmailService:
         if not normalized_body:
             raise ValidationError("body_text is required")
 
-        delivery_enabled = self.settings.email_delivery_enabled or self.settings.email_sending_enabled
-        if not delivery_enabled and self.settings.environment not in {"local", "development", "test"}:
+        delivery_enabled = (
+            self.settings.email_delivery_enabled or self.settings.email_sending_enabled
+        )
+        if not delivery_enabled and self.settings.environment not in {
+            "local",
+            "development",
+            "test",
+        }:
             raise ValidationError("Email delivery is disabled")
 
         if not self.settings.email_enabled:

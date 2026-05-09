@@ -4,8 +4,6 @@ from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
-from sqlalchemy.orm import Session
-
 from app.core.exceptions import NotFoundError
 from app.domain.enums.document_type import DocumentType
 from app.domain.enums.processing_status import ProcessingStatus
@@ -18,6 +16,7 @@ from app.services.ai.llm_service import LLMService
 from app.services.ai.ocr_service import OCRService
 from app.services.documents.document_classifier import DocumentClassifier
 from app.services.documents.document_service import DocumentService
+from sqlalchemy.orm import Session
 
 
 class ExtractionService:

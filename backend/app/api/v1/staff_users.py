@@ -4,17 +4,13 @@ import uuid
 from datetime import date, datetime, timezone
 from typing import Any
 
-from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel, ConfigDict
-from sqlalchemy.orm import Session
-
 from app.core.dependencies import get_db_session
 from app.core.exceptions import AppError, NotFoundError, UnauthorizedError, ValidationError
-from app.core.security import get_current_token_payload
+from app.core.security import get_current_token_payload, hash_password
 from app.domain.enums.role import Role
-from app.core.security import hash_password
 from app.domain.models.staff_user import StaffUser
 from app.repositories.staff_user_repo import StaffUserRepository
+from app.schemas.common import ApiResponse
 from app.services.audit.audit_service import AuditService
 from app.services.auth.team_rbac import (
     OWNER_ADMIN_ROLES,
@@ -23,8 +19,12 @@ from app.services.auth.team_rbac import (
     assert_can_modify_staff,
     normalize_role,
 )
-from app.schemas.common import ApiResponse
+from fastapi import APIRouter, Depends, Query
+from pydantic import BaseModel, ConfigDict
+from sqlalchemy.orm import Session
 
+GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY = Depends(get_current_token_payload)
+GET_DB_SESSION_DEPENDENCY = Depends(get_db_session)
 
 router = APIRouter()
 
@@ -97,11 +97,15 @@ def _count_org_admin_owners(repo: StaffUserRepository, organization_id: uuid.UUI
     return sum(
         1
         for member in members
-        if _normalize_role_value(member.role) in OWNER_ADMIN_ROLES and member.is_active and member.removed_at is None
+        if _normalize_role_value(member.role) in OWNER_ADMIN_ROLES
+        and member.is_active
+        and member.removed_at is None
     )
 
 
-def _is_final_active_owner_or_admin(repo: StaffUserRepository, organization_id: uuid.UUID, target_user_id: uuid.UUID) -> bool:
+def _is_final_active_owner_or_admin(
+    repo: StaffUserRepository, organization_id: uuid.UUID, target_user_id: uuid.UUID
+) -> bool:
     members, _ = repo.list(
         organization_id=organization_id,
         page=1,
@@ -111,7 +115,9 @@ def _is_final_active_owner_or_admin(repo: StaffUserRepository, organization_id: 
     active_admin_owner_ids = [
         member.id
         for member in members
-        if member.removed_at is None and member.is_active and _normalize_role_value(member.role) in OWNER_ADMIN_ROLES
+        if member.removed_at is None
+        and member.is_active
+        and _normalize_role_value(member.role) in OWNER_ADMIN_ROLES
     ]
     return len(active_admin_owner_ids) == 1 and active_admin_owner_ids[0] == target_user_id
 
@@ -194,8 +200,8 @@ def _get_staff_user_or_404(
 @router.post("/staff-users", response_model=ApiResponse)
 def create_staff_user(
     payload: StaffUserCreateRequest,
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     _require_staff_admin_role(token_payload)
 
@@ -212,7 +218,8 @@ def create_staff_user(
 
     if normalized_role not in ALLOWED_DIRECT_CREATE_ROLES:
         raise UnauthorizedError(
-            "Direct staff creation is restricted to non-privileged office roles; use invites for other roles"
+            "Direct staff creation is restricted to non-privileged office roles; "
+            "use invites for other roles"
         )
 
     existing = repo.get_by_email(
@@ -257,8 +264,8 @@ def list_staff_users(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=25, ge=1, le=200),
     include_removed: bool = False,
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     _require_staff_admin_role(token_payload)
 
@@ -297,8 +304,8 @@ def list_staff_users(
 @router.get("/staff-users/{staff_user_id}", response_model=ApiResponse)
 def get_staff_user(
     staff_user_id: uuid.UUID,
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     _require_staff_admin_role(token_payload)
 
@@ -319,8 +326,8 @@ def get_staff_user(
 def update_staff_user(
     staff_user_id: uuid.UUID,
     payload: StaffUserUpdateRequest,
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     token_role = _require_staff_admin_role(token_payload)
 
@@ -359,15 +366,16 @@ def update_staff_user(
         item.full_name = _normalize_required_text(payload.full_name, "full_name")
 
     if payload.password is not None:
-        item.password_hash = hash_password(
-            _normalize_required_text(payload.password, "password")
-        )
+        item.password_hash = hash_password(_normalize_required_text(payload.password, "password"))
 
     if payload.role is not None:
         normalized_target_role = _normalize_required_text(payload.role, "role").lower()
         if normalized_target_role == Role.OWNER.value and token_role != Role.OWNER.value:
             raise UnauthorizedError("Only owner can assign owner role")
-        if normalized_target_role in {Role.ADMIN.value, Role.OPS_MANAGER.value} and token_role != Role.OWNER.value:
+        if (
+            normalized_target_role in {Role.ADMIN.value, Role.OPS_MANAGER.value}
+            and token_role != Role.OWNER.value
+        ):
             raise UnauthorizedError("Only owner can assign admin or ops manager roles")
         if normalized_target_role == Role.DRIVER.value:
             raise UnauthorizedError("Driver role must be onboarded through the invite flow")
@@ -387,7 +395,9 @@ def update_staff_user(
     if payload.is_active is not None:
         if payload.is_active is False:
             assert_can_modify_staff(token_role, target_role, TeamAction.DISABLE)
-            if str(item.id) == requester_id and _is_final_active_owner_or_admin(repo, item.organization_id, requester_uuid):
+            if str(item.id) == requester_id and _is_final_active_owner_or_admin(
+                repo, item.organization_id, requester_uuid
+            ):
                 raise AppError(
                     "You cannot disable yourself as the final active owner/admin.",
                     code="cannot_remove_self_as_final_admin",
@@ -432,8 +442,8 @@ def update_staff_user(
 def remove_staff_user(
     staff_user_id: uuid.UUID,
     payload: StaffUserRemoveRequest,
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     token_role = _require_staff_admin_role(token_payload)
     repo = StaffUserRepository(db)
@@ -446,7 +456,9 @@ def remove_staff_user(
     target_role = _normalize_role_value(item.role)
     assert_can_modify_staff(token_role, target_role, TeamAction.REMOVE)
 
-    if str(item.id) == requester_id and _is_final_active_owner_or_admin(repo, item.organization_id, item.id):
+    if str(item.id) == requester_id and _is_final_active_owner_or_admin(
+        repo, item.organization_id, item.id
+    ):
         raise AppError(
             "You cannot remove yourself as the final active owner/admin.",
             code="cannot_remove_self_as_final_admin",
@@ -469,7 +481,10 @@ def remove_staff_user(
         entity_type="staff_user",
         entity_id=str(updated.id),
         action="staff_removed",
-        metadata_json={"reason": _normalize_optional_text(payload.reason), "role": _normalize_role_value(updated.role)},
+        metadata_json={
+            "reason": _normalize_optional_text(payload.reason),
+            "role": _normalize_role_value(updated.role),
+        },
     )
     return ApiResponse(data={"id": str(staff_user_id), "removed": True}, meta={}, error=None)
 
@@ -477,7 +492,7 @@ def remove_staff_user(
 @router.delete("/staff-users/{staff_user_id}", response_model=ApiResponse)
 def delete_staff_user(
     staff_user_id: uuid.UUID,
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     return remove_staff_user(staff_user_id, StaffUserRemoveRequest(), token_payload, db)

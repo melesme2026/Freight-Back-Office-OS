@@ -3,10 +3,9 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy.orm import Session
-
 from app.domain.enums.invoice_status import InvoiceStatus
 from app.repositories.billing_invoice_repo import BillingInvoiceRepository
+from sqlalchemy.orm import Session
 
 
 class DunningService:

@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
 import uuid
+from datetime import datetime, timedelta, timezone
 
 import pytest
-
 from app.core.exceptions import UnauthorizedError, ValidationError
-from app.domain.models.audit_log import AuditLog
 from app.domain.models.customer_account import CustomerAccount
 from app.domain.models.load_document import LoadDocument
 from app.domain.models.organization import Organization
@@ -179,8 +177,20 @@ def test_accounting_export_row_limit_is_enforced(db_session, monkeypatch):
         AccountingExportService,
         "_base_rows",
         lambda self, org_id, mapping: [
-            {"invoice_date": "", "delivery_date": "", "paid_date": "", "payment_status": "paid", "reconciliation_status": "reconciled"},
-            {"invoice_date": "", "delivery_date": "", "paid_date": "", "payment_status": "paid", "reconciliation_status": "reconciled"},
+            {
+                "invoice_date": "",
+                "delivery_date": "",
+                "paid_date": "",
+                "payment_status": "paid",
+                "reconciliation_status": "reconciled",
+            },
+            {
+                "invoice_date": "",
+                "delivery_date": "",
+                "paid_date": "",
+                "payment_status": "paid",
+                "reconciliation_status": "reconciled",
+            },
         ],
     )
 

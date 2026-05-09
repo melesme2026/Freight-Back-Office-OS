@@ -3,15 +3,13 @@ from __future__ import annotations
 import uuid
 from typing import TYPE_CHECKING, Any
 
+from app.core.database import Base
+from app.domain.enums.audit_actor_type import AuditActorType
+from app.domain.models.organization import TimestampMixin, UUIDPrimaryKeyMixin
 from sqlalchemy import Enum as SqlEnum
 from sqlalchemy import ForeignKey, Index, String
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-
-from app.core.database import Base
-from app.domain.enums.audit_actor_type import AuditActorType
-from app.domain.models.organization import TimestampMixin, UUIDPrimaryKeyMixin
-
 
 if TYPE_CHECKING:
     from app.domain.models.organization import Organization
@@ -59,7 +57,7 @@ class AuditLog(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         nullable=True,
     )
 
-    organization: Mapped["Organization"] = relationship(
+    organization: Mapped[Organization] = relationship(
         back_populates="audit_logs",
         lazy="selectin",
     )

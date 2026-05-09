@@ -4,16 +4,17 @@ import uuid
 from datetime import date, datetime
 from typing import Any
 
-from fastapi import APIRouter, Depends
-from pydantic import BaseModel, ConfigDict
-from sqlalchemy.orm import Session
-
 from app.core.dependencies import get_db_session
 from app.core.exceptions import NotFoundError, UnauthorizedError, ValidationError
 from app.core.security import get_current_token_payload
 from app.schemas.common import ApiResponse
 from app.services.carrier_profile_service import CarrierProfileService
+from fastapi import APIRouter, Depends
+from pydantic import BaseModel, ConfigDict
+from sqlalchemy.orm import Session
 
+GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY = Depends(get_current_token_payload)
+GET_DB_SESSION_DEPENDENCY = Depends(get_db_session)
 
 router = APIRouter()
 
@@ -105,8 +106,8 @@ def _serialize(profile: Any) -> dict[str, Any]:
 
 @router.get("/carrier-profile", response_model=ApiResponse)
 def get_carrier_profile(
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     org_id = _assert_org_scope(token_payload)
     service = CarrierProfileService(db)
@@ -119,8 +120,8 @@ def get_carrier_profile(
 @router.post("/carrier-profile", response_model=ApiResponse)
 def create_carrier_profile(
     payload: CarrierProfileUpsertRequest,
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     _assert_can_update(token_payload)
     org_id = _assert_org_scope(token_payload)
@@ -128,7 +129,9 @@ def create_carrier_profile(
 
     existing = service.get_by_org(org_id)
     if existing is not None:
-        raise ValidationError("Carrier profile already exists", details={"organization_id": str(org_id)})
+        raise ValidationError(
+            "Carrier profile already exists", details={"organization_id": str(org_id)}
+        )
 
     profile = service.upsert_profile(org_id, payload.model_dump())
     db.commit()
@@ -138,8 +141,8 @@ def create_carrier_profile(
 @router.patch("/carrier-profile", response_model=ApiResponse)
 def update_carrier_profile(
     payload: CarrierProfilePatchRequest,
-    token_payload: dict[str, Any] = Depends(get_current_token_payload),
-    db: Session = Depends(get_db_session),
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
     _assert_can_update(token_payload)
     org_id = _assert_org_scope(token_payload)

@@ -3,17 +3,16 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy.orm import Session
-
 from app.domain.models.validation_issue import ValidationIssue
 from app.repositories.validation_repo import ValidationRepository
-from app.services.validation.validation_engine import ValidationEngine
 from app.services.validation.rules.amount_mismatch import AmountMismatchRule
 from app.services.validation.rules.broker_consistency import BrokerConsistencyRule
 from app.services.validation.rules.duplicate_load import DuplicateLoadRule
 from app.services.validation.rules.missing_required_fields import MissingRequiredFieldsRule
 from app.services.validation.rules.missing_signature import MissingSignatureRule
 from app.services.validation.rules.unreadable_document import UnreadableDocumentRule
+from app.services.validation.validation_engine import ValidationEngine
+from sqlalchemy.orm import Session
 
 
 class ValidationOrchestrator:

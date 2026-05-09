@@ -5,16 +5,14 @@ from datetime import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import DateTime, Enum as SqlEnum
-from sqlalchemy import ForeignKey, Index, Numeric, String, Text
-from sqlalchemy.dialects.postgresql import JSONB, UUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
-
 from app.core.database import Base
 from app.domain.enums.payment_provider import PaymentProvider
 from app.domain.enums.payment_status import PaymentStatus
 from app.domain.models.organization import TimestampMixin, UUIDPrimaryKeyMixin
-
+from sqlalchemy import DateTime, ForeignKey, Index, Numeric, String, Text
+from sqlalchemy import Enum as SqlEnum
+from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 if TYPE_CHECKING:
     from app.domain.models.billing_invoice import BillingInvoice
@@ -117,28 +115,28 @@ class Payment(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         nullable=True,
     )
 
-    organization: Mapped["Organization"] = relationship(lazy="selectin")
-    customer_account: Mapped["CustomerAccount"] = relationship(
+    organization: Mapped[Organization] = relationship(lazy="selectin")
+    customer_account: Mapped[CustomerAccount] = relationship(
         back_populates="payments",
         lazy="selectin",
     )
-    billing_invoice: Mapped["BillingInvoice | None"] = relationship(
+    billing_invoice: Mapped[BillingInvoice | None] = relationship(
         back_populates="payments",
         lazy="selectin",
     )
-    payment_method: Mapped["PaymentMethod | None"] = relationship(
+    payment_method: Mapped[PaymentMethod | None] = relationship(
         back_populates="payments",
         lazy="selectin",
     )
-    driver: Mapped["Driver | None"] = relationship(
+    driver: Mapped[Driver | None] = relationship(
         back_populates="payments",
         lazy="selectin",
     )
-    recorded_by_staff_user: Mapped["StaffUser | None"] = relationship(
+    recorded_by_staff_user: Mapped[StaffUser | None] = relationship(
         back_populates="payments_recorded",
         lazy="selectin",
     )
-    ledger_entries: Mapped[list["LedgerEntry"]] = relationship(
+    ledger_entries: Mapped[list[LedgerEntry]] = relationship(
         back_populates="payment",
         lazy="selectin",
     )

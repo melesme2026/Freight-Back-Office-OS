@@ -2,11 +2,10 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import Select, func, select
-from sqlalchemy.orm import Session, selectinload
-
 from app.domain.enums.validation_severity import ValidationSeverity
 from app.domain.models.validation_issue import ValidationIssue
+from sqlalchemy import Select, func, select
+from sqlalchemy.orm import Session, selectinload
 
 
 class ValidationRepository:
@@ -71,9 +70,7 @@ class ValidationRepository:
             else None
         )
         normalized_load_id = (
-            self._normalize_uuid(load_id, field_name="load_id")
-            if load_id is not None
-            else None
+            self._normalize_uuid(load_id, field_name="load_id") if load_id is not None else None
         )
         normalized_document_id = (
             self._normalize_uuid(document_id, field_name="document_id")
@@ -89,7 +86,9 @@ class ValidationRepository:
 
         if normalized_organization_id is not None:
             stmt = stmt.where(ValidationIssue.organization_id == normalized_organization_id)
-            count_stmt = count_stmt.where(ValidationIssue.organization_id == normalized_organization_id)
+            count_stmt = count_stmt.where(
+                ValidationIssue.organization_id == normalized_organization_id
+            )
 
         if normalized_load_id is not None:
             stmt = stmt.where(ValidationIssue.load_id == normalized_load_id)

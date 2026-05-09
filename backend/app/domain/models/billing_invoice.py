@@ -5,15 +5,13 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Date, DateTime, Enum as SqlEnum
-from sqlalchemy import ForeignKey, Index, Numeric, String, Text, UniqueConstraint
-from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
-
 from app.core.database import Base
 from app.domain.enums.invoice_status import InvoiceStatus
 from app.domain.models.organization import TimestampMixin, UUIDPrimaryKeyMixin
-
+from sqlalchemy import Date, DateTime, ForeignKey, Index, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import Enum as SqlEnum
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 if TYPE_CHECKING:
     from app.domain.models.billing_invoice_line import BillingInvoiceLine
@@ -118,25 +116,25 @@ class BillingInvoice(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    organization: Mapped["Organization"] = relationship(lazy="selectin")
-    customer_account: Mapped["CustomerAccount"] = relationship(
+    organization: Mapped[Organization] = relationship(lazy="selectin")
+    customer_account: Mapped[CustomerAccount] = relationship(
         back_populates="billing_invoices",
         lazy="selectin",
     )
-    subscription: Mapped["Subscription | None"] = relationship(
+    subscription: Mapped[Subscription | None] = relationship(
         back_populates="billing_invoices",
         lazy="selectin",
     )
-    lines: Mapped[list["BillingInvoiceLine"]] = relationship(
+    lines: Mapped[list[BillingInvoiceLine]] = relationship(
         back_populates="invoice",
         cascade="all, delete-orphan",
         lazy="selectin",
     )
-    payments: Mapped[list["Payment"]] = relationship(
+    payments: Mapped[list[Payment]] = relationship(
         back_populates="billing_invoice",
         lazy="selectin",
     )
-    ledger_entries: Mapped[list["LedgerEntry"]] = relationship(
+    ledger_entries: Mapped[list[LedgerEntry]] = relationship(
         back_populates="billing_invoice",
         lazy="selectin",
     )

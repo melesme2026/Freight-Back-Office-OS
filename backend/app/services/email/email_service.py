@@ -22,7 +22,13 @@ class PacketEmailService:
 
     def validate_email_config(self) -> tuple[bool, str | None]:
         if not self.is_enabled():
-            return False, "Email sending is disabled. Download the packet ZIP or copy the submission email instead."
+            return (
+                False,
+                (
+                    "Email sending is disabled. "
+                    "Download the packet ZIP or copy the submission email instead."
+                ),
+            )
 
         provider = (self.settings.email_provider or "").strip().lower()
         if provider not in {"smtp", "sendgrid"}:
@@ -82,7 +88,9 @@ class PacketEmailService:
                 "provider": provider,
                 "accepted": False,
                 "provider_message_id": None,
-                "error_message": "SendGrid provider is not yet implemented for packet email sending.",
+                "error_message": (
+                    "SendGrid provider is not yet implemented for packet email sending."
+                ),
             }
 
         try:
@@ -101,7 +109,9 @@ class PacketEmailService:
             recipients.extend([item.strip().lower() for item in (bcc or []) if item.strip()])
 
             for attachment in attachments:
-                content_type = (attachment.get("content_type") or "application/octet-stream").strip()
+                content_type = (
+                    attachment.get("content_type") or "application/octet-stream"
+                ).strip()
                 maintype, _, subtype = content_type.partition("/")
                 if not subtype:
                     maintype, subtype = "application", "octet-stream"
@@ -109,10 +119,13 @@ class PacketEmailService:
                     attachment.get("bytes") or b"",
                     maintype=maintype,
                     subtype=subtype,
-                    filename=(attachment.get("filename") or "attachment.bin").strip() or "attachment.bin",
+                    filename=(attachment.get("filename") or "attachment.bin").strip()
+                    or "attachment.bin",
                 )
 
-            with smtplib.SMTP(host=self.settings.smtp_host, port=self.settings.smtp_port, timeout=20) as smtp:
+            with smtplib.SMTP(
+                host=self.settings.smtp_host, port=self.settings.smtp_port, timeout=20
+            ) as smtp:
                 if self.settings.smtp_use_tls:
                     smtp.starttls()
                 if self.settings.smtp_username and self.settings.smtp_password:

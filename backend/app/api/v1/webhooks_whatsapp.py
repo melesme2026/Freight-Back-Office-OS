@@ -2,9 +2,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, Query, Request
-from sqlalchemy.orm import Session
-
 from app.core.config import Settings, get_settings
 from app.core.dependencies import get_db_session
 from app.core.exceptions import ValidationError
@@ -12,7 +9,11 @@ from app.schemas.common import ApiResponse
 from app.services.ingestion.whatsapp_ingestion_service import (
     WhatsAppIngestionService,
 )
+from fastapi import APIRouter, Depends, Query, Request
+from sqlalchemy.orm import Session
 
+GET_DB_SESSION_DEPENDENCY = Depends(get_db_session)
+GET_SETTINGS_DEPENDENCY = Depends(get_settings)
 
 router = APIRouter()
 
@@ -46,7 +47,7 @@ async def verify_whatsapp_webhook(
     hub_mode: str | None = Query(default=None, alias="hub.mode"),
     hub_verify_token: str | None = Query(default=None, alias="hub.verify_token"),
     hub_challenge: str | None = Query(default=None, alias="hub.challenge"),
-    settings: Settings = Depends(get_settings),
+    settings: Settings = GET_SETTINGS_DEPENDENCY,
 ) -> ApiResponse:
     _ensure_whatsapp_webhooks_enabled(settings)
 
@@ -101,8 +102,8 @@ async def verify_whatsapp_webhook(
 @router.post("/webhooks/whatsapp", response_model=ApiResponse)
 async def whatsapp_webhook(
     request: Request,
-    db: Session = Depends(get_db_session),
-    settings: Settings = Depends(get_settings),
+    db: Session = GET_DB_SESSION_DEPENDENCY,
+    settings: Settings = GET_SETTINGS_DEPENDENCY,
 ) -> ApiResponse:
     _ensure_whatsapp_webhooks_enabled(settings)
 

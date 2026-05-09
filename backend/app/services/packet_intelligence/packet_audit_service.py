@@ -76,14 +76,22 @@ class PacketAuditService:
         self.db = db
         self.load_service = LoadService(db)
 
-    def audit_load(self, *, load_id: str, org_id: str, packet_id: str | None = None) -> PacketAuditResult:
+    def audit_load(
+        self, *, load_id: str, org_id: str, packet_id: str | None = None
+    ) -> PacketAuditResult:
         load = self._get_load(load_id=load_id, org_id=org_id)
         documents = self._get_documents(load_id=load_id, org_id=org_id)
-        packet = self._get_packet(packet_id=packet_id, load_id=load_id, org_id=org_id) if packet_id else None
+        packet = (
+            self._get_packet(packet_id=packet_id, load_id=load_id, org_id=org_id)
+            if packet_id
+            else None
+        )
         packet_documents = list(getattr(packet, "documents", None) or []) if packet else []
         findings: list[PacketAuditFinding] = []
 
-        findings.extend(self._required_document_findings(documents=documents, packet_documents=packet_documents))
+        findings.extend(
+            self._required_document_findings(documents=documents, packet_documents=packet_documents)
+        )
         findings.extend(self._unsigned_pod_findings(documents=documents))
         findings.extend(self._amount_findings(load=load, documents=documents))
         findings.extend(self._duplicate_invoice_findings(load=load, packet=packet))
@@ -92,7 +100,9 @@ class PacketAuditService:
 
         return PacketAuditResult(
             status=self._status(findings),
-            confidence_score=self._confidence_score(findings=findings, documents=documents, load=load),
+            confidence_score=self._confidence_score(
+                findings=findings, documents=documents, load=load
+            ),
             findings=findings,
             generated_at=datetime.now(timezone.utc),
         )
@@ -104,7 +114,9 @@ class PacketAuditService:
         packet_documents: list[SubmissionPacketDocument],
     ) -> list[PacketAuditFinding]:
         present_types = {self._doc_type(document.document_type) for document in documents}
-        packet_types = {self._clean(getattr(item, "document_type", None)) for item in packet_documents}
+        packet_types = {
+            self._clean(getattr(item, "document_type", None)) for item in packet_documents
+        }
         findings: list[PacketAuditFinding] = []
         for document_type, code, severity in self.REQUIRED_DOCUMENT_RULES:
             doc_type = document_type.value
@@ -123,10 +135,16 @@ class PacketAuditService:
         return findings
 
     def _unsigned_pod_findings(self, *, documents: list[LoadDocument]) -> list[PacketAuditFinding]:
-        pod_docs = [doc for doc in documents if self._doc_type(doc.document_type) == DocumentType.PROOF_OF_DELIVERY.value]
+        pod_docs = [
+            doc
+            for doc in documents
+            if self._doc_type(doc.document_type) == DocumentType.PROOF_OF_DELIVERY.value
+        ]
         findings: list[PacketAuditFinding] = []
         for document in pod_docs:
-            signature_field = self._first_field(document, {"signature_present", "pod_signature_present", "signed"})
+            signature_field = self._first_field(
+                document, {"signature_present", "pod_signature_present", "signed"}
+            )
             if signature_field is None:
                 findings.append(
                     PacketAuditFinding(
@@ -148,15 +166,25 @@ class PacketAuditService:
                 )
         return findings
 
-    def _amount_findings(self, *, load: Load, documents: list[LoadDocument]) -> list[PacketAuditFinding]:
-        invoice_amount = self._first_amount(documents, {"invoice_amount", "invoice_total", "total_amount"}, DocumentType.INVOICE.value)
+    def _amount_findings(
+        self, *, load: Load, documents: list[LoadDocument]
+    ) -> list[PacketAuditFinding]:
+        invoice_amount = self._first_amount(
+            documents,
+            {"invoice_amount", "invoice_total", "total_amount"},
+            DocumentType.INVOICE.value,
+        )
         load_amount = self._decimal(getattr(load, "gross_amount", None))
         payment_record = self._payment_record(load=load)
-        funded_amount = self._first_present_decimal(
-            getattr(payment_record, "advance_amount", None),
-            getattr(payment_record, "amount_received", None),
-            getattr(payment_record, "expected_amount", None),
-        ) if payment_record else None
+        funded_amount = (
+            self._first_present_decimal(
+                getattr(payment_record, "advance_amount", None),
+                getattr(payment_record, "amount_received", None),
+                getattr(payment_record, "expected_amount", None),
+            )
+            if payment_record
+            else None
+        )
 
         findings: list[PacketAuditFinding] = []
         if invoice_amount is None or load_amount is None:
@@ -170,7 +198,11 @@ class PacketAuditService:
                     affected_documents=[DocumentType.INVOICE.value],
                 )
             )
-        if funded_amount is not None and funded_amount > Decimal("0.00") and abs(invoice_amount - funded_amount) > self.AMOUNT_TOLERANCE:
+        if (
+            funded_amount is not None
+            and funded_amount > Decimal("0.00")
+            and abs(invoice_amount - funded_amount) > self.AMOUNT_TOLERANCE
+        ):
             findings.append(
                 PacketAuditFinding(
                     code="funded_amount_mismatch",
@@ -181,7 +213,9 @@ class PacketAuditService:
             )
         return findings
 
-    def _duplicate_invoice_findings(self, *, load: Load, packet: SubmissionPacket | None) -> list[PacketAuditFinding]:
+    def _duplicate_invoice_findings(
+        self, *, load: Load, packet: SubmissionPacket | None
+    ) -> list[PacketAuditFinding]:
         invoice_number = self._clean(getattr(load, "invoice_number", None))
         findings: list[PacketAuditFinding] = []
         if invoice_number:
@@ -229,14 +263,23 @@ class PacketAuditService:
                 )
         return findings
 
-    def _lumper_findings(self, *, load: Load, documents: list[LoadDocument]) -> list[PacketAuditFinding]:
-        has_lumper_doc = any(self._doc_type(doc.document_type) == DocumentType.LUMPER_RECEIPT.value for doc in documents)
+    def _lumper_findings(
+        self, *, load: Load, documents: list[LoadDocument]
+    ) -> list[PacketAuditFinding]:
+        has_lumper_doc = any(
+            self._doc_type(doc.document_type) == DocumentType.LUMPER_RECEIPT.value
+            for doc in documents
+        )
         if has_lumper_doc:
             return []
         text = " ".join(
-            value for value in [getattr(load, "notes", None), getattr(load, "factoring_notes", None)] if value
+            value
+            for value in [getattr(load, "notes", None), getattr(load, "factoring_notes", None)]
+            if value
         ).lower()
-        accessorial_amount = self._first_amount(documents, {"lumper_amount", "lumper_fee", "accessorial_amount"})
+        accessorial_amount = self._first_amount(
+            documents, {"lumper_amount", "lumper_fee", "accessorial_amount"}
+        )
         if "lumper" not in text and accessorial_amount is None:
             return []
         return [
@@ -248,11 +291,27 @@ class PacketAuditService:
             )
         ]
 
-    def _broker_reference_findings(self, *, load: Load, documents: list[LoadDocument]) -> list[PacketAuditFinding]:
-        load_reference = self._clean(getattr(load, "rate_confirmation_number", None)) or self._clean(getattr(load, "load_number", None))
-        invoice_reference = self._first_text(documents, {"broker_reference", "broker_ref", "load_reference"}, DocumentType.INVOICE.value)
-        ratecon_reference = self._first_text(documents, {"broker_reference", "broker_ref", "rate_confirmation_number", "load_reference"}, DocumentType.RATE_CONFIRMATION.value)
-        references = [("load", load_reference), ("invoice", invoice_reference), ("rate confirmation", ratecon_reference)]
+    def _broker_reference_findings(
+        self, *, load: Load, documents: list[LoadDocument]
+    ) -> list[PacketAuditFinding]:
+        load_reference = self._clean(
+            getattr(load, "rate_confirmation_number", None)
+        ) or self._clean(getattr(load, "load_number", None))
+        invoice_reference = self._first_text(
+            documents,
+            {"broker_reference", "broker_ref", "load_reference"},
+            DocumentType.INVOICE.value,
+        )
+        ratecon_reference = self._first_text(
+            documents,
+            {"broker_reference", "broker_ref", "rate_confirmation_number", "load_reference"},
+            DocumentType.RATE_CONFIRMATION.value,
+        )
+        references = [
+            ("load", load_reference),
+            ("invoice", invoice_reference),
+            ("rate confirmation", ratecon_reference),
+        ]
         normalized = [(label, self._reference_key(value)) for label, value in references if value]
         if len({value for _, value in normalized}) <= 1:
             return []
@@ -262,11 +321,16 @@ class PacketAuditService:
                 code="broker_reference_mismatch",
                 severity="warning",
                 message=f"Broker/load references do not agree ({visible}); confirm the invoice references the same broker load.",
-                affected_documents=[DocumentType.INVOICE.value, DocumentType.RATE_CONFIRMATION.value],
+                affected_documents=[
+                    DocumentType.INVOICE.value,
+                    DocumentType.RATE_CONFIRMATION.value,
+                ],
             )
         ]
 
-    def _confidence_score(self, *, findings: list[PacketAuditFinding], documents: list[LoadDocument], load: Load) -> int:
+    def _confidence_score(
+        self, *, findings: list[PacketAuditFinding], documents: list[LoadDocument], load: Load
+    ) -> int:
         score = 100
         score -= sum(25 for finding in findings if finding.severity == "blocking")
         score -= sum(10 for finding in findings if finding.severity == "warning")
@@ -294,7 +358,9 @@ class PacketAuditService:
     def _get_packet(self, *, packet_id: str, load_id: str, org_id: str) -> SubmissionPacket:
         packet = self.db.scalar(
             select(SubmissionPacket)
-            .options(selectinload(SubmissionPacket.documents), selectinload(SubmissionPacket.events))
+            .options(
+                selectinload(SubmissionPacket.documents), selectinload(SubmissionPacket.events)
+            )
             .where(
                 SubmissionPacket.id == uuid.UUID(packet_id),
                 SubmissionPacket.load_id == uuid.UUID(load_id),
@@ -321,21 +387,29 @@ class PacketAuditService:
         return self.db.scalar(select(LoadPaymentRecord).where(LoadPaymentRecord.load_id == load.id))
 
     @classmethod
-    def _first_amount(cls, documents: list[LoadDocument], field_names: set[str], document_type: str | None = None) -> Decimal | None:
+    def _first_amount(
+        cls, documents: list[LoadDocument], field_names: set[str], document_type: str | None = None
+    ) -> Decimal | None:
         field = cls._first_field_from_documents(documents, field_names, document_type)
         if field is None:
             return None
-        return cls._decimal(getattr(field, "field_value_number", None)) or cls._decimal(getattr(field, "field_value_text", None))
+        return cls._decimal(getattr(field, "field_value_number", None)) or cls._decimal(
+            getattr(field, "field_value_text", None)
+        )
 
     @classmethod
-    def _first_text(cls, documents: list[LoadDocument], field_names: set[str], document_type: str | None = None) -> str | None:
+    def _first_text(
+        cls, documents: list[LoadDocument], field_names: set[str], document_type: str | None = None
+    ) -> str | None:
         field = cls._first_field_from_documents(documents, field_names, document_type)
         if field is None:
             return None
         return cls._clean(getattr(field, "field_value_text", None))
 
     @classmethod
-    def _first_field_from_documents(cls, documents: list[LoadDocument], field_names: set[str], document_type: str | None) -> ExtractedField | None:
+    def _first_field_from_documents(
+        cls, documents: list[LoadDocument], field_names: set[str], document_type: str | None
+    ) -> ExtractedField | None:
         normalized_names = {name.strip().lower() for name in field_names}
         for document in documents:
             if document_type and cls._doc_type(document.document_type) != document_type:

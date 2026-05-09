@@ -3,12 +3,10 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
-from sqlalchemy.orm import Session
-
 from app.core.exceptions import UnauthorizedError, ValidationError
 from app.domain.models.audit_log import AuditLog
 from app.services.audit.audit_service import AuditService
-
+from sqlalchemy.orm import Session
 
 SAFE_METADATA_KEYS = {
     "document_type",
@@ -45,7 +43,9 @@ class ActivityService:
     ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
         token_org_id = token_payload.get("organization_id")
         if not token_org_id or str(token_org_id) != str(organization_id):
-            raise UnauthorizedError("Activity can only be viewed for the authenticated organization")
+            raise UnauthorizedError(
+                "Activity can only be viewed for the authenticated organization"
+            )
 
         normalized_limit = min(max(int(limit or self.DEFAULT_LIMIT), 1), self.MAX_LIMIT)
         items, total = self.audit_service.list_audit_logs(
@@ -98,4 +98,6 @@ def organization_id_from_token(token_payload: dict[str, Any]) -> str:
     try:
         return str(uuid.UUID(str(org_id)))
     except (ValueError, TypeError, AttributeError) as exc:
-        raise ValidationError("Invalid organization context", details={"organization_id": org_id}) from exc
+        raise ValidationError(
+            "Invalid organization context", details={"organization_id": org_id}
+        ) from exc

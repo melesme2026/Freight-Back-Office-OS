@@ -2,10 +2,9 @@ from __future__ import annotations
 
 import uuid
 
+from app.domain.models.onboarding_checklist import OnboardingChecklist
 from sqlalchemy import select
 from sqlalchemy.orm import Session
-
-from app.domain.models.onboarding_checklist import OnboardingChecklist
 
 
 class OnboardingRepository:
@@ -26,9 +25,7 @@ class OnboardingRepository:
             checklist_id,
             field_name="checklist_id",
         )
-        stmt = select(OnboardingChecklist).where(
-            OnboardingChecklist.id == normalized_checklist_id
-        )
+        stmt = select(OnboardingChecklist).where(OnboardingChecklist.id == normalized_checklist_id)
         return self.db.scalar(stmt)
 
     def get_by_customer_account_id(

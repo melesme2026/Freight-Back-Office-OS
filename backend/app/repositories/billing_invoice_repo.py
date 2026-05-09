@@ -3,12 +3,11 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Select, func, select
-from sqlalchemy.orm import Session, selectinload
-
 from app.domain.enums.invoice_status import InvoiceStatus
 from app.domain.models.billing_invoice import BillingInvoice
 from app.domain.models.payment import Payment
+from sqlalchemy import Select, func, select
+from sqlalchemy.orm import Session, selectinload
 
 
 class BillingInvoiceRepository:
@@ -108,7 +107,9 @@ class BillingInvoiceRepository:
 
         if normalized_organization_id is not None:
             stmt = stmt.where(BillingInvoice.organization_id == normalized_organization_id)
-            count_stmt = count_stmt.where(BillingInvoice.organization_id == normalized_organization_id)
+            count_stmt = count_stmt.where(
+                BillingInvoice.organization_id == normalized_organization_id
+            )
 
         if normalized_customer_account_id is not None:
             stmt = stmt.where(BillingInvoice.customer_account_id == normalized_customer_account_id)
@@ -118,7 +119,9 @@ class BillingInvoiceRepository:
 
         if normalized_subscription_id is not None:
             stmt = stmt.where(BillingInvoice.subscription_id == normalized_subscription_id)
-            count_stmt = count_stmt.where(BillingInvoice.subscription_id == normalized_subscription_id)
+            count_stmt = count_stmt.where(
+                BillingInvoice.subscription_id == normalized_subscription_id
+            )
 
         if normalized_driver_id is not None:
             paid_by_driver = (
