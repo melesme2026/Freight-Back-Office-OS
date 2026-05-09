@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 from collections import Counter
+from copy import deepcopy
 from datetime import date, datetime, timedelta, timezone
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
-from sqlalchemy import func, select
-from sqlalchemy.orm import Session, selectinload
-
+from app.core.cache import CacheKey, operational_cache
 from app.domain.enums.document_type import DocumentType
 from app.domain.enums.factoring import FactoringReconciliationStatus, FactoringWorkflowStatus
 from app.domain.enums.load_payment_status import LoadPaymentStatus
@@ -15,15 +14,19 @@ from app.domain.enums.load_status import LoadStatus
 from app.domain.enums.processing_status import ProcessingStatus
 from app.domain.models.audit_log import AuditLog
 from app.domain.models.load import Load
+from app.domain.models.load_document import LoadDocument
 from app.domain.models.load_payment_record import LoadPaymentRecord
 from app.domain.models.submission_packet import SubmissionPacket
 from app.domain.models.validation_issue import ValidationIssue
 from app.services.loads.packet_readiness import calculate_packet_readiness
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session, selectinload
 
 ZERO = Decimal("0.00")
 COMMAND_CENTER_LOAD_LIMIT = 200
 COMMAND_CENTER_PAYMENT_LIMIT = 200
 COMMAND_CENTER_ACTIVITY_LIMIT = 12
+COMMAND_CENTER_CACHE_TTL_SECONDS = 20
 
 ACTIVE_LOAD_STATUSES = {
     LoadStatus.BOOKED,
@@ -69,6 +72,15 @@ class DispatcherCommandCenterService:
         self.db = db
 
     def get_command_center(self, *, org_id: str) -> dict[str, Any]:
+        cache_key = CacheKey(
+            namespace="command_center",
+            organization_id=org_id,
+            parts=(self._cache_fingerprint(org_id),),
+        )
+        cached = operational_cache.get(cache_key)
+        if cached is not None:
+            return deepcopy(cached)
+
         today = datetime.now(timezone.utc).date()
         loads = self._load_recent_operational_loads(org_id=org_id)
         payments = self._load_payment_records(org_id=org_id)
@@ -106,7 +118,7 @@ class DispatcherCommandCenterService:
             today=today,
         )
 
-        return {
+        payload = {
             "generated_at": datetime.now(timezone.utc).isoformat(),
             "kpis": self._build_kpis(
                 org_id=org_id,
@@ -139,11 +151,49 @@ class DispatcherCommandCenterService:
             "meta": {
                 "load_limit": COMMAND_CENTER_LOAD_LIMIT,
                 "payment_limit": COMMAND_CENTER_PAYMENT_LIMIT,
+                "cache_ttl_seconds": COMMAND_CENTER_CACHE_TTL_SECONDS,
+                "cache_scope": "organization_scoped",
                 "logic": "Deterministic operational prioritization based on missing required documents, packet blockers, unpaid aging, factoring reserve state, reconciliation status, broker payment behavior, and unresolved validation blockers.",
                 "ai_assistant_logic": "Rules-only assistant: summarizes current operational records, ranks collections by explicit aging/balance/status factors, and includes every contributing factor in each recommendation. No autonomous actions, probabilities, or hidden LLM scoring are used.",
                 "not_implemented": ["live GPS tracking", "telematics ingestion", "AI dispatch optimization", "autonomous collections outreach", "LLM-generated financial predictions", "websocket streaming"],
             },
         }
+        operational_cache.set(cache_key, deepcopy(payload), ttl_seconds=COMMAND_CENTER_CACHE_TTL_SECONDS)
+        return payload
+
+    def _cache_fingerprint(
+        self, org_id: str
+    ) -> tuple[int, object, int, object, int, object, int, object]:
+        load_count, load_newest = self.db.execute(
+            select(func.count(Load.id), func.max(Load.updated_at)).where(
+                Load.organization_id == org_id
+            )
+        ).one()
+        payment_count, payment_newest = self.db.execute(
+            select(func.count(LoadPaymentRecord.id), func.max(LoadPaymentRecord.updated_at)).where(
+                LoadPaymentRecord.organization_id == org_id
+            )
+        ).one()
+        blocker_count, blocker_newest = self.db.execute(
+            select(func.count(ValidationIssue.id), func.max(ValidationIssue.updated_at)).where(
+                ValidationIssue.organization_id == org_id
+            )
+        ).one()
+        document_count, document_newest = self.db.execute(
+            select(func.count(LoadDocument.id), func.max(LoadDocument.updated_at)).where(
+                LoadDocument.organization_id == org_id
+            )
+        ).one()
+        return (
+            int(load_count or 0),
+            load_newest,
+            int(payment_count or 0),
+            payment_newest,
+            int(blocker_count or 0),
+            blocker_newest,
+            int(document_count or 0),
+            document_newest,
+        )
 
     def _load_recent_operational_loads(self, *, org_id: str) -> list[Load]:
         stmt = (

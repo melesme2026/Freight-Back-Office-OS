@@ -115,6 +115,11 @@ class StorageService:
             path=absolute_path,
             filename=resolved_filename,
             media_type=resolved_media_type,
+            headers={
+                "Cache-Control": "no-store, private",
+                "Pragma": "no-cache",
+                "X-Content-Type-Options": "nosniff",
+            },
         )
 
     def save_bytes(

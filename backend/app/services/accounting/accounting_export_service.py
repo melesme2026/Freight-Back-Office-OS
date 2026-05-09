@@ -19,7 +19,7 @@ from app.core.exceptions import ValidationError
 from app.services.accounting.quickbooks_service import QuickBooksIntegrationService
 from app.services.organizations.quota_service import OrganizationQuotaService
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 AccountingExportKind = Literal["invoices", "factoring", "settlements", "payments", "aging"]
 ZERO = Decimal("0")
@@ -166,9 +166,8 @@ class AccountingExportService:
     ) -> AccountingExportResult:
         columns = KIND_COLUMNS[kind]
         mapping = self.get_or_create_mapping(org_id)
-        rows = [
-            row
-            for row in self._base_rows(org_id, mapping)
+        rows: list[dict[str, str]] = []
+        for row in self._base_rows(org_id, mapping, max_source_rows=MAX_EXPORT_ROWS + 1):
             if self._include_row(
                 row,
                 kind=kind,
@@ -176,8 +175,10 @@ class AccountingExportService:
                 date_to=date_to,
                 status=status,
                 reconciliation_status=reconciliation_status,
-            )
-        ]
+            ):
+                rows.append(row)
+                if len(rows) > MAX_EXPORT_ROWS:
+                    break
         quota_decision = OrganizationQuotaService(self.db).can_generate_export(
             organization_id=org_id,
             estimated_rows=len(rows),
@@ -209,7 +210,8 @@ class AccountingExportService:
         limit: int = 5,
     ) -> list[dict[str, str]]:
         mapping = self.get_or_create_mapping(org_id)
-        return list(self._base_rows(org_id, mapping))[:limit]
+        safe_limit = max(1, min(int(limit), 100))
+        return list(self._base_rows(org_id, mapping, max_source_rows=safe_limit))[:safe_limit]
 
     def serialize_mapping(self, mapping: AccountingExportMapping) -> dict[str, str]:
         return {
@@ -237,17 +239,25 @@ class AccountingExportService:
         self,
         org_id: str,
         mapping: AccountingExportMapping,
+        *,
+        max_source_rows: int | None = None,
     ) -> Iterable[dict[str, str]]:
         stmt = (
             select(LoadPaymentRecord)
             .join(Load, LoadPaymentRecord.load_id == Load.id)
             .where(LoadPaymentRecord.organization_id == uuid.UUID(str(org_id)))
+            .options(
+                selectinload(LoadPaymentRecord.load).selectinload(Load.broker),
+                selectinload(LoadPaymentRecord.factoring_company),
+            )
             .order_by(
                 Load.delivery_date.desc().nullslast(),
                 LoadPaymentRecord.updated_at.desc(),
             )
         )
-        records = self.db.scalars(stmt).all()
+        if max_source_rows is not None:
+            stmt = stmt.limit(max_source_rows)
+        records = self.db.scalars(stmt).unique().all()
         now = datetime.now(timezone.utc).date()
         for record in records:
             load = record.load

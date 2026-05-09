@@ -5,11 +5,11 @@ import uuid
 from datetime import date, datetime
 from typing import Any
 
+from app.core.cache import operational_cache
 from app.core.config import get_settings
 from app.core.dependencies import get_db_session
 from app.core.exceptions import AppError, UnauthorizedError
 from app.core.security import get_current_token_payload
-from app.domain.enums.channel import Channel
 from app.domain.enums.document_type import DocumentType
 from app.domain.enums.processing_status import ProcessingStatus
 from app.repositories.driver_repo import DriverRepository
@@ -17,13 +17,20 @@ from app.repositories.load_repo import LoadRepository
 from app.schemas.common import ApiResponse
 from app.services.ai.extraction_service import ExtractionService
 from app.services.audit.audit_service import AuditService
+from app.services.background.document_processing import (
+    enqueue_document_extraction,
+    run_document_extraction_job,
+)
 from app.services.documents.document_linker import DocumentLinker
 from app.services.documents.document_service import DocumentService
 from app.services.documents.storage_service import StorageService
-from app.services.notifications.operational_notification_service import OperationalNotificationService
+from app.services.notifications.operational_notification_service import (
+    OperationalNotificationService,
+)
 from app.services.organizations.quota_service import OrganizationQuotaService
 from fastapi import (
     APIRouter,
+    BackgroundTasks,
     Depends,
     File,
     Form,
@@ -359,6 +366,27 @@ def _create_document_uploaded_notification(
         return
 
 
+def _queue_document_processing(
+    *,
+    document: Any,
+    background_tasks: BackgroundTasks | None,
+    force: bool = False,
+) -> dict[str, Any]:
+    job = enqueue_document_extraction(
+        document_id=str(document.id),
+        organization_id=str(document.organization_id),
+        force=force,
+    )
+    if background_tasks is not None:
+        background_tasks.add_task(
+            run_document_extraction_job,
+            job_id=str(job["id"]),
+            document_id=str(document.id),
+            force=force,
+        )
+    return job
+
+
 @router.post("/documents/upload", response_model=ApiResponse)
 async def upload_document(
     *,
@@ -374,6 +402,7 @@ async def upload_document(
     page_count: int | None = Form(None),
     replace: str | None = Form(None),
     db: Session = Depends(get_db_session),
+    background_tasks: BackgroundTasks = None,
 ) -> ApiResponse:
     _ = uploaded_by_staff_user_id
     _validate_upload_file(file)
@@ -453,7 +482,7 @@ async def upload_document(
             )
             existing_required_doc.mime_type = _normalize_optional_text(file.content_type)
             existing_required_doc.file_size_bytes = file_size_bytes
-            existing_required_doc.processing_status = ProcessingStatus.PENDING
+            existing_required_doc.processing_status = ProcessingStatus.QUEUED
             existing_required_doc.received_at = datetime.utcnow()
             if server_uploaded_by_staff_user_id:
                 existing_required_doc.uploaded_by_staff_user_id = server_uploaded_by_staff_user_id
@@ -496,10 +525,28 @@ async def upload_document(
             },
         )
         db.commit()
+        operational_cache.invalidate_namespace(
+            "command_center", organization_id=str(organization_id)
+        )
+        operational_cache.invalidate_namespace(
+            "operational_analytics", organization_id=str(organization_id)
+        )
+        processing_job = _queue_document_processing(
+            document=item, background_tasks=background_tasks
+        )
 
         return ApiResponse(
             data=_serialize_document(item),
-            meta={"uploaded": True, "quota": quota_decision.as_dict()},
+            meta={
+                "uploaded": True,
+                "quota": quota_decision.as_dict(),
+                "document_processing": {
+                    "status": ProcessingStatus.QUEUED.value,
+                    "job_id": processing_job["id"],
+                    "job_type": processing_job["job_type"],
+                    "idempotency_key": processing_job["idempotency_key"],
+                },
+            },
             error=None,
         )
     except HTTPException:
@@ -559,6 +606,7 @@ async def upload_driver_document(
     load_id: uuid.UUID | None = Form(None),
     replace: str | None = Form(None),
     db: Session = Depends(get_db_session),
+    background_tasks: BackgroundTasks = None,
 ) -> ApiResponse:
     _validate_upload_file(file)
     normalized_document_type = _normalize_required_text(document_type, "document_type")
@@ -652,7 +700,7 @@ async def upload_driver_document(
             )
             existing_required_doc.mime_type = _normalize_optional_text(file.content_type)
             existing_required_doc.file_size_bytes = storage_result.get("size")
-            existing_required_doc.processing_status = ProcessingStatus.PENDING
+            existing_required_doc.processing_status = ProcessingStatus.QUEUED
             existing_required_doc.received_at = datetime.utcnow()
             item = service.document_repo.update(existing_required_doc)
             if old_storage_key and old_storage_key != existing_required_doc.storage_key:
@@ -696,10 +744,29 @@ async def upload_driver_document(
             },
         )
         db.commit()
+        operational_cache.invalidate_namespace(
+            "command_center", organization_id=str(organization_id)
+        )
+        operational_cache.invalidate_namespace(
+            "operational_analytics", organization_id=str(organization_id)
+        )
+        processing_job = _queue_document_processing(
+            document=item, background_tasks=background_tasks
+        )
 
         return ApiResponse(
             data=_serialize_document(item),
-            meta={"uploaded": True, "driver_upload": True, "quota": quota_decision.as_dict()},
+            meta={
+                "uploaded": True,
+                "driver_upload": True,
+                "quota": quota_decision.as_dict(),
+                "document_processing": {
+                    "status": ProcessingStatus.QUEUED.value,
+                    "job_id": processing_job["id"],
+                    "job_type": processing_job["job_type"],
+                    "idempotency_key": processing_job["idempotency_key"],
+                },
+            },
             error=None,
         )
     except HTTPException:
@@ -1004,8 +1071,20 @@ def extract_document(
     )
     _authorize_document_mutation(item=document, token_payload=token_payload)
 
+    document_service.mark_processing(
+        document_id=str(document_id),
+        processing_status=ProcessingStatus.IN_PROGRESS,
+    )
     service = ExtractionService(db)
-    result = service.extract_document(document_id=str(document_id), force=payload.force)
+    try:
+        result = service.extract_document(document_id=str(document_id), force=payload.force)
+    except Exception:
+        document_service.mark_processing(
+            document_id=str(document_id),
+            processing_status=ProcessingStatus.FAILED,
+        )
+        db.commit()
+        raise
     db.commit()
 
     return ApiResponse(data=result, meta={}, error=None)
