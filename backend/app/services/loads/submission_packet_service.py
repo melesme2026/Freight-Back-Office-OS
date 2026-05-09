@@ -92,9 +92,11 @@ class SubmissionPacketService:
             message=f"Billing packet {packet.packet_reference} created.",
             actor=actor,
         )
+        packet_id = str(packet.id)
+        packet_load_id = str(load.id)
         self.db.flush()
         self.db.expire_all()
-        return self.get_packet(str(packet.id), load_id=str(load.id), org_id=org_id)
+        return self.get_packet(packet_id, load_id=packet_load_id, org_id=org_id)
 
     def list_packets(self, load_id: str, org_id: str) -> list[SubmissionPacket]:
         self._get_load(load_id=load_id, org_id=org_id)
@@ -121,9 +123,7 @@ class SubmissionPacketService:
         )
         if include_related:
             stmt = stmt.options(
-                selectinload(SubmissionPacket.documents).selectinload(
-                    SubmissionPacketDocument.document
-                ),
+                selectinload(SubmissionPacket.documents),
                 selectinload(SubmissionPacket.events),
             )
         else:
@@ -332,6 +332,7 @@ class SubmissionPacketService:
     def _get_load_documents(self, *, load_id: str, org_id: str) -> list[LoadDocument]:
         stmt = (
             select(LoadDocument)
+            .options(noload("*"))
             .where(
                 LoadDocument.organization_id == uuid.UUID(org_id),
                 LoadDocument.load_id == uuid.UUID(load_id),
@@ -350,6 +351,7 @@ class SubmissionPacketService:
         storage_service = StorageService()
         fallback_stmt = (
             select(LoadDocument)
+            .options(noload("*"))
             .where(
                 LoadDocument.organization_id == uuid.UUID(org_id),
                 LoadDocument.load_id == uuid.UUID(load_id),

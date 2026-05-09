@@ -106,3 +106,26 @@ def db_session(engine) -> Generator[Session, None, None]:
         session.close()
         transaction.rollback()
         connection.close()
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    config.addinivalue_line("markers", "slow: long-running tests excluded from fast launch gates")
+    config.addinivalue_line(
+        "markers",
+        (
+            "local_only(reason=None): manual tests that require an explicit "
+            "RUN_LOCAL_ONLY_TESTS=1 opt-in"
+        ),
+    )
+
+
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    if os.environ.get("RUN_LOCAL_ONLY_TESTS") == "1":
+        return
+
+    skip_local_only = pytest.mark.skip(
+        reason="local_only test; set RUN_LOCAL_ONLY_TESTS=1 to run manually"
+    )
+    for item in items:
+        if item.get_closest_marker("local_only") is not None:
+            item.add_marker(skip_local_only)

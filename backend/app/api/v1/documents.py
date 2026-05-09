@@ -936,6 +936,7 @@ def list_documents(
         processing_status=_normalize_optional_text(processing_status),
         page=page,
         page_size=page_size,
+        include_related=True,
     )
 
     return ApiResponse(
@@ -980,6 +981,7 @@ def get_documents_by_load(
         load_id=str(load_id),
         page=page,
         page_size=page_size,
+        include_related=True,
     )
 
     return ApiResponse(
