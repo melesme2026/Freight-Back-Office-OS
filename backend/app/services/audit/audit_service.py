@@ -10,7 +10,20 @@ from app.domain.models.audit_log import AuditLog
 from app.repositories.audit_repo import AuditRepository
 
 
-SENSITIVE_METADATA_MARKERS = ("password", "secret", "token", "card", "cvv", "stripe_payment_method")
+SENSITIVE_METADATA_MARKERS = (
+    "password",
+    "secret",
+    "token",
+    "authorization",
+    "cookie",
+    "card",
+    "cvv",
+    "stripe_payment_method",
+    "payment_method",
+    "client_secret",
+    "raw_document",
+    "document_bytes",
+)
 
 
 class AuditService:
@@ -49,22 +62,33 @@ class AuditService:
             return cls.DEFAULT_PAGE_SIZE
         return min(page_size, cls.MAX_PAGE_SIZE)
 
-    @staticmethod
-    def _sanitize_metadata(value: dict[str, Any] | list[Any] | None) -> dict[str, Any] | list[Any] | None:
+    @classmethod
+    def _sanitize_value(cls, value: Any, *, depth: int = 0) -> Any:
+        if depth > 5:
+            return "[truncated]"
+        if isinstance(value, dict):
+            sanitized: dict[str, Any] = {}
+            for key, item in value.items():
+                lowered_key = str(key).lower()
+                if any(marker in lowered_key for marker in SENSITIVE_METADATA_MARKERS):
+                    sanitized[str(key)] = "[redacted]"
+                    continue
+                sanitized[str(key)] = cls._sanitize_value(item, depth=depth + 1)
+            return sanitized
+        if isinstance(value, list):
+            return [cls._sanitize_value(item, depth=depth + 1) for item in value[:50]]
+        if isinstance(value, tuple):
+            return [cls._sanitize_value(item, depth=depth + 1) for item in value[:50]]
+        if isinstance(value, str):
+            return value[:500] if len(value) > 500 else value
+        return value
+
+    @classmethod
+    def _sanitize_metadata(cls, value: dict[str, Any] | list[Any] | None) -> dict[str, Any] | list[Any] | None:
         if value is None:
             return None
-        if isinstance(value, list):
-            return [item for item in value if not isinstance(item, str) or len(item) <= 500]
-        sanitized: dict[str, Any] = {}
-        for key, item in value.items():
-            lowered_key = str(key).lower()
-            if any(marker in lowered_key for marker in SENSITIVE_METADATA_MARKERS):
-                continue
-            if isinstance(item, str) and len(item) > 500:
-                sanitized[key] = item[:500]
-            else:
-                sanitized[key] = item
-        return sanitized
+        sanitized = cls._sanitize_value(value)
+        return sanitized if isinstance(sanitized, (dict, list)) else None
 
     def log_event(
         self,

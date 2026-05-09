@@ -7,7 +7,7 @@ from app.api.router import api_router
 from app.core.config import get_settings
 from app.core.exceptions import register_exception_handlers
 from app.core.logging import configure_logging
-from app.core.middleware import CacheControlMiddleware, ProcessTimeMiddleware, RequestContextMiddleware
+from app.core.middleware import CacheControlMiddleware, ProcessTimeMiddleware, RateLimitMiddleware, RequestContextMiddleware, SecurityHeadersMiddleware
 from app.lifespan import lifespan
 import app.domain.models  # noqa: F401
 
@@ -27,7 +27,9 @@ def create_app() -> FastAPI:
         redoc_url="/redoc",
     )
 
+    app.add_middleware(SecurityHeadersMiddleware)
     app.add_middleware(CacheControlMiddleware)
+    app.add_middleware(RateLimitMiddleware)
     app.add_middleware(RequestContextMiddleware)
     app.add_middleware(ProcessTimeMiddleware)
 

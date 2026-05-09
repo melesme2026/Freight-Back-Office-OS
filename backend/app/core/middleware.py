@@ -5,6 +5,10 @@ import uuid
 from collections.abc import Callable
 
 from fastapi import Request, Response
+from fastapi.responses import JSONResponse
+
+from app.core.config import get_settings
+from app.core.request_context import client_ip
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
 
@@ -90,4 +94,113 @@ class CacheControlMiddleware(BaseHTTPMiddleware):
             response.headers["Pragma"] = "no-cache"
         else:
             response.headers.setdefault("Cache-Control", "no-store")
+        return response
+
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """Apply conservative browser security headers without blocking app flows."""
+
+    CSP = (
+        "default-src 'self'; "
+        "base-uri 'self'; "
+        "object-src 'none'; "
+        "frame-ancestors 'none'; "
+        "img-src 'self' data: blob: https:; "
+        "font-src 'self' data: https:; "
+        "style-src 'self' 'unsafe-inline' https:; "
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.stripe.com; "
+        "connect-src 'self' https://api.stripe.com https://checkout.stripe.com; "
+        "frame-src https://js.stripe.com https://checkout.stripe.com"
+    )
+
+    async def dispatch(self, request: Request, call_next: Callable[[Request], Response]) -> Response:
+        response = await call_next(request)
+        settings = get_settings()
+        if not settings.security_headers_enabled:
+            return response
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+        response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=()")
+        response.headers.setdefault("Content-Security-Policy", self.CSP)
+        if settings.environment == "production" and settings.security_hsts_enabled:
+            response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+        return response
+
+
+class RateLimitMiddleware(BaseHTTPMiddleware):
+    """In-memory fixed-window limiter for abuse-prone public/sensitive endpoints.
+
+    The limiter is intentionally conservative and skips Stripe/webhook routes so
+    provider retries are not blocked by per-instance counters. Deployments can
+    layer Redis/CDN limits later without changing endpoint behavior.
+    """
+
+    _buckets: dict[str, tuple[int, float]] = {}
+
+    def _policy_for_path(self, path: str) -> tuple[str, int, int] | None:
+        settings = get_settings()
+        if not settings.rate_limit_enabled:
+            return None
+        if "/webhook" in path or "/webhooks" in path:
+            return None
+        if path.endswith("/auth/login"):
+            return ("auth_login", settings.rate_limit_login_max_requests, settings.rate_limit_login_window_seconds)
+        if path.endswith("/auth/request-password-reset") or path.endswith("/auth/reset-password"):
+            return ("password_reset", settings.rate_limit_login_max_requests, settings.rate_limit_login_window_seconds)
+        if path.endswith("/demo-requests"):
+            return ("demo_requests", settings.rate_limit_public_max_requests, settings.rate_limit_public_window_seconds)
+        if path.endswith("/billing/checkout-session"):
+            return ("billing_checkout", settings.rate_limit_billing_max_requests, settings.rate_limit_billing_window_seconds)
+        if "/portal/" in path:
+            if path.endswith("/documents/upload"):
+                return ("portal_upload", settings.rate_limit_upload_max_requests, settings.rate_limit_upload_window_seconds)
+            return ("portal", settings.rate_limit_public_max_requests, settings.rate_limit_public_window_seconds)
+        if path.endswith("/documents") or "/documents/upload" in path:
+            return ("document_upload", settings.rate_limit_upload_max_requests, settings.rate_limit_upload_window_seconds)
+        return None
+
+    @classmethod
+    def reset(cls) -> None:
+        cls._buckets.clear()
+
+    async def dispatch(self, request: Request, call_next: Callable[[Request], Response]) -> Response:
+        policy = self._policy_for_path(request.url.path)
+        if policy is None or request.method.upper() == "OPTIONS":
+            return await call_next(request)
+
+        policy_name, max_requests, window_seconds = policy
+        ip = client_ip(request) or "unknown"
+        actor_hint = request.headers.get("authorization", "")[-16:] if request.headers.get("authorization") else "anonymous"
+        key = f"{policy_name}:{ip}:{actor_hint}"
+        now = time.time()
+        count, reset_at = self._buckets.get(key, (0, now + window_seconds))
+        if now >= reset_at:
+            count, reset_at = 0, now + window_seconds
+        count += 1
+        self._buckets[key] = (count, reset_at)
+        retry_after = max(1, int(reset_at - now))
+
+        if count > max_requests:
+            return JSONResponse(
+                status_code=429,
+                headers={"Retry-After": str(retry_after), "X-RateLimit-Policy": policy_name},
+                content={
+                    "data": None,
+                    "meta": {
+                        "request_id": getattr(request.state, "request_id", None),
+                        "retry_after_seconds": retry_after,
+                    },
+                    "error": {
+                        "code": "rate_limited",
+                        "message": "Too many requests. Please wait and try again.",
+                        "details": {"policy": policy_name, "limit": max_requests, "window_seconds": window_seconds},
+                    },
+                },
+            )
+
+        response = await call_next(request)
+        response.headers.setdefault("X-RateLimit-Limit", str(max_requests))
+        response.headers.setdefault("X-RateLimit-Remaining", str(max(0, max_requests - count)))
+        response.headers.setdefault("X-RateLimit-Reset", str(int(reset_at)))
         return response
