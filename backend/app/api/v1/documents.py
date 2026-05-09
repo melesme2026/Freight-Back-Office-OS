@@ -232,11 +232,12 @@ def _ensure_staff_role(token_payload: dict[str, Any]) -> None:
 
 
 def _serialize_document(item: Any) -> dict[str, Any]:
-    load = getattr(item, "load", None)
-    driver = getattr(item, "driver", None)
-    uploaded_by_staff_user = getattr(item, "uploaded_by_staff_user", None)
-    validation_issues = getattr(item, "validation_issues", None)
-    extracted_fields = getattr(item, "extracted_fields", None)
+    loaded_values = getattr(item, "__dict__", {})
+    load = loaded_values.get("load")
+    driver = loaded_values.get("driver")
+    uploaded_by_staff_user = loaded_values.get("uploaded_by_staff_user")
+    validation_issues = loaded_values.get("validation_issues")
+    extracted_fields = loaded_values.get("extracted_fields")
 
     return {
         "id": str(item.id),
@@ -368,20 +369,24 @@ def _create_document_uploaded_notification(
 
 def _queue_document_processing(
     *,
-    document: Any,
+    document: Any | None = None,
+    document_id: str | None = None,
+    organization_id: str | None = None,
     background_tasks: BackgroundTasks | None,
     force: bool = False,
 ) -> dict[str, Any]:
+    resolved_document_id = document_id or str(document.id)
+    resolved_organization_id = organization_id or str(document.organization_id)
     job = enqueue_document_extraction(
-        document_id=str(document.id),
-        organization_id=str(document.organization_id),
+        document_id=resolved_document_id,
+        organization_id=resolved_organization_id,
         force=force,
     )
     if background_tasks is not None:
         background_tasks.add_task(
             run_document_extraction_job,
             job_id=str(job["id"]),
-            document_id=str(document.id),
+            document_id=resolved_document_id,
             force=force,
         )
     return job
@@ -430,14 +435,11 @@ async def upload_document(
         )
         existing_required_doc = None
         if parsed_document_type in REQUIRED_SINGLETON_DOCUMENT_TYPES and load_id is not None:
-            existing_docs, _ = service.list_documents(
+            existing_required_doc = service.document_repo.find_required_document_for_load(
                 organization_id=str(organization_id),
                 load_id=str(load_id),
                 document_type=parsed_document_type,
-                page=1,
-                page_size=10,
             )
-            existing_required_doc = existing_docs[0] if existing_docs else None
 
             if existing_required_doc and not replace_existing:
                 raise HTTPException(
@@ -524,6 +526,9 @@ async def upload_document(
                 "warning": quota_decision.reason if quota_decision.warning else None,
             },
         )
+        item_id = str(item.id)
+        item_organization_id = str(item.organization_id)
+        serialized_item = _serialize_document(item)
         db.commit()
         operational_cache.invalidate_namespace(
             "command_center", organization_id=str(organization_id)
@@ -532,11 +537,13 @@ async def upload_document(
             "operational_analytics", organization_id=str(organization_id)
         )
         processing_job = _queue_document_processing(
-            document=item, background_tasks=background_tasks
+            document_id=item_id,
+            organization_id=item_organization_id,
+            background_tasks=background_tasks,
         )
 
         return ApiResponse(
-            data=_serialize_document(item),
+            data=serialized_item,
             meta={
                 "uploaded": True,
                 "quota": quota_decision.as_dict(),
@@ -652,14 +659,11 @@ async def upload_driver_document(
         parsed_document_type = service._normalize_document_type(normalized_document_type)
         existing_required_doc = None
         if parsed_document_type in REQUIRED_SINGLETON_DOCUMENT_TYPES and resolved_load_id:
-            existing_docs, _ = service.list_documents(
+            existing_required_doc = service.document_repo.find_required_document_for_load(
                 organization_id=str(organization_id),
                 load_id=resolved_load_id,
                 document_type=parsed_document_type,
-                page=1,
-                page_size=10,
             )
-            existing_required_doc = existing_docs[0] if existing_docs else None
             if existing_required_doc and not replace_existing:
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
@@ -743,6 +747,9 @@ async def upload_driver_document(
                 "warning": quota_decision.reason if quota_decision.warning else None,
             },
         )
+        item_id = str(item.id)
+        item_organization_id = str(item.organization_id)
+        serialized_item = _serialize_document(item)
         db.commit()
         operational_cache.invalidate_namespace(
             "command_center", organization_id=str(organization_id)
@@ -751,11 +758,13 @@ async def upload_driver_document(
             "operational_analytics", organization_id=str(organization_id)
         )
         processing_job = _queue_document_processing(
-            document=item, background_tasks=background_tasks
+            document_id=item_id,
+            organization_id=item_organization_id,
+            background_tasks=background_tasks,
         )
 
         return ApiResponse(
-            data=_serialize_document(item),
+            data=serialized_item,
             meta={
                 "uploaded": True,
                 "driver_upload": True,

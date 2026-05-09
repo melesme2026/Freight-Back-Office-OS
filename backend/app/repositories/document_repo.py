@@ -2,12 +2,11 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import Select, func, select
-from sqlalchemy.orm import Session, selectinload
-
 from app.domain.enums.document_type import DocumentType
 from app.domain.enums.processing_status import ProcessingStatus
 from app.domain.models.load_document import LoadDocument
+from sqlalchemy import Select, func, select
+from sqlalchemy.orm import Session, noload, selectinload
 
 
 class DocumentRepository:
@@ -35,6 +34,8 @@ class DocumentRepository:
 
         if include_related:
             stmt = self._apply_related(stmt)
+        else:
+            stmt = stmt.options(noload("*"))
 
         return self.db.scalar(stmt)
 
@@ -50,6 +51,8 @@ class DocumentRepository:
 
         if include_related:
             stmt = self._apply_related(stmt)
+        else:
+            stmt = stmt.options(noload("*"))
 
         return self.db.scalar(stmt)
 
@@ -95,6 +98,8 @@ class DocumentRepository:
 
         if include_related:
             stmt = self._apply_related(stmt)
+        else:
+            stmt = stmt.options(noload("*"))
 
         if normalized_organization_id is not None:
             stmt = stmt.where(LoadDocument.organization_id == normalized_organization_id)
@@ -138,10 +143,40 @@ class DocumentRepository:
         items = list(self.db.scalars(stmt).all())
         return items, total
 
+
+    def find_required_document_for_load(
+        self,
+        *,
+        organization_id: uuid.UUID | str,
+        load_id: uuid.UUID | str,
+        document_type: DocumentType,
+    ) -> LoadDocument | None:
+        """Fetch one singleton load document without eager relationship loading.
+
+        The upload duplicate/replace path only needs the document row itself.
+        Avoiding default select-in relationships keeps the hot upload path fast and
+        prevents ORM relationship expansion from affecting duplicate detection.
+        """
+        normalized_organization_id = self._normalize_uuid(
+            organization_id, field_name="organization_id"
+        )
+        normalized_load_id = self._normalize_uuid(load_id, field_name="load_id")
+        stmt = (
+            select(LoadDocument)
+            .options(noload("*"))
+            .where(
+                LoadDocument.organization_id == normalized_organization_id,
+                LoadDocument.load_id == normalized_load_id,
+                LoadDocument.document_type == document_type,
+            )
+            .order_by(LoadDocument.received_at.desc(), LoadDocument.created_at.desc())
+            .limit(1)
+        )
+        return self.db.scalar(stmt)
+
     def update(self, document: LoadDocument) -> LoadDocument:
         self.db.add(document)
         self.db.flush()
-        self.db.refresh(document)
         return document
 
     def delete(self, document: LoadDocument) -> None:

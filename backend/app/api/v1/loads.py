@@ -17,8 +17,8 @@ from app.domain.enums.follow_up_task import FollowUpTaskStatus, FollowUpTaskType
 from app.domain.enums.load_status import LoadStatus
 from app.domain.models.follow_up_task import FollowUpTask
 from app.schemas.common import ApiResponse
-from app.services.carrier_profile_service import CarrierProfileService
 from app.services.audit.audit_service import AuditService
+from app.services.carrier_profile_service import CarrierProfileService
 from app.services.documents.document_service import DocumentService
 from app.services.documents.storage_service import StorageService
 from app.services.email.email_service import PacketEmailService
@@ -26,10 +26,10 @@ from app.services.loads.load_service import LoadService
 from app.services.loads.operational_queue_service import OperationalQueueService
 from app.services.loads.packet_readiness import calculate_packet_readiness
 from app.services.loads.submission_packet_service import SubmissionPacketService
-from app.services.packet_intelligence.packet_audit_service import PacketAuditService
 from app.services.notifications.operational_notification_service import (
     OperationalNotificationService,
 )
+from app.services.packet_intelligence.packet_audit_service import PacketAuditService
 from app.services.workflow.workflow_engine import WorkflowEngine
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
@@ -378,6 +378,9 @@ def _serialize_packet_audit(audit: Any) -> dict[str, Any] | None:
 
 
 def _serialize_submission_packet(packet: Any) -> dict[str, Any]:
+    loaded_values = getattr(packet, "__dict__", {})
+    packet_documents = loaded_values.get("documents") or []
+    packet_events = loaded_values.get("events") or []
     return {
         "id": _uuid_to_str(getattr(packet, "id", None)),
         "organization_id": _uuid_to_str(getattr(packet, "organization_id", None)),
@@ -404,7 +407,7 @@ def _serialize_submission_packet(packet: Any) -> dict[str, Any]:
                 "filename_snapshot": getattr(doc, "filename_snapshot", None),
                 "created_at": _to_iso_or_none(getattr(doc, "created_at", None)),
             }
-            for doc in (getattr(packet, "documents", None) or [])
+            for doc in packet_documents
         ],
         "events": [
             {
@@ -417,7 +420,7 @@ def _serialize_submission_packet(packet: Any) -> dict[str, Any]:
                 "created_at": _to_iso_or_none(getattr(event, "created_at", None)),
             }
             for event in sorted(
-                (getattr(packet, "events", None) or []),
+                packet_events,
                 key=lambda item: getattr(item, "created_at", datetime.min),
             )
         ],

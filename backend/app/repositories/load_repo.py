@@ -3,12 +3,11 @@ from __future__ import annotations
 import uuid
 from datetime import date
 
-from sqlalchemy import Select, func, or_, select
-from sqlalchemy.orm import Session, selectinload
-
 from app.domain.enums.channel import Channel
 from app.domain.enums.load_status import LoadStatus
 from app.domain.models.load import Load
+from sqlalchemy import Select, func, or_, select
+from sqlalchemy.orm import Session, noload, selectinload
 
 
 class LoadRepository:
@@ -37,6 +36,8 @@ class LoadRepository:
 
         if include_related:
             stmt = self._apply_related_loads(stmt)
+        else:
+            stmt = stmt.options(noload("*"))
 
         return self.db.scalar(stmt)
 
@@ -114,6 +115,8 @@ class LoadRepository:
 
         if include_related:
             stmt = self._apply_related_loads(stmt)
+        else:
+            stmt = stmt.options(noload("*"))
 
         if normalized_organization_id is not None:
             stmt = stmt.where(Load.organization_id == normalized_organization_id)
@@ -121,7 +124,9 @@ class LoadRepository:
 
         if normalized_customer_account_id is not None:
             stmt = stmt.where(Load.customer_account_id == normalized_customer_account_id)
-            count_stmt = count_stmt.where(Load.customer_account_id == normalized_customer_account_id)
+            count_stmt = count_stmt.where(
+                Load.customer_account_id == normalized_customer_account_id
+            )
 
         if normalized_driver_id is not None:
             stmt = stmt.where(Load.driver_id == normalized_driver_id)

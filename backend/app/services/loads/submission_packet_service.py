@@ -16,7 +16,7 @@ from app.domain.models.submission_packet_document import SubmissionPacketDocumen
 from app.services.documents.storage_service import StorageService
 from app.services.loads.load_service import LoadService
 from sqlalchemy import desc, func, select
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session, noload, selectinload
 
 REQUIRED_DOC_TYPES = {
     DocumentType.INVOICE.value,
@@ -111,21 +111,23 @@ class SubmissionPacketService:
         )
         return list(self.db.scalars(stmt).all())
 
-    def get_packet(self, packet_id: str, load_id: str, org_id: str) -> SubmissionPacket:
-        stmt = (
-            select(SubmissionPacket)
-            .options(
+    def get_packet(
+        self, packet_id: str, load_id: str, org_id: str, *, include_related: bool = True
+    ) -> SubmissionPacket:
+        stmt = select(SubmissionPacket).where(
+            SubmissionPacket.id == uuid.UUID(packet_id),
+            SubmissionPacket.load_id == uuid.UUID(load_id),
+            SubmissionPacket.organization_id == uuid.UUID(org_id),
+        )
+        if include_related:
+            stmt = stmt.options(
                 selectinload(SubmissionPacket.documents).selectinload(
                     SubmissionPacketDocument.document
                 ),
                 selectinload(SubmissionPacket.events),
             )
-            .where(
-                SubmissionPacket.id == uuid.UUID(packet_id),
-                SubmissionPacket.load_id == uuid.UUID(load_id),
-                SubmissionPacket.organization_id == uuid.UUID(org_id),
-            )
-        )
+        else:
+            stmt = stmt.options(noload("*"))
         packet = self.db.scalar(stmt)
         if packet is None:
             raise NotFoundError("Submission packet not found", details={"packet_id": packet_id})
@@ -139,7 +141,7 @@ class SubmissionPacketService:
         destination: dict[str, str | None],
         actor: str | None,
     ) -> SubmissionPacket:
-        packet = self.get_packet(packet_id, load_id, org_id)
+        packet = self.get_packet(packet_id, load_id, org_id, include_related=False)
         packet.destination_type = (destination.get("destination_type") or "other").strip().lower()
         packet.destination_name = self._clean(destination.get("destination_name"))
         packet.destination_email = self._clean(destination.get("destination_email"))
