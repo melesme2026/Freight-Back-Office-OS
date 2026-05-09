@@ -101,7 +101,7 @@ class DocumentService:
             storage_key=normalized_storage_key,
             file_hash_sha256=file_hash_sha256,
             page_count=validated_page_count,
-            processing_status=ProcessingStatus.PENDING,
+            processing_status=ProcessingStatus.QUEUED,
             classification_confidence=None,
             ocr_completed_at=None,
             received_at=datetime.now(timezone.utc),
@@ -285,7 +285,7 @@ class DocumentService:
     ) -> dict[str, Any]:
         document = self.get_document(document_id)
 
-        document.processing_status = ProcessingStatus.PENDING
+        document.processing_status = ProcessingStatus.QUEUED
 
         if force_reclassification:
             document.document_type = DocumentType.UNKNOWN
@@ -423,11 +423,15 @@ class DocumentService:
 
         aliases: dict[str, ProcessingStatus] = {
             "pending": ProcessingStatus.PENDING,
+            "queued": ProcessingStatus.QUEUED,
             "processing": ProcessingStatus.IN_PROGRESS,
             "in_progress": ProcessingStatus.IN_PROGRESS,
             "in-progress": ProcessingStatus.IN_PROGRESS,
             "completed": ProcessingStatus.COMPLETED,
             "failed": ProcessingStatus.FAILED,
+            "needs_review": ProcessingStatus.NEEDS_REVIEW,
+            "needs-review": ProcessingStatus.NEEDS_REVIEW,
+            "needs review": ProcessingStatus.NEEDS_REVIEW,
         }
 
         if normalized in aliases:

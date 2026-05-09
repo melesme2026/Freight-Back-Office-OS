@@ -1,19 +1,22 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from copy import deepcopy
 from datetime import date, datetime, timezone
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
-from sqlalchemy import select
-from sqlalchemy.orm import Session, selectinload
-
+from app.core.cache import CacheKey, operational_cache
 from app.domain.enums.factoring import FactoringReconciliationStatus, FactoringWorkflowStatus
 from app.domain.enums.load_payment_status import LoadPaymentStatus
 from app.domain.models.load import Load
 from app.domain.models.load_payment_record import LoadPaymentRecord
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session, selectinload
 
 ZERO = Decimal("0.00")
+ANALYTICS_CACHE_TTL_SECONDS = 30
+ANALYTICS_ROW_LIMIT = 2000
 PAID_STATUSES = {LoadPaymentStatus.PAID}
 UNPAID_STATUSES = {
     LoadPaymentStatus.NOT_SUBMITTED,
@@ -61,6 +64,22 @@ class OperationalAnalyticsService:
         driver_id: str | None = None,
         factoring_status: str | None = None,
     ) -> dict[str, Any]:
+        cache_key = CacheKey(
+            namespace="operational_analytics",
+            organization_id=org_id,
+            parts=(
+                self._cache_fingerprint(org_id),
+                date_from,
+                date_to,
+                broker_id,
+                driver_id,
+                factoring_status,
+            ),
+        )
+        cached = operational_cache.get(cache_key)
+        if cached is not None:
+            return deepcopy(cached)
+
         rows = self._load_rows(
             org_id=org_id,
             date_from=date_from,
@@ -76,7 +95,7 @@ class OperationalAnalyticsService:
         unpaid = self._build_unpaid(rows, today=today)
         collections = self._build_collections(rows, today=today)
 
-        return {
+        payload = {
             "filters": {
                 "date_from": date_from.isoformat() if date_from else None,
                 "date_to": date_to.isoformat() if date_to else None,
@@ -100,7 +119,24 @@ class OperationalAnalyticsService:
             "lane_profitability": self._group_by_lane(rows, today=today),
             "collections": collections,
             "filter_options": self._filter_options(org_id),
+            "meta": {
+                "row_limit": ANALYTICS_ROW_LIMIT,
+                "returned_rows": len(rows),
+                "cache_ttl_seconds": ANALYTICS_CACHE_TTL_SECONDS,
+                "cache_scope": "organization_and_filter_scoped",
+            },
         }
+        operational_cache.set(cache_key, deepcopy(payload), ttl_seconds=ANALYTICS_CACHE_TTL_SECONDS)
+        return payload
+
+    def _cache_fingerprint(self, org_id: str) -> tuple[int, object]:
+        count, newest = self.db.execute(
+            select(
+                func.count(LoadPaymentRecord.id),
+                func.max(LoadPaymentRecord.updated_at),
+            ).where(LoadPaymentRecord.organization_id == org_id)
+        ).one()
+        return int(count or 0), newest
 
     def _load_rows(
         self,
@@ -121,6 +157,7 @@ class OperationalAnalyticsService:
                 selectinload(LoadPaymentRecord.load).selectinload(Load.broker),
             )
             .order_by(LoadPaymentRecord.created_at.desc())
+            .limit(ANALYTICS_ROW_LIMIT)
         )
         if broker_id:
             stmt = stmt.where(Load.broker_id == broker_id)
