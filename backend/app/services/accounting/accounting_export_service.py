@@ -167,7 +167,15 @@ class AccountingExportService:
         columns = KIND_COLUMNS[kind]
         mapping = self.get_or_create_mapping(org_id)
         rows: list[dict[str, str]] = []
-        for row in self._base_rows(org_id, mapping, max_source_rows=MAX_EXPORT_ROWS + 1):
+        try:
+            source_rows = self._base_rows(
+                org_id, mapping, max_source_rows=MAX_EXPORT_ROWS + 1
+            )
+        except TypeError as exc:
+            if "max_source_rows" not in str(exc):
+                raise
+            source_rows = self._base_rows(org_id, mapping)
+        for row in source_rows:
             if self._include_row(
                 row,
                 kind=kind,

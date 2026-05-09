@@ -35,6 +35,12 @@ PACKET_FILENAME_PREFIXES = {
     DocumentType.PROOF_OF_DELIVERY.value: "POD",
     DocumentType.BILL_OF_LADING.value: "BOL",
 }
+PACKET_ZIP_FILENAME_PREFIXES = {
+    DocumentType.INVOICE.value: "invoice",
+    DocumentType.RATE_CONFIRMATION.value: "rate-confirmation",
+    DocumentType.PROOF_OF_DELIVERY.value: "pod",
+    DocumentType.BILL_OF_LADING.value: "bol",
+}
 
 
 class SubmissionPacketService:
@@ -257,7 +263,13 @@ class SubmissionPacketService:
         zip_buffer = io.BytesIO()
         with zipfile.ZipFile(zip_buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as archive:
             for attachment in attachments:
-                archive.writestr(str(attachment["filename"]), attachment["bytes"])
+                archive.writestr(
+                    self._packet_zip_filename(
+                        doc_type=str(attachment["document_type"]),
+                        load_number=load_number,
+                    ),
+                    attachment["bytes"],
+                )
         return zip_buffer.getvalue(), load_number
 
     def _validate_required_packet_documents(
@@ -277,10 +289,17 @@ class SubmissionPacketService:
             reference = self._clean(getattr(load, "invoice_number", None)) or load_number
         else:
             reference = load_number
-        safe_reference = "".join(
-            char if char.isalnum() or char in {"-", "_"} else "_" for char in reference
-        ).strip("_")
+        safe_reference = self._safe_filename_reference(reference=reference, replacement="_")
         return f"{PACKET_FILENAME_PREFIXES[doc_type]}_{safe_reference or 'Load'}.pdf"
+
+    def _packet_zip_filename(self, *, doc_type: str, load_number: str) -> str:
+        safe_reference = self._safe_filename_reference(reference=load_number, replacement="-")
+        return f"{PACKET_ZIP_FILENAME_PREFIXES[doc_type]}-{safe_reference or 'load'}.pdf"
+
+    def _safe_filename_reference(self, *, reference: str, replacement: str) -> str:
+        return "".join(
+            char if char.isalnum() or char in {"-", "_"} else replacement for char in reference
+        ).strip("-_")
 
     def _add_event(
         self,

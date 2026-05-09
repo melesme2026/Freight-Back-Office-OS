@@ -22,7 +22,7 @@ def test_create_and_get_document(db_session) -> None:
     assert str(fetched.id) == str(created.id)
     assert fetched.storage_key == "uploads/test-document.pdf"
     assert fetched.original_filename == "test-document.pdf"
-    assert str(fetched.processing_status) == "pending"
+    assert str(fetched.processing_status) == "queued"
 
 
 def test_list_documents_returns_created_document(db_session) -> None:
