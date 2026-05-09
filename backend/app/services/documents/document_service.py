@@ -4,16 +4,17 @@ import hashlib
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy.orm import Session
-
 from app.core.exceptions import DuplicateRecordError, NotFoundError, ValidationError
 from app.domain.enums.channel import Channel
 from app.domain.enums.document_type import DocumentType
 from app.domain.enums.processing_status import ProcessingStatus
+from app.domain.models.load import Load
 from app.domain.models.load_document import LoadDocument
 from app.repositories.document_repo import DocumentRepository
 from app.repositories.load_repo import LoadRepository
 from app.services.loads.packet_readiness import calculate_packet_readiness
+from sqlalchemy import update
+from sqlalchemy.orm import Session
 
 
 class DocumentService:
@@ -311,10 +312,6 @@ class DocumentService:
     # ---------------------------
 
     def _sync_load_document_flags(self, load_id: str) -> None:
-        load = self.load_repo.get_by_id(load_id)
-        if load is None:
-            return
-
         documents, _ = self.document_repo.list(
             load_id=load_id,
             page=1,
@@ -325,12 +322,19 @@ class DocumentService:
         present_document_types = [document.document_type for document in documents]
         readiness = calculate_packet_readiness(document_types=present_document_types)
 
-        load.has_ratecon = DocumentType.RATE_CONFIRMATION in present_document_types
-        load.has_bol = DocumentType.BILL_OF_LADING in present_document_types
-        load.has_invoice = DocumentType.INVOICE in present_document_types
-        load.documents_complete = bool(readiness["ready_to_submit"])
-
-        self.load_repo.update(load)
+        self.db.execute(
+            update(Load)
+            .where(Load.id == self._normalize_required_text("load_id", load_id))
+            .values(
+                has_ratecon=DocumentType.RATE_CONFIRMATION in present_document_types,
+                has_bol=DocumentType.BILL_OF_LADING in present_document_types,
+                has_invoice=DocumentType.INVOICE in present_document_types,
+                documents_complete=bool(readiness["ready_to_submit"]),
+            )
+            .execution_options(synchronize_session="fetch")
+        )
+        self.db.flush()
+        self.db.expire_all()
 
     def _normalize_document_type(
         self,
