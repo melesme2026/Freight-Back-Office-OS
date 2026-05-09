@@ -327,3 +327,13 @@ Common failures:
 - SMTP config missing while email sending is enabled.
 - Missing packet docs (rate con/BOL/POD/invoice).
 - Alembic migrations not applied.
+
+
+## Playwright E2E launch gate
+
+Browser-backed E2E readiness is documented in `docs/testing/PLAYWRIGHT_E2E.md`. Core commands:
+
+- `npm --prefix frontend run e2e:install` installs Playwright Chromium.
+- `npm --prefix frontend run e2e:list` lists specs without launching a browser.
+- `npm --prefix frontend run e2e:chromium` runs the desktop Chromium launch gate.
+- `npm --prefix frontend run e2e:mobile` runs the mobile Chrome project.

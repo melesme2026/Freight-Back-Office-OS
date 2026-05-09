@@ -6,6 +6,7 @@ type MutableState = {
   packetCount: number;
   documents: string[];
   paidAmount: number;
+  portalDocuments: string[];
 };
 
 function ok(route: Route, data: unknown) {
@@ -14,6 +15,103 @@ function ok(route: Route, data: unknown) {
 
 function created(route: Route, data: unknown) {
   return route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ data }) });
+}
+
+
+function error(route: Route, status: number, message: string, code?: string) {
+  return route.fulfill({
+    status,
+    contentType: "application/json",
+    body: JSON.stringify({ error: { code, message } }),
+  });
+}
+
+function portalScope() {
+  return {
+    load_id: seed.load.id,
+    role: "broker",
+    contact_email: seed.broker.email,
+    contact_name: seed.broker.name,
+    allow_packet_download: true,
+    allow_document_upload: true,
+  };
+}
+
+function portalLoad() {
+  return {
+    ...seed.load,
+    status: "invoice_ready",
+    pickup_date: "2026-05-01",
+    delivery_date: "2026-05-02",
+    broker_name: seed.broker.name,
+    customer_account_name: seed.customer.account_name,
+    rate_confirmation_number: "RC-E2E-001",
+    bol_number: "BOL-E2E-001",
+    invoice_number: "INV-E2E-001",
+    documents_complete: true,
+    has_ratecon: true,
+    has_bol: true,
+    has_invoice: true,
+    packet_readiness: {
+      ready: true,
+      missing_documents: [],
+      present_documents: ["rate_confirmation", "proof_of_delivery", "invoice"],
+      required_documents: ["rate_confirmation", "proof_of_delivery", "invoice"],
+    },
+    submitted_at: null,
+    paid_at: null,
+    updated_at: "2026-05-09T00:00:00.000Z",
+  };
+}
+
+function analyticsResponse() {
+  return {
+    filters: { date_from: null, date_to: null, broker_id: null, driver_id: null, factoring_status: null },
+    metric_definitions: { total_revenue: "Gross load revenue in the selected period." },
+    revenue: {
+      total_revenue: "1000.00",
+      paid_revenue: "0.00",
+      received_revenue: "0.00",
+      unpaid_revenue: "1000.00",
+      factored_revenue: "0.00",
+      invoice_count: 1,
+      average_invoice_amount: "1000.00",
+      monthly_trends: [{ month: "2026-05", revenue: "1000.00", paid_revenue: "0.00", unpaid_revenue: "1000.00", invoice_count: 1 }],
+    },
+    unpaid_invoices: { unpaid_count: 1, partially_paid_count: 0, overdue_count: 0, unpaid_total: "1000.00", partially_paid_total: "0.00", overdue_total: "0.00", items: [] },
+    aging_report: { buckets: [{ bucket: "0_30", label: "0-30 days", count: 1, balance: "1000.00" }], total_count: 1, total_balance: "1000.00" },
+    driver_profitability: [],
+    broker_performance: [],
+    lane_profitability: [],
+    collections: {
+      unpaid_total: "1000.00",
+      overdue_balance: "0.00",
+      reserve_pending_total: "0.00",
+      unreconciled_count: 0,
+      unreconciled_balance: "0.00",
+      dispute_count: 0,
+      short_paid_count: 0,
+      risk_summary: { high_risk_count: 0, high_risk_balance: "0.00", medium_risk_count: 0, medium_risk_balance: "0.00", low_risk_count: 1, low_risk_balance: "1000.00" },
+      oldest_invoices: [],
+    },
+    filter_options: { brokers: [{ id: seed.broker.id, name: seed.broker.name }], drivers: [{ id: seed.driver.id, name: seed.driver.name }], factoring_statuses: ["not_factored"] },
+  };
+}
+
+function commandCenterResponse() {
+  return {
+    kpis: { active_loads: 1, loads_missing_docs: 0, overdue_invoices: 0, urgent_collections: 0, pending_packet_sends: 1, unresolved_packet_intelligence_blockers: 0, factoring_reserve_pending: 0, unpaid_total: "1000.00", factoring_reserve_pending_total: "0.00" },
+    alerts: [],
+    missing_docs: { summary: { count: 0 }, items: [] },
+    collections: { summary: { count: 0 }, items: [] },
+    packet_intelligence: { summary: { count: 0 }, items: [] },
+    factoring: { summary: { count: 0 }, items: [] },
+    task_center: { summary: { count: 0 }, items: [] },
+    broker_behavior: { summary: { broker_count: 1, worsening_count: 0, dispute_or_short_paid_count: 0, unpaid_total: "1000.00", reserve_pending_total: "0.00" }, items: [] },
+    priority_cards: [],
+    recent_activity: [],
+    meta: { load_limit: 10, payment_limit: 10, logic: "e2e deterministic fixture", not_implemented: [] },
+  };
 }
 
 function encodeJwtPart(value: Record<string, unknown>): string {
@@ -30,6 +128,7 @@ export async function mockApi(page: Page) {
     packetCount: 0,
     documents: ["rate_confirmation", "bill_of_lading", "proof_of_delivery"],
     paidAmount: 0,
+    portalDocuments: ["rate_confirmation", "proof_of_delivery"],
   };
 
   await page.route("**/api/v1/**", async (route) => {
@@ -346,6 +445,87 @@ export async function mockApi(page: Page) {
         needs_attention: { urgent_count: 0, overdue_followups_count: 0, top_items: [] },
         recent_cash_activity: [{ load_number: seed.load.load_number, amount_received: state.paidAmount, paid_date: new Date().toISOString(), payment_status: state.paidAmount >= 1000 ? "fully_paid" : "partial", factoring_used: false }],
       });
+    }
+
+
+    if (path === "/portal/me" && method === "GET") {
+      const authHeader = req.headers().authorization ?? "";
+      if (authHeader.includes("expired-portal-token")) {
+        return error(route, 401, "This portal link is expired or invalid.", "portal_token_expired");
+      }
+      if (!authHeader.includes("valid-portal-token")) {
+        return error(route, 401, "This portal link is expired or invalid.", "portal_token_invalid");
+      }
+      return ok(route, { scope: portalScope(), load: portalLoad() });
+    }
+
+    if (path === `/portal/loads/${seed.load.id}` && method === "GET") {
+      const documents = state.portalDocuments.map((doc, index) => ({
+        id: `portal-doc-${index + 1}`,
+        document_type: doc,
+        original_filename: `${doc}.pdf`,
+        mime_type: "application/pdf",
+        file_size_bytes: 2048,
+        processing_status: "completed",
+        received_at: "2026-05-09T00:00:00.000Z",
+        download_allowed: true,
+      }));
+      return ok(route, {
+        load: portalLoad(),
+        documents,
+        packets: [{ id: "portal-packet-1", packet_reference: "PKT-E2E-1", status: "created", sent_at: null, accepted_at: null, rejected_at: null, documents: [] }],
+      });
+    }
+
+    if (path === `/portal/loads/${seed.load.id}/documents/upload` && method === "POST") {
+      state.portalDocuments.unshift("accessorial_support");
+      return created(route, {
+        id: "portal-upload-1",
+        document_type: "accessorial_support",
+        original_filename: "sample-pod.png",
+        mime_type: "image/png",
+        file_size_bytes: 2048,
+        processing_status: "completed",
+        received_at: "2026-05-09T00:00:00.000Z",
+        download_allowed: true,
+      });
+    }
+
+    if (path.includes("/portal/loads/") && path.endsWith("/download") && method === "GET") {
+      return route.fulfill({ status: 200, contentType: "application/octet-stream", body: "portal-download" });
+    }
+
+    if (path.startsWith("/reports/operational-analytics") && method === "GET") {
+      return ok(route, analyticsResponse());
+    }
+
+    if (path === "/operations/command-center" && method === "GET") {
+      return ok(route, commandCenterResponse());
+    }
+
+    if (path === "/accounting/settings" && method === "GET") {
+      return ok(route, {
+        mapping: { accounting_category: "Freight Revenue", revenue_category: "Linehaul", factoring_category: "Factoring", settlement_category: "Settlements", payment_category: "Payments" },
+        quickbooks: { provider: "quickbooks", enabled: false, default_export_format: "csv", sync_mode: "manual", last_export_note: null },
+        quickbooks_capabilities: { provider: "quickbooks", sync_mode: "manual", supports_csv_exports: true, supports_direct_push: false, notes: "CSV exports only in E2E." },
+      });
+    }
+
+    if (path.startsWith("/accounting/exports/") && method === "GET") {
+      return route.fulfill({ status: 200, contentType: "text/csv", body: "load_number,amount\nLD-E2E-001,1000\n" });
+    }
+
+    if (path.startsWith("/documents") && method === "GET") {
+      return ok(route, state.documents.map((doc, index) => ({
+        id: `doc-${index + 1}`,
+        load_id: seed.load.id,
+        load_number: seed.load.load_number,
+        document_type: doc,
+        original_filename: `${doc}.pdf`,
+        file_name: `${doc}.pdf`,
+        processing_status: "completed",
+        received_at: "2026-05-09T00:00:00.000Z",
+      })));
     }
 
     if (path.startsWith("/billing/dashboard") && method === "GET") {

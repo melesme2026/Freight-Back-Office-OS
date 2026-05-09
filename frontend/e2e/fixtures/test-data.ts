@@ -23,7 +23,7 @@ export const seed = {
   },
   load: {
     id: "load-e2e-001",
-    load_number: `LD-E2E-${Date.now()}`,
+    load_number: "LD-E2E-001",
     pickup_location: "Dallas, TX",
     delivery_location: "Austin, TX",
   },

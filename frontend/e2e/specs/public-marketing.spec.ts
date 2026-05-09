@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 
 import { assertNoCriticalUiCorruption, attachRuntimeGuards } from "../support/test-guards";
 
-test("public pages and core nav route correctly", async ({ page }) => {
+test("public pages, pricing, request-demo validation, and core nav route correctly", async ({ page }) => {
   const assertClean = attachRuntimeGuards(page);
   await page.goto("/");
   await expect(page.getByRole("heading", { name: /without spreadsheets, texts, or lost paperwork/i })).toBeVisible();
@@ -20,6 +20,9 @@ test("public pages and core nav route correctly", async ({ page }) => {
   ]);
   await expect(page.getByRole("heading", { name: /walkthrough/i })).toBeVisible();
 
+  await page.getByRole("button", { name: /submit demo request/i }).click();
+  await expect(page.getByPlaceholder("Full name")).toBeFocused();
+  await expect.poll(() => page.locator("form").evaluate((form) => (form as HTMLFormElement).checkValidity())).toBe(false);
 
   await page.route("**/api/v1/demo-requests", async (route) => {
     await route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ data: { id: "demo-id", status: "received", message: "Demo request received." } }) });

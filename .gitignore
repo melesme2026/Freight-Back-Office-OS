@@ -65,3 +65,7 @@ data/sandbox/test-results/*
 storage/
 tmp/
 temp/
+# Playwright artifacts
+frontend/playwright-report/
+frontend/test-results/
+frontend/tsconfig.tsbuildinfo
