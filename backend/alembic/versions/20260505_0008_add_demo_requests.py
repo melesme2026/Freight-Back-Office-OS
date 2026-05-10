@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import sqlalchemy as sa
 from alembic import op
+from sqlalchemy import inspect
 from sqlalchemy.dialects import postgresql
 
 
@@ -19,6 +20,12 @@ depends_on = None
 
 
 def upgrade() -> None:
+    bind = op.get_bind()
+    inspector = inspect(bind)
+
+    if "demo_requests" in inspector.get_table_names():
+        return
+
     op.create_table(
         "demo_requests",
         sa.Column("id", postgresql.UUID(as_uuid=True), nullable=False),
@@ -28,8 +35,18 @@ def upgrade() -> None:
         sa.Column("company", sa.String(length=255), nullable=False),
         sa.Column("message", sa.String(length=5000), nullable=True),
         sa.Column("status", sa.String(length=32), nullable=False, server_default="received"),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("CURRENT_TIMESTAMP"),
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("CURRENT_TIMESTAMP"),
+        ),
         sa.ForeignKeyConstraint(["organization_id"], ["organizations.id"], ondelete="SET NULL"),
         sa.PrimaryKeyConstraint("id"),
     )
@@ -40,7 +57,19 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_index("ix_demo_requests_created_at", table_name="demo_requests")
-    op.drop_index("ix_demo_requests_status", table_name="demo_requests")
-    op.drop_index("ix_demo_requests_email", table_name="demo_requests")
+    bind = op.get_bind()
+    inspector = inspect(bind)
+
+    if "demo_requests" not in inspector.get_table_names():
+        return
+
+    existing_indexes = {index["name"] for index in inspector.get_indexes("demo_requests")}
+
+    if "ix_demo_requests_created_at" in existing_indexes:
+        op.drop_index("ix_demo_requests_created_at", table_name="demo_requests")
+    if "ix_demo_requests_status" in existing_indexes:
+        op.drop_index("ix_demo_requests_status", table_name="demo_requests")
+    if "ix_demo_requests_email" in existing_indexes:
+        op.drop_index("ix_demo_requests_email", table_name="demo_requests")
+
     op.drop_table("demo_requests")

@@ -7,10 +7,10 @@ Create Date: 2026-04-14 00:00:00.000000
 
 from __future__ import annotations
 
+import app.domain.models  # noqa: F401
 from alembic import op
 
 from app.core.database import Base
-import app.domain.models  # noqa: F401
 
 
 # revision identifiers, used by Alembic.
@@ -45,6 +45,7 @@ def _baseline_tables():
         "ledger_entries",
         "load_documents",
         "loads",
+        "demo_requests",
         "notifications",
         "onboarding_checklists",
         "organizations",
