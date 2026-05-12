@@ -15,7 +15,8 @@ test("mobile smoke: landing and driver load detail actions visible", async ({ pa
   await mockApi(page);
 
   await page.goto("/");
-  await expect(page.getByRole("link", { name: "Create Workspace" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Request a demo" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "See the workflow" })).toBeVisible();
   await expectNoPageOverflow(page);
 
   await loginAsDriver(page);

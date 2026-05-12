@@ -319,7 +319,13 @@ Proprietary and private internal project unless explicitly relicensed.
   4. `cd backend && alembic upgrade head`
   5. `python -m pytest backend/tests/integration -q -m "not slow"`
   6. Optional manual launch smoke: `RUN_LOCAL_ONLY_TESTS=1 python -m pytest backend/tests/integration/test_launch_smoke_flow.py -q`
-  7. `npm --prefix frontend run typecheck && npm --prefix frontend run lint`
+  7. `npm --prefix frontend ci --dry-run`
+  8. `npm --prefix frontend run typecheck && npm --prefix frontend run build && npm --prefix frontend run lint`
+  9. `npm --prefix frontend run e2e:install && npm --prefix frontend run e2e:list`
+  10. `npm --prefix frontend run e2e:chromium && npm --prefix frontend run e2e:mobile`
+
+Release gate helper:
+- `pwsh scripts/launch_gate.ps1` runs backend lint/compile/tests, frontend typecheck/build/lint, Playwright list/Chromium/mobile, Docker health, and Alembic head checks with PASS/FAIL output.
 
 Common failures:
 - Missing carrier profile before invoice generation.

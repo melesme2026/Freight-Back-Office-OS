@@ -6,9 +6,9 @@ test("pricing page hides developer setup copy in pilot mode", async ({ page }) =
   await mockApi(page);
   await page.goto("/pricing");
 
-  await expect(page.getByText(/Pilot access: start using the platform now/i)).toBeVisible();
-  await expect(page.getByRole("link", { name: "Start using now" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Request onboarding" }).first()).toBeVisible();
+  await expect(page.getByText(/Pilot access mode: pricing is presented for planning and qualification/i)).toBeVisible();
+  await expect(page.getByRole("link", { name: "Request Starter demo" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Request Growth demo" })).toBeVisible();
 
   await expect(page.getByText(/Setup required/i)).toHaveCount(0);
   await expect(page.getByText(/checkout link is not configured/i)).toHaveCount(0);

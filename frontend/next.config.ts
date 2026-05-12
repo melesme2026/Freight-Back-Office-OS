@@ -1,3 +1,5 @@
+import path from "node:path";
+
 import type { NextConfig } from "next";
 
 const IMMUTABLE_STATIC_CACHE = "public, max-age=31536000, immutable";
@@ -5,6 +7,7 @@ const PWA_ASSET_CACHE = "public, max-age=3600, stale-while-revalidate=86400";
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  outputFileTracingRoot: path.join(__dirname, ".."),
   typedRoutes: true,
   async headers() {
     return [
