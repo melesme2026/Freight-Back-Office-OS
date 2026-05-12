@@ -188,6 +188,7 @@ export default function HomePage() {
           </div>
           <div className="flex items-center gap-2 text-sm font-semibold">
             <Link href="/login" className="hidden rounded-xl px-4 py-2 text-slate-300 hover:bg-white/10 hover:text-white sm:inline-flex">App login</Link>
+            <Link href="/driver-login" className="hidden rounded-xl px-4 py-2 text-slate-300 hover:bg-white/10 hover:text-white md:inline-flex">Driver Login</Link>
             <Link href="/request-demo" className="rounded-xl bg-white px-4 py-2 text-slate-950 shadow-soft transition hover:bg-brand-50">Request demo</Link>
           </div>
         </nav>
@@ -201,10 +202,10 @@ export default function HomePage() {
               Freight billing, packets, factoring, and collections
             </div>
             <h1 className="mt-6 text-4xl font-bold tracking-tight text-white sm:text-5xl lg:text-6xl">
-              A freight back office that keeps paperwork, billing, and cash-flow follow-up moving.
+              A cleaner freight back office for paperwork, billing packets, invoices, factoring, and collections.
             </h1>
             <p className="mt-6 max-w-2xl text-base leading-8 text-slate-300 sm:text-lg">
-              Freight Back Office OS gives carriers, dispatchers, and billing teams one operational workspace for load documents, invoice-ready packets, factoring status, collections visibility, and reporting.
+              Freight Back Office OS gives carriers, dispatchers, and billing teams one calm workspace for driver document handoff, invoice-ready billing packets, factoring status, collections follow-up, and accounting-export preparation.
             </p>
             <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
               <Link href="/request-demo" className="touch-target inline-flex items-center justify-center rounded-xl bg-brand-500 px-6 py-3 text-sm font-bold text-white shadow-soft transition hover:bg-brand-400">
@@ -239,13 +240,13 @@ export default function HomePage() {
               </div>
               <div className="mt-5 grid gap-3 sm:grid-cols-3">
                 {[
-                  ["Ready to invoice", "18", "bg-emerald-50 text-emerald-700"],
-                  ["Needs docs", "7", "bg-amber-50 text-amber-700"],
-                  ["Follow-up due", "5", "bg-sky-50 text-sky-700"],
+                  ["Ready to invoice", "Ready", "bg-emerald-50 text-emerald-700"],
+                  ["Needs docs", "Review", "bg-amber-50 text-amber-700"],
+                  ["Follow-up due", "Action", "bg-sky-50 text-sky-700"],
                 ].map(([label, value, tone]) => (
                   <div key={label} className={`rounded-2xl p-4 ${tone}`}>
                     <p className="text-xs font-semibold">{label}</p>
-                    <p className="mt-2 text-3xl font-black">{value}</p>
+                    <p className="mt-2 text-2xl font-black">{value}</p>
                   </div>
                 ))}
               </div>
@@ -437,6 +438,7 @@ export default function HomePage() {
             <a href="#features" className="text-slate-300 hover:text-white">Features</a>
             <a href="#pricing" className="text-slate-300 hover:text-white">Pricing</a>
             <Link href="/request-demo" className="text-slate-300 hover:text-white">Request demo</Link>
+            <Link href="/driver-login" className="text-slate-300 hover:text-white">Driver Login</Link>
             <Link href="/login" className="text-slate-300 hover:text-white">App login</Link>
           </div>
         </div>

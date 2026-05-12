@@ -186,6 +186,19 @@ export async function mockApi(page: Page) {
       });
     }
 
+    if (path === "/documents" && method === "GET") {
+      return ok(route, state.documents.map((doc, index) => ({
+        id: `driver-doc-${index + 1}`,
+        load_id: seed.load.id,
+        load_number: seed.load.load_number,
+        file_name: `${doc}.pdf`,
+        original_filename: `${doc}.pdf`,
+        document_type: doc,
+        processing_status: "accepted",
+        received_at: new Date().toISOString(),
+      })));
+    }
+
     if (path.includes("/loads/") && path.endsWith("/documents") && method === "GET") {
       return ok(route, state.documents.map((doc, index) => ({ id: `doc-${index + 1}`, file_name: `${doc}.pdf`, document_type: doc })));
     }
@@ -276,7 +289,17 @@ export async function mockApi(page: Page) {
 
     if (path === "/driver/documents/upload" && method === "POST") {
       state.documents.push("proof_of_delivery");
-      return created(route, { id: `doc-driver-${Date.now()}` });
+      return created(route, {
+        data: {
+          id: `doc-driver-${Date.now()}`,
+          load_id: seed.load.id,
+          load_number: seed.load.load_number,
+          original_filename: "pod-photo.png",
+          document_type: "proof_of_delivery",
+          processing_status: "accepted",
+          received_at: new Date().toISOString(),
+        },
+      });
     }
 
     if (path.includes("/generate-invoice") && method === "POST") {
