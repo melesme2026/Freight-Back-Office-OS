@@ -41,6 +41,12 @@ function authClaims(route: Route): Record<string, unknown> | null {
 }
 
 const FIXED_ISO_TIMESTAMP = "2026-01-15T12:00:00.000Z";
+const LEGACY_MULTI_ORG_DRIVER_ID = "00000000-0000-0000-0000-00000000b222";
+const E2E_TOKEN_TTL_SECONDS = 60 * 60 * 24 * 365;
+
+function futureExpiryEpoch(): number {
+  return Math.floor(Date.now() / 1000) + E2E_TOKEN_TTL_SECONDS;
+}
 
 function carrierProfile() {
   return {
@@ -162,7 +168,7 @@ export async function mockApi(page: Page) {
               details: {
                 organizations: [
                   { organization_id: "00000000-0000-0000-0000-00000000a111", organization_name: "Adwa Express LLC", role: "owner" },
-                  { organization_id: "00000000-0000-0000-0000-00000000b222", organization_name: "Adwa Driver Ops", role: "driver" },
+                  { organization_id: seed.organizationId, organization_name: "Adwa Driver Ops", role: "driver" },
                 ],
               },
             },
@@ -181,13 +187,13 @@ export async function mockApi(page: Page) {
           }),
         });
       }
-      const role = body.email === seed.driver.email || body.organization_id === "00000000-0000-0000-0000-00000000b222" ? "driver" : "owner";
-      const organizationId = body.organization_id ?? seed.organizationId;
-      const expiresAtEpoch = 1893456000;
+      const role = body.email === seed.driver.email || body.organization_id === seed.organizationId || body.organization_id === LEGACY_MULTI_ORG_DRIVER_ID ? "driver" : "owner";
+      const organizationId = role === "driver" ? seed.organizationId : body.organization_id ?? seed.organizationId;
+      const email = role === "driver" ? seed.driver.email : body?.email ?? seed.owner.email;
       const accessToken = buildToken({
-        sub: body?.email ?? "e2e-user",
-        email: body?.email ?? "e2e-user",
-        exp: expiresAtEpoch,
+        sub: email,
+        email,
+        exp: futureExpiryEpoch(),
         role,
         organization_id: organizationId,
         ...(role === "driver" ? { driver_id: seed.driver.id } : {}),
@@ -196,6 +202,7 @@ export async function mockApi(page: Page) {
         access_token: accessToken,
         token_type: "Bearer",
         user: {
+          email,
           role,
           organization_id: organizationId,
           ...(role === "driver" ? { driver_id: seed.driver.id } : {}),
@@ -210,7 +217,7 @@ export async function mockApi(page: Page) {
       }
       const accessToken = buildToken({
         sub: body?.email ?? "owner.e2e@example.com",
-        exp: 1893456000,
+        exp: futureExpiryEpoch(),
         role: "owner",
         organization_id: seed.organizationId,
       });
@@ -352,10 +359,11 @@ export async function mockApi(page: Page) {
     if (path === "/auth/me" && method === "GET") {
       const claims = authClaims(route);
       const role = typeof claims?.role === "string" ? claims.role : "owner";
-      const organizationId = typeof claims?.organization_id === "string" ? claims.organization_id : seed.organizationId;
+      const organizationId = role === "driver" ? seed.organizationId : typeof claims?.organization_id === "string" ? claims.organization_id : seed.organizationId;
+      const email = role === "driver" ? seed.driver.email : typeof claims?.email === "string" ? claims.email : seed.owner.email;
       return ok(route, {
         id: role === "driver" ? seed.driver.id : "staff-e2e-001",
-        email: role === "driver" ? seed.driver.email : seed.owner.email,
+        email,
         role,
         organization_id: organizationId,
         ...(role === "driver" ? { driver_id: seed.driver.id, assigned_driver_id: seed.driver.id } : {}),

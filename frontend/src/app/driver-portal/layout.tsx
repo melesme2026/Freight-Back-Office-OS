@@ -31,10 +31,6 @@ export default function DriverPortalLayout({
   const pathname = usePathname();
   const [isHydrated, setIsHydrated] = useState(false);
 
-  useEffect(() => {
-    setIsHydrated(true);
-  }, []);
-
   const [session, setSession] = useState<AuthSession>(() => ({
     accessToken: null,
     tokenType: "Bearer",
@@ -45,13 +41,10 @@ export default function DriverPortalLayout({
   }));
 
   useEffect(() => {
-    if (!isHydrated) {
-      return;
-    }
-
     setSession(getAuthSession());
+    setIsHydrated(true);
     return onAuthChanged(() => setSession(getAuthSession()));
-  }, [isHydrated]);
+  }, []);
 
   const hasDriverAccess = Boolean(
     session.accessToken && session.organizationId && canAccessDriverPortal(session.userRole)
