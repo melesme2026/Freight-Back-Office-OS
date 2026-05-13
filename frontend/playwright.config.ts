@@ -14,6 +14,8 @@ export default defineConfig({
     video: "retain-on-failure",
     actionTimeout: 10_000,
     navigationTimeout: 20_000,
+    offline: false,
+    serviceWorkers: "block",
   },
   webServer: {
     command: "npm run build && npm run start",
