@@ -2,6 +2,7 @@ import { test, expect } from "@playwright/test";
 
 import { seed } from "../fixtures/test-data";
 import { mockApi } from "../support/mock-api";
+import { waitForDriverPortalReady } from "../support/test-guards";
 
 test.beforeEach(async ({ page }) => {
   await mockApi(page);
@@ -23,6 +24,7 @@ test("driver login redirects to driver portal", async ({ page }) => {
   await page.getByRole("button", { name: "Sign in" }).click();
 
   await expect(page).toHaveURL(/\/driver-portal/);
+  await waitForDriverPortalReady(page);
 });
 
 test("role mismatch messaging is friendly", async ({ page }) => {

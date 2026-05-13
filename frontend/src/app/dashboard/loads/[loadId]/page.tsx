@@ -3753,9 +3753,18 @@ export default function LoadDetailPage() {
                   {hasBlockingPacketAudit(modalState.packet.packet_audit ?? packetAudit) ? <div className="mt-2 text-rose-700">Blocking packet audit findings are present. Fix them before emailing.</div> : null}
                 </div>
                 <div className="mt-4 space-y-3">
-                  <input className="touch-target w-full rounded-xl border border-slate-300 px-3 py-2 text-base sm:text-sm" value={modalState.toEmail} onChange={(event) => { setModalError(null); setModalState({ ...modalState, toEmail: event.target.value }); }} placeholder="Recipient email" />
-                  <input className="touch-target w-full rounded-xl border border-slate-300 px-3 py-2 text-base sm:text-sm" value={modalState.subject} onChange={(event) => { setModalError(null); setModalState({ ...modalState, subject: event.target.value }); }} placeholder="Subject" />
-                  <textarea className="min-h-40 w-full rounded-xl border border-slate-300 px-3 py-2 text-base sm:text-sm" value={modalState.body} onChange={(event) => { setModalError(null); setModalState({ ...modalState, body: event.target.value }); }} placeholder="Email body" />
+                  <div>
+                    <label htmlFor="packet-recipient-email" className="text-sm font-semibold text-slate-700">Recipient email</label>
+                    <input id="packet-recipient-email" type="email" className="touch-target mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-base sm:text-sm" value={modalState.toEmail} onChange={(event) => { setModalError(null); setModalState({ ...modalState, toEmail: event.target.value }); }} placeholder="Recipient email" />
+                  </div>
+                  <div>
+                    <label htmlFor="packet-email-subject" className="text-sm font-semibold text-slate-700">Subject</label>
+                    <input id="packet-email-subject" className="touch-target mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-base sm:text-sm" value={modalState.subject} onChange={(event) => { setModalError(null); setModalState({ ...modalState, subject: event.target.value }); }} placeholder="Subject" />
+                  </div>
+                  <div>
+                    <label htmlFor="packet-email-body" className="text-sm font-semibold text-slate-700">Email body</label>
+                    <textarea id="packet-email-body" className="mt-1 min-h-40 w-full rounded-xl border border-slate-300 px-3 py-2 text-base sm:text-sm" value={modalState.body} onChange={(event) => { setModalError(null); setModalState({ ...modalState, body: event.target.value }); }} placeholder="Email body" />
+                  </div>
                 </div>
                 {modalError ? <div className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{modalError}</div> : null}
                 <div className="mt-4 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">

@@ -3,7 +3,7 @@ import path from "node:path";
 import { expect, test } from "@playwright/test";
 
 import { seed } from "../fixtures/test-data";
-import { loginAsDriver } from "../support/auth";
+import { gotoProtectedDriverRoute, loginAsDriver } from "../support/auth";
 import { mockApi } from "../support/mock-api";
 import { attachRuntimeGuards } from "../support/test-guards";
 
@@ -13,11 +13,11 @@ test("driver portal workflow + RBAC restrictions", async ({ page }) => {
 
   await loginAsDriver(page);
 
-  await page.goto("/driver-portal/loads");
+  await gotoProtectedDriverRoute(page, "/driver-portal/loads");
   await expect(page.getByRole("heading", { name: "My Loads" })).toBeVisible();
   await expect(page.getByText(seed.load.load_number)).toBeVisible();
 
-  await page.goto(`/driver-portal/loads/${seed.load.id}`);
+  await gotoProtectedDriverRoute(page, `/driver-portal/loads/${seed.load.id}`);
   await expect(page.getByText(/What is missing/i)).toBeVisible();
 
   await page.getByLabel("Upload Proof of Delivery file or photo", { exact: true }).setInputFiles(path.join(process.cwd(), "e2e/fixtures/files/sample-invalid.txt"));
