@@ -82,6 +82,7 @@ test("mobile smoke: camera-first upload shows preview and success feedback", asy
 
   await loginAsDriver(page);
   await gotoProtectedDriverRoute(page, "/driver-portal/uploads");
+  expect(await page.evaluate(() => window.navigator.onLine)).toBe(true);
   await expect(page.getByLabel("Assigned load", { exact: true })).toHaveValue(seed.load.id);
   await page.getByLabel("File or photo", { exact: true }).setInputFiles({
     name: "pod-photo.png",

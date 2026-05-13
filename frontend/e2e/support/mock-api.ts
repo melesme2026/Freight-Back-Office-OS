@@ -121,8 +121,25 @@ function presentDocumentTypes(documents: MockDocument[]): string[] {
 }
 
 function multipartFilename(route: Route): string | null {
+  const contentType = route.request().headers()["content-type"] ?? "";
+  if (!contentType.toLowerCase().includes("multipart/form-data")) return null;
+
   const body = route.request().postData();
   return body?.match(/filename="([^"\r\n]+)"/)?.[1] ?? null;
+}
+
+function fulfillDriverDocumentUpload(route: Route, state: MutableState) {
+  const originalFilename = multipartFilename(route) ?? "pod-photo.png";
+  state.documents.push(mockDocument("proof_of_delivery", originalFilename));
+  return created(route, {
+    id: `doc-driver-${state.documents.length}`,
+    load_id: seed.load.id,
+    load_number: seed.load.load_number,
+    original_filename: originalFilename,
+    document_type: "proof_of_delivery",
+    processing_status: "accepted",
+    received_at: FIXED_ISO_TIMESTAMP,
+  });
 }
 
 function driverAssignedLoad(status = "in_transit") {
@@ -163,6 +180,11 @@ export async function mockApi(page: Page) {
     paidAmount: 0,
     packetEmailSent: false,
   };
+
+  await page.route("**/api/v1/driver/documents/upload", async (route) => {
+    if (route.request().method() !== "POST") return route.fallback();
+    return fulfillDriverDocumentUpload(route, state);
+  });
 
   await page.route("**/api/v1/**", async (route) => {
     const req = route.request();
@@ -514,17 +536,7 @@ export async function mockApi(page: Page) {
     }
 
     if (path === "/driver/documents/upload" && method === "POST") {
-      const originalFilename = multipartFilename(route) ?? "pod-photo.png";
-      state.documents.push(mockDocument("proof_of_delivery", originalFilename));
-      return created(route, {
-        id: `doc-driver-${state.documents.length}`,
-        load_id: seed.load.id,
-        load_number: seed.load.load_number,
-        original_filename: originalFilename,
-        document_type: "proof_of_delivery",
-        processing_status: "accepted",
-        received_at: FIXED_ISO_TIMESTAMP,
-      });
+      return fulfillDriverDocumentUpload(route, state);
     }
 
     if (path.includes("/generate-invoice") && method === "POST") {
