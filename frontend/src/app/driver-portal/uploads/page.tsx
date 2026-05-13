@@ -10,6 +10,7 @@ import { ApiClientError, apiClient } from "@/lib/api-client";
 import { getAccessToken, getOrganizationId } from "@/lib/auth";
 import { labelForDocumentType } from "@/lib/driver-portal";
 import {
+  DriverUploadNetworkError,
   enqueueDriverUpload,
   uploadDriverDocumentWithProgress,
   validateDriverUploadFile,
@@ -196,7 +197,11 @@ export default function DriverUploadsPage() {
       }
       await fetchDocuments();
     } catch (error: unknown) {
-      if (typeof window !== "undefined" && (!window.navigator.onLine || error instanceof TypeError || (error instanceof Error && error.message.toLowerCase().includes("network")))) {
+      const shouldQueueOffline =
+        typeof window !== "undefined" &&
+        (!window.navigator.onLine || error instanceof DriverUploadNetworkError);
+
+      if (shouldQueueOffline) {
         try {
           await enqueueDriverUpload({ file, documentType: documentType.trim(), loadId: selectedLoadId || null });
           setSuccessMessage(`Offline: queued ${file.name}. It will retry when your connection returns.`);

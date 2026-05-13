@@ -24,6 +24,13 @@ const DRIVER_UPLOAD_QUEUE_KEY = "adwa.driver.uploadQueue.v1";
 const MAX_UPLOAD_BYTES = 15 * 1024 * 1024;
 const MAX_QUEUE_ITEMS = 12;
 const MAX_RETRY_ATTEMPTS = 5;
+export class DriverUploadNetworkError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "DriverUploadNetworkError";
+  }
+}
+
 const ALLOWED_UPLOAD_MIME_TYPES = new Set([
   "application/pdf",
   "image/jpeg",
@@ -99,19 +106,28 @@ function dataUrlToFile(dataUrl: string, fileName: string, fileType: string): Fil
   return new File([bytes], fileName, { type: mime });
 }
 
-function parseXhrResponseBody(request: XMLHttpRequest): unknown {
+function safeUploadSuccessFallback(request: XMLHttpRequest): Record<string, unknown> {
+  return {
+    data: [],
+    status: request.status,
+    ok: true,
+  };
+}
+
+function parseXhrResponseBody(request: XMLHttpRequest, fallback?: unknown): unknown {
   const contentType = request.getResponseHeader("content-type") ?? "";
   const body = request.responseText;
-  if (!contentType.toLowerCase().includes("application/json") || !body) return body;
+  if (!body) return fallback ?? body;
+  if (!contentType.toLowerCase().includes("application/json")) return body;
 
   try {
     return JSON.parse(body) as unknown;
   } catch {
-    return body;
+    return fallback ?? body;
   }
 }
 
-function formatXhrNetworkError(request: XMLHttpRequest, uploadUrl: string): Error {
+function formatXhrNetworkError(request: XMLHttpRequest, uploadUrl: string): DriverUploadNetworkError {
   const responseUrl = request.responseURL || uploadUrl;
   const detail = [
     `url=${responseUrl}`,
@@ -121,7 +137,9 @@ function formatXhrNetworkError(request: XMLHttpRequest, uploadUrl: string): Erro
     .filter(Boolean)
     .join(" ");
 
-  return new Error(`Network upload failed (${detail}). The document can be queued and retried when online.`);
+  return new DriverUploadNetworkError(
+    `Network upload failed (${detail}). The document can be queued and retried when online.`
+  );
 }
 
 function uploadViaXhr(
@@ -162,13 +180,21 @@ function uploadViaXhr(
     };
 
     request.onload = () => {
-      const parsedBody = parseXhrResponseBody(request);
-      if (request.status >= 200 && request.status < 300) {
-        resolveOnce(parsedBody);
-        return;
+      try {
+        const isSuccess = request.status >= 200 && request.status < 300;
+        const parsedBody = parseXhrResponseBody(
+          request,
+          isSuccess ? safeUploadSuccessFallback(request) : undefined
+        );
+        if (isSuccess) {
+          resolveOnce(parsedBody);
+          return;
+        }
+        const message = extractUploadErrorMessage(parsedBody) || `Upload failed (${request.status}).`;
+        rejectOnce(new Error(message));
+      } catch (error: unknown) {
+        rejectOnce(error instanceof Error ? error : new Error("Upload response could not be processed."));
       }
-      const message = extractUploadErrorMessage(parsedBody) || `Upload failed (${request.status}).`;
-      rejectOnce(new Error(message));
     };
 
     request.onerror = () => rejectOnce(formatXhrNetworkError(request, uploadUrl));
