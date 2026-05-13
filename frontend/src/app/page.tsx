@@ -183,7 +183,7 @@ export default function HomePage() {
           <div className="hidden items-center gap-6 text-sm font-medium text-slate-300 lg:flex">
             <a href="#features" className="hover:text-white">Features</a>
             <a href="#workflow" className="hover:text-white">Workflow</a>
-            <a href="#pricing" className="hover:text-white">Pricing</a>
+            <Link href="/pricing" className="hover:text-white">Pricing</Link>
             <a href="#faq" className="hover:text-white">FAQ</a>
           </div>
           <div className="flex items-center gap-2 text-sm font-semibold">
