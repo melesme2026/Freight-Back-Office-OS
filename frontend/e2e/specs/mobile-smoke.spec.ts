@@ -91,7 +91,26 @@ test("mobile smoke: camera-first upload shows preview and success feedback", asy
   });
 
   await expect(page.getByAltText("Selected document preview")).toBeVisible();
+  const uploadResponsePromise = page.waitForResponse(
+    (response) =>
+      response.url().includes("/api/v1/driver/documents/upload") &&
+      response.request().method() === "POST"
+  );
   await page.getByRole("button", { name: "Upload Document" }).click();
+  const uploadResponse = await uploadResponsePromise;
+  const uploadBody = await uploadResponse.json();
+  expect([200, 201]).toContain(uploadResponse.status());
+  expect(uploadResponse.headers()["x-e2e-upload-mock"]).toBe("hit");
+  expect(uploadBody).toEqual({
+    data: [
+      {
+        original_filename: "pod-photo.png",
+        filename: "pod-photo.png",
+        document_type: "proof_of_delivery",
+        status: "uploaded",
+      },
+    ],
+  });
   await expect(page.getByRole("status")).toHaveText("Upload successful: pod-photo.png");
   await expectNoPageOverflow(page);
 });
