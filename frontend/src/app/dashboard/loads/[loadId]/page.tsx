@@ -1139,7 +1139,6 @@ export default function LoadDetailPage() {
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [invoiceBlocker, setInvoiceBlocker] = useState<InvoiceBlocker | null>(null);
   const [pendingDuplicateUpload, setPendingDuplicateUpload] = useState<{ file: File; formData: FormData; message: string } | null>(null);
-  const [emailSuccessMessage, setEmailSuccessMessage] = useState<string | null>(null);
   const [staffUsers, setStaffUsers] = useState<StaffUserOption[]>([]);
   const [followUpOwnerId, setFollowUpOwnerId] = useState("");
   const [nextFollowUpDate, setNextFollowUpDate] = useState("");
@@ -1452,7 +1451,6 @@ export default function LoadDetailPage() {
         )
       );
       setActionMessage("Packet email sent and logged");
-      setEmailSuccessMessage("Packet email sent and logged");
       setModalState({ kind: "none" });
       setModalError(null);
       setError(null);
@@ -2851,27 +2849,10 @@ export default function LoadDetailPage() {
         ) : null}
 
         {actionMessage ? (
-          <div className="mb-6 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+          <div role="status" aria-live="polite" className="mb-6 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">
             {actionMessage}
           </div>
         ) : null}
-
-        {emailSuccessMessage && (
-          <div
-            role="alert"
-            style={{
-              marginTop: "12px",
-              padding: "12px",
-              background: "#dcfce7",
-              border: "1px solid #22c55e",
-              color: "#166534",
-              borderRadius: "6px",
-              fontWeight: "500",
-            }}
-          >
-            {emailSuccessMessage}
-          </div>
-        )}
 
         {workflowBlockedReason ? (
           <div className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">

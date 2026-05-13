@@ -323,8 +323,8 @@ export default function DriverLoadDetailPage() {
           </div>
         ) : null}
 
-        <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-4">
-          <h2 className="text-lg font-semibold text-slate-900">Document Uploads</h2>
+        <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-4" aria-labelledby="driver-document-uploads-heading">
+          <h2 id="driver-document-uploads-heading" className="text-lg font-semibold text-slate-900">Document Uploads</h2>
           <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
             <p className="font-semibold">What is missing</p>
             <p className="mt-1 text-xs">
@@ -348,7 +348,7 @@ export default function DriverLoadDetailPage() {
                 {!item.uploaded ? (
                   <label className="touch-target mt-3 inline-flex w-full cursor-pointer items-center justify-center rounded-xl bg-brand-600 px-5 py-3 text-sm font-semibold text-white sm:w-auto">
                     {uploadingType === item.type ? "Uploading..." : `Upload ${labelForDocumentType(item.type)}`}
-                    <input type="file" accept="image/*,application/pdf" capture="environment" className="hidden" onChange={(event) => void uploadDocument(item.type, event)} disabled={Boolean(uploadingType)} />
+                    <input type="file" aria-label={`Upload ${labelForDocumentType(item.type)} file or photo`} accept="image/*,application/pdf" capture="environment" className="hidden" onChange={(event) => void uploadDocument(item.type, event)} disabled={Boolean(uploadingType)} />
                   </label>
                 ) : null}
               </div>

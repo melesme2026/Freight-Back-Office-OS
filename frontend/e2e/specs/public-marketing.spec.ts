@@ -32,7 +32,7 @@ test("public pages and core nav route correctly", async ({ page }) => {
   await expect(page.getByText(/email draft was opened/i)).toHaveCount(0);
 
   await page.goto("/");
-  await page.getByRole("link", { name: "App login" }).click();
+  await page.getByRole("navigation", { name: "Public navigation" }).getByRole("link", { name: "App login" }).click();
   await expect(page).toHaveURL(/\/login/);
   await page.goto("/");
   await page.getByRole("link", { name: "Driver Login" }).click();
