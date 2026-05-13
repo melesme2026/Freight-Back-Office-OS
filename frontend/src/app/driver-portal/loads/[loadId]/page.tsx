@@ -48,6 +48,12 @@ function asOptionalText(value: unknown): string | null {
   return text || null;
 }
 
+function unwrapApiData(payload: unknown): Record<string, unknown> | null {
+  const root = asRecord(payload);
+  const data = asRecord(root?.data);
+  return data ?? root;
+}
+
 function normalizeDocuments(payload: unknown): DriverDocument[] {
   const root = asRecord(payload);
   const items = Array.isArray(root?.data) ? root.data : Array.isArray(payload) ? payload : [];
@@ -113,8 +119,7 @@ export default function DriverLoadDetailPage() {
       }),
     ]);
 
-    const root = asRecord(loadPayload);
-    setLoadData(asRecord(root?.data));
+    setLoadData(unwrapApiData(loadPayload));
     setDocuments(normalizeDocuments(documentPayload));
   }, [loadId]);
 
@@ -242,14 +247,23 @@ export default function DriverLoadDetailPage() {
       let location: { latitude: number; longitude: number; accuracy: number | null } | null = null;
       if (typeof window !== "undefined" && "geolocation" in navigator) {
         try {
-          const position = await new Promise<GeolocationPosition>((resolve, reject) => {
-            navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: false, timeout: 8000, maximumAge: 300000 });
-          });
-          location = {
-            latitude: position.coords.latitude,
-            longitude: position.coords.longitude,
-            accuracy: Number.isFinite(position.coords.accuracy) ? position.coords.accuracy : null,
-          };
+          const permission = "permissions" in navigator
+            ? await navigator.permissions.query({ name: "geolocation" as PermissionName })
+            : null;
+          if (permission?.state === "granted") {
+            const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+              navigator.geolocation.getCurrentPosition(resolve, reject, {
+                enableHighAccuracy: false,
+                timeout: 3000,
+                maximumAge: 300000,
+              });
+            });
+            location = {
+              latitude: position.coords.latitude,
+              longitude: position.coords.longitude,
+              accuracy: Number.isFinite(position.coords.accuracy) ? position.coords.accuracy : null,
+            };
+          }
         } catch {
           location = null;
         }
