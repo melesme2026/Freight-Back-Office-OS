@@ -352,6 +352,9 @@ export async function mockApi(page: Page) {
       return route.fulfill({ status: 200, contentType: "application/zip", body: "PK\x03\x04" });
     }
 
+    if (path.includes("/loads/") && path.endsWith("/packet-audit") && method === "GET") {
+      return ok(route, { status: "passed", findings: [] });
+    }
 
     if (path.includes("/loads/") && path.endsWith("/status") && method === "POST") {
       return ok(route, { new_status: "invoice_ready" });
