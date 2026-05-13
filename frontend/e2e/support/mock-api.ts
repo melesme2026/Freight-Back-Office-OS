@@ -42,6 +42,65 @@ function authClaims(route: Route): Record<string, unknown> | null {
 
 const FIXED_ISO_TIMESTAMP = "2026-01-15T12:00:00.000Z";
 
+function carrierProfile() {
+  return {
+    id: "carrier-profile-e2e-001",
+    organization_id: seed.organizationId,
+    legal_name: "Adwa Express LLC",
+    address_line1: "100 E2E Logistics Way",
+    address_line2: "",
+    city: "Columbus",
+    state: "OH",
+    zip: "43215",
+    country: "USA",
+    phone: "555-0101",
+    email: seed.owner.email,
+    mc_number: "MC-123456",
+    dot_number: "DOT-654321",
+    remit_to_name: "Adwa Express LLC",
+    remit_to_address: "100 E2E Logistics Way, Columbus, OH 43215",
+    remit_to_notes: "ACH preferred for E2E billing packet tests.",
+    created_at: FIXED_ISO_TIMESTAMP,
+    updated_at: FIXED_ISO_TIMESTAMP,
+  };
+}
+
+function paymentReconciliation(paidAmountValue = 0) {
+  const paidAmount = stateAmountString(paidAmountValue);
+  return {
+    id: "payment-reconciliation-e2e-001",
+    load_id: seed.load.id,
+    gross_amount: "1000.00",
+    expected_amount: "1000.00",
+    amount_received: paidAmount,
+    currency: "USD",
+    payment_status: paidAmountValue >= 1000 ? "fully_paid" : paidAmountValue > 0 ? "partial" : "open",
+    paid_date: paidAmountValue > 0 ? FIXED_ISO_TIMESTAMP : null,
+    factoring_used: false,
+    factoring_company_id: null,
+    factoring_company_name: null,
+    factor_name: null,
+    factoring_status: null,
+    reconciliation_status: "pending",
+    aging_bucket: "current",
+    advance_amount: null,
+    advance_date: null,
+    reserve_amount: null,
+    reserve_paid_amount: null,
+    reserve_pending_amount: null,
+    factoring_fee_percent: null,
+    factoring_fee_amount: null,
+    short_paid_amount: null,
+    dispute_reason: null,
+    notes: null,
+    factoring_notes: null,
+  };
+}
+
+function stateAmountString(amount: number) {
+  return amount.toFixed(2);
+}
+
 function driverAssignedLoad(status = "in_transit") {
   return {
     ...seed.load,
@@ -398,8 +457,38 @@ export async function mockApi(page: Page) {
       return route.fulfill({ status: 200, contentType: "application/zip", body: "PK\x03\x04" });
     }
 
+    if (path === "/carrier-profile" && method === "GET") {
+      return ok(route, carrierProfile());
+    }
+
+    if (path === "/carrier-profile" && (method === "POST" || method === "PATCH")) {
+      const body = req.postDataJSON() as Record<string, unknown> | null;
+      return ok(route, { ...carrierProfile(), ...(body ?? {}), updated_at: FIXED_ISO_TIMESTAMP });
+    }
+
     if (path.includes("/loads/") && path.endsWith("/packet-audit") && method === "GET") {
       return ok(route, { status: "passed", findings: [] });
+    }
+
+    if (path.includes("/loads/") && path.endsWith("/payment-reconciliation/") && method === "GET") {
+      return ok(route, paymentReconciliation(state.paidAmount));
+    }
+
+    if (path.includes("/loads/") && path.includes("/payment-reconciliation") && (method === "POST" || method === "PATCH")) {
+      const body = req.postDataJSON() as Record<string, unknown> | null;
+      return ok(route, { ...paymentReconciliation(state.paidAmount), ...(body ?? {}) });
+    }
+
+    if (path.startsWith("/follow-ups") && method === "GET") {
+      return ok(route, []);
+    }
+
+    if (path.includes("/loads/") && path.endsWith("/follow-ups/generate") && method === "POST") {
+      return ok(route, { created_count: 0, tasks: [] });
+    }
+
+    if (path.startsWith("/follow-ups/") && method === "POST") {
+      return ok(route, { id: "follow-up-e2e-001", status: "completed" });
     }
 
     if (path.includes("/loads/") && path.endsWith("/status") && method === "POST") {

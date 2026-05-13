@@ -40,14 +40,33 @@ export async function assertNoCriticalUiCorruption(page: Page) {
 }
 
 export async function waitForProtectedRouteSettled(page: Page) {
-  await expect(page.getByText("Checking session...", { exact: true })).toHaveCount(0);
-  await expect(page.getByText("Redirecting...", { exact: true })).toHaveCount(0);
+  const driverPortalSections = page.getByRole("navigation", { name: "Driver portal sections" });
+  const checkingSession = page.getByText("Checking session...", { exact: true });
+  const redirecting = page.getByText("Redirecting...", { exact: true });
+
+  await expect
+    .poll(async () => {
+      if (await driverPortalSections.isVisible().catch(() => false)) {
+        return true;
+      }
+
+      const [checkingCount, redirectingCount] = await Promise.all([
+        checkingSession.count(),
+        redirecting.count(),
+      ]);
+      return checkingCount === 0 && redirectingCount === 0;
+    })
+    .toBe(true);
 }
 
 export async function waitForDriverPortalReady(page: Page) {
   await waitForProtectedRouteSettled(page);
-  await expect(page.getByText("Driver Portal", { exact: true })).toBeVisible();
-  await expect(page.getByText("driver.e2e@example.com", { exact: true })).toBeVisible();
-  await expect(page.getByRole("navigation", { name: "Driver portal sections" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Loads" })).toBeVisible();
+
+  const banner = page.getByRole("banner");
+  await expect(banner.getByText("Driver Portal", { exact: true })).toBeVisible();
+  await expect(banner.getByText("driver.e2e@example.com", { exact: true })).toBeVisible();
+
+  const nav = page.getByRole("navigation", { name: "Driver portal sections" });
+  await expect(nav).toBeVisible();
+  await expect(nav.getByRole("link", { name: "Loads" })).toBeVisible();
 }
