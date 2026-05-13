@@ -91,6 +91,6 @@ test("mobile smoke: camera-first upload shows preview and success feedback", asy
 
   await expect(page.getByAltText("Selected document preview")).toBeVisible();
   await page.getByRole("button", { name: "Upload Document" }).click();
-  await expect(page.getByText(/Upload successful: pod-photo.png/)).toBeVisible();
+  await expect(page.getByRole("status")).toHaveText("Upload successful: pod-photo.png");
   await expectNoPageOverflow(page);
 });
