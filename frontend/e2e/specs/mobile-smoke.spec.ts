@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
 import { seed } from "../fixtures/test-data";
-import { loginAsDriver, loginAsOwner } from "../support/auth";
+import { gotoProtectedDriverRoute, loginAsDriver, loginAsOwner } from "../support/auth";
 import { mockApi } from "../support/mock-api";
 
 async function expectNoPageOverflow(page: Page) {
@@ -20,7 +20,7 @@ test("mobile smoke: landing and driver load detail actions visible", async ({ pa
   await expectNoPageOverflow(page);
 
   await loginAsDriver(page);
-  await page.goto(`/driver-portal/loads/${seed.load.id}`);
+  await gotoProtectedDriverRoute(page, `/driver-portal/loads/${seed.load.id}`);
   await expect(page.getByRole("main").getByRole("heading", { name: new RegExp(`^Load ${seed.load.load_number}$`) })).toBeVisible();
   await expect(page.getByRole("region", { name: "Document Uploads" })).toBeVisible();
   await expectNoPageOverflow(page);
@@ -52,7 +52,7 @@ test("mobile smoke: driver portal overview and uploads remain touch-friendly", a
   await expect(page.getByRole("heading", { name: "Driver Workspace" })).toBeVisible();
   await expectNoPageOverflow(page);
 
-  await page.goto("/driver-portal/uploads");
+  await gotoProtectedDriverRoute(page, "/driver-portal/uploads");
   await expect(page.getByRole("heading", { name: /Upload Documents/ })).toBeVisible();
   await expect(page.getByLabel("File or photo", { exact: true })).toBeVisible();
   await expectNoPageOverflow(page);
@@ -66,7 +66,7 @@ test("mobile smoke: PWA shell, push preferences, and ETA workflow are available"
   await expect(page.locator("body")).toContainText("ADWA Freight Driver");
 
   await loginAsDriver(page);
-  await page.goto(`/driver-portal/loads/${seed.load.id}`);
+  await gotoProtectedDriverRoute(page, `/driver-portal/loads/${seed.load.id}`);
   await expect(page.getByText("Online and ready to sync")).toBeVisible();
   await expect(page.getByText("Push reminders")).toBeVisible();
   await expect(page.getByRole("heading", { name: "ETA / check-in" })).toBeVisible();
@@ -81,8 +81,8 @@ test("mobile smoke: camera-first upload shows preview and success feedback", asy
   await mockApi(page);
 
   await loginAsDriver(page);
-  await page.goto("/driver-portal/uploads");
-  await page.getByLabel("Assigned load", { exact: true }).selectOption(seed.load.id);
+  await gotoProtectedDriverRoute(page, "/driver-portal/uploads");
+  await expect(page.getByLabel("Assigned load", { exact: true })).toHaveValue(seed.load.id);
   await page.getByLabel("File or photo", { exact: true }).setInputFiles({
     name: "pod-photo.png",
     mimeType: "image/png",

@@ -38,3 +38,16 @@ export async function assertNoCriticalUiCorruption(page: Page) {
   await expect(page.locator("body")).not.toContainText("NaN");
   await expect(page.locator("body")).not.toContainText("Application error");
 }
+
+export async function waitForProtectedRouteSettled(page: Page) {
+  await expect(page.getByText("Checking session...", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Redirecting...", { exact: true })).toHaveCount(0);
+}
+
+export async function waitForDriverPortalReady(page: Page) {
+  await waitForProtectedRouteSettled(page);
+  await expect(page.getByText("Driver Portal", { exact: true })).toBeVisible();
+  await expect(page.getByText("driver.e2e@example.com", { exact: true })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Driver portal sections" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Loads" })).toBeVisible();
+}
