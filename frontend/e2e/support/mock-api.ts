@@ -14,19 +14,34 @@ type MutableState = {
   packetEmailSent: boolean;
 };
 
+function corsHeaders(route: Route): Record<string, string> {
+  const origin = route.request().headers().origin ?? "*";
+  return {
+    "access-control-allow-origin": origin,
+    "access-control-allow-methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS",
+    "access-control-allow-headers": "authorization,content-type,x-organization-id,accept",
+    "access-control-expose-headers": "x-e2e-upload-mock",
+    vary: "Origin",
+  };
+}
+
+function optionsOk(route: Route) {
+  return route.fulfill({ status: 204, headers: corsHeaders(route), body: "" });
+}
+
 function ok(route: Route, data: unknown) {
-  return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data }) });
+  return route.fulfill({ status: 200, contentType: "application/json", headers: corsHeaders(route), body: JSON.stringify({ data }) });
 }
 
 function created(route: Route, data: unknown) {
-  return route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ data }) });
+  return route.fulfill({ status: 201, contentType: "application/json", headers: corsHeaders(route), body: JSON.stringify({ data }) });
 }
 
 function createdUploadMock(route: Route, data: unknown) {
   return route.fulfill({
     status: 201,
     contentType: "application/json",
-    headers: { "x-e2e-upload-mock": "hit" },
+    headers: { ...corsHeaders(route), "x-e2e-upload-mock": "hit" },
     body: JSON.stringify({ data }),
   });
 }
@@ -190,7 +205,9 @@ export async function mockApi(page: Page) {
   };
 
   await page.route(/\/api\/v1\/driver\/documents\/upload(?:[/?#].*)?$/, async (route) => {
-    if (route.request().method() !== "POST") return route.fallback();
+    const method = route.request().method();
+    if (method === "OPTIONS") return optionsOk(route);
+    if (method !== "POST") return route.fallback();
     return fulfillDriverDocumentUpload(route, state);
   });
 
@@ -199,6 +216,10 @@ export async function mockApi(page: Page) {
     const url = new URL(req.url());
     const path = url.pathname.replace("/api/v1", "");
     const method = req.method();
+
+    if (method === "OPTIONS") {
+      return optionsOk(route);
+    }
 
     if (path === "/auth/login" && method === "POST") {
       const body = req.postDataJSON() as { email?: string; password?: string; organization_id?: string };
