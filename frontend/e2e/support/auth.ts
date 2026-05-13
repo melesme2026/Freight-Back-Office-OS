@@ -8,6 +8,16 @@ async function login(page: Page, path: "/login" | "/driver-login", email: string
   await page.locator("input[type='password']").fill(password);
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page).toHaveURL(destinationPath);
+  await page.waitForFunction(
+    ({ expectedEmail }) => {
+      const token = window.localStorage.getItem("fbos_access_token");
+      const organizationId = window.localStorage.getItem("fbos_organization_id");
+      const role = window.localStorage.getItem("fbos_user_role");
+      const storedEmail = window.localStorage.getItem("fbos_user_email");
+      return Boolean(token && organizationId && role && storedEmail === expectedEmail);
+    },
+    { expectedEmail: email.trim().toLowerCase() }
+  );
 }
 
 export async function loginAsOwner(page: Page) {

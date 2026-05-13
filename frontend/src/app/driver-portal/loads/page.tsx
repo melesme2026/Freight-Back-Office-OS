@@ -29,7 +29,16 @@ function asText(value: unknown, fallback = "—"): string {
 
 function normalizeLoads(payload: unknown): DriverLoad[] {
   const root = asRecord(payload);
-  const items = Array.isArray(root?.data) ? root.data : [];
+  const nestedData = asRecord(root?.data);
+  const items = Array.isArray(payload)
+    ? payload
+    : Array.isArray(root?.data)
+      ? root.data
+      : Array.isArray(nestedData?.items)
+        ? nestedData.items
+        : Array.isArray(root?.items)
+          ? root.items
+          : [];
 
   return items
     .map((item) => {
