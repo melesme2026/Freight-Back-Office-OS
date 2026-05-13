@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page, type Request } from "@playwright/test";
 
 import { seed } from "../fixtures/test-data";
 import { gotoProtectedDriverRoute, loginAsDriver, loginAsOwner } from "../support/auth";
@@ -91,14 +91,43 @@ test("mobile smoke: camera-first upload shows preview and success feedback", asy
   });
 
   await expect(page.getByAltText("Selected document preview")).toBeVisible();
-  const uploadResponsePromise = page.waitForResponse((response) => {
-    const url = new URL(response.url());
-    return url.pathname === "/api/v1/driver/documents/upload" && response.request().method() === "POST";
+
+  const uploadRequestDiagnostics: string[] = [];
+  const failedRequests: string[] = [];
+  const consoleErrors: string[] = [];
+  const isUploadRequest = (request: Request) => {
+    const url = new URL(request.url());
+    return url.pathname === "/api/v1/driver/documents/upload" && request.method() === "POST";
+  };
+
+  page.on("request", (request) => {
+    if (isUploadRequest(request)) {
+      uploadRequestDiagnostics.push(`request ${request.method()} ${request.url()} type=${request.resourceType()}`);
+    }
   });
+  page.on("requestfailed", (request) => {
+    const failure = request.failure();
+    const diagnostic = `${request.method()} ${request.url()} ${failure?.errorText ?? "unknown request failure"}`;
+    failedRequests.push(diagnostic);
+    if (isUploadRequest(request)) uploadRequestDiagnostics.push(`requestfailed ${diagnostic}`);
+  });
+  page.on("console", (message) => {
+    if (message.type() === "error") consoleErrors.push(message.text());
+  });
+
+  const uploadResponsePromise = page.waitForResponse((response) => isUploadRequest(response.request()));
+  const uploadFinishedPromise = page.waitForEvent("requestfinished", isUploadRequest);
   await page.getByRole("button", { name: "Upload Document" }).click();
   const uploadResponse = await uploadResponsePromise;
-  const uploadBody = await uploadResponse.json();
+  const uploadBodyText = await uploadResponse.text();
+  uploadRequestDiagnostics.push(
+    `response ${uploadResponse.status()} ${uploadResponse.url()} headers=${JSON.stringify(uploadResponse.headers())} body=${uploadBodyText}`
+  );
+  await uploadFinishedPromise;
+  const uploadBody = JSON.parse(uploadBodyText) as unknown;
   expect(uploadResponse.request().resourceType()).toBe("xhr");
+  expect(failedRequests, uploadRequestDiagnostics.join("\n")).toEqual([]);
+  expect(consoleErrors, uploadRequestDiagnostics.join("\n")).toEqual([]);
   expect([200, 201]).toContain(uploadResponse.status());
   expect(uploadResponse.headers()["x-e2e-upload-mock"]).toBe("hit");
   expect(uploadBody).toEqual({

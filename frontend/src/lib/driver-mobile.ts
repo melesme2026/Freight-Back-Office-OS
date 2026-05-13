@@ -99,6 +99,31 @@ function dataUrlToFile(dataUrl: string, fileName: string, fileType: string): Fil
   return new File([bytes], fileName, { type: mime });
 }
 
+function parseXhrResponseBody(request: XMLHttpRequest): unknown {
+  const contentType = request.getResponseHeader("content-type") ?? "";
+  const body = request.responseText;
+  if (!contentType.toLowerCase().includes("application/json") || !body) return body;
+
+  try {
+    return JSON.parse(body) as unknown;
+  } catch {
+    return body;
+  }
+}
+
+function formatXhrNetworkError(request: XMLHttpRequest, uploadUrl: string): Error {
+  const responseUrl = request.responseURL || uploadUrl;
+  const detail = [
+    `url=${responseUrl}`,
+    `status=${request.status}`,
+    request.statusText ? `statusText=${request.statusText}` : null,
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  return new Error(`Network upload failed (${detail}). The document can be queued and retried when online.`);
+}
+
 function uploadViaXhr(
   formData: FormData,
   onProgress?: (progress: DriverUploadProgress) => void
@@ -106,10 +131,23 @@ function uploadViaXhr(
   const token = getAccessToken();
   const tokenType = getTokenType();
   const organizationId = getOrganizationId();
+  const uploadUrl = buildApiUrl("/driver/documents/upload");
 
   return new Promise((resolve, reject) => {
     const request = new XMLHttpRequest();
-    request.open("POST", buildApiUrl("/driver/documents/upload"));
+    let settled = false;
+    const resolveOnce = (value: unknown) => {
+      if (settled) return;
+      settled = true;
+      resolve(value);
+    };
+    const rejectOnce = (error: Error) => {
+      if (settled) return;
+      settled = true;
+      reject(error);
+    };
+
+    request.open("POST", uploadUrl);
     request.setRequestHeader("Accept", "application/json");
     if (token) request.setRequestHeader("Authorization", `${tokenType} ${token}`);
     if (organizationId) request.setRequestHeader("X-Organization-Id", organizationId);
@@ -124,19 +162,17 @@ function uploadViaXhr(
     };
 
     request.onload = () => {
-      const contentType = request.getResponseHeader("content-type") ?? "";
-      const body = request.responseText;
-      const parsedBody = contentType.toLowerCase().includes("application/json") && body ? JSON.parse(body) : body;
+      const parsedBody = parseXhrResponseBody(request);
       if (request.status >= 200 && request.status < 300) {
-        resolve(parsedBody);
+        resolveOnce(parsedBody);
         return;
       }
       const message = extractUploadErrorMessage(parsedBody) || `Upload failed (${request.status}).`;
-      reject(new Error(message));
+      rejectOnce(new Error(message));
     };
 
-    request.onerror = () => reject(new Error("Network upload failed. The document can be queued and retried when online."));
-    request.onabort = () => reject(new Error("Upload was canceled before it finished."));
+    request.onerror = () => rejectOnce(formatXhrNetworkError(request, uploadUrl));
+    request.onabort = () => rejectOnce(new Error("Upload was canceled before it finished."));
     request.send(formData);
   });
 }
