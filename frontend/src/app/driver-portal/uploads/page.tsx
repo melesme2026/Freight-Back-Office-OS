@@ -182,11 +182,12 @@ export default function DriverUploadsPage() {
       });
 
       const uploadedDocument = normalizeDocuments(response)[0] ?? normalizeDocuments({ data: [asRecord(response)?.data] })[0];
+      const uploadedFilename = uploadedDocument?.original_filename ?? file.name;
       if (uploadedDocument) {
         setDocuments((current) => [uploadedDocument, ...current.filter((item) => item.id !== uploadedDocument.id)]);
       }
 
-      setSuccessMessage(`Upload successful: ${file.name} (${labelForDocumentType(documentType.trim())}).`);
+      setSuccessMessage(`Upload successful: ${uploadedFilename}`);
       setFile(null);
       setSelectedLoadId("");
       const uploadInput = event.currentTarget.elements.namedItem("upload-file") as HTMLInputElement | null;

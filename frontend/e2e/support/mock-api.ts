@@ -1,10 +1,15 @@
 import { Page, Route } from "@playwright/test";
 import { seed } from "../fixtures/test-data";
 
+type MockDocument = {
+  document_type: string;
+  original_filename: string;
+};
+
 type MutableState = {
   invoiceCount: number;
   packetCount: number;
-  documents: string[];
+  documents: MockDocument[];
   paidAmount: number;
   packetEmailSent: boolean;
 };
@@ -107,6 +112,19 @@ function stateAmountString(amount: number) {
   return amount.toFixed(2);
 }
 
+function mockDocument(documentType: string, originalFilename = `${documentType}.pdf`): MockDocument {
+  return { document_type: documentType, original_filename: originalFilename };
+}
+
+function presentDocumentTypes(documents: MockDocument[]): string[] {
+  return documents.map((document) => document.document_type);
+}
+
+function multipartFilename(route: Route): string | null {
+  const body = route.request().postData();
+  return body?.match(/filename="([^"\r\n]+)"/)?.[1] ?? null;
+}
+
 function driverAssignedLoad(status = "in_transit") {
   return {
     ...seed.load,
@@ -141,7 +159,7 @@ export async function mockApi(page: Page) {
   const state: MutableState = {
     invoiceCount: 0,
     packetCount: 0,
-    documents: ["rate_confirmation", "bill_of_lading"],
+    documents: [mockDocument("rate_confirmation"), mockDocument("bill_of_lading")],
     paidAmount: 0,
     packetEmailSent: false,
   };
@@ -399,16 +417,16 @@ export async function mockApi(page: Page) {
         id: `driver-doc-${index + 1}`,
         load_id: seed.load.id,
         load_number: seed.load.load_number,
-        file_name: `${doc}.pdf`,
-        original_filename: `${doc}.pdf`,
-        document_type: doc,
+        file_name: doc.original_filename,
+        original_filename: doc.original_filename,
+        document_type: doc.document_type,
         processing_status: "accepted",
         received_at: FIXED_ISO_TIMESTAMP,
       })));
     }
 
     if (path.includes("/loads/") && path.endsWith("/documents") && method === "GET") {
-      return ok(route, state.documents.map((doc, index) => ({ id: `doc-${index + 1}`, file_name: `${doc}.pdf`, document_type: doc })));
+      return ok(route, state.documents.map((doc, index) => ({ id: `doc-${index + 1}`, file_name: doc.original_filename, document_type: doc.document_type })));
     }
 
     if (path.includes("/payment-reconciliation") && method === "GET") {
@@ -480,7 +498,7 @@ export async function mockApi(page: Page) {
             ready_for_invoice: true,
             ready_to_submit: true,
             missing_required_documents: { submission: [], invoice: [] },
-            present_documents: state.documents,
+            present_documents: presentDocumentTypes(state.documents),
           },
           amount_received: state.paidAmount,
           has_invoice: state.invoiceCount > 0,
@@ -491,17 +509,18 @@ export async function mockApi(page: Page) {
     }
 
     if (path === "/documents/upload" && method === "POST") {
-      state.documents.push("support");
+      state.documents.push(mockDocument("support"));
       return created(route, { id: `doc-${state.documents.length}` });
     }
 
     if (path === "/driver/documents/upload" && method === "POST") {
-      state.documents.push("proof_of_delivery");
+      const originalFilename = multipartFilename(route) ?? "pod-photo.png";
+      state.documents.push(mockDocument("proof_of_delivery", originalFilename));
       return created(route, {
         id: `doc-driver-${state.documents.length}`,
         load_id: seed.load.id,
         load_number: seed.load.load_number,
-        original_filename: "pod-photo.png",
+        original_filename: originalFilename,
         document_type: "proof_of_delivery",
         processing_status: "accepted",
         received_at: FIXED_ISO_TIMESTAMP,
