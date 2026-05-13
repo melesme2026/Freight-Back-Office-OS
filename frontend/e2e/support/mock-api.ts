@@ -216,13 +216,6 @@ export async function mockApi(page: Page) {
     packetEmailSent: false,
   };
 
-  await page.route(/\/api\/v1\/driver\/documents\/upload(?:[/?#].*)?$/, async (route) => {
-    const method = route.request().method();
-    if (method === "OPTIONS") return optionsOk(route);
-    if (method !== "POST") return route.fallback();
-    return fulfillDriverDocumentUpload(route, state);
-  });
-
   await page.route("**/api/v1/**", async (route) => {
     const req = route.request();
     const url = new URL(req.url());
@@ -723,5 +716,12 @@ export async function mockApi(page: Page) {
         },
       }),
     });
+  });
+
+  await page.route("**/api/v1/driver/documents/upload", async (route) => {
+    const method = route.request().method();
+    if (method === "OPTIONS") return optionsOk(route);
+    if (method !== "POST") return route.fallback();
+    return fulfillDriverDocumentUpload(route, state);
   });
 }
