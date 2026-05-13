@@ -240,6 +240,80 @@ export async function mockApi(page: Page) {
       return ok(route, [{ id: seed.customer.id, account_name: seed.customer.account_name, status: "active" }]);
     }
 
+    if (path.startsWith("/operations/command-center") && method === "GET") {
+      return ok(route, {
+        generated_at: FIXED_ISO_TIMESTAMP,
+        kpis: {
+          active_loads: 1,
+          loads_missing_docs: 0,
+          overdue_invoices: 0,
+          urgent_collections: 0,
+          pending_packet_sends: state.packetCount > 0 && !state.packetEmailSent ? 1 : 0,
+          unresolved_packet_intelligence_blockers: 0,
+          factoring_reserve_pending: 0,
+          unpaid_total: stateAmountString(Math.max(0, 1000 - state.paidAmount)),
+          factoring_reserve_pending_total: "0.00",
+        },
+        alerts: [],
+        missing_docs: {
+          summary: {
+            total_loads: 0,
+            blocked_from_packet_send: 0,
+            by_document_type: {},
+            critical_count: 0,
+            warning_count: 0,
+          },
+          items: [],
+        },
+        collections: {
+          summary: {
+            total_unpaid_items: state.paidAmount >= 1000 ? 0 : 1,
+            urgent_count: 0,
+            overdue_count: 0,
+            unpaid_total: stateAmountString(Math.max(0, 1000 - state.paidAmount)),
+            reserve_pending_total: "0.00",
+          },
+          items: [],
+        },
+        tasks: {
+          summary: { total: 0, critical: 0, warning: 0, info: 0 },
+          items: [],
+        },
+        ai_operations_assistant: {
+          summary: [],
+          invoice_risks: [],
+          broker_insights: [],
+          collections_priorities: [],
+          recommendations: [],
+          explainability: {
+            mode: "deterministic_rules_only",
+            uses_llm: false,
+            autonomous_actions: false,
+            rules: ["E2E mock returns deterministic command center data."],
+          },
+        },
+        broker_behavior: {
+          summary: {
+            broker_count: 1,
+            worsening_count: 0,
+            dispute_or_short_paid_count: 0,
+            unpaid_total: stateAmountString(Math.max(0, 1000 - state.paidAmount)),
+            reserve_pending_total: "0.00",
+          },
+          items: [],
+        },
+        priority_cards: [],
+        recent_activity: [],
+        meta: {
+          load_limit: 50,
+          payment_limit: 50,
+          logic: "e2e_mock",
+          ai_assistant_logic: "deterministic_rules_only",
+          not_implemented: [],
+        },
+      });
+    }
+
     if (path.startsWith("/dashboard") && method === "GET") {
       return ok(route, {
         loads_total: 1,
