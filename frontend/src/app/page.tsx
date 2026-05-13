@@ -439,7 +439,7 @@ export default function HomePage() {
             <a href="#pricing" className="text-slate-300 hover:text-white">Pricing</a>
             <Link href="/request-demo" className="text-slate-300 hover:text-white">Request demo</Link>
             <Link href="/driver-login" className="text-slate-300 hover:text-white">Driver Login</Link>
-            <Link href="/login" className="text-slate-300 hover:text-white">App login</Link>
+            <Link href="/login" aria-label="App login from footer" className="text-slate-300 hover:text-white">App login</Link>
           </div>
         </div>
       </footer>

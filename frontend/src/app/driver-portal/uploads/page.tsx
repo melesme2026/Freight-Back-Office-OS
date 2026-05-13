@@ -298,6 +298,7 @@ export default function DriverUploadsPage() {
               </label>
               <select
                 id="upload-load"
+                aria-label="Assigned load"
                 value={selectedLoadId}
                 onChange={(event) => setSelectedLoadId(event.target.value)}
                 disabled={isSubmitting || isLoadingLoads}
@@ -321,6 +322,7 @@ export default function DriverUploadsPage() {
               </label>
               <input
                 id="upload-file"
+                aria-label="File or photo"
                 name="upload-file"
                 type="file"
                 accept="image/*,application/pdf"
