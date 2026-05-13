@@ -1467,10 +1467,12 @@ export default function LoadDetailPage() {
         { to_email: toEmail, subject, body },
         { token: token ?? undefined }
       );
-      setSubmissionPackets(await fetchSubmissionPackets());
-      setPacketAudit(await fetchPacketAudit());
-      setLoad(await fetchLoad());
       logPacketEmailSuccess(toEmail);
+      await Promise.all([
+        fetchSubmissionPackets().then(setSubmissionPackets),
+        fetchPacketAudit().then(setPacketAudit),
+        fetchLoad().then(setLoad),
+      ]);
     } catch (caught: unknown) {
       const message = extractErrorMessage(caught, "Packet email could not be sent. Check email configuration and try again.");
       setModalError(message.toLowerCase().includes("smtp") ? "Packet email could not be sent. Check email configuration and try again." : message);

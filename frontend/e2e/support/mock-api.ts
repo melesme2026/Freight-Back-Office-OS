@@ -6,6 +6,7 @@ type MutableState = {
   packetCount: number;
   documents: string[];
   paidAmount: number;
+  packetEmailSent: boolean;
 };
 
 function ok(route: Route, data: unknown) {
@@ -24,12 +25,30 @@ function buildToken(claims: Record<string, unknown>): string {
   return `${encodeJwtPart({ alg: "HS256", typ: "JWT" })}.${encodeJwtPart(claims)}.mock-signature`;
 }
 
+function decodeJwtPayload(token: string | null): Record<string, unknown> | null {
+  const payload = token?.split(".")[1];
+  if (!payload) return null;
+  try {
+    return JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+function authClaims(route: Route): Record<string, unknown> | null {
+  const header = route.request().headers().authorization ?? "";
+  return decodeJwtPayload(header.replace(/^Bearer\s+/i, ""));
+}
+
+const FIXED_ISO_TIMESTAMP = "2026-01-15T12:00:00.000Z";
+
 export async function mockApi(page: Page) {
   const state: MutableState = {
     invoiceCount: 0,
     packetCount: 0,
     documents: ["rate_confirmation", "bill_of_lading", "proof_of_delivery"],
     paidAmount: 0,
+    packetEmailSent: false,
   };
 
   await page.route("**/api/v1/**", async (route) => {
@@ -75,7 +94,7 @@ export async function mockApi(page: Page) {
       }
       const role = body.email === seed.driver.email || body.organization_id === "00000000-0000-0000-0000-00000000b222" ? "driver" : "owner";
       const organizationId = body.organization_id ?? seed.organizationId;
-      const expiresAtEpoch = Math.floor(Date.now() / 1000) + 60 * 60;
+      const expiresAtEpoch = 1893456000;
       const accessToken = buildToken({
         sub: body?.email ?? "e2e-user",
         exp: expiresAtEpoch,
@@ -93,7 +112,7 @@ export async function mockApi(page: Page) {
       }
       const accessToken = buildToken({
         sub: body?.email ?? "owner.e2e@example.com",
-        exp: Math.floor(Date.now() / 1000) + 60 * 60,
+        exp: 1893456000,
         role: "owner",
         organization_id: seed.organizationId,
       });
@@ -154,12 +173,14 @@ export async function mockApi(page: Page) {
         channel_connected: false,
         go_live_ready: false,
         completed_at: null,
-        updated_at: new Date().toISOString(),
+        updated_at: FIXED_ISO_TIMESTAMP,
       });
     }
 
     if (path === "/auth/me" && method === "GET") {
-      return ok(route, { id: "staff-e2e-001", email: seed.owner.email, role: "owner", organization_id: seed.organizationId });
+      const claims = authClaims(route);
+      const role = typeof claims?.role === "string" ? claims.role : "owner";
+      return ok(route, { id: role === "driver" ? seed.driver.id : "staff-e2e-001", email: role === "driver" ? seed.driver.email : seed.owner.email, role, organization_id: seed.organizationId, ...(role === "driver" ? { driver_id: seed.driver.id } : {}) });
     }
 
     if (path === "/auth/invite-user" && method === "POST") {
@@ -195,7 +216,7 @@ export async function mockApi(page: Page) {
         original_filename: `${doc}.pdf`,
         document_type: doc,
         processing_status: "accepted",
-        received_at: new Date().toISOString(),
+        received_at: FIXED_ISO_TIMESTAMP,
       })));
     }
 
@@ -284,21 +305,19 @@ export async function mockApi(page: Page) {
 
     if (path === "/documents/upload" && method === "POST") {
       state.documents.push("support");
-      return created(route, { id: `doc-${Date.now()}` });
+      return created(route, { id: `doc-${state.documents.length}` });
     }
 
     if (path === "/driver/documents/upload" && method === "POST") {
       state.documents.push("proof_of_delivery");
       return created(route, {
-        data: {
-          id: `doc-driver-${Date.now()}`,
-          load_id: seed.load.id,
-          load_number: seed.load.load_number,
-          original_filename: "pod-photo.png",
-          document_type: "proof_of_delivery",
-          processing_status: "accepted",
-          received_at: new Date().toISOString(),
-        },
+        id: `doc-driver-${state.documents.length}`,
+        load_id: seed.load.id,
+        load_number: seed.load.load_number,
+        original_filename: "pod-photo.png",
+        document_type: "proof_of_delivery",
+        processing_status: "accepted",
+        received_at: FIXED_ISO_TIMESTAMP,
       });
     }
 
@@ -309,13 +328,23 @@ export async function mockApi(page: Page) {
       return created(route, { id: "inv-e2e-001", invoice_number: "INV-E2E-001" });
     }
 
+    if (path.includes("/send-email") && method === "POST") {
+      state.packetEmailSent = true;
+      return ok(route, { status: "queued", message: "Packet email sent and logged" });
+    }
+
     if (path.includes("/submission-packets") && method === "POST") {
       state.packetCount += 1;
-      return created(route, { id: `packet-${state.packetCount}`, packet_reference: "PKT-E2E-1", status: "created", documents: [], events: [] });
+      state.packetEmailSent = false;
+      return created(route, { id: `packet-${state.packetCount}`, packet_reference: "PKT-E2E-1", status: "created", destination_email: "ap@broker.test", documents: [{ id: "d1", document_type: "invoice" }], events: [{ id: "e1", event_type: "created", message: "Packet created", created_at: FIXED_ISO_TIMESTAMP }] });
     }
 
     if (path.includes("/submission-packets") && method === "GET") {
-      const packets = state.packetCount > 0 ? [{ id: "packet-1", packet_reference: "PKT-E2E-1", status: "created", destination_email: "ap@broker.test", documents: [{ id: "d1", document_type: "invoice" }], events: [{ id: "e1", event_type: "created", message: "Packet created" }] }] : [];
+      const packetEvents = [
+        ...(state.packetEmailSent ? [{ id: "e2", event_type: "packet_email_sent", message: "Packet email sent and logged", created_at: FIXED_ISO_TIMESTAMP, recipient: "ap@broker.test" }] : []),
+        { id: "e1", event_type: "created", message: "Packet created", created_at: FIXED_ISO_TIMESTAMP },
+      ];
+      const packets = state.packetCount > 0 ? [{ id: "packet-1", packet_reference: "PKT-E2E-1", status: state.packetEmailSent ? "sent" : "created", sent_at: state.packetEmailSent ? FIXED_ISO_TIMESTAMP : null, destination_email: "ap@broker.test", documents: [{ id: "d1", document_type: "invoice" }], events: packetEvents }] : [];
       return ok(route, packets);
     }
 
@@ -323,9 +352,6 @@ export async function mockApi(page: Page) {
       return route.fulfill({ status: 200, contentType: "application/zip", body: "PK\x03\x04" });
     }
 
-    if (path.includes("/send-email") && method === "POST") {
-      return ok(route, { status: "queued" });
-    }
 
     if (path.includes("/loads/") && path.endsWith("/status") && method === "POST") {
       return ok(route, { new_status: "invoice_ready" });
@@ -346,7 +372,7 @@ export async function mockApi(page: Page) {
         return route.fulfill({ status: 400, contentType: "application/json", body: JSON.stringify({ error: { message: "Invalid amount" } }) });
       }
       state.paidAmount += amount;
-      return created(route, { id: `pay-${Date.now()}`, amount_received: amount });
+      return created(route, { id: `pay-${state.paidAmount}`, amount_received: amount });
     }
 
     if (path.startsWith("/payments") && method === "GET") {
@@ -355,9 +381,9 @@ export async function mockApi(page: Page) {
 
     if (path.startsWith("/driver/loads") && method === "GET") {
       if (path === `/driver/loads/${seed.load.id}`) {
-        return ok(route, { ...seed.load, driver_name: seed.driver.name, status: "delivered", packet_readiness: { present_documents: ["bill_of_lading"], missing_required_documents: { submission: ["proof_of_delivery"] } } });
+        return ok(route, { ...seed.load, driver_id: seed.driver.id, driver_name: seed.driver.name, status: "delivered", packet_readiness: { present_documents: ["bill_of_lading"], missing_required_documents: { submission: ["proof_of_delivery"] } } });
       }
-      return ok(route, [{ ...seed.load, status: "delivered", packet_readiness: { missing_required_documents: { submission: ["proof_of_delivery"] } } }]);
+      return ok(route, [{ ...seed.load, driver_id: seed.driver.id, driver_name: seed.driver.name, status: "delivered", packet_readiness: { present_documents: ["bill_of_lading"], missing_required_documents: { submission: ["proof_of_delivery"] } } }]);
     }
 
     if (path.startsWith("/reports/money-dashboard") && method === "GET") {
@@ -367,7 +393,7 @@ export async function mockApi(page: Page) {
         status_breakdown: [{ status: state.paidAmount >= 1000 ? "fully_paid" : "invoice_ready", count: 1, amount: 1000 }],
         factoring_vs_direct: { factored: { count: 0, amount: 0 }, direct: { count: 1, amount: 1000 }, advance_total: 0, reserve_pending_total: 0, direct_unpaid_total: Math.max(0, 1000 - state.paidAmount) },
         needs_attention: { urgent_count: 0, overdue_followups_count: 0, top_items: [] },
-        recent_cash_activity: [{ load_number: seed.load.load_number, amount_received: state.paidAmount, paid_date: new Date().toISOString(), payment_status: state.paidAmount >= 1000 ? "fully_paid" : "partial", factoring_used: false }],
+        recent_cash_activity: [{ load_number: seed.load.load_number, amount_received: state.paidAmount, paid_date: FIXED_ISO_TIMESTAMP, payment_status: state.paidAmount >= 1000 ? "fully_paid" : "partial", factoring_used: false }],
       });
     }
 
