@@ -148,8 +148,14 @@ function multipartFilename(route: Route): string | null {
   const contentType = route.request().headers()["content-type"] ?? "";
   if (!contentType.toLowerCase().includes("multipart/form-data")) return null;
 
-  const body = route.request().postData();
-  return body?.match(/filename="([^"\r\n]+)"/)?.[1] ?? null;
+  const bodyText = (() => {
+    const body = route.request().postData();
+    if (body) return body;
+    const bodyBuffer = route.request().postDataBuffer();
+    return bodyBuffer ? bodyBuffer.toString("latin1") : null;
+  })();
+
+  return bodyText?.match(/filename="([^"\r\n]+)"/)?.[1] ?? null;
 }
 
 function fulfillDriverDocumentUpload(route: Route, state: MutableState) {
@@ -157,9 +163,15 @@ function fulfillDriverDocumentUpload(route: Route, state: MutableState) {
   state.documents.push(mockDocument("proof_of_delivery", originalFilename));
   return createdUploadMock(route, [
     {
+      id: "driver-upload-e2e-001",
+      load_id: seed.load.id,
+      load_number: seed.load.load_number,
       original_filename: originalFilename,
       filename: originalFilename,
+      file_name: originalFilename,
       document_type: "proof_of_delivery",
+      processing_status: "uploaded",
+      received_at: FIXED_ISO_TIMESTAMP,
       status: "uploaded",
     },
   ]);
