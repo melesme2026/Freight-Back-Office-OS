@@ -116,6 +116,12 @@ export default function DriverUploadsPage() {
     }));
   }, [loads]);
 
+  useEffect(() => {
+    if (!selectedLoadId && loadOptions.length === 1) {
+      setSelectedLoadId(loadOptions[0].id);
+    }
+  }, [loadOptions, selectedLoadId]);
+
   async function fetchDocuments() {
     const token = getAccessToken();
     const organizationId = getOrganizationId();

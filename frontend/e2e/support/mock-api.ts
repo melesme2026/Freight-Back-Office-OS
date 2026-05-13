@@ -46,7 +46,7 @@ export async function mockApi(page: Page) {
   const state: MutableState = {
     invoiceCount: 0,
     packetCount: 0,
-    documents: ["rate_confirmation", "bill_of_lading", "proof_of_delivery"],
+    documents: ["rate_confirmation", "bill_of_lading"],
     paidAmount: 0,
     packetEmailSent: false,
   };
@@ -102,7 +102,15 @@ export async function mockApi(page: Page) {
         organization_id: organizationId,
         ...(role === "driver" ? { driver_id: seed.driver.id } : {}),
       });
-      return ok(route, { access_token: accessToken, token_type: "Bearer", user: { role, organization_id: organizationId } });
+      return ok(route, {
+        access_token: accessToken,
+        token_type: "Bearer",
+        user: {
+          role,
+          organization_id: organizationId,
+          ...(role === "driver" ? { driver_id: seed.driver.id } : {}),
+        },
+      });
     }
 
     if (path === "/auth/signup" && method === "POST") {
@@ -383,10 +391,20 @@ export async function mockApi(page: Page) {
     }
 
     if (path.startsWith("/driver/loads") && method === "GET") {
+      const assignedDriverLoad = {
+        ...seed.load,
+        driver_id: seed.driver.id,
+        driver_name: seed.driver.name,
+        status: "delivered",
+        packet_readiness: {
+          present_documents: ["bill_of_lading"],
+          missing_required_documents: { submission: ["proof_of_delivery"] },
+        },
+      };
       if (path === `/driver/loads/${seed.load.id}`) {
-        return ok(route, { ...seed.load, driver_id: seed.driver.id, driver_name: seed.driver.name, status: "delivered", packet_readiness: { present_documents: ["bill_of_lading"], missing_required_documents: { submission: ["proof_of_delivery"] } } });
+        return ok(route, assignedDriverLoad);
       }
-      return ok(route, [{ ...seed.load, driver_id: seed.driver.id, driver_name: seed.driver.name, status: "delivered", packet_readiness: { present_documents: ["bill_of_lading"], missing_required_documents: { submission: ["proof_of_delivery"] } } }]);
+      return ok(route, [assignedDriverLoad]);
     }
 
     if (path.startsWith("/reports/money-dashboard") && method === "GET") {

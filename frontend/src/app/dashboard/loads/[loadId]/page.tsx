@@ -2849,7 +2849,7 @@ export default function LoadDetailPage() {
         ) : null}
 
         {actionMessage ? (
-          <div role="status" aria-live="polite" className="mb-6 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">
+          <div role="status" aria-live="polite" className="fixed bottom-4 left-4 right-4 z-[60] rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800 shadow-soft sm:left-auto sm:right-6 sm:max-w-md">
             {actionMessage}
           </div>
         ) : null}
