@@ -22,6 +22,15 @@ function created(route: Route, data: unknown) {
   return route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ data }) });
 }
 
+function createdUploadMock(route: Route, data: unknown) {
+  return route.fulfill({
+    status: 201,
+    contentType: "application/json",
+    headers: { "x-e2e-upload-mock": "hit" },
+    body: JSON.stringify({ data }),
+  });
+}
+
 function encodeJwtPart(value: Record<string, unknown>): string {
   return Buffer.from(JSON.stringify(value)).toString("base64url");
 }
@@ -131,15 +140,12 @@ function multipartFilename(route: Route): string | null {
 function fulfillDriverDocumentUpload(route: Route, state: MutableState) {
   const originalFilename = multipartFilename(route) ?? "pod-photo.png";
   state.documents.push(mockDocument("proof_of_delivery", originalFilename));
-  return created(route, [
+  return createdUploadMock(route, [
     {
-      id: `doc-driver-${state.documents.length}`,
-      load_id: seed.load.id,
-      load_number: seed.load.load_number,
       original_filename: originalFilename,
+      filename: originalFilename,
       document_type: "proof_of_delivery",
-      processing_status: "accepted",
-      received_at: FIXED_ISO_TIMESTAMP,
+      status: "uploaded",
     },
   ]);
 }
