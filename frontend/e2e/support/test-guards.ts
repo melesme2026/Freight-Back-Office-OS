@@ -40,7 +40,7 @@ export async function assertNoCriticalUiCorruption(page: Page) {
 }
 
 export async function waitForProtectedRouteSettled(page: Page) {
-  const driverPortalSections = page.getByRole("navigation", { name: "Driver portal sections" });
+  const driverPortalSections = page.getByRole("navigation", { name: "Driver portal sections", exact: true });
   const checkingSession = page.getByText("Checking session...", { exact: true });
   const redirecting = page.getByText("Redirecting...", { exact: true });
 
@@ -66,7 +66,7 @@ export async function waitForDriverPortalReady(page: Page) {
   await expect(banner.getByText("Driver Portal", { exact: true })).toBeVisible();
   await expect(banner.getByText("driver.e2e@example.com", { exact: true })).toBeVisible();
 
-  const nav = page.getByRole("navigation", { name: "Driver portal sections" });
+  const nav = page.getByRole("navigation", { name: "Driver portal sections", exact: true });
   await expect(nav).toBeVisible();
-  await expect(nav.getByRole("link", { name: "Loads" })).toBeVisible();
+  await expect(nav.getByRole("link", { name: "Loads", exact: true })).toBeVisible();
 }
