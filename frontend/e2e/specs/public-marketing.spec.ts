@@ -35,7 +35,7 @@ test("public pages and core nav route correctly", async ({ page }) => {
   await page.getByRole("navigation", { name: "Public navigation" }).getByRole("link", { name: "App login" }).click();
   await expect(page).toHaveURL(/\/login/);
   await page.goto("/");
-  await page.getByRole("link", { name: "Driver Login" }).click();
+  await page.getByRole("navigation", { name: "Public navigation" }).getByRole("link", { name: "Driver Login" }).click();
   await expect(page).toHaveURL(/\/driver-login/);
 
   await assertNoCriticalUiCorruption(page);

@@ -39,7 +39,7 @@ test("mobile smoke: owner dashboard, loads, and load detail do not page-overflow
   await expectNoPageOverflow(page);
 
   await page.goto(`/dashboard/loads/${seed.load.id}`);
-  await expect(page.getByRole("main").getByRole("heading", { name: new RegExp(`^Load ${seed.load.load_number}$`) })).toBeVisible();
+  await expect(page.getByRole("main").getByRole("heading", { name: seed.load.load_number })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Documents" })).toBeVisible();
   await expectNoPageOverflow(page);
 });

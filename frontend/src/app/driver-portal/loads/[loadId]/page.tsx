@@ -275,7 +275,7 @@ export default function DriverLoadDetailPage() {
   return (
     <main className="safe-page min-h-screen bg-slate-50 text-slate-900">
       <div className="mx-auto max-w-3xl px-4 py-6 sm:px-6 sm:py-10">
-        <h1 className="text-2xl font-bold text-slate-950">Load {asText(loadData?.load_number)}</h1>
+        <h1 className="text-2xl font-bold text-slate-950">{loadData ? `Load ${asText(loadData.load_number)}` : "Loading load..."}</h1>
         <div className="mt-3 space-y-1 rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
           <div>Pickup: {asText(loadData?.pickup_location)}</div>
           <div>Delivery: {asText(loadData?.delivery_location)}</div>
@@ -283,8 +283,8 @@ export default function DriverLoadDetailPage() {
           <div className="font-semibold capitalize">Status: {status}</div>
         </div>
 
-        <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
-          <h2 className="text-lg font-semibold text-slate-900">ETA / check-in</h2>
+        <section role="region" aria-labelledby="driver-eta-check-in-heading" className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
+          <h2 id="driver-eta-check-in-heading" className="text-lg font-semibold text-slate-900">ETA / check-in</h2>
           <p className="mt-1 text-xs text-slate-500">Send one-time status, ETA, and optional location check-ins to dispatch. This does not enable continuous tracking.</p>
           <label htmlFor="driver-eta" className="mt-4 block text-xs font-semibold uppercase tracking-wide text-slate-600">ETA note</label>
           <input
@@ -302,10 +302,10 @@ export default function DriverLoadDetailPage() {
               Mark delivered
             </button>
           </div>
-        </div>
+        </section>
 
         {errorMessage ? <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{errorMessage}</div> : null}
-        {successMessage ? <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{successMessage}</div> : null}
+        {successMessage ? <div role="status" aria-live="polite" className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{successMessage}</div> : null}
         {pendingReplace ? <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"><p className="font-semibold">{pendingReplace.message}</p><div className="mt-2 flex flex-col gap-2 sm:flex-row"><button type="button" className="touch-target rounded-lg bg-amber-600 px-3 py-2 text-xs font-semibold text-white" onClick={() => void handleReplaceUpload()} disabled={Boolean(uploadingType)}>Replace existing</button><button type="button" className="touch-target rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-semibold text-amber-900" onClick={() => setPendingReplace(null)} disabled={Boolean(uploadingType)}>Cancel</button></div></div> : null}
         {selectedPreview ? (
           <div className="mt-4 rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-700">
@@ -323,7 +323,7 @@ export default function DriverLoadDetailPage() {
           </div>
         ) : null}
 
-        <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-4" aria-labelledby="driver-document-uploads-heading">
+        <section role="region" className="mt-6 rounded-2xl border border-slate-200 bg-white p-4" aria-labelledby="driver-document-uploads-heading">
           <h2 id="driver-document-uploads-heading" className="text-lg font-semibold text-slate-900">Document Uploads</h2>
           <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
             <p className="font-semibold">What is missing</p>
@@ -348,7 +348,7 @@ export default function DriverLoadDetailPage() {
                 {!item.uploaded ? (
                   <label className="touch-target mt-3 inline-flex w-full cursor-pointer items-center justify-center rounded-xl bg-brand-600 px-5 py-3 text-sm font-semibold text-white sm:w-auto">
                     {uploadingType === item.type ? "Uploading..." : `Upload ${labelForDocumentType(item.type)}`}
-                    <input type="file" aria-label={`Upload ${labelForDocumentType(item.type)} file or photo`} accept="image/*,application/pdf" capture="environment" className="hidden" onChange={(event) => void uploadDocument(item.type, event)} disabled={Boolean(uploadingType)} />
+                    <input type="file" aria-label={`Upload ${labelForDocumentType(item.type)} file or photo`} accept="image/*,application/pdf" capture="environment" className="sr-only" onChange={(event) => void uploadDocument(item.type, event)} disabled={Boolean(uploadingType)} />
                   </label>
                 ) : null}
               </div>
