@@ -42,6 +42,36 @@ function authClaims(route: Route): Record<string, unknown> | null {
 
 const FIXED_ISO_TIMESTAMP = "2026-01-15T12:00:00.000Z";
 
+function driverAssignedLoad(status = "in_transit") {
+  return {
+    ...seed.load,
+    id: seed.load.id,
+    load_id: seed.load.id,
+    load_number: seed.load.load_number,
+    organization_id: seed.organizationId,
+    driver_id: seed.driver.id,
+    driverId: seed.driver.id,
+    assigned_driver_id: seed.driver.id,
+    driver_name: seed.driver.name,
+    status,
+    pickup_date: FIXED_ISO_TIMESTAMP,
+    delivery_date: FIXED_ISO_TIMESTAMP,
+    has_ratecon: true,
+    has_bol: true,
+    has_pod: false,
+    documents_complete: false,
+    packet_readiness: {
+      readiness_state: "missing_required_documents",
+      ready_for_invoice: false,
+      ready_to_submit: false,
+      present_documents: ["rate_confirmation", "bill_of_lading"],
+      missing_required_documents: { invoice: [], submission: ["proof_of_delivery"] },
+      blockers: ["proof_of_delivery"],
+      notes: ["Proof of Delivery is required before submission."],
+    },
+  };
+}
+
 export async function mockApi(page: Page) {
   const state: MutableState = {
     invoiceCount: 0,
@@ -97,6 +127,7 @@ export async function mockApi(page: Page) {
       const expiresAtEpoch = 1893456000;
       const accessToken = buildToken({
         sub: body?.email ?? "e2e-user",
+        email: body?.email ?? "e2e-user",
         exp: expiresAtEpoch,
         role,
         organization_id: organizationId,
@@ -188,7 +219,14 @@ export async function mockApi(page: Page) {
     if (path === "/auth/me" && method === "GET") {
       const claims = authClaims(route);
       const role = typeof claims?.role === "string" ? claims.role : "owner";
-      return ok(route, { id: role === "driver" ? seed.driver.id : "staff-e2e-001", email: role === "driver" ? seed.driver.email : seed.owner.email, role, organization_id: seed.organizationId, ...(role === "driver" ? { driver_id: seed.driver.id } : {}) });
+      const organizationId = typeof claims?.organization_id === "string" ? claims.organization_id : seed.organizationId;
+      return ok(route, {
+        id: role === "driver" ? seed.driver.id : "staff-e2e-001",
+        email: role === "driver" ? seed.driver.email : seed.owner.email,
+        role,
+        organization_id: organizationId,
+        ...(role === "driver" ? { driver_id: seed.driver.id, assigned_driver_id: seed.driver.id } : {}),
+      });
     }
 
     if (path === "/auth/invite-user" && method === "POST") {
@@ -369,7 +407,7 @@ export async function mockApi(page: Page) {
     }
 
     if (path.includes("/driver/loads/") && path.endsWith("/check-in") && method === "POST") {
-      return ok(route, { ...seed.load, status: "in_transit", driver_name: seed.driver.name });
+      return ok(route, driverAssignedLoad("in_transit"));
     }
 
     if (path.includes("/workflow-actions") && method === "POST") {
@@ -391,16 +429,7 @@ export async function mockApi(page: Page) {
     }
 
     if (path.startsWith("/driver/loads") && method === "GET") {
-      const assignedDriverLoad = {
-        ...seed.load,
-        driver_id: seed.driver.id,
-        driver_name: seed.driver.name,
-        status: "delivered",
-        packet_readiness: {
-          present_documents: ["bill_of_lading"],
-          missing_required_documents: { submission: ["proof_of_delivery"] },
-        },
-      };
+      const assignedDriverLoad = driverAssignedLoad();
       if (path === `/driver/loads/${seed.load.id}`) {
         return ok(route, assignedDriverLoad);
       }

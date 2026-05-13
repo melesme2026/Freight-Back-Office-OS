@@ -307,7 +307,7 @@ export default function DriverUploadsPage() {
                 aria-label="Assigned load"
                 value={selectedLoadId}
                 onChange={(event) => setSelectedLoadId(event.target.value)}
-                disabled={isSubmitting || isLoadingLoads}
+                disabled={isSubmitting}
                 className="touch-target mt-2 w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-base disabled:bg-slate-100 sm:text-sm"
               >
                 <option value="">Select a load (recommended)</option>
@@ -318,7 +318,7 @@ export default function DriverUploadsPage() {
                 ))}
               </select>
               <p className="mt-2 text-xs text-slate-500">
-                Only loads assigned to your driver account are available here.
+                {isLoadingLoads ? "Loading assigned loads..." : "Only loads assigned to your driver account are available here."}
               </p>
             </div>
 

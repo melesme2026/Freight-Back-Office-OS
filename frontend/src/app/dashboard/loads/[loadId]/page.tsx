@@ -1137,6 +1137,7 @@ export default function LoadDetailPage() {
     useState<UploadDocumentType>("");
   const [error, setError] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [packetEmailConfirmation, setPacketEmailConfirmation] = useState<string | null>(null);
   const [invoiceBlocker, setInvoiceBlocker] = useState<InvoiceBlocker | null>(null);
   const [pendingDuplicateUpload, setPendingDuplicateUpload] = useState<{ file: File; formData: FormData; message: string } | null>(null);
   const [staffUsers, setStaffUsers] = useState<StaffUserOption[]>([]);
@@ -1450,7 +1451,7 @@ export default function LoadDetailPage() {
               }
         )
       );
-      setActionMessage("Packet email sent and logged");
+      setPacketEmailConfirmation("Packet email sent and logged");
       setModalState({ kind: "none" });
       setModalError(null);
       setError(null);
@@ -2851,6 +2852,12 @@ export default function LoadDetailPage() {
         {actionMessage ? (
           <div role="status" aria-live="polite" className="fixed bottom-4 left-4 right-4 z-[60] rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800 shadow-soft sm:left-auto sm:right-6 sm:max-w-md">
             {actionMessage}
+          </div>
+        ) : null}
+
+        {packetEmailConfirmation ? (
+          <div role="status" aria-live="polite" className="mb-6 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800">
+            {packetEmailConfirmation}
           </div>
         ) : null}
 
