@@ -4,14 +4,14 @@ import Link from "next/link";
 import { useState } from "react";
 
 const mobileLinks = [
-  { href: "#features", label: "Features" },
-  { href: "#workflow", label: "Workflow" },
+  { href: "/#features", label: "Features" },
+  { href: "/#workflow", label: "Workflow" },
   { href: "/pricing", label: "Pricing" },
-  { href: "#faq", label: "FAQ" },
+  { href: "/#faq", label: "FAQ" },
   { href: "/login", label: "App login" },
   { href: "/driver-login", label: "Driver Login" },
   { href: "/request-demo", label: "Request demo", primary: true },
-];
+] as const;
 
 export function PublicMobileNavigation() {
   const [isOpen, setIsOpen] = useState(false);
@@ -40,7 +40,7 @@ export function PublicMobileNavigation() {
         >
           <div className="grid gap-1">
             {mobileLinks.map((link) => {
-              const className = link.primary
+              const className = "primary" in link && link.primary
                 ? "rounded-xl bg-white px-4 py-3 text-center text-slate-950 shadow-soft transition hover:bg-brand-50"
                 : "rounded-xl px-4 py-3 transition hover:bg-white/10 hover:text-white";
 
