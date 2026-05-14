@@ -4,10 +4,21 @@ import { assertNoCriticalUiCorruption, attachRuntimeGuards } from "../support/te
 
 test("public pages and core nav route correctly", async ({ page }) => {
   const assertClean = attachRuntimeGuards(page);
+  const clickPublicNavLink = async (name: string) => {
+    const nav = page.getByRole("navigation", { name: "Public navigation" });
+    const menuButton = page.getByRole("button", { name: /menu|navigation/i });
+
+    if (await menuButton.isVisible()) {
+      await menuButton.click();
+    }
+
+    await nav.getByRole("link", { name, exact: true }).click();
+  };
+
   await page.goto("/");
   await expect(page.getByRole("heading", { name: /cleaner freight back office for paperwork, billing packets, invoices, factoring, and collections/i })).toBeVisible();
 
-  await page.getByRole("navigation", { name: "Public navigation" }).getByRole("link", { name: "Pricing", exact: true }).click();
+  await clickPublicNavLink("Pricing");
   await expect(page).toHaveURL(/\/pricing/);
   await expect(page.getByRole("heading", { name: /Clear starting points for freight back-office teams/i })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Starter" })).toBeVisible();
@@ -32,10 +43,10 @@ test("public pages and core nav route correctly", async ({ page }) => {
   await expect(page.getByText(/email draft was opened/i)).toHaveCount(0);
 
   await page.goto("/");
-  await page.getByRole("navigation", { name: "Public navigation" }).getByRole("link", { name: "App login" }).click();
+  await clickPublicNavLink("App login");
   await expect(page).toHaveURL(/\/login/);
   await page.goto("/");
-  await page.getByRole("navigation", { name: "Public navigation" }).getByRole("link", { name: "Driver Login" }).click();
+  await clickPublicNavLink("Driver Login");
   await expect(page).toHaveURL(/\/driver-login/);
 
   await assertNoCriticalUiCorruption(page);
