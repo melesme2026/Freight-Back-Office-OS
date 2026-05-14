@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
+import { PublicMobileNavigation } from "./PublicMobileNavigation";
+
 export const metadata: Metadata = {
   title: "Freight Back Office OS | Freight billing, packets, factoring, and collections",
   description:
@@ -189,7 +191,8 @@ export default function HomePage() {
           <div className="flex items-center gap-2 text-sm font-semibold">
             <Link href="/login" className="hidden rounded-xl px-4 py-2 text-slate-300 hover:bg-white/10 hover:text-white sm:inline-flex">App login</Link>
             <Link href="/driver-login" className="hidden rounded-xl px-4 py-2 text-slate-300 hover:bg-white/10 hover:text-white md:inline-flex">Driver Login</Link>
-            <Link href="/request-demo" className="rounded-xl bg-white px-4 py-2 text-slate-950 shadow-soft transition hover:bg-brand-50">Request demo</Link>
+            <Link href="/request-demo" className="hidden rounded-xl bg-white px-4 py-2 text-slate-950 shadow-soft transition hover:bg-brand-50 sm:inline-flex">Request demo</Link>
+            <PublicMobileNavigation />
           </div>
         </nav>
       </header>
