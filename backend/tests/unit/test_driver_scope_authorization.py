@@ -4,8 +4,8 @@ import uuid
 from types import SimpleNamespace
 
 import pytest
-from app.api.v1 import billing_invoices, documents, payments
-from app.core.exceptions import UnauthorizedError
+from app.api.v1 import billing_invoices, documents, loads, payments
+from app.core.exceptions import ForbiddenError, UnauthorizedError
 
 
 def _driver_token(*, organization_id: uuid.UUID, driver_id: uuid.UUID) -> dict[str, str]:
@@ -190,6 +190,22 @@ def test_driver_billing_mutation_endpoints_are_blocked(db_session) -> None:
     with pytest.raises(UnauthorizedError):
         documents._ensure_staff_role(token_payload)
 
+
+def test_driver_cannot_generate_staff_invoice_pdf(db_session) -> None:
+    with pytest.raises(ForbiddenError):
+        loads.download_load_invoice(
+            load_id=uuid.uuid4(),
+            token_payload=_driver_token(organization_id=uuid.uuid4(), driver_id=uuid.uuid4()),
+            db=db_session,
+        )
+
+
+def test_driver_cannot_export_staff_loads_csv(db_session) -> None:
+    with pytest.raises(ForbiddenError):
+        loads.export_loads_csv(
+            token_payload=_driver_token(organization_id=uuid.uuid4(), driver_id=uuid.uuid4()),
+            db=db_session,
+        )
 
 def test_driver_mobile_check_in_requires_assigned_load(monkeypatch, db_session) -> None:
     from app.api.v1 import loads

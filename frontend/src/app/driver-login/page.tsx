@@ -57,6 +57,7 @@ export default function DriverLoginPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isCheckingSession, setIsCheckingSession] = useState(true);
+  const [sessionNotice, setSessionNotice] = useState<string | null>(null);
   const [organizationOptions, setOrganizationOptions] = useState<LoginOrganizationOption[]>([]);
 
   useEffect(() => {
@@ -64,6 +65,7 @@ export default function DriverLoginPage() {
     if (params.get("session") === "expired") {
       setErrorMessage("Your session expired. Please sign in again.");
     }
+    setSessionNotice(null);
 
     const token = getAccessToken();
     const organizationId = getOrganizationId();
@@ -72,7 +74,8 @@ export default function DriverLoginPage() {
     if (token && organizationId && isDriverRole(userRole)) {
       router.replace("/driver-portal");
     } else if (token && organizationId) {
-      router.replace(resolvePostLoginRoute(userRole));
+      setSessionNotice("You are signed in to the staff app. To use Driver Login, sign out of the staff session or open a private browser window.");
+      setIsCheckingSession(false);
     } else if (token && !organizationId) {
       clearAuth();
       setIsCheckingSession(false);
@@ -82,6 +85,13 @@ export default function DriverLoginPage() {
   }, [router]);
 
   const normalizedEmail = useMemo(() => normalizeEmail(email), [email]);
+
+  function handleStaffLogout() {
+    clearAuth();
+    setSessionNotice(null);
+    setErrorMessage(null);
+    setIsCheckingSession(false);
+  }
 
   async function loginWithOrganization(selectedOrganizationId?: string) {
     const normalizedSelectedOrganizationId = normalizeText(selectedOrganizationId ?? "");
@@ -203,6 +213,28 @@ export default function DriverLoginPage() {
             <label className="mb-2 block text-sm font-medium text-slate-700">Password</label>
             <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm" disabled={isSubmitting} />
           </div>
+
+          {sessionNotice && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+              <p>{sessionNotice}</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={handleStaffLogout}
+                  className="rounded-lg bg-amber-600 px-3 py-2 text-xs font-semibold text-white hover:bg-amber-700"
+                >
+                  Sign out and use Driver Login
+                </button>
+                <button
+                  type="button"
+                  onClick={() => router.replace(resolvePostLoginRoute(getUserRole()))}
+                  className="rounded-lg border border-amber-300 bg-white px-3 py-2 text-xs font-semibold text-amber-900 hover:bg-amber-100"
+                >
+                  Return to staff app
+                </button>
+              </div>
+            </div>
+          )}
 
           {errorMessage && <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{errorMessage}</div>}
 
