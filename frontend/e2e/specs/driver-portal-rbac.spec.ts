@@ -3,7 +3,7 @@ import path from "node:path";
 import { expect, test } from "@playwright/test";
 
 import { seed } from "../fixtures/test-data";
-import { gotoProtectedDriverRoute, loginAsDriver } from "../support/auth";
+import { gotoProtectedDriverRoute, loginAsDriver, loginAsOwner } from "../support/auth";
 import { mockApi } from "../support/mock-api";
 import { attachRuntimeGuards } from "../support/test-guards";
 
@@ -31,6 +31,22 @@ test("driver portal workflow + RBAC restrictions", async ({ page }) => {
 
   await page.goto(`/dashboard/loads/${seed.load.id}`);
   await expect(page).toHaveURL(/\/driver-portal/);
+
+  await assertClean();
+});
+
+test("staff session stays on dedicated Driver Login instead of redirecting to dashboard", async ({ page }) => {
+  const assertClean = attachRuntimeGuards(page);
+  await mockApi(page);
+
+  await loginAsOwner(page);
+  await page.goto("/");
+  await page.getByRole("link", { name: "Driver Login", exact: true }).first().click();
+
+  await expect(page).toHaveURL(/\/driver-login/);
+  await expect(page.getByRole("heading", { name: "Driver Sign in" })).toBeVisible();
+  await expect(page.getByText(/signed in to the staff app/i)).toBeVisible();
+  await expect(page.getByRole("button", { name: /sign out and use driver login/i })).toBeVisible();
 
   await assertClean();
 });

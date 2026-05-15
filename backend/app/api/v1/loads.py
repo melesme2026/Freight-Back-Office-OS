@@ -2191,6 +2191,7 @@ def download_load_invoice(
     token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
     db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> StreamingResponse:
+    _assert_staff_load_management_role(token_payload)
     service = LoadService(db)
     load = service.get_load(str(load_id))
     _authorize_load_access(item=load, token_payload=token_payload)
@@ -2238,6 +2239,7 @@ def export_loads_csv(
     token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
     db: Session = GET_DB_SESSION_DEPENDENCY,
 ):
+    _assert_staff_load_management_role(token_payload)
     token_org_id = token_payload.get("organization_id")
     if not token_org_id:
         raise ValidationError("Token organization_id is missing", details={"organization_id": None})
