@@ -220,6 +220,24 @@ class DocumentService:
 
         return self.document_repo.get_by_id(updated.id, include_related=True) or updated
 
+    def mark_extraction_skipped(
+        self,
+        *,
+        document_id: str,
+    ) -> LoadDocument:
+        document = self.get_document(document_id)
+        document.processing_status = ProcessingStatus.COMPLETED
+        # Leave ocr_completed_at empty so serializers can distinguish launch-mode
+        # received/completed documents from documents that completed OCR/LLM extraction.
+        document.ocr_completed_at = None
+
+        updated = self.document_repo.update(document)
+
+        if updated.load_id:
+            self._sync_load_document_flags(str(updated.load_id))
+
+        return self.document_repo.get_by_id(updated.id, include_related=True) or updated
+
     def update_document_type(
         self,
         *,

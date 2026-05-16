@@ -178,31 +178,39 @@ def test_small_multipart_pdf_upload_then_document_list_refresh(
         load_number="UPR-001",
     )
 
-    response = asyncio.run(
-        upload_document(
-            organization_id=org_id,
-            token_payload={
-                "organization_id": org_id,
-                "role": "owner",
-                "sub": "00000000-0000-0000-0000-000000009999",
-            },
-            customer_account_id=customer_id,
-            source_channel="manual",
-            file=UploadFile(
-                filename="proof_of_delivery.pdf",
-                file=BytesIO(b"%PDF-1.4\nsmall pod\n%%EOF"),
-                headers={"content-type": "application/pdf"},
-            ),
-            driver_id=driver_id,
-            load_id=str(load.id),
-            document_type="proof_of_delivery",
-            uploaded_by_staff_user_id=None,
-            page_count=None,
-            replace=None,
-            db=db_session,
+    upload_responses = []
+    for doc_type, filename, body in (
+        ("proof_of_delivery", "proof_of_delivery.pdf", b"%PDF-1.4\nsmall pod\n%%EOF"),
+        ("rate_confirmation", "rate_confirmation.pdf", b"%PDF-1.4\nsmall rate con\n%%EOF"),
+    ):
+        upload_responses.append(
+            asyncio.run(
+                upload_document(
+                    organization_id=org_id,
+                    token_payload={
+                        "organization_id": org_id,
+                        "role": "owner",
+                        "sub": "00000000-0000-0000-0000-000000009999",
+                    },
+                    customer_account_id=customer_id,
+                    source_channel="manual",
+                    file=UploadFile(
+                        filename=filename,
+                        file=BytesIO(body),
+                        headers={"content-type": "application/pdf"},
+                    ),
+                    driver_id=driver_id,
+                    load_id=str(load.id),
+                    document_type=doc_type,
+                    uploaded_by_staff_user_id=None,
+                    page_count=None,
+                    replace=None,
+                    db=db_session,
+                )
+            )
         )
-    )
 
+    response = upload_responses[0]
     items, total = DocumentService(db_session).list_documents(
         organization_id=org_id,
         load_id=str(load.id),
@@ -213,9 +221,16 @@ def test_small_multipart_pdf_upload_then_document_list_refresh(
 
     assert response.meta["uploaded"] is True
     assert response.meta["document_processing"]["skipped"] is True
-    assert total == 1
-    assert items[0].original_filename == "proof_of_delivery.pdf"
-    assert items[0].processing_status == ProcessingStatus.PENDING
+    assert (
+        response.meta["document_processing"]["extraction_status"]
+        == ProcessingStatus.SKIPPED.value
+    )
+    assert response.data["received_status"] == "received"
+    assert response.data["extraction_status"] == ProcessingStatus.SKIPPED.value
+    assert total == 2
+    by_filename = {item.original_filename: item for item in items}
+    assert by_filename["proof_of_delivery.pdf"].processing_status == ProcessingStatus.COMPLETED
+    assert by_filename["rate_confirmation.pdf"].processing_status == ProcessingStatus.COMPLETED
     assert refreshed_load.documents_complete is False
     assert any(
         document.original_filename == "proof_of_delivery.pdf"

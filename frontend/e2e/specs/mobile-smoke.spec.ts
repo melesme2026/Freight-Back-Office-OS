@@ -45,6 +45,9 @@ test("mobile smoke: owner dashboard, loads, and load detail do not page-overflow
   await expect(page.getByLabel("Document file or photo")).toBeVisible();
   await expect(page.getByRole("button", { name: "Choose file or photo" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Upload Document" })).toBeVisible();
+  await expect(page.getByText("rate_confirmation.pdf")).toBeVisible();
+  await expect(page.getByText("received · extraction skipped")).toBeVisible();
+  await expect(page.getByText("4 KB").first()).toBeVisible();
   await expectNoPageOverflow(page);
 
   await page.getByLabel("Upload Document Type").selectOption("rate_confirmation");
@@ -157,7 +160,9 @@ test("mobile smoke: camera-first upload shows preview and success feedback", asy
         filename: "pod-photo.png",
         file_name: "pod-photo.png",
         document_type: "proof_of_delivery",
-        processing_status: "uploaded",
+        received_status: "received",
+        processing_status: "completed",
+        extraction_status: "skipped",
         received_at: "2026-01-15T12:00:00.000Z",
         status: "uploaded",
       },

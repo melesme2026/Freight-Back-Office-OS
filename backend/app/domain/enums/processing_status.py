@@ -10,4 +10,6 @@ class ProcessingStatus(StrEnum):
     PROCESSING = "processing"
     COMPLETED = "completed"
     FAILED = "failed"
+    SKIPPED = "skipped"
+    NOT_REQUIRED = "not_required"
     NEEDS_REVIEW = "needs_review"

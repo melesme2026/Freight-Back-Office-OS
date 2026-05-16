@@ -379,10 +379,16 @@ def test_small_owner_pdf_upload_returns_without_running_extraction(
     assert response.meta["uploaded"] is True
     assert response.meta["document_processing"]["skipped"] is True
     assert (
-        response.meta["document_processing"]["status"] == ProcessingStatus.PENDING.value
+        response.meta["document_processing"]["status"] == ProcessingStatus.COMPLETED.value
+    )
+    assert (
+        response.meta["document_processing"]["extraction_status"]
+        == ProcessingStatus.SKIPPED.value
     )
     assert response.data["original_filename"] == "proof_of_delivery.pdf"
-    assert response.data["processing_status"] == ProcessingStatus.PENDING.value
+    assert response.data["received_status"] == "received"
+    assert response.data["processing_status"] == ProcessingStatus.COMPLETED.value
+    assert response.data["extraction_status"] == ProcessingStatus.SKIPPED.value
     assert any(path.is_file() for path in tmp_path.rglob("*.pdf"))
     assert {
         record.upload_stage

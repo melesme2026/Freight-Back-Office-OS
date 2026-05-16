@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import time
 import uuid
 from datetime import datetime
 from decimal import Decimal
@@ -289,11 +290,21 @@ def get_payment_reconciliation(
     token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
 ) -> ApiResponse:
     _authorize_payment_read(token_payload)
+    started_at = time.perf_counter()
     service = _service(db)
     record = service.get_or_create_for_load(
         load_id, _org_id(token_payload), actor_staff_user_id=_actor_id(token_payload)
     )
-    return ApiResponse(data=_serialize(record))
+    elapsed_ms = int((time.perf_counter() - started_at) * 1000)
+    logger.info(
+        "Payment reconciliation endpoint completed",
+        extra={
+            "load_id": str(load_id),
+            "organization_id": _org_id(token_payload),
+            "elapsed_ms": elapsed_ms,
+        },
+    )
+    return ApiResponse(data=_serialize(record), meta={"elapsed_ms": elapsed_ms})
 
 
 @router.patch("/", response_model=ApiResponse)

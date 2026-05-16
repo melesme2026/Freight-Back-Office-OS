@@ -170,8 +170,12 @@ type LoadDocument = {
   file_size_bytes?: number | null;
   storage_bucket?: string | null;
   storage_key?: string | null;
+  received_status?: string | null;
   processing_status?: string | null;
+  extraction_status?: string | null;
+  validation_status?: string | null;
   page_count?: number | null;
+  received_at?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
 };
@@ -422,9 +426,25 @@ function hasBlockingPacketAudit(audit?: PacketAuditResult | null): boolean {
   return (audit?.findings ?? []).some((finding) => (finding.severity ?? "").toLowerCase() === "blocking");
 }
 
+function documentStatusLabel(document: LoadDocument): string {
+  const received = (document.received_status ?? "received").replaceAll("_", " ");
+  const extraction = (document.extraction_status ?? document.processing_status ?? "not required").replaceAll("_", " ");
+  return `${received} · extraction ${extraction}`;
+}
+
+function isMobileViewport(): boolean {
+  if (typeof window === "undefined") {
+    return false;
+  }
+  return window.matchMedia("(max-width: 767px)").matches;
+}
+
 function processingStatusBadge(status?: string | null) {
   switch ((status ?? "").trim().toLowerCase()) {
     case "completed":
+    case "received":
+    case "skipped":
+    case "not_required":
       return "bg-emerald-100 text-emerald-800";
     case "processing":
     case "in_progress":
@@ -801,8 +821,12 @@ function normalizeDocument(payload: unknown): LoadDocument | null {
     file_size_bytes: getOptionalNumberField(record, "file_size_bytes"),
     storage_bucket: getStringField(record, "storage_bucket"),
     storage_key: getStringField(record, "storage_key"),
+    received_status: getStringField(record, "received_status"),
     processing_status: getStringField(record, "processing_status"),
+    extraction_status: getStringField(record, "extraction_status"),
+    validation_status: getStringField(record, "validation_status"),
     page_count: getOptionalNumberField(record, "page_count"),
+    received_at: getStringField(record, "received_at"),
     created_at: getStringField(record, "created_at"),
     updated_at: getStringField(record, "updated_at"),
   };
@@ -1653,27 +1677,38 @@ export default function LoadDetailPage() {
 
       const loadData = await fetchLoad();
       setLoad(loadData);
-      void fetchSubmissionPackets().then((packets) => setSubmissionPackets(packets)).catch(() => setSubmissionPackets([]));
-      void fetchPacketAudit().then((audit) => setPacketAudit(audit)).catch(() => setPacketAudit(null));
-      void fetchCarrierProfile().then((profile) => setCarrierProfile(profile)).catch(() => setCarrierProfile(null));
-      void fetchPaymentReconciliation().then((record) => setPaymentRecord(record)).catch(() => setPaymentRecord(null));
-      void fetchFollowUpTasks().then((tasks) => setFollowUpTasks(tasks)).catch(() => setFollowUpTasks([]));
 
-      void fetchReviewQueueItem()
-        .then((reviewItem) => {
-          setReviewQueueItem(reviewItem);
-        })
-        .catch(() => {
-          setReviewQueueItem(null);
-        });
+      const fetchPrimarySections = () => {
+        void fetchLoadDocuments({ silent: true })
+          .then((documents) => {
+            setLoadDocuments(documents);
+          })
+          .catch(() => {
+            setLoadDocuments([]);
+          });
+        void fetchPacketAudit().then((audit) => setPacketAudit(audit)).catch(() => setPacketAudit(null));
+      };
 
-      void fetchLoadDocuments({ silent: true })
-        .then((documents) => {
-          setLoadDocuments(documents);
-        })
-        .catch(() => {
-          setLoadDocuments([]);
-        });
+      const fetchOptionalSections = () => {
+        void fetchSubmissionPackets().then((packets) => setSubmissionPackets(packets)).catch(() => setSubmissionPackets([]));
+        void fetchCarrierProfile().then((profile) => setCarrierProfile(profile)).catch(() => setCarrierProfile(null));
+        void fetchPaymentReconciliation().then((record) => setPaymentRecord(record)).catch(() => setPaymentRecord(null));
+        void fetchFollowUpTasks().then((tasks) => setFollowUpTasks(tasks)).catch(() => setFollowUpTasks([]));
+        void fetchReviewQueueItem()
+          .then((reviewItem) => {
+            setReviewQueueItem(reviewItem);
+          })
+          .catch(() => {
+            setReviewQueueItem(null);
+          });
+      };
+
+      fetchPrimarySections();
+      if (isMobileViewport()) {
+        window.setTimeout(fetchOptionalSections, 250);
+      } else {
+        fetchOptionalSections();
+      }
     } catch (caught: unknown) {
       setError(extractErrorMessage(caught, "Failed to fetch load."));
     } finally {
@@ -3456,7 +3491,7 @@ export default function LoadDetailPage() {
                 ))}
               </div>
 
-              <div className="mobile-scroll-area overflow-x-auto rounded-2xl border border-slate-200">
+              <div className="rounded-2xl border border-slate-200">
                 <div className="hidden grid-cols-12 gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500 lg:grid">
                   <div className="col-span-12 lg:col-span-4">Document</div>
                   <div className="col-span-1 lg:col-span-2">Type</div>
@@ -3471,9 +3506,9 @@ export default function LoadDetailPage() {
                     {loadDocuments.map((document) => (
                       <div
                         key={document.id}
-                        className="grid grid-cols-1 gap-3 px-4 py-4 text-sm text-slate-700 lg:grid-cols-12"
+                        className="grid grid-cols-1 gap-4 px-4 py-4 text-sm text-slate-700 sm:grid-cols-2 lg:grid-cols-12 lg:gap-3"
                       >
-                        <div className="col-span-12 lg:col-span-4">
+                        <div className="sm:col-span-2 lg:col-span-4">
                           <div className="font-medium text-slate-900">
                             {getDocumentDisplayName(document)}
                           </div>
@@ -3482,7 +3517,7 @@ export default function LoadDetailPage() {
                           </div>
                         </div>
 
-                        <div className="col-span-1 lg:col-span-2">
+                        <div className="min-w-0 lg:col-span-2">
                           <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500 lg:hidden">Type</div>
                           <select
                             value={(document.document_type as UploadDocumentType) || "unknown"}
@@ -3503,28 +3538,31 @@ export default function LoadDetailPage() {
                           </select>
                         </div>
 
-                        <div className="col-span-1 lg:col-span-2">
+                        <div className="min-w-0 lg:col-span-2">
                           <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500 lg:hidden">Status</div>
-                          <span
-                            className={`rounded-full px-3 py-1 text-xs font-semibold ${processingStatusBadge(
-                              document.processing_status
-                            )}`}
-                          >
-                            {(document.processing_status ?? "unknown").replaceAll("_", " ")}
-                          </span>
+                          <div className="flex flex-col items-start gap-1">
+                            <span
+                              className={`rounded-full px-3 py-1 text-xs font-semibold ${processingStatusBadge(
+                                document.processing_status
+                              )}`}
+                            >
+                              {(document.processing_status ?? "unknown").replaceAll("_", " ")}
+                            </span>
+                            <span className="text-xs leading-5 text-slate-500">{documentStatusLabel(document)}</span>
+                          </div>
                         </div>
 
-                        <div className="col-span-1 lg:col-span-2">
+                        <div className="min-w-0 lg:col-span-2">
                           <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500 lg:hidden">Uploaded</div>
-                          <div>{formatDateTime(document.created_at)}</div>
+                          <div className="break-words">{formatDateTime(document.received_at ?? document.created_at)}</div>
                         </div>
 
-                        <div className="col-span-1 lg:col-span-1">
+                        <div className="min-w-0 lg:col-span-1">
                           <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500 lg:hidden">Size</div>
                           <div>{formatFileSize(document.file_size_bytes)}</div>
                         </div>
 
-                        <div className="col-span-1 flex flex-col gap-2 sm:flex-row sm:justify-end lg:col-span-1">
+                        <div className="flex flex-col gap-2 sm:col-span-2 sm:flex-row lg:col-span-1 lg:justify-end">
                           <button
                             type="button"
                             onClick={() => void handleDownloadDocument(document)}
