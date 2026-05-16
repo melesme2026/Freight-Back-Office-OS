@@ -3,17 +3,24 @@ from __future__ import annotations
 import logging
 import mimetypes
 import time
+import traceback
 import uuid
 from datetime import date, datetime
 from typing import Annotated, Any
 
 from app.core.cache import operational_cache
 from app.core.config import get_settings
+from app.core.database import get_session_factory
 from app.core.dependencies import get_db_session
 from app.core.exceptions import AppError, UnauthorizedError
 from app.core.security import get_current_token_payload
 from app.domain.enums.document_type import DocumentType
 from app.domain.enums.processing_status import ProcessingStatus
+from app.domain.models.extracted_field import ExtractedField
+from app.domain.models.load_document import LoadDocument
+from app.domain.models.notification import Notification
+from app.domain.models.submission_packet_document import SubmissionPacketDocument
+from app.domain.models.validation_issue import ValidationIssue
 from app.repositories.driver_repo import DriverRepository
 from app.repositories.load_repo import LoadRepository
 from app.schemas.common import ApiResponse
@@ -43,6 +50,7 @@ from fastapi import (
     status,
 )
 from pydantic import BaseModel, ConfigDict
+from sqlalchemy import delete, update
 from sqlalchemy.orm import Session
 
 GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY = Depends(get_current_token_payload)
@@ -1568,23 +1576,101 @@ def update_document(
     )
 
 
+
+def _delete_trace_elapsed_ms(started_at: float) -> int:
+    return int((time.perf_counter() - started_at) * 1000)
+
+
+def _run_deferred_storage_delete(*, storage_key: str, trace_context: dict[str, Any]) -> None:
+    started_at = time.perf_counter()
+    try:
+        deleted = StorageService().delete(relative_path=storage_key)
+        logger.info(
+            "Deferred document storage delete completed",
+            extra={
+                **trace_context,
+                "storage_path": storage_key,
+                "storage_delete_ms": _delete_trace_elapsed_ms(started_at),
+                "storage_deleted": deleted,
+            },
+        )
+    except Exception:
+        logger.exception(
+            "Deferred document storage delete failed",
+            extra={
+                **trace_context,
+                "storage_path": storage_key,
+                "storage_delete_ms": _delete_trace_elapsed_ms(started_at),
+                "exception_trace": traceback.format_exc(),
+            },
+        )
+
+
+def _run_deferred_document_delete_audit(
+    *,
+    organization_id: str,
+    document_id: str,
+    token_payload: dict[str, Any],
+    metadata: dict[str, Any],
+    trace_context: dict[str, Any],
+) -> None:
+    started_at = time.perf_counter()
+    session_factory = get_session_factory()
+    db = session_factory()
+    try:
+        _log_document_event(
+            db=db,
+            organization_id=organization_id,
+            document_id=document_id,
+            action="document.deleted",
+            token_payload=token_payload,
+            metadata=metadata,
+        )
+        db.commit()
+        logger.info(
+            "Deferred document delete audit completed",
+            extra={**trace_context, "audit_log_ms": _delete_trace_elapsed_ms(started_at)},
+        )
+    except Exception:
+        db.rollback()
+        logger.exception(
+            "Deferred document delete audit failed",
+            extra={
+                **trace_context,
+                "audit_log_ms": _delete_trace_elapsed_ms(started_at),
+                "exception_trace": traceback.format_exc(),
+                "rollback_trace": "deferred_audit_session_rolled_back",
+            },
+        )
+    finally:
+        db.close()
+
 @router.delete("/documents/{document_id}", response_model=ApiResponse)
 def delete_document(
     document_id: uuid.UUID,
-    request: Request,
+    request: Request = None,
     token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
     db: Session = GET_DB_SESSION_DEPENDENCY,
+    background_tasks: BackgroundTasks = None,
 ) -> ApiResponse:
     trace_started_at = time.perf_counter()
     timings: dict[str, int] = {
+        "request_start_ms": int(time.time() * 1000),
+        "auth_ms": 0,
         "db_lookup_ms": 0,
-        "invoice_doc_guard_ms": 0,
-        "file_storage_delete_ms": 0,
+        "invoice_guard_ms": 0,
+        "readiness_precompute_ms": 0,
+        "storage_delete_ms": 0,
         "db_delete_ms": 0,
+        "orm_flush_ms": 0,
+        "readiness_recompute_ms": 0,
+        "audit_log_ms": 0,
         "commit_ms": 0,
+        "response_serialize_ms": 0,
+        "total_ms": 0,
     }
     trace_context: dict[str, Any] = {
-        "request_id": getattr(request.state, "request_id", None),
+        "request_id": getattr(getattr(request, "state", None), "request_id", None),
         "document_id": str(document_id),
         "load_id": None,
         "org_id": (
@@ -1593,40 +1679,59 @@ def delete_document(
             else None
         ),
         "user_id": str(token_payload.get("sub")) if token_payload.get("sub") else None,
-        "limiter_bucket": getattr(request.state, "limiter_bucket", None),
-        "limiter_wait_ms": getattr(request.state, "limiter_wait_ms", None),
-        "client_disconnected": None,
+        "limiter_bucket": getattr(getattr(request, "state", None), "limiter_bucket", None),
+        "limiter_wait_ms": getattr(getattr(request, "state", None), "limiter_wait_ms", None),
+        "storage_backend": "local",
+        "storage_path": None,
+        "document_type": None,
+        "invoice_generated": None,
+        "generated_invoice": None,
+        "blocking_stage": None,
+        "partial_success_before_timeout": False,
+        "disconnect_cancel_trace": "sync_endpoint_no_disconnect_poll",
     }
+
+    def finish_timing() -> None:
+        timings["total_ms"] = _delete_trace_elapsed_ms(trace_started_at)
 
     try:
         service = DocumentService(db)
+
         stage_started_at = time.perf_counter()
-        item = service.get_document_in_organization(
-            document_id=str(document_id),
-            organization_id=str(token_payload.get("organization_id")),
-        )
-        timings["db_lookup_ms"] = int((time.perf_counter() - stage_started_at) * 1000)
+        item = service.document_repo.get_by_id(str(document_id), include_related=False)
+        timings["db_lookup_ms"] = _delete_trace_elapsed_ms(stage_started_at)
+        if item is None or str(item.organization_id) != str(token_payload.get("organization_id")):
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found.")
+
         trace_context.update(
             {
                 "load_id": str(item.load_id) if getattr(item, "load_id", None) else None,
                 "org_id": str(item.organization_id),
                 "document_type": _enum_to_string(item.document_type),
                 "processing_status": _document_processing_value(item),
+                "storage_path": getattr(item, "storage_key", None),
+                "storage_bucket": getattr(item, "storage_bucket", None),
+                "invoice_generated": bool(_is_invoice_document(item)),
+                "generated_invoice": bool(_is_invoice_document(item)),
             }
         )
+
+        stage_started_at = time.perf_counter()
         _authorize_document_mutation(item=item, token_payload=token_payload)
+        timings["auth_ms"] = _delete_trace_elapsed_ms(stage_started_at)
 
         stage_started_at = time.perf_counter()
         if _is_invoice_document(item):
-            timings["invoice_doc_guard_ms"] = int((time.perf_counter() - stage_started_at) * 1000)
+            timings["invoice_guard_ms"] = _delete_trace_elapsed_ms(stage_started_at)
+            finish_timing()
             logger.info(
                 "Document delete trace completed",
                 extra={
                     **trace_context,
                     **timings,
-                    "response_ms": int((time.perf_counter() - trace_started_at) * 1000),
                     "delete_outcome": "invoice_document_guard_rejected",
                     "status_code": status.HTTP_409_CONFLICT,
+                    "failure_point": "invoice_guard",
                 },
             )
             raise HTTPException(
@@ -1639,68 +1744,133 @@ def delete_document(
                     ),
                 },
             )
-        timings["invoice_doc_guard_ms"] = int((time.perf_counter() - stage_started_at) * 1000)
-
-        storage_key = getattr(item, "storage_key", None)
-        if storage_key:
-            stage_started_at = time.perf_counter()
-            try:
-                StorageService().delete(relative_path=storage_key)
-            except Exception:
-                logger.exception(
-                    "Document storage delete failed during document delete",
-                    extra={**trace_context, "storage_key": storage_key},
-                )
-            timings["file_storage_delete_ms"] = int((time.perf_counter() - stage_started_at) * 1000)
-
-        _log_document_event(
-            db=db,
-            organization_id=item.organization_id,
-            document_id=item.id,
-            action="document.deleted",
-            token_payload=token_payload,
-            metadata={
-                "document_type": _enum_to_string(item.document_type),
-                "filename": item.original_filename,
-            },
-        )
+        timings["invoice_guard_ms"] = _delete_trace_elapsed_ms(stage_started_at)
 
         load_id = str(item.load_id) if item.load_id else None
+        storage_key = str(item.storage_key) if getattr(item, "storage_key", None) else None
+        audit_metadata = {
+            "document_type": _enum_to_string(item.document_type),
+            "filename": item.original_filename,
+            "storage_path": storage_key,
+            "deferred": True,
+        }
+
         stage_started_at = time.perf_counter()
-        service.document_repo.delete(item)
-        db.expire_all()
+        # Kept intentionally lightweight: the hot path only needs the existing row snapshot.
+        # Readiness is recomputed after the row is removed, using a scalar document_type query.
+        timings["readiness_precompute_ms"] = _delete_trace_elapsed_ms(stage_started_at)
+
+        stage_started_at = time.perf_counter()
+        db.execute(
+            update(ValidationIssue)
+            .where(ValidationIssue.document_id == item.id)
+            .values(document_id=None)
+        )
+        db.execute(
+            update(Notification)
+            .where(Notification.document_id == item.id)
+            .values(document_id=None)
+        )
+        db.execute(
+            delete(SubmissionPacketDocument).where(
+                SubmissionPacketDocument.document_id == item.id
+            )
+        )
+        db.execute(delete(ExtractedField).where(ExtractedField.document_id == item.id))
+        deleted_count = (
+            db.execute(delete(LoadDocument).where(LoadDocument.id == item.id)).rowcount or 0
+        )
+        timings["db_delete_ms"] = _delete_trace_elapsed_ms(stage_started_at)
+
+        stage_started_at = time.perf_counter()
+        db.flush()
+        timings["orm_flush_ms"] = _delete_trace_elapsed_ms(stage_started_at)
+
+        stage_started_at = time.perf_counter()
         if load_id:
-            service._sync_load_document_flags(load_id)
-        timings["db_delete_ms"] = int((time.perf_counter() - stage_started_at) * 1000)
+            service.sync_load_document_flags_fast(load_id)
+        timings["readiness_recompute_ms"] = _delete_trace_elapsed_ms(stage_started_at)
+
+        # Storage cleanup and audit enrichment are deliberately deferred so they cannot block
+        # the DELETE response after the DB row/readiness mutation has committed.
+        if storage_key:
+            if background_tasks is not None:
+                background_tasks.add_task(
+                    _run_deferred_storage_delete,
+                    storage_key=storage_key,
+                    trace_context=dict(trace_context),
+                )
+            else:
+                logger.info(
+                    "Deferred document storage delete skipped outside request background runner",
+                    extra={**trace_context, "storage_path": storage_key},
+                )
+        if background_tasks is not None:
+            background_tasks.add_task(
+                _run_deferred_document_delete_audit,
+                organization_id=str(item.organization_id),
+                document_id=str(item.id),
+                token_payload=dict(token_payload),
+                metadata=audit_metadata,
+                trace_context=dict(trace_context),
+            )
+        timings["audit_log_ms"] = 0
+        timings["storage_delete_ms"] = 0
 
         stage_started_at = time.perf_counter()
         db.commit()
-        timings["commit_ms"] = int((time.perf_counter() - stage_started_at) * 1000)
+        timings["commit_ms"] = _delete_trace_elapsed_ms(stage_started_at)
+        trace_context["blocking_stage"] = "completed_before_response"
+        trace_context["partial_success_before_timeout"] = True
+
+        stage_started_at = time.perf_counter()
+        response = ApiResponse(
+            data={"id": str(document_id), "deleted": deleted_count > 0}, meta={}, error=None
+        )
+        timings["response_serialize_ms"] = _delete_trace_elapsed_ms(stage_started_at)
+        finish_timing()
 
         logger.info(
             "Document delete trace completed",
             extra={
                 **trace_context,
                 **timings,
-                "response_ms": int((time.perf_counter() - trace_started_at) * 1000),
                 "delete_outcome": "deleted",
                 "status_code": status.HTTP_200_OK,
+                "failure_point": "none",
             },
         )
-        return ApiResponse(
-            data={"id": str(document_id), "deleted": True}, meta={}, error=None
-        )
+        return response
     except HTTPException:
+        finish_timing()
         raise
     except Exception as exc:
+        failure_point = "unknown"
+        if timings["commit_ms"] == 0 and timings["readiness_recompute_ms"] > 0:
+            failure_point = "during_commit_or_before_commit"
+        elif timings["readiness_recompute_ms"] == 0 and timings["db_delete_ms"] > 0:
+            failure_point = "during_readiness_recompute"
+        elif timings["orm_flush_ms"] == 0 and timings["db_delete_ms"] > 0:
+            failure_point = "during_orm_flush"
+        elif timings["db_delete_ms"] == 0 and timings["invoice_guard_ms"] > 0:
+            failure_point = "during_db_delete"
+        trace_context["blocking_stage"] = failure_point
+        try:
+            db.rollback()
+            rollback_trace = "rollback_completed"
+        except Exception:
+            rollback_trace = traceback.format_exc()
+        finish_timing()
         logger.exception(
             "Document delete trace failed",
             extra={
                 **trace_context,
                 **timings,
-                "response_ms": int((time.perf_counter() - trace_started_at) * 1000),
                 "exception_type": type(exc).__name__,
                 "exception_message": str(exc),
+                "exception_trace": traceback.format_exc(),
+                "rollback_trace": rollback_trace,
+                "failure_point": failure_point,
             },
         )
         raise

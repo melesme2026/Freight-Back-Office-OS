@@ -175,3 +175,92 @@ def test_regular_document_delete_removes_row_and_updates_readiness(db_session) -
     assert DocumentService(db_session).document_repo.get_by_id(ratecon.id) is None
     db_session.refresh(load)
     assert load.has_ratecon is False
+
+
+def test_delete_document_returns_under_one_second_when_storage_delete_is_delayed(
+    db_session, monkeypatch
+) -> None:
+    from fastapi import BackgroundTasks
+
+    org_id, customer_id, driver_id, load = _seed_base(db_session)
+    document = _add_doc(
+        db_session, org_id, customer_id, driver_id, load.id, DocumentType.RATE_CONFIRMATION
+    )
+    db_session.commit()
+
+    def slow_storage_delete(*, relative_path: str) -> bool:
+        import time
+
+        time.sleep(1.25)
+        return True
+
+    monkeypatch.setattr(
+        "app.api.v1.documents.StorageService.delete",
+        lambda self, *, relative_path: slow_storage_delete(relative_path=relative_path),
+    )
+
+    import time
+
+    background_tasks = BackgroundTasks()
+    started_at = time.perf_counter()
+    response = delete_document(
+        document_id=document.id,
+        request=_request(),
+        token_payload={"organization_id": str(org_id), "role": "owner", "sub": str(driver_id)},
+        db=db_session,
+        background_tasks=background_tasks,
+    )
+    elapsed = time.perf_counter() - started_at
+
+    assert response.data == {"id": str(document.id), "deleted": True}
+    assert elapsed < 1
+
+
+def test_delete_document_trace_logs_required_timing_fields(db_session, caplog) -> None:
+    org_id, customer_id, driver_id, load = _seed_base(db_session)
+    document = _add_doc(
+        db_session, org_id, customer_id, driver_id, load.id, DocumentType.RATE_CONFIRMATION
+    )
+
+    with caplog.at_level("INFO", logger="app.api.v1.documents"):
+        delete_document(
+            document_id=document.id,
+            request=_request(),
+            token_payload={"organization_id": str(org_id), "role": "owner", "sub": str(driver_id)},
+            db=db_session,
+        )
+
+    completed = [
+        record for record in caplog.records if record.message == "Document delete trace completed"
+    ][-1]
+    for field in (
+        "request_start_ms",
+        "auth_ms",
+        "db_lookup_ms",
+        "invoice_guard_ms",
+        "readiness_precompute_ms",
+        "storage_delete_ms",
+        "db_delete_ms",
+        "orm_flush_ms",
+        "readiness_recompute_ms",
+        "audit_log_ms",
+        "commit_ms",
+        "response_serialize_ms",
+        "total_ms",
+        "request_id",
+        "document_id",
+        "load_id",
+        "org_id",
+        "user_id",
+        "storage_backend",
+        "storage_path",
+        "document_type",
+        "invoice_generated",
+        "generated_invoice",
+        "blocking_stage",
+        "partial_success_before_timeout",
+        "disconnect_cancel_trace",
+    ):
+        assert hasattr(completed, field), field
+    assert completed.blocking_stage == "completed_before_response"
+    assert completed.partial_success_before_timeout is True
