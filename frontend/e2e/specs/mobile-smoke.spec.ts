@@ -41,6 +41,23 @@ test("mobile smoke: owner dashboard, loads, and load detail do not page-overflow
   await page.goto(`/dashboard/loads/${seed.load.id}`);
   await expect(page.getByRole("main").getByRole("heading", { name: seed.load.load_number })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Documents" })).toBeVisible();
+  await expect(page.getByLabel("Upload Document Type")).toBeVisible();
+  await expect(page.getByLabel("Document file or photo")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Choose file or photo" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Upload Document" })).toBeVisible();
+  await expectNoPageOverflow(page);
+
+  await page.getByLabel("Upload Document Type").selectOption("rate_confirmation");
+  await page.getByLabel("Document file or photo").setInputFiles({
+    name: "ratecon-mobile.pdf",
+    mimeType: "application/pdf",
+    buffer: Buffer.from("%PDF-1.4 mobile rate confirmation"),
+  });
+  await expect(page.getByText("Selected: ratecon-mobile.pdf")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Upload Document" })).toBeVisible();
+  await page.getByRole("button", { name: "Upload Document" }).click();
+  await expect(page.getByRole("status")).toHaveText(/Upload successful: ratecon-mobile\.pdf \(Rate Confirmation\)\./);
+  await expect(page.getByText("ratecon-mobile.pdf")).toBeVisible();
   await expectNoPageOverflow(page);
 });
 

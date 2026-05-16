@@ -144,18 +144,24 @@ function presentDocumentTypes(documents: MockDocument[]): string[] {
   return documents.map((document) => document.document_type);
 }
 
-function multipartFilename(route: Route): string | null {
+function multipartBodyText(route: Route): string | null {
   const contentType = route.request().headers()["content-type"] ?? "";
   if (!contentType.toLowerCase().includes("multipart/form-data")) return null;
 
-  const bodyText = (() => {
-    const body = route.request().postData();
-    if (body) return body;
-    const bodyBuffer = route.request().postDataBuffer();
-    return bodyBuffer ? bodyBuffer.toString("latin1") : null;
-  })();
+  const body = route.request().postData();
+  if (body) return body;
+  const bodyBuffer = route.request().postDataBuffer();
+  return bodyBuffer ? bodyBuffer.toString("latin1") : null;
+}
 
-  return bodyText?.match(/filename="([^"\r\n]+)"/)?.[1] ?? null;
+function multipartFilename(route: Route): string | null {
+  return multipartBodyText(route)?.match(/filename="([^"\r\n]+)"/)?.[1] ?? null;
+}
+
+function multipartField(route: Route, fieldName: string): string | null {
+  const escapedFieldName = fieldName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const pattern = new RegExp(`name="${escapedFieldName}"\\r?\\n\\r?\\n([^\\r\\n]*)`);
+  return multipartBodyText(route)?.match(pattern)?.[1] ?? null;
 }
 
 function fulfillDriverDocumentUpload(route: Route, state: MutableState) {
@@ -482,7 +488,17 @@ export async function mockApi(page: Page) {
     }
 
     if (path.includes("/loads/") && path.endsWith("/documents") && method === "GET") {
-      return ok(route, state.documents.map((doc, index) => ({ id: `doc-${index + 1}`, file_name: doc.original_filename, document_type: doc.document_type })));
+      return ok(route, state.documents.map((doc, index) => ({
+        id: `doc-${index + 1}`,
+        organization_id: seed.organizationId,
+        customer_account_id: seed.customer.id,
+        load_id: seed.load.id,
+        original_filename: doc.original_filename,
+        file_name: doc.original_filename,
+        document_type: doc.document_type,
+        processing_status: "accepted",
+        created_at: FIXED_ISO_TIMESTAMP,
+      })));
     }
 
     if (path.includes("/payment-reconciliation") && method === "GET") {
@@ -565,7 +581,9 @@ export async function mockApi(page: Page) {
     }
 
     if (path === "/documents/upload" && method === "POST") {
-      state.documents.push(mockDocument("support"));
+      const originalFilename = multipartFilename(route) ?? "support.pdf";
+      const documentType = multipartField(route, "document_type") || "support";
+      state.documents.push(mockDocument(documentType, originalFilename));
       return created(route, { id: `doc-${state.documents.length}` });
     }
 
