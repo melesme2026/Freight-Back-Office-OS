@@ -604,6 +604,28 @@ export async function mockApi(page: Page) {
       return ok(route, [{ ...seed.load, status: state.paidAmount >= 1000 ? "fully_paid" : "invoice_ready", driver_name: seed.driver.name }]);
     }
 
+
+    if (path.startsWith("/documents/") && method === "DELETE") {
+      const documentId = path.split("/").pop() ?? "";
+      const match = /^doc-(\d+)$/.exec(documentId);
+      if (match) {
+        const index = Number(match[1]) - 1;
+        if (index >= 0 && index < state.documents.length) {
+          const document = state.documents[index];
+          if (document.document_type === "invoice") {
+            return route.fulfill({
+              status: 409,
+              contentType: "application/json",
+              headers: corsHeaders(route),
+              body: JSON.stringify({ error: { code: "invoice_document_managed_by_invoice_workflow", message: "Invoice documents are managed from the invoice workflow. Use Regenerate Invoice to replace this file." } }),
+            });
+          }
+          state.documents.splice(index, 1);
+        }
+      }
+      return ok(route, { id: documentId, deleted: true });
+    }
+
     if (path === "/documents/upload" && method === "POST") {
       const originalFilename = multipartFilename(route) ?? "support.pdf";
       const documentType = multipartField(route, "document_type") || "support";

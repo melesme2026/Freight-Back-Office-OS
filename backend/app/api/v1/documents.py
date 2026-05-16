@@ -38,6 +38,7 @@ from fastapi import (
     Form,
     HTTPException,
     Query,
+    Request,
     UploadFile,
     status,
 )
@@ -1570,42 +1571,139 @@ def update_document(
 @router.delete("/documents/{document_id}", response_model=ApiResponse)
 def delete_document(
     document_id: uuid.UUID,
+    request: Request,
     token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
     db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
-    service = DocumentService(db)
-    item = service.get_document_in_organization(
-        document_id=str(document_id),
-        organization_id=str(token_payload.get("organization_id")),
-    )
-    _authorize_document_mutation(item=item, token_payload=token_payload)
-    if _is_invoice_document(item):
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail={
-                "code": "invoice_document_managed_by_invoice_workflow",
-                "message": (
-                    "Invoice documents are managed from the invoice workflow. "
-                    "Use Regenerate Invoice to replace this file."
-                ),
+    trace_started_at = time.perf_counter()
+    timings: dict[str, int] = {
+        "db_lookup_ms": 0,
+        "invoice_doc_guard_ms": 0,
+        "file_storage_delete_ms": 0,
+        "db_delete_ms": 0,
+        "commit_ms": 0,
+    }
+    trace_context: dict[str, Any] = {
+        "request_id": getattr(request.state, "request_id", None),
+        "document_id": str(document_id),
+        "load_id": None,
+        "org_id": (
+            str(token_payload.get("organization_id"))
+            if token_payload.get("organization_id")
+            else None
+        ),
+        "user_id": str(token_payload.get("sub")) if token_payload.get("sub") else None,
+        "limiter_bucket": getattr(request.state, "limiter_bucket", None),
+        "limiter_wait_ms": getattr(request.state, "limiter_wait_ms", None),
+        "client_disconnected": None,
+    }
+
+    try:
+        service = DocumentService(db)
+        stage_started_at = time.perf_counter()
+        item = service.get_document_in_organization(
+            document_id=str(document_id),
+            organization_id=str(token_payload.get("organization_id")),
+        )
+        timings["db_lookup_ms"] = int((time.perf_counter() - stage_started_at) * 1000)
+        trace_context.update(
+            {
+                "load_id": str(item.load_id) if getattr(item, "load_id", None) else None,
+                "org_id": str(item.organization_id),
+                "document_type": _enum_to_string(item.document_type),
+                "processing_status": _document_processing_value(item),
+            }
+        )
+        _authorize_document_mutation(item=item, token_payload=token_payload)
+
+        stage_started_at = time.perf_counter()
+        if _is_invoice_document(item):
+            timings["invoice_doc_guard_ms"] = int((time.perf_counter() - stage_started_at) * 1000)
+            logger.info(
+                "Document delete trace completed",
+                extra={
+                    **trace_context,
+                    **timings,
+                    "response_ms": int((time.perf_counter() - trace_started_at) * 1000),
+                    "delete_outcome": "invoice_document_guard_rejected",
+                    "status_code": status.HTTP_409_CONFLICT,
+                },
+            )
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "code": "invoice_document_managed_by_invoice_workflow",
+                    "message": (
+                        "Invoice documents are managed from the invoice workflow. "
+                        "Use Regenerate Invoice to replace this file."
+                    ),
+                },
+            )
+        timings["invoice_doc_guard_ms"] = int((time.perf_counter() - stage_started_at) * 1000)
+
+        storage_key = getattr(item, "storage_key", None)
+        if storage_key:
+            stage_started_at = time.perf_counter()
+            try:
+                StorageService().delete(relative_path=storage_key)
+            except Exception:
+                logger.exception(
+                    "Document storage delete failed during document delete",
+                    extra={**trace_context, "storage_key": storage_key},
+                )
+            timings["file_storage_delete_ms"] = int((time.perf_counter() - stage_started_at) * 1000)
+
+        _log_document_event(
+            db=db,
+            organization_id=item.organization_id,
+            document_id=item.id,
+            action="document.deleted",
+            token_payload=token_payload,
+            metadata={
+                "document_type": _enum_to_string(item.document_type),
+                "filename": item.original_filename,
             },
         )
-    _log_document_event(
-        db=db,
-        organization_id=item.organization_id,
-        document_id=item.id,
-        action="document.deleted",
-        token_payload=token_payload,
-        metadata={
-            "document_type": _enum_to_string(item.document_type),
-            "filename": item.original_filename,
-        },
-    )
-    service.delete_document(document_id=str(document_id))
-    db.commit()
-    return ApiResponse(
-        data={"id": str(document_id), "deleted": True}, meta={}, error=None
-    )
+
+        load_id = str(item.load_id) if item.load_id else None
+        stage_started_at = time.perf_counter()
+        service.document_repo.delete(item)
+        db.expire_all()
+        if load_id:
+            service._sync_load_document_flags(load_id)
+        timings["db_delete_ms"] = int((time.perf_counter() - stage_started_at) * 1000)
+
+        stage_started_at = time.perf_counter()
+        db.commit()
+        timings["commit_ms"] = int((time.perf_counter() - stage_started_at) * 1000)
+
+        logger.info(
+            "Document delete trace completed",
+            extra={
+                **trace_context,
+                **timings,
+                "response_ms": int((time.perf_counter() - trace_started_at) * 1000),
+                "delete_outcome": "deleted",
+                "status_code": status.HTTP_200_OK,
+            },
+        )
+        return ApiResponse(
+            data={"id": str(document_id), "deleted": True}, meta={}, error=None
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception(
+            "Document delete trace failed",
+            extra={
+                **trace_context,
+                **timings,
+                "response_ms": int((time.perf_counter() - trace_started_at) * 1000),
+                "exception_type": type(exc).__name__,
+                "exception_message": str(exc),
+            },
+        )
+        raise
 
 
 @router.post("/documents/{document_id}/extract", response_model=ApiResponse)

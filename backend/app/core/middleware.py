@@ -242,9 +242,14 @@ class RequestConcurrencyLimitMiddleware(BaseHTTPMiddleware):
             semaphore = asyncio.Semaphore(int(config["capacity"]))
             self._semaphores[key] = semaphore
 
+        limiter_started_at = time.perf_counter()
         try:
             await asyncio.wait_for(semaphore.acquire(), timeout=float(config["timeout_seconds"]))
         except TimeoutError:
+            request.state.limiter_bucket = bucket
+            request.state.limiter_wait_ms = round(
+                (time.perf_counter() - limiter_started_at) * 1000, 2
+            )
             logger.warning(
                 "API concurrency limiter rejected request",
                 extra={
@@ -283,6 +288,9 @@ class RequestConcurrencyLimitMiddleware(BaseHTTPMiddleware):
             )
         try:
             request.state.limiter_bucket = bucket
+            request.state.limiter_wait_ms = round(
+                (time.perf_counter() - limiter_started_at) * 1000, 2
+            )
             response = await call_next(request)
             response.headers.setdefault("X-Concurrency-Limit", bucket)
             return response
