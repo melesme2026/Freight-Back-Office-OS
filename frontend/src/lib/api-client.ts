@@ -213,6 +213,14 @@ function isAbortError(error: unknown): boolean {
   return error instanceof DOMException && error.name === "AbortError";
 }
 
+function logApiClientDiagnostic(message: string, details: Record<string, unknown>): void {
+  if (typeof console === "undefined") {
+    return;
+  }
+
+  console.warn(message, details);
+}
+
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const {
     token,
@@ -244,14 +252,19 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     !normalizedHeaders["content-type"];
 
   const controller = new AbortController();
+  let didTimeout = false;
   const timeout = timeoutMs > 0
-    ? globalThis.setTimeout(() => controller.abort(), timeoutMs)
+    ? globalThis.setTimeout(() => {
+        didTimeout = true;
+        controller.abort();
+      }, timeoutMs)
     : null;
+  const abortFromCaller = () => controller.abort();
   if (signal) {
     if (signal.aborted) {
-      controller.abort();
+      abortFromCaller();
     } else {
-      signal.addEventListener("abort", () => controller.abort(), { once: true });
+      signal.addEventListener("abort", abortFromCaller, { once: true });
     }
   }
 
@@ -273,21 +286,39 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     });
   } catch (caught: unknown) {
     if (isAbortError(caught)) {
-      throw new ApiClientError("Request timed out. Please try again.", {
-        status: 504,
-        code: "client_timeout",
+      const durationMs = Date.now() - startedAt;
+      const method = rest.method ?? "GET";
+      logApiClientDiagnostic("API request aborted", {
+        path,
+        method,
+        durationMs,
+        timeoutMs,
+        reason: didTimeout ? "client_timeout" : "caller_abort",
       });
+      throw new ApiClientError(
+        didTimeout
+          ? `Request timed out after ${timeoutMs}ms (${method} ${path}). Please try again.`
+          : `Request was canceled (${method} ${path}). Please try again.`,
+        {
+          status: didTimeout ? 504 : 499,
+          code: didTimeout ? "client_timeout" : "client_aborted",
+          details: { path, method, durationMs, timeoutMs },
+        }
+      );
     }
     throw caught;
   } finally {
     if (timeout !== null) {
       globalThis.clearTimeout(timeout);
     }
+    if (signal) {
+      signal.removeEventListener("abort", abortFromCaller);
+    }
   }
 
   const durationMs = Date.now() - startedAt;
-  if (durationMs >= 2_000 && typeof console !== "undefined") {
-    console.warn("Slow API request", { path, method: rest.method ?? "GET", durationMs, status: response.status });
+  if (durationMs >= 2_000) {
+    logApiClientDiagnostic("Slow API request", { path, method: rest.method ?? "GET", durationMs, status: response.status });
   }
 
   if (!response.ok) {
