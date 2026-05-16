@@ -8,7 +8,7 @@ from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from app.core.exceptions import NotFoundError
-from app.domain.enums.document_type import DocumentType
+from app.domain.enums.document_type import DocumentType, canonical_document_type
 from app.domain.models.extracted_field import ExtractedField
 from app.domain.models.load import Load
 from app.domain.models.load_document import LoadDocument
@@ -115,7 +115,8 @@ class PacketAuditService:
     ) -> list[PacketAuditFinding]:
         present_types = {self._doc_type(document.document_type) for document in documents}
         packet_types = {
-            self._clean(getattr(item, "document_type", None)) for item in packet_documents
+            canonical_document_type(getattr(item, "document_type", None), default="")
+            for item in packet_documents
         }
         findings: list[PacketAuditFinding] = []
         for document_type, code, severity in self.REQUIRED_DOCUMENT_RULES:
@@ -464,7 +465,7 @@ class PacketAuditService:
 
     @staticmethod
     def _doc_type(value: Any) -> str:
-        return getattr(value, "value", str(value or "unknown"))
+        return canonical_document_type(value)
 
     @staticmethod
     def _clean(value: Any, *, lower: bool = False) -> str | None:

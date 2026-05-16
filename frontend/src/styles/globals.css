@@ -47,6 +47,18 @@ a {
   text-decoration: none;
 }
 
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  max-width: 100%;
+  overflow-x: clip;
+}
+
 button,
 input,
 select,
@@ -60,7 +72,12 @@ textarea {
 }
 @layer utilities {
   .safe-page {
+    max-width: 100%;
     overflow-x: clip;
+  }
+
+  .safe-page * {
+    min-width: 0;
   }
 
   .touch-target {

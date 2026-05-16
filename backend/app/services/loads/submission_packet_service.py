@@ -6,7 +6,7 @@ import zipfile
 from datetime import datetime, timezone
 
 from app.core.exceptions import NotFoundError, ValidationError
-from app.domain.enums.document_type import DocumentType
+from app.domain.enums.document_type import DocumentType, canonical_document_type
 from app.domain.enums.load_status import LoadStatus
 from app.domain.models.load import Load
 from app.domain.models.load_document import LoadDocument
@@ -378,7 +378,7 @@ class SubmissionPacketService:
             ),
             reverse=True,
         ):
-            doc_type = self._clean(getattr(snapshot_doc, "document_type", None))
+            doc_type = canonical_document_type(getattr(snapshot_doc, "document_type", None), default="")
             if not doc_type:
                 continue
             docs_by_type.setdefault(doc_type, []).append(snapshot_doc)
@@ -404,8 +404,7 @@ class SubmissionPacketService:
         return selected
 
     def _doc_type_value(self, document: LoadDocument) -> str:
-        document_type = getattr(document, "document_type", None)
-        return getattr(document_type, "value", str(document_type or "unknown"))
+        return canonical_document_type(getattr(document, "document_type", None))
 
     def _optional_uuid(self, value: str | None) -> uuid.UUID | None:
         cleaned = self._clean(value)
