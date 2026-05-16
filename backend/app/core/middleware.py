@@ -4,7 +4,6 @@ import asyncio
 import logging
 import time
 import uuid
-from collections import defaultdict
 from collections.abc import Callable
 
 from app.core.config import get_settings
@@ -120,6 +119,7 @@ class ProcessTimeMiddleware(BaseHTTPMiddleware):
                 "query_count": metrics.query_count if metrics else 0,
                 "request_id": getattr(request.state, "request_id", None),
                 "organization_id": request.headers.get("x-organization-id"),
+                "limiter_bucket": getattr(request.state, "limiter_bucket", None),
             }
             if (
                 (metrics and metrics.query_count >= 20)
@@ -136,63 +136,155 @@ class ProcessTimeMiddleware(BaseHTTPMiddleware):
 
 
 class RequestConcurrencyLimitMiddleware(BaseHTTPMiddleware):
-    """Bound concurrent expensive load-detail panel requests per organization/path.
+    """Bound concurrent API work without letting background reads block writes.
 
-    This keeps a single browser session from fanning out enough hot endpoints to
-    monopolize API workers while still allowing the core /loads/{id} response and
-    health checks to bypass the limiter.
+    Load-detail hydration previously shared one "hot" bucket for documents,
+    packet audit, review context, staff users, and even upload/delete routes.
+    That protected workers but allowed optional background GETs to reject normal
+    user actions with a load-detail-specific message.  The limiter now classifies
+    requests into independent buckets so user writes have their own capacity and
+    a longer acquisition window while optional panel reads fail fast and can be
+    retried by the UI.
     """
 
-    HOT_PATH_MARKERS = (
+    BACKGROUND_READ_MARKERS = (
         "/documents",
         "/submission-packets",
         "/payment-reconciliation",
         "/review-queue/loads/",
         "/packet-audit",
         "/staff-users",
-        "/documents/upload",
+        "/follow-ups",
+        "/invoice-status",
     )
-    _semaphores: dict[str, asyncio.Semaphore] = defaultdict(
-        lambda: asyncio.Semaphore(4)
+    WORKFLOW_WRITE_MARKERS = (
+        "/workflow-actions",
+        "/advance-status",
+        "/quick-status",
+        "/submission-packets",
+        "/payment-reconciliation",
+        "/follow-ups",
+        "/review-queue",
+        "/carrier-profile",
+        "/customer-accounts",
+        "/brokers",
+        "/drivers",
+        "/staff-users",
     )
+    BYPASS_PREFIXES = (
+        "/health",
+        "/api/v1/health",
+        "/api/v1/auth",
+        "/openapi.json",
+        "/docs",
+        "/redoc",
+    )
+    BUCKET_CONFIG = {
+        "core_reads": {"capacity": 6, "timeout_seconds": 0.25},
+        "background_panel_reads": {"capacity": 2, "timeout_seconds": 0.05},
+        "document_writes": {"capacity": 6, "timeout_seconds": 1.0},
+        "invoice_actions": {"capacity": 4, "timeout_seconds": 1.0},
+        "workflow_status_mutations": {"capacity": 6, "timeout_seconds": 1.0},
+    }
+    _semaphores: dict[str, asyncio.Semaphore] = {}
 
-    def _is_hot_path(self, path: str) -> bool:
-        return path.startswith("/api/v1/") and any(
-            marker in path for marker in self.HOT_PATH_MARKERS
+    def _bucket_for_request(self, request: Request) -> str | None:
+        path = request.url.path
+        method = request.method.upper()
+        if method == "OPTIONS" or not path.startswith("/api/v1/"):
+            return None
+        if path.startswith(self.BYPASS_PREFIXES):
+            return None
+
+        is_document_upload = (
+            "/documents/upload" in path
+            or "/driver/documents/upload" in path
+            or ("/portal/" in path and "/documents/upload" in path)
         )
+        if is_document_upload:
+            return "document_writes"
+        if method == "GET" and "/documents/" in path and path.endswith("/download"):
+            return "document_writes"
+        if "/documents/" in path and method in {"POST", "PATCH", "PUT", "DELETE"}:
+            return "document_writes"
+        if "/invoice" in path and "/invoice-status" not in path:
+            return "invoice_actions"
+        if method in {"POST", "PATCH", "PUT", "DELETE"} and any(
+            marker in path for marker in self.WORKFLOW_WRITE_MARKERS
+        ):
+            return "workflow_status_mutations"
+        if method == "GET" and any(marker in path for marker in self.BACKGROUND_READ_MARKERS):
+            return "background_panel_reads"
+        if method == "GET" and path.startswith("/api/v1/loads/"):
+            return "core_reads"
+        return None
 
-    def _key(self, request: Request) -> str:
+    def _semaphore_key(self, request: Request, bucket: str) -> str:
         org = request.headers.get("x-organization-id") or "unknown-org"
         ip = client_ip(request) or "unknown-ip"
-        return f"{org}:{ip}"
+        return f"{bucket}:{org}:{ip}"
+
+    @classmethod
+    def reset(cls) -> None:
+        cls._semaphores.clear()
 
     async def dispatch(
         self, request: Request, call_next: Callable[[Request], Response]
     ) -> Response:
-        if request.method.upper() == "OPTIONS" or not self._is_hot_path(
-            request.url.path
-        ):
+        bucket = self._bucket_for_request(request)
+        if bucket is None:
             return await call_next(request)
 
-        semaphore = self._semaphores[self._key(request)]
+        config = self.BUCKET_CONFIG[bucket]
+        key = self._semaphore_key(request, bucket)
+        semaphore = self._semaphores.get(key)
+        if semaphore is None:
+            semaphore = asyncio.Semaphore(int(config["capacity"]))
+            self._semaphores[key] = semaphore
+
         try:
-            await asyncio.wait_for(semaphore.acquire(), timeout=0.05)
+            await asyncio.wait_for(semaphore.acquire(), timeout=float(config["timeout_seconds"]))
         except TimeoutError:
+            logger.warning(
+                "API concurrency limiter rejected request",
+                extra={
+                    "endpoint": request.url.path,
+                    "method": request.method,
+                    "request_id": getattr(request.state, "request_id", None),
+                    "limiter_bucket": bucket,
+                    "limiter_key": key,
+                    "limiter_rejection_reason": "bucket_capacity_exhausted",
+                },
+            )
+            user_message = (
+                "This optional panel is still loading. Please retry this panel shortly."
+                if bucket == "background_panel_reads"
+                else "This action is busy. Please try again shortly."
+            )
             return JSONResponse(
                 status_code=429,
-                headers={"Retry-After": "1", "X-Concurrency-Limit": "hot-load-detail"},
+                headers={
+                    "Retry-After": "1",
+                    "X-Concurrency-Limit": bucket,
+                    "X-Concurrency-Rejection-Reason": "bucket_capacity_exhausted",
+                },
                 content={
                     "data": None,
-                    "meta": {"request_id": getattr(request.state, "request_id", None)},
+                    "meta": {
+                        "request_id": getattr(request.state, "request_id", None),
+                        "limiter_bucket": bucket,
+                    },
                     "error": {
                         "code": "request_concurrency_limited",
-                        "message": "Too many load-detail requests are running. Please retry this panel shortly.",
+                        "message": user_message,
+                        "details": {"bucket": bucket},
                     },
                 },
             )
         try:
+            request.state.limiter_bucket = bucket
             response = await call_next(request)
-            response.headers.setdefault("X-Concurrency-Limit", "hot-load-detail")
+            response.headers.setdefault("X-Concurrency-Limit", bucket)
             return response
         finally:
             semaphore.release()
