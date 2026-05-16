@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 
 from app.core.exceptions import AppError, UnauthorizedError
 from app.core.security import create_access_token, verify_password
+from app.domain.enums.role import Role
 from app.domain.models.organization import Organization
 from app.domain.models.staff_user import StaffUser
 from app.repositories.driver_repo import DriverRepository
@@ -66,6 +67,10 @@ class AuthService:
         organization_records = list(self.db.execute(stmt).all())
 
         if not organization_records:
+            if normalized_required_role == Role.DRIVER:
+                raise UnauthorizedError(
+                    "Driver account not found or not activated. Please contact your dispatcher."
+                )
             raise UnauthorizedError("Invalid email or password")
 
         if len(organization_records) > 1:
@@ -99,16 +104,24 @@ class AuthService:
         email: str,
         password: str,
         organization_id: uuid.UUID | None = None,
+        required_role: Role | str | None = None,
     ) -> StaffUser:
         normalized_email = email.strip().lower()
+        normalized_required_role = self._normalize_role(required_role)
         stmt = (
             select(StaffUser, Organization.name)
             .join(Organization, StaffUser.organization_id == Organization.id)
             .where(StaffUser.email == normalized_email, StaffUser.is_active.is_(True))
         )
+        if normalized_required_role is not None:
+            stmt = stmt.where(StaffUser.role == normalized_required_role)
         organization_records = list(self.db.execute(stmt).all())
 
         if not organization_records:
+            if normalized_required_role == Role.DRIVER:
+                raise UnauthorizedError(
+                    "Driver account not found or not activated. Please contact your dispatcher."
+                )
             raise UnauthorizedError("Invalid email or password")
 
         if organization_id is not None:
@@ -131,12 +144,18 @@ class AuthService:
             if verify_password(password, record.StaffUser.password_hash)
         ]
         if not password_matches:
+            if normalized_required_role == Role.DRIVER:
+                raise UnauthorizedError(
+                    "Driver account not found or not activated. Please contact your dispatcher."
+                )
             raise UnauthorizedError("Invalid email or password")
 
         active_matches = []
         inactive_driver_matches = []
         for record in password_matches:
-            role_value = str(getattr(record.StaffUser.role, "value", record.StaffUser.role)).lower()
+            role_value = str(
+                getattr(record.StaffUser.role, "value", record.StaffUser.role)
+            ).lower()
             if role_value != "driver":
                 active_matches.append(record)
                 continue
@@ -147,7 +166,9 @@ class AuthService:
                 include_related=False,
             )
             if driver is None:
-                raise UnauthorizedError("Driver account is not linked to a driver profile")
+                raise UnauthorizedError(
+                    "Driver account not found or not activated. Please contact your dispatcher."
+                )
             if not driver.is_active:
                 inactive_driver_matches.append(record)
                 continue
@@ -155,7 +176,9 @@ class AuthService:
 
         if not active_matches:
             if inactive_driver_matches:
-                raise UnauthorizedError("This driver account is inactive. Contact your dispatcher.")
+                raise UnauthorizedError(
+                    "Driver account not found or not activated. Please contact your dispatcher."
+                )
             raise UnauthorizedError("Invalid email or password")
         password_matches = active_matches
 
@@ -221,12 +244,27 @@ class AuthService:
                 include_related=False,
             )
             if driver is None:
-                raise UnauthorizedError("Driver account is not linked to a driver profile")
+                raise UnauthorizedError(
+                    "Driver account not found or not activated. Please contact your dispatcher."
+                )
             if not driver.is_active:
-                raise UnauthorizedError("This driver account is inactive. Contact your dispatcher.")
+                raise UnauthorizedError(
+                    "Driver account not found or not activated. Please contact your dispatcher."
+                )
             additional_claims["driver_id"] = str(driver.id)
 
         return create_access_token(
             subject=str(user.id),
             additional_claims=additional_claims,
         )
+
+    def _normalize_role(self, value: Role | str | None) -> Role | None:
+        if value is None:
+            return None
+        if isinstance(value, Role):
+            return value
+        normalized = str(value).strip().lower()
+        for role in Role:
+            if normalized in {role.value.lower(), role.name.lower()}:
+                return role
+        raise ValueError(f"Invalid required_role: {value}")

@@ -65,7 +65,7 @@ class DriverRepository:
 
         stmt = select(Driver).where(
             Driver.organization_id == normalized_organization_id,
-            func.lower(Driver.email) == normalized_email,
+            Driver.email == normalized_email,
         )
 
         if include_related:
@@ -108,10 +108,14 @@ class DriverRepository:
 
         if normalized_organization_id is not None:
             stmt = stmt.where(Driver.organization_id == normalized_organization_id)
-            count_stmt = count_stmt.where(Driver.organization_id == normalized_organization_id)
+            count_stmt = count_stmt.where(
+                Driver.organization_id == normalized_organization_id
+            )
 
         if normalized_customer_account_id is not None:
-            stmt = stmt.where(Driver.customer_account_id == normalized_customer_account_id)
+            stmt = stmt.where(
+                Driver.customer_account_id == normalized_customer_account_id
+            )
             count_stmt = count_stmt.where(
                 Driver.customer_account_id == normalized_customer_account_id
             )
@@ -133,7 +137,11 @@ class DriverRepository:
         total = int(self.db.scalar(count_stmt) or 0)
 
         offset = (normalized_page - 1) * normalized_page_size
-        stmt = stmt.order_by(Driver.created_at.desc()).offset(offset).limit(normalized_page_size)
+        stmt = (
+            stmt.order_by(Driver.created_at.desc())
+            .offset(offset)
+            .limit(normalized_page_size)
+        )
 
         items = list(self.db.scalars(stmt).all())
         return items, total

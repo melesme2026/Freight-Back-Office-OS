@@ -72,7 +72,7 @@ export default function DriverPortalLayout({
 
   function handleLogout() {
     clearAuth();
-    router.replace("/");
+    router.replace("/driver-login?reason=logged_out");
   }
 
   if (!isHydrated || !hasDriverAccess) {

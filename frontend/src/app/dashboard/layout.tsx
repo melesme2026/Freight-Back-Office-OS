@@ -108,7 +108,7 @@ export default function DashboardLayout({
 
   function handleLogout() {
     clearAuth();
-    router.replace("/");
+    router.replace("/login?reason=logged_out");
   }
 
   if (!mounted) {
