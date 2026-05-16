@@ -6,7 +6,7 @@ export default function HomePage() {
       <div className="mx-auto flex min-h-screen max-w-7xl flex-col justify-center px-6 py-16">
         <div className="max-w-3xl">
           <div className="mb-6 inline-flex items-center rounded-full border border-slate-200 bg-white px-3 py-1 text-sm font-medium text-slate-600 shadow-sm">
-            Freight Back Office OS V1
+            Freight Back Office OS
           </div>
 
           <h1 className="text-4xl font-bold tracking-tight text-slate-950 sm:text-5xl">

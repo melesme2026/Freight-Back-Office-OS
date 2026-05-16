@@ -11,6 +11,7 @@ import {
 } from "react";
 
 import { ApiClientError, apiClient } from "@/lib/api-client";
+import { documentTypeLabel, isDocumentType } from "@/lib/document-types";
 import { parseUploadErrorResponse, isHtmlErrorText } from "@/lib/upload-errors";
 import { getAccessToken, getOrganizationId } from "@/lib/auth";
 import { buildApiUrl as buildConfiguredApiUrl } from "@/lib/config";
@@ -524,8 +525,8 @@ function optionalSectionErrorMessage(
 ): string {
   const detail = extractErrorMessage(caught, "");
   return detail
-    ? `${OPTIONAL_SECTION_LABELS[section]} is temporarily unavailable. ${detail}`
-    : `${OPTIONAL_SECTION_LABELS[section]} is temporarily unavailable. Refresh this section when ready.`;
+    ? `${OPTIONAL_SECTION_LABELS[section]} needs a moment to refresh. ${detail}`
+    : `${OPTIONAL_SECTION_LABELS[section]} will refresh automatically when data is available.`;
 }
 
 function isMobileViewport(): boolean {
@@ -1043,49 +1044,7 @@ function normalizeLoadIdParam(
 }
 
 function normalizeDocumentTypeLabel(value?: string | null) {
-  const normalized = (value ?? "").trim().toLowerCase();
-
-  switch (normalized) {
-    case "ratecon":
-    case "rate_confirmation":
-    case "rate-confirmation":
-    case "rate confirmation":
-      return "Rate Confirmation";
-    case "bol":
-    case "bill_of_lading":
-    case "bill-of-lading":
-    case "bill of lading":
-      return "Bill of Lading";
-    case "invoice":
-      return "Invoice";
-    case "pod":
-    case "proof_of_delivery":
-    case "proof-of-delivery":
-    case "proof of delivery":
-      return "Proof of Delivery";
-    case "lumper_receipt":
-    case "lumper receipt":
-      return "Lumper Receipt";
-    case "detention_support":
-    case "detention support":
-      return "Detention Support";
-    case "scale_ticket":
-    case "scale ticket":
-      return "Scale Ticket";
-    case "accessorial_support":
-    case "accessorial support":
-      return "Accessorial Support";
-    case "payment_remittance":
-    case "payment remittance":
-      return "Fuel/Expense Receipt";
-    case "damage_claim_photo":
-    case "damage claim photo":
-      return "Damage Claim Photo";
-    case "unknown":
-      return "Unknown";
-    default:
-      return value && value.trim().length > 0 ? value : "Unknown";
-  }
+  return documentTypeLabel(value);
 }
 
 function getDocumentDisplayName(document: LoadDocument) {
@@ -1102,8 +1061,7 @@ function matchesDocumentType(
   document: LoadDocument,
   aliases: string[],
 ): boolean {
-  const normalized = (document.document_type ?? "").trim().toLowerCase();
-  return aliases.includes(normalized);
+  return isDocumentType(document.document_type, aliases);
 }
 
 function normalizeSubmissionPacket(item: unknown): SubmissionPacket | null {
@@ -1386,7 +1344,7 @@ function SectionLoadNotice({
         className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600"
         role="status"
       >
-        {emptyMessage ?? "Loading section..."}
+        {emptyMessage ?? "Refreshing section data..."}
       </div>
     );
   }
@@ -1844,6 +1802,7 @@ export default function LoadDetailPage() {
       );
       setSubmissionPackets(await fetchSubmissionPackets());
       setPacketAudit(await fetchPacketAudit());
+      setLoad(await fetchLoad());
       setActionMessage("Billing packet created.");
     } catch (caught: unknown) {
       setError(extractErrorMessage(caught, "Failed to create billing packet."));
@@ -1890,25 +1849,10 @@ export default function LoadDetailPage() {
       setDownloadingPacketId(packetId);
       setError(null);
       const token = getAccessToken();
-      const organizationId = getOrganizationId();
-      const response = await fetch(
-        buildConfiguredApiUrl(
-          `/loads/${encodeURIComponent(loadId)}/submission-packets/${encodeURIComponent(packetId)}/download`,
-        ),
-        {
-          method: "GET",
-          headers: {
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-            ...(organizationId ? { "X-Organization-Id": organizationId } : {}),
-          },
-        },
+      const blob = await apiClient.getBlob(
+        `/loads/${encodeURIComponent(loadId)}/submission-packets/${encodeURIComponent(packetId)}/download`,
+        { token: token ?? undefined, timeoutMs: 15_000, dedupe: false },
       );
-      if (!response.ok) {
-        throw new Error(
-          (await response.text()) || "Failed to download packet ZIP.",
-        );
-      }
-      const blob = await response.blob();
       const blobUrl = window.URL.createObjectURL(blob);
       const link = window.document.createElement("a");
       link.href = blobUrl;
@@ -2754,6 +2698,11 @@ export default function LoadDetailPage() {
   const canAdvanceStatus =
     Boolean(nextStatus) && !workflowBlockedReason && !isAdvancing;
 
+  const canCreateSubmissionPacket =
+    load?.packet_readiness?.ready_to_submit === true &&
+    !hasBlockingPacketAudit(packetAudit) &&
+    !isSubmissionBusy;
+
   const canUploadDocuments = useMemo(() => {
     return Boolean(
       load?.id && load?.customer_account_id && getOrganizationId(),
@@ -2847,7 +2796,7 @@ export default function LoadDetailPage() {
           ? "Required docs received and no open validation blockers."
           : documentsReady
             ? "Resolve validation blockers before submission."
-            : "Collect RateCon, BOL, and Invoice documents.",
+            : "Collect rate confirmation, POD, and invoice documents.",
       },
       {
         key: "submission",
@@ -3608,6 +3557,12 @@ export default function LoadDetailPage() {
             updatedLoad.packet_readiness?.present_documents ?? [],
         });
       }
+      const [updatedPackets, updatedAudit] = await Promise.all([
+        fetchSubmissionPackets().catch(() => null),
+        fetchPacketAudit().catch(() => null),
+      ]);
+      if (updatedPackets) setSubmissionPackets(updatedPackets);
+      setPacketAudit(updatedAudit);
 
       if (reason === "success" && !uploadedDocumentExists) {
         const visibleCandidate = {
@@ -4080,6 +4035,12 @@ export default function LoadDetailPage() {
             updatedLoad.packet_readiness?.present_documents ?? [],
         });
       }
+      const [updatedPackets, updatedAudit] = await Promise.all([
+        fetchSubmissionPackets().catch(() => null),
+        fetchPacketAudit().catch(() => null),
+      ]);
+      if (updatedPackets) setSubmissionPackets(updatedPackets);
+      setPacketAudit(updatedAudit);
 
       if (reason === "timeout" && documentStillExists) {
         loadDocumentsRef.current = documentsBeforeDelete;
@@ -4803,28 +4764,28 @@ export default function LoadDetailPage() {
                 <button
                   type="button"
                   onClick={() => void handleCreateSubmissionPacket()}
-                  disabled={isSubmissionBusy}
-                  className="touch-target rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:opacity-50"
+                  disabled={!canCreateSubmissionPacket}
+                  className="touch-target w-full rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
                 >
                   {isSubmissionBusy ? "Working..." : "Create Submission Packet"}
                 </button>
               </div>
               <div className="mb-4 text-sm text-slate-700">
-                Required docs: Invoice, Rate Confirmation, Proof of Delivery,
-                Bill of Lading. Missing:{" "}
-                {(
-                  load.packet_readiness?.missing_required_documents
-                    ?.submission ?? []
-                ).join(", ") || "none"}
+                Required docs: Invoice, Rate Confirmation, Proof of Delivery.
+                Recommended: Bill of Lading. Missing:{" "}
+                {missingSubmissionDocuments.join(", ") || "none"}
                 .
               </div>
               <SectionLoadNotice
-                isLoading={optionalSectionLoading.packetAudit}
-                error={optionalSectionErrors.packetAudit}
-              />
-              <SectionLoadNotice
-                isLoading={optionalSectionLoading.submissionPackets}
-                error={optionalSectionErrors.submissionPackets}
+                isLoading={
+                  optionalSectionLoading.packetAudit ||
+                  optionalSectionLoading.submissionPackets
+                }
+                error={
+                  optionalSectionErrors.packetAudit ??
+                  optionalSectionErrors.submissionPackets
+                }
+                emptyMessage="Refreshing packet status..."
               />
               {packetAudit ? (
                 <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50 p-3">

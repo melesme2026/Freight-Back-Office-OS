@@ -169,7 +169,7 @@ const faqs = [
   {
     question: "Do you claim plug-and-play integrations with every TMS or factoring provider?",
     answer:
-      "No. Current onboarding focuses on the operational workflow first. Specific integrations should be reviewed during the demo and planned based on your tools.",
+      "No. Current onboarding focuses on the operational workflow first. Specific integrations are reviewed during the demo and prioritized around your operating stack.",
   },
 ];
 

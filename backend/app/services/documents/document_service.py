@@ -6,7 +6,7 @@ from typing import Any
 
 from app.core.exceptions import DuplicateRecordError, NotFoundError, ValidationError
 from app.domain.enums.channel import Channel
-from app.domain.enums.document_type import DocumentType
+from app.domain.enums.document_type import DocumentType, normalize_document_type_value
 from app.domain.enums.processing_status import ProcessingStatus
 from app.domain.models.load import Load
 from app.domain.models.load_document import LoadDocument
@@ -431,14 +431,15 @@ class DocumentService:
             ).all()
         )
         readiness = calculate_packet_readiness(document_types=present_document_types)
+        present_values = set(readiness["present_documents"])
 
         self.db.execute(
             update(Load)
             .where(Load.id == normalized_load_id)
             .values(
-                has_ratecon=DocumentType.RATE_CONFIRMATION in present_document_types,
-                has_bol=DocumentType.BILL_OF_LADING in present_document_types,
-                has_invoice=DocumentType.INVOICE in present_document_types,
+                has_ratecon=DocumentType.RATE_CONFIRMATION.value in present_values,
+                has_bol=DocumentType.BILL_OF_LADING.value in present_values,
+                has_invoice=DocumentType.INVOICE.value in present_values,
                 documents_complete=bool(readiness["ready_to_submit"]),
             )
             .execution_options(synchronize_session=False)
@@ -454,14 +455,15 @@ class DocumentService:
 
         present_document_types = [document.document_type for document in documents]
         readiness = calculate_packet_readiness(document_types=present_document_types)
+        present_values = set(readiness["present_documents"])
 
         self.db.execute(
             update(Load)
             .where(Load.id == self._normalize_required_text("load_id", load_id))
             .values(
-                has_ratecon=DocumentType.RATE_CONFIRMATION in present_document_types,
-                has_bol=DocumentType.BILL_OF_LADING in present_document_types,
-                has_invoice=DocumentType.INVOICE in present_document_types,
+                has_ratecon=DocumentType.RATE_CONFIRMATION.value in present_values,
+                has_bol=DocumentType.BILL_OF_LADING.value in present_values,
+                has_invoice=DocumentType.INVOICE.value in present_values,
                 documents_complete=bool(readiness["ready_to_submit"]),
             )
             .execution_options(synchronize_session="fetch")
@@ -475,67 +477,11 @@ class DocumentService:
         *,
         allow_none: bool = False,
     ) -> DocumentType | None:
-        if value is None:
-            if allow_none:
-                return None
-            return DocumentType.UNKNOWN
-
-        if isinstance(value, DocumentType):
-            return value
-
-        normalized = str(value).strip().lower()
-        if not normalized:
-            if allow_none:
-                return None
-            return DocumentType.UNKNOWN
-
-        aliases: dict[str, DocumentType] = {
-            "unknown": DocumentType.UNKNOWN,
-            "rate confirmation": DocumentType.RATE_CONFIRMATION,
-            "rate_confirmation": DocumentType.RATE_CONFIRMATION,
-            "rate-confirmation": DocumentType.RATE_CONFIRMATION,
-            "ratecon": DocumentType.RATE_CONFIRMATION,
-            "rc": DocumentType.RATE_CONFIRMATION,
-            "bill of lading": DocumentType.BILL_OF_LADING,
-            "bill_of_lading": DocumentType.BILL_OF_LADING,
-            "bill-of-lading": DocumentType.BILL_OF_LADING,
-            "bol": DocumentType.BILL_OF_LADING,
-            "proof of delivery": DocumentType.PROOF_OF_DELIVERY,
-            "proof_of_delivery": DocumentType.PROOF_OF_DELIVERY,
-            "proof-of-delivery": DocumentType.PROOF_OF_DELIVERY,
-            "pod": DocumentType.PROOF_OF_DELIVERY,
-            "invoice": DocumentType.INVOICE,
-            "lumper receipt": DocumentType.LUMPER_RECEIPT,
-            "lumper_receipt": DocumentType.LUMPER_RECEIPT,
-            "detention support": DocumentType.DETENTION_SUPPORT,
-            "detention_support": DocumentType.DETENTION_SUPPORT,
-            "detention approval": DocumentType.DETENTION_SUPPORT,
-            "detention_approval": DocumentType.DETENTION_SUPPORT,
-            "scale ticket": DocumentType.SCALE_TICKET,
-            "scale_ticket": DocumentType.SCALE_TICKET,
-            "accessorial support": DocumentType.ACCESSORIAL_SUPPORT,
-            "accessorial_support": DocumentType.ACCESSORIAL_SUPPORT,
-            "accessorial approval": DocumentType.ACCESSORIAL_SUPPORT,
-            "accessorial_approval": DocumentType.ACCESSORIAL_SUPPORT,
-            "payment remittance": DocumentType.PAYMENT_REMITTANCE,
-            "payment_remittance": DocumentType.PAYMENT_REMITTANCE,
-            "fuel/expense receipt": DocumentType.PAYMENT_REMITTANCE,
-            "fuel expense receipt": DocumentType.PAYMENT_REMITTANCE,
-            "fuel_expense_receipt": DocumentType.PAYMENT_REMITTANCE,
-            "notice of assignment": DocumentType.NOTICE_OF_ASSIGNMENT,
-            "notice_of_assignment": DocumentType.NOTICE_OF_ASSIGNMENT,
-            "w9": DocumentType.W9,
-            "w-9": DocumentType.W9,
-            "certificate of insurance": DocumentType.CERTIFICATE_OF_INSURANCE,
-            "certificate_of_insurance": DocumentType.CERTIFICATE_OF_INSURANCE,
-            "damage claim photo": DocumentType.DAMAGE_CLAIM_PHOTO,
-            "damage_claim_photo": DocumentType.DAMAGE_CLAIM_PHOTO,
-            "other": DocumentType.OTHER,
-        }
-
-        if normalized in aliases:
-            return aliases[normalized]
-
+        normalized = normalize_document_type_value(value, allow_none=True)
+        if normalized is not None:
+            return normalized
+        if value is None or not str(value).strip():
+            return None if allow_none else DocumentType.UNKNOWN
         raise ValidationError("Invalid document_type", details={"document_type": value})
 
     def _normalize_processing_status(

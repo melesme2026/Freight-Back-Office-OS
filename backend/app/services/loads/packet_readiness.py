@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import dataclass
 
-from app.domain.enums.document_type import DocumentType
+from app.domain.enums.document_type import DocumentType, normalize_document_type_value
 
 
 @dataclass(frozen=True)
@@ -46,13 +46,18 @@ def _document_value(document_type: DocumentType) -> str:
     return document_type.value
 
 
-def _present_values(document_types: Iterable[DocumentType]) -> set[str]:
-    return {_document_value(document_type) for document_type in document_types}
+def _present_values(document_types: Iterable[DocumentType | str | None]) -> set[str]:
+    present: set[str] = set()
+    for document_type in document_types:
+        normalized = normalize_document_type_value(document_type, allow_none=True)
+        if normalized is not None and normalized != DocumentType.UNKNOWN:
+            present.add(normalized.value)
+    return present
 
 
 def calculate_packet_readiness(
     *,
-    document_types: Iterable[DocumentType],
+    document_types: Iterable[DocumentType | str | None],
     rule_set: ReadinessRuleSet = BASELINE_RULE_SET,
 ) -> dict[str, object]:
     present = _present_values(document_types)

@@ -10,5 +10,5 @@
   "delivery_date": "2026-03-25",
   "gross_amount": 1250.0,
   "currency_code": "USD",
-  "notes": "Sample rate confirmation payload for V1 testing"
+  "notes": "Sample rate confirmation payload for validation testing"
 }

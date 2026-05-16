@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { apiClient } from "@/lib/api-client";
+import { documentTypeLabel } from "@/lib/document-types";
 import { getAccessToken, getOrganizationId } from "@/lib/auth";
 
 type ApiError = {
@@ -218,58 +219,7 @@ function processingStatusBadge(status?: string | null) {
 }
 
 function normalizeDocumentTypeLabel(value?: string | null) {
-  const normalized = (value ?? "").trim().toLowerCase();
-
-  switch (normalized) {
-    case "ratecon":
-    case "rate_confirmation":
-    case "rate-confirmation":
-    case "rate confirmation":
-      return "Rate Confirmation";
-    case "bol":
-    case "bill_of_lading":
-    case "bill-of-lading":
-    case "bill of lading":
-      return "Bill of Lading";
-    case "invoice":
-      return "Invoice";
-    case "pod":
-    case "proof_of_delivery":
-    case "proof-of-delivery":
-    case "proof of delivery":
-      return "Proof of Delivery";
-    case "lumper_receipt":
-    case "lumper receipt":
-      return "Lumper Receipt";
-    case "detention_support":
-    case "detention support":
-      return "Detention Support";
-    case "scale_ticket":
-    case "scale ticket":
-      return "Scale Ticket";
-    case "accessorial_support":
-    case "accessorial support":
-      return "Accessorial Support";
-    case "payment_remittance":
-    case "payment remittance":
-      return "Payment Remittance";
-    case "notice_of_assignment":
-    case "notice of assignment":
-      return "Notice of Assignment";
-    case "w9":
-    case "w-9":
-      return "W-9";
-    case "certificate_of_insurance":
-    case "certificate of insurance":
-      return "Certificate of Insurance";
-    case "damage_claim_photo":
-    case "damage claim photo":
-      return "Damage Claim Photo";
-    case "unknown":
-      return "Unknown";
-    default:
-      return value && value.trim().length > 0 ? value : "Unknown";
-  }
+  return documentTypeLabel(value);
 }
 
 function getDocumentDisplayName(document: LoadDocument) {
