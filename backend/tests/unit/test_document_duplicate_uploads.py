@@ -326,3 +326,77 @@ def test_owner_upload_cleans_up_file_when_database_create_fails(
     assert exc.value.status_code == 500
     assert not any(path.is_file() for path in tmp_path.rglob("*"))
     get_settings.cache_clear()
+
+
+def test_small_owner_pdf_upload_returns_without_running_extraction(
+    db_session,
+    tmp_path,
+    monkeypatch,
+    caplog,
+):
+    from app.core.config import get_settings
+    from app.domain.enums.processing_status import ProcessingStatus
+
+    org_id, customer_id, driver_id, load_id = _seed_base(db_session)
+    caplog.set_level("INFO", logger="app.api.v1.documents")
+    monkeypatch.setenv("STORAGE_LOCAL_ROOT", str(tmp_path))
+    monkeypatch.setenv("DOCUMENT_UPLOAD_EXTRACTION_ENABLED", "false")
+    get_settings.cache_clear()
+
+    def fail_if_background_extraction_runs(*args, **kwargs):
+        raise AssertionError("upload response must not block on document extraction")
+
+    monkeypatch.setattr(
+        "app.api.v1.documents.run_document_extraction_job",
+        fail_if_background_extraction_runs,
+    )
+
+    response = asyncio.run(
+        upload_document(
+            organization_id=org_id,
+            token_payload={
+                "organization_id": org_id,
+                "role": "owner",
+                "sub": "00000000-0000-0000-0000-000000009999",
+            },
+            customer_account_id=customer_id,
+            source_channel="manual",
+            file=UploadFile(
+                filename="proof_of_delivery.pdf",
+                file=BytesIO(b"%PDF-1.4\nsmall proof of delivery\n%%EOF"),
+                headers={"content-type": "application/pdf"},
+            ),
+            driver_id=driver_id,
+            load_id=load_id,
+            document_type="proof_of_delivery",
+            uploaded_by_staff_user_id=None,
+            page_count=None,
+            replace=None,
+            db=db_session,
+        )
+    )
+
+    assert response.meta["uploaded"] is True
+    assert response.meta["document_processing"]["skipped"] is True
+    assert (
+        response.meta["document_processing"]["status"] == ProcessingStatus.PENDING.value
+    )
+    assert response.data["original_filename"] == "proof_of_delivery.pdf"
+    assert response.data["processing_status"] == ProcessingStatus.PENDING.value
+    assert any(path.is_file() for path in tmp_path.rglob("*.pdf"))
+    assert {
+        record.upload_stage
+        for record in caplog.records
+        if hasattr(record, "upload_stage")
+    } >= {
+        "request_received",
+        "auth_resolved",
+        "org_load_resolved",
+        "file_metadata_parsed",
+        "file_saved",
+        "db_document_row_created",
+        "db_transaction_committed",
+        "extraction_analysis_skipped",
+        "response_returned",
+    }
+    get_settings.cache_clear()

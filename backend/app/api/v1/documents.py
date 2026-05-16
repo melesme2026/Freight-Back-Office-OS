@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import time
 import uuid
 from datetime import date, datetime
 from typing import Annotated, Any
@@ -97,19 +98,66 @@ def _upload_log_context(
     load_id: object | None = None,
     document_type: str | None = None,
     filename: str | None = None,
+    upload_request_id: str | None = None,
+    stage: str | None = None,
+    elapsed_ms: int | None = None,
+    file_size_bytes: int | None = None,
+    storage_key: str | None = None,
+    document_id: object | None = None,
 ) -> dict[str, Any]:
     return {
+        "upload_request_id": upload_request_id,
+        "upload_stage": stage,
+        "upload_elapsed_ms": elapsed_ms,
         "organization_id": str(organization_id),
-        "customer_account_id": str(customer_account_id)
-        if customer_account_id is not None
-        else None,
+        "customer_account_id": (
+            str(customer_account_id) if customer_account_id is not None else None
+        ),
         "driver_id": str(driver_id) if driver_id is not None else None,
         "load_id": str(load_id) if load_id is not None else None,
+        "document_id": str(document_id) if document_id is not None else None,
         "document_type": document_type,
+        "file_size_bytes": file_size_bytes,
+        "storage_key": storage_key,
         # Python LogRecord reserves `filename`, so keep the requested field in a nested context.
         "document_upload": {"filename": filename},
         "upload_filename": filename,
     }
+
+
+def _log_upload_stage(
+    *,
+    stage: str,
+    started_at: float,
+    organization_id: object,
+    customer_account_id: object | None = None,
+    driver_id: object | None = None,
+    load_id: object | None = None,
+    document_type: str | None = None,
+    filename: str | None = None,
+    upload_request_id: str | None = None,
+    file_size_bytes: int | None = None,
+    storage_key: str | None = None,
+    document_id: object | None = None,
+    extra: dict[str, Any] | None = None,
+) -> None:
+    context = _upload_log_context(
+        organization_id=organization_id,
+        customer_account_id=customer_account_id,
+        driver_id=driver_id,
+        load_id=load_id,
+        document_type=document_type,
+        filename=filename,
+        upload_request_id=upload_request_id,
+        stage=stage,
+        elapsed_ms=int((time.perf_counter() - started_at) * 1000),
+        file_size_bytes=file_size_bytes,
+        storage_key=storage_key,
+        document_id=document_id,
+    )
+    if extra:
+        context.update(extra)
+    logger.info("Document upload stage completed", extra=context)
 
 
 class DocumentCreateRequest(BaseModel):
@@ -271,7 +319,9 @@ def _serialize_document(item: Any) -> dict[str, Any]:
             else None
         ),
         "uploaded_by_staff_user_name": (
-            getattr(uploaded_by_staff_user, "full_name", None) if uploaded_by_staff_user else None
+            getattr(uploaded_by_staff_user, "full_name", None)
+            if uploaded_by_staff_user
+            else None
         ),
         "validation_issue_count": (
             len(validation_issues) if isinstance(validation_issues, list) else None
@@ -380,9 +430,24 @@ def _queue_document_processing(
     organization_id: str | None = None,
     background_tasks: BackgroundTasks | None,
     force: bool = False,
-) -> dict[str, Any]:
+    upload_request_id: str | None = None,
+) -> dict[str, Any] | None:
+    settings = get_settings()
     resolved_document_id = document_id or str(document.id)
     resolved_organization_id = organization_id or str(document.organization_id)
+    if not settings.document_upload_extraction_enabled:
+        logger.info(
+            "Document upload extraction skipped",
+            extra={
+                "upload_request_id": upload_request_id,
+                "upload_stage": "extraction_skipped",
+                "document_id": resolved_document_id,
+                "organization_id": resolved_organization_id,
+                "reason": "document_upload_extraction_disabled",
+            },
+        )
+        return None
+
     job = enqueue_document_extraction(
         document_id=resolved_document_id,
         organization_id=resolved_organization_id,
@@ -394,6 +459,18 @@ def _queue_document_processing(
             job_id=str(job["id"]),
             document_id=resolved_document_id,
             force=force,
+        )
+    else:
+        logger.info(
+            "Document extraction job queued without an in-request background runner",
+            extra={
+                "upload_request_id": upload_request_id,
+                "upload_stage": "extraction_queued",
+                "document_id": resolved_document_id,
+                "organization_id": resolved_organization_id,
+                "job_id": str(job["id"]),
+                "background_runner": False,
+            },
         )
     return job
 
@@ -416,13 +493,55 @@ async def upload_document(
     background_tasks: BackgroundTasks = None,
 ) -> ApiResponse:
     _ = uploaded_by_staff_user_id
+    upload_request_id = uuid.uuid4().hex
+    upload_started_at = time.perf_counter()
+    _log_upload_stage(
+        stage="request_received",
+        started_at=upload_started_at,
+        organization_id=organization_id,
+        customer_account_id=customer_account_id,
+        driver_id=driver_id,
+        load_id=load_id,
+        document_type=document_type,
+        filename=file.filename,
+        upload_request_id=upload_request_id,
+        extra={"content_type": file.content_type},
+    )
     _validate_upload_file(file)
+    _log_upload_stage(
+        stage="file_metadata_parsed",
+        started_at=upload_started_at,
+        organization_id=organization_id,
+        customer_account_id=customer_account_id,
+        driver_id=driver_id,
+        load_id=load_id,
+        document_type=document_type,
+        filename=file.filename,
+        upload_request_id=upload_request_id,
+        extra={"content_type": file.content_type},
+    )
     _ensure_staff_role(token_payload)
     token_org_id = token_payload.get("organization_id")
     if str(organization_id) != str(token_org_id):
-        raise UnauthorizedError("organization_id does not match authenticated organization")
+        raise UnauthorizedError(
+            "organization_id does not match authenticated organization"
+        )
+    _log_upload_stage(
+        stage="auth_resolved",
+        started_at=upload_started_at,
+        organization_id=organization_id,
+        customer_account_id=customer_account_id,
+        driver_id=driver_id,
+        load_id=load_id,
+        document_type=document_type,
+        filename=file.filename,
+        upload_request_id=upload_request_id,
+        extra={"token_role": _get_token_role(token_payload)},
+    )
 
-    normalized_source_channel = _normalize_required_text(source_channel, "source_channel")
+    normalized_source_channel = _normalize_required_text(
+        source_channel, "source_channel"
+    )
     normalized_document_type = _normalize_optional_text(document_type)
     storage: StorageService | None = None
     uploaded_storage_key: str | None = None
@@ -440,11 +559,16 @@ async def upload_document(
             normalized_document_type, allow_none=True
         )
         existing_required_doc = None
-        if parsed_document_type in REQUIRED_SINGLETON_DOCUMENT_TYPES and load_id is not None:
-            existing_required_doc = service.document_repo.find_required_document_for_load(
-                organization_id=str(organization_id),
-                load_id=str(load_id),
-                document_type=parsed_document_type,
+        if (
+            parsed_document_type in REQUIRED_SINGLETON_DOCUMENT_TYPES
+            and load_id is not None
+        ):
+            existing_required_doc = (
+                service.document_repo.find_required_document_for_load(
+                    organization_id=str(organization_id),
+                    load_id=str(load_id),
+                    document_type=parsed_document_type,
+                )
             )
 
             if existing_required_doc and not replace_existing:
@@ -463,8 +587,28 @@ async def upload_document(
                     },
                 )
 
+        _log_upload_stage(
+            stage="org_load_resolved",
+            started_at=upload_started_at,
+            organization_id=organization_id,
+            customer_account_id=customer_account_id,
+            driver_id=driver_id,
+            load_id=load_id,
+            document_type=normalized_document_type,
+            filename=file.filename,
+            upload_request_id=upload_request_id,
+            extra={
+                "replace_existing": replace_existing,
+                "existing_document_id": (
+                    str(existing_required_doc.id) if existing_required_doc else None
+                ),
+            },
+        )
+
         storage = StorageService()
-        storage_result = await storage.save_file(file, max_size_bytes=MAX_UPLOAD_FILE_SIZE_BYTES)
+        storage_result = await storage.save_file(
+            file, max_size_bytes=MAX_UPLOAD_FILE_SIZE_BYTES
+        )
 
         storage_key = storage_result.get("storage_key")
         if not storage_key:
@@ -482,22 +626,44 @@ async def upload_document(
         )
         storage_bucket = storage_result.get("bucket")
         uploaded_storage_key = str(storage_key).strip()
+        _log_upload_stage(
+            stage="file_saved",
+            started_at=upload_started_at,
+            organization_id=organization_id,
+            customer_account_id=customer_account_id,
+            driver_id=driver_id,
+            load_id=load_id,
+            document_type=normalized_document_type,
+            filename=file.filename,
+            upload_request_id=upload_request_id,
+            file_size_bytes=int(file_size_bytes or 0),
+            storage_key=uploaded_storage_key,
+            extra={"storage_bucket": storage_bucket},
+        )
 
         if existing_required_doc and replace_existing:
             old_storage_key = existing_required_doc.storage_key
-            existing_required_doc.original_filename = _normalize_optional_text(file.filename)
+            existing_required_doc.original_filename = _normalize_optional_text(
+                file.filename
+            )
             existing_required_doc.storage_key = str(storage_key).strip()
             existing_required_doc.storage_bucket = (
                 _normalize_optional_text(str(storage_bucket))
                 if storage_bucket is not None
                 else None
             )
-            existing_required_doc.mime_type = _normalize_optional_text(file.content_type)
+            existing_required_doc.mime_type = _normalize_optional_text(
+                file.content_type
+            )
             existing_required_doc.file_size_bytes = file_size_bytes
             existing_required_doc.processing_status = ProcessingStatus.QUEUED
             existing_required_doc.received_at = datetime.utcnow()
             if server_uploaded_by_staff_user_id:
-                existing_required_doc.uploaded_by_staff_user_id = server_uploaded_by_staff_user_id
+                existing_required_doc.uploaded_by_staff_user_id = (
+                    server_uploaded_by_staff_user_id
+                )
+            if not get_settings().document_upload_extraction_enabled:
+                existing_required_doc.processing_status = ProcessingStatus.PENDING
             item = service.document_repo.update(existing_required_doc)
             if old_storage_key and old_storage_key != existing_required_doc.storage_key:
                 storage.delete(relative_path=old_storage_key)
@@ -521,14 +687,34 @@ async def upload_document(
                 page_count=page_count,
                 uploaded_by_staff_user_id=server_uploaded_by_staff_user_id,
             )
+            if not get_settings().document_upload_extraction_enabled:
+                item.processing_status = ProcessingStatus.PENDING
+                item = service.document_repo.update(item)
+        _log_upload_stage(
+            stage="db_document_row_created",
+            started_at=upload_started_at,
+            organization_id=organization_id,
+            customer_account_id=customer_account_id,
+            driver_id=driver_id,
+            load_id=load_id,
+            document_type=normalized_document_type,
+            filename=file.filename,
+            upload_request_id=upload_request_id,
+            file_size_bytes=int(file_size_bytes or 0),
+            storage_key=uploaded_storage_key,
+            document_id=item.id,
+            extra={"processing_status": _enum_to_string(item.processing_status)},
+        )
         _create_document_uploaded_notification(db=db, document=item)
         _log_document_event(
             db=db,
             organization_id=organization_id,
             document_id=item.id,
-            action="document.replaced"
-            if existing_required_doc and replace_existing
-            else "document.uploaded",
+            action=(
+                "document.replaced"
+                if existing_required_doc and replace_existing
+                else "document.uploaded"
+            ),
             token_payload=token_payload,
             metadata={
                 "document_type": normalized_document_type,
@@ -542,6 +728,20 @@ async def upload_document(
         item_organization_id = str(item.organization_id)
         serialized_item = _serialize_document(item)
         db.commit()
+        _log_upload_stage(
+            stage="db_transaction_committed",
+            started_at=upload_started_at,
+            organization_id=organization_id,
+            customer_account_id=customer_account_id,
+            driver_id=driver_id,
+            load_id=load_id,
+            document_type=normalized_document_type,
+            filename=file.filename,
+            upload_request_id=upload_request_id,
+            file_size_bytes=int(file_size_bytes or 0),
+            storage_key=uploaded_storage_key,
+            document_id=item_id,
+        )
         operational_cache.invalidate_namespace(
             "command_center", organization_id=str(organization_id)
         )
@@ -552,6 +752,57 @@ async def upload_document(
             document_id=item_id,
             organization_id=item_organization_id,
             background_tasks=background_tasks,
+            upload_request_id=upload_request_id,
+        )
+        processing_meta = (
+            {
+                "status": ProcessingStatus.QUEUED.value,
+                "job_id": processing_job["id"],
+                "job_type": processing_job["job_type"],
+                "idempotency_key": processing_job["idempotency_key"],
+            }
+            if processing_job is not None
+            else {
+                "status": ProcessingStatus.PENDING.value,
+                "job_id": None,
+                "job_type": "document_extraction",
+                "idempotency_key": None,
+                "skipped": True,
+                "reason": "document_upload_extraction_disabled",
+            }
+        )
+        _log_upload_stage(
+            stage=(
+                "extraction_analysis_started"
+                if processing_job
+                else "extraction_analysis_skipped"
+            ),
+            started_at=upload_started_at,
+            organization_id=organization_id,
+            customer_account_id=customer_account_id,
+            driver_id=driver_id,
+            load_id=load_id,
+            document_type=normalized_document_type,
+            filename=file.filename,
+            upload_request_id=upload_request_id,
+            file_size_bytes=int(file_size_bytes or 0),
+            storage_key=uploaded_storage_key,
+            document_id=item_id,
+            extra=processing_meta,
+        )
+        _log_upload_stage(
+            stage="response_returned",
+            started_at=upload_started_at,
+            organization_id=organization_id,
+            customer_account_id=customer_account_id,
+            driver_id=driver_id,
+            load_id=load_id,
+            document_type=normalized_document_type,
+            filename=file.filename,
+            upload_request_id=upload_request_id,
+            file_size_bytes=int(file_size_bytes or 0),
+            storage_key=uploaded_storage_key,
+            document_id=item_id,
         )
 
         return ApiResponse(
@@ -559,12 +810,7 @@ async def upload_document(
             meta={
                 "uploaded": True,
                 "quota": quota_decision.as_dict(),
-                "document_processing": {
-                    "status": ProcessingStatus.QUEUED.value,
-                    "job_id": processing_job["id"],
-                    "job_type": processing_job["job_type"],
-                    "idempotency_key": processing_job["idempotency_key"],
-                },
+                "document_processing": processing_meta,
             },
             error=None,
         )
@@ -615,6 +861,28 @@ async def upload_document(
                 ),
             },
         ) from exc
+    finally:
+        try:
+            await file.close()
+        except Exception:
+            logger.warning(
+                "Document upload file close failed",
+                extra=_upload_log_context(
+                    organization_id=organization_id,
+                    customer_account_id=customer_account_id,
+                    driver_id=driver_id,
+                    load_id=load_id,
+                    document_type=(
+                        normalized_document_type
+                        if "normalized_document_type" in locals()
+                        else document_type
+                    ),
+                    filename=file.filename,
+                    upload_request_id=upload_request_id,
+                    stage="file_close_failed",
+                    elapsed_ms=int((time.perf_counter() - upload_started_at) * 1000),
+                ),
+            )
 
 
 @router.post("/driver/documents/upload", response_model=ApiResponse)
@@ -629,6 +897,8 @@ async def upload_driver_document(
     db: Session = GET_DB_SESSION_DEPENDENCY,
     background_tasks: BackgroundTasks = None,
 ) -> ApiResponse:
+    upload_request_id = uuid.uuid4().hex
+    upload_started_at = time.perf_counter()
     _validate_upload_file(file)
     normalized_document_type = _normalize_required_text(document_type, "document_type")
 
@@ -637,7 +907,9 @@ async def upload_driver_document(
     token_driver_id = token_payload.get("driver_id")
 
     if str(organization_id) != str(token_org_id):
-        raise UnauthorizedError("organization_id does not match authenticated organization")
+        raise UnauthorizedError(
+            "organization_id does not match authenticated organization"
+        )
     if token_role != "driver":
         raise UnauthorizedError("Only driver accounts can use this endpoint")
     if not token_driver_id:
@@ -657,11 +929,15 @@ async def upload_driver_document(
     if load_id is not None:
         load = load_repo.get_by_id(load_id)
         if load is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Load not found.")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Load not found."
+            )
         if str(load.organization_id) != str(organization_id):
             raise UnauthorizedError("Load organization mismatch")
         if str(load.driver_id) != str(driver.id):
-            raise UnauthorizedError("Drivers may only attach documents to their own loads")
+            raise UnauthorizedError(
+                "Drivers may only attach documents to their own loads"
+            )
         resolved_load_id = str(load.id)
 
     storage: StorageService | None = None
@@ -670,13 +946,20 @@ async def upload_driver_document(
     try:
         service = DocumentService(db)
         replace_existing = _parse_replace_flag(replace)
-        parsed_document_type = service._normalize_document_type(normalized_document_type)
+        parsed_document_type = service._normalize_document_type(
+            normalized_document_type
+        )
         existing_required_doc = None
-        if parsed_document_type in REQUIRED_SINGLETON_DOCUMENT_TYPES and resolved_load_id:
-            existing_required_doc = service.document_repo.find_required_document_for_load(
-                organization_id=str(organization_id),
-                load_id=resolved_load_id,
-                document_type=parsed_document_type,
+        if (
+            parsed_document_type in REQUIRED_SINGLETON_DOCUMENT_TYPES
+            and resolved_load_id
+        ):
+            existing_required_doc = (
+                service.document_repo.find_required_document_for_load(
+                    organization_id=str(organization_id),
+                    load_id=resolved_load_id,
+                    document_type=parsed_document_type,
+                )
             )
             if existing_required_doc and not replace_existing:
                 raise HTTPException(
@@ -694,8 +977,28 @@ async def upload_driver_document(
                     },
                 )
 
+        _log_upload_stage(
+            stage="org_load_resolved",
+            started_at=upload_started_at,
+            organization_id=organization_id,
+            customer_account_id=getattr(driver, "customer_account_id", None),
+            driver_id=token_driver_id,
+            load_id=load_id,
+            document_type=normalized_document_type,
+            filename=file.filename,
+            upload_request_id=upload_request_id,
+            extra={
+                "replace_existing": replace_existing,
+                "existing_document_id": (
+                    str(existing_required_doc.id) if existing_required_doc else None
+                ),
+            },
+        )
+
         storage = StorageService()
-        storage_result = await storage.save_file(file, max_size_bytes=MAX_UPLOAD_FILE_SIZE_BYTES)
+        storage_result = await storage.save_file(
+            file, max_size_bytes=MAX_UPLOAD_FILE_SIZE_BYTES
+        )
         storage_key = storage_result.get("storage_key")
         if not storage_key:
             raise HTTPException(
@@ -703,26 +1006,35 @@ async def upload_driver_document(
                 detail="Storage service did not return a storage key.",
             )
 
-        _validate_upload_size(storage_result.get("size"))
+        file_size_bytes = storage_result.get("size")
+        _validate_upload_size(file_size_bytes)
         quota_decision = OrganizationQuotaService(db).can_upload_document(
             organization_id=str(organization_id),
-            incoming_size_bytes=int(storage_result.get("size") or 0),
+            incoming_size_bytes=int(file_size_bytes or 0),
             enforce=False,
         )
         uploaded_storage_key = str(storage_key).strip()
 
         if existing_required_doc and replace_existing:
             old_storage_key = existing_required_doc.storage_key
-            existing_required_doc.original_filename = _normalize_optional_text(file.filename)
+            existing_required_doc.original_filename = _normalize_optional_text(
+                file.filename
+            )
             existing_required_doc.storage_key = str(storage_key).strip()
             existing_required_doc.storage_bucket = (
                 _normalize_optional_text(str(storage_result.get("bucket")))
                 if storage_result.get("bucket") is not None
                 else None
             )
-            existing_required_doc.mime_type = _normalize_optional_text(file.content_type)
-            existing_required_doc.file_size_bytes = storage_result.get("size")
-            existing_required_doc.processing_status = ProcessingStatus.QUEUED
+            existing_required_doc.mime_type = _normalize_optional_text(
+                file.content_type
+            )
+            existing_required_doc.file_size_bytes = file_size_bytes
+            existing_required_doc.processing_status = (
+                ProcessingStatus.QUEUED
+                if get_settings().document_upload_extraction_enabled
+                else ProcessingStatus.PENDING
+            )
             existing_required_doc.received_at = datetime.utcnow()
             item = service.document_repo.update(existing_required_doc)
             if old_storage_key and old_storage_key != existing_required_doc.storage_key:
@@ -732,19 +1044,24 @@ async def upload_driver_document(
                 organization_id=str(organization_id),
                 customer_account_id=str(driver.customer_account_id),
                 storage_key=uploaded_storage_key,
-                storage_bucket=_normalize_optional_text(str(storage_result.get("bucket")))
-                if storage_result.get("bucket") is not None
-                else None,
+                storage_bucket=(
+                    _normalize_optional_text(str(storage_result.get("bucket")))
+                    if storage_result.get("bucket") is not None
+                    else None
+                ),
                 source_channel="driver_portal",
                 driver_id=str(driver.id),
                 load_id=resolved_load_id,
                 document_type=normalized_document_type,
                 original_filename=_normalize_optional_text(file.filename),
                 mime_type=_normalize_optional_text(file.content_type),
-                file_size_bytes=storage_result.get("size"),
+                file_size_bytes=file_size_bytes,
                 page_count=None,
                 uploaded_by_staff_user_id=None,
             )
+            if not get_settings().document_upload_extraction_enabled:
+                item.processing_status = ProcessingStatus.PENDING
+                item = service.document_repo.update(item)
         _create_document_uploaded_notification(
             db=db,
             document=item,
@@ -755,14 +1072,16 @@ async def upload_driver_document(
             db=db,
             organization_id=organization_id,
             document_id=item.id,
-            action="document.replaced"
-            if existing_required_doc and replace_existing
-            else "document.uploaded",
+            action=(
+                "document.replaced"
+                if existing_required_doc and replace_existing
+                else "document.uploaded"
+            ),
             token_payload=token_payload,
             metadata={
                 "document_type": normalized_document_type,
                 "filename": file.filename,
-                "file_size_bytes": storage_result.get("size"),
+                "file_size_bytes": file_size_bytes,
                 "load_id": str(load_id) if load_id else None,
                 "warning": quota_decision.reason if quota_decision.warning else None,
             },
@@ -771,6 +1090,20 @@ async def upload_driver_document(
         item_organization_id = str(item.organization_id)
         serialized_item = _serialize_document(item)
         db.commit()
+        _log_upload_stage(
+            stage="db_transaction_committed",
+            started_at=upload_started_at,
+            organization_id=organization_id,
+            customer_account_id=getattr(driver, "customer_account_id", None),
+            driver_id=token_driver_id,
+            load_id=load_id,
+            document_type=normalized_document_type,
+            filename=file.filename,
+            upload_request_id=upload_request_id,
+            file_size_bytes=int(file_size_bytes or 0),
+            storage_key=uploaded_storage_key,
+            document_id=item_id,
+        )
         operational_cache.invalidate_namespace(
             "command_center", organization_id=str(organization_id)
         )
@@ -781,6 +1114,57 @@ async def upload_driver_document(
             document_id=item_id,
             organization_id=item_organization_id,
             background_tasks=background_tasks,
+            upload_request_id=upload_request_id,
+        )
+        processing_meta = (
+            {
+                "status": ProcessingStatus.QUEUED.value,
+                "job_id": processing_job["id"],
+                "job_type": processing_job["job_type"],
+                "idempotency_key": processing_job["idempotency_key"],
+            }
+            if processing_job is not None
+            else {
+                "status": ProcessingStatus.PENDING.value,
+                "job_id": None,
+                "job_type": "document_extraction",
+                "idempotency_key": None,
+                "skipped": True,
+                "reason": "document_upload_extraction_disabled",
+            }
+        )
+        _log_upload_stage(
+            stage=(
+                "extraction_analysis_started"
+                if processing_job
+                else "extraction_analysis_skipped"
+            ),
+            started_at=upload_started_at,
+            organization_id=organization_id,
+            customer_account_id=getattr(driver, "customer_account_id", None),
+            driver_id=token_driver_id,
+            load_id=load_id,
+            document_type=normalized_document_type,
+            filename=file.filename,
+            upload_request_id=upload_request_id,
+            file_size_bytes=int(file_size_bytes or 0),
+            storage_key=uploaded_storage_key,
+            document_id=item_id,
+            extra=processing_meta,
+        )
+        _log_upload_stage(
+            stage="response_returned",
+            started_at=upload_started_at,
+            organization_id=organization_id,
+            customer_account_id=getattr(driver, "customer_account_id", None),
+            driver_id=token_driver_id,
+            load_id=load_id,
+            document_type=normalized_document_type,
+            filename=file.filename,
+            upload_request_id=upload_request_id,
+            file_size_bytes=int(file_size_bytes or 0),
+            storage_key=uploaded_storage_key,
+            document_id=item_id,
         )
 
         return ApiResponse(
@@ -789,12 +1173,7 @@ async def upload_driver_document(
                 "uploaded": True,
                 "driver_upload": True,
                 "quota": quota_decision.as_dict(),
-                "document_processing": {
-                    "status": ProcessingStatus.QUEUED.value,
-                    "job_id": processing_job["id"],
-                    "job_type": processing_job["job_type"],
-                    "idempotency_key": processing_job["idempotency_key"],
-                },
+                "document_processing": processing_meta,
             },
             error=None,
         )
@@ -856,9 +1235,13 @@ def create_document(
     _ensure_staff_role(token_payload)
     token_org_id = token_payload.get("organization_id")
     if str(payload.organization_id) != str(token_org_id):
-        raise UnauthorizedError("organization_id does not match authenticated organization")
+        raise UnauthorizedError(
+            "organization_id does not match authenticated organization"
+        )
 
-    normalized_storage_key = _normalize_required_text(payload.storage_key, "storage_key")
+    normalized_storage_key = _normalize_required_text(
+        payload.storage_key, "storage_key"
+    )
     normalized_source_channel = _normalize_required_text(
         payload.source_channel,
         "source_channel",
@@ -887,7 +1270,10 @@ def create_document(
         document_id=item.id,
         action="document.created",
         token_payload=token_payload,
-        metadata={"document_type": payload.document_type, "filename": payload.original_filename},
+        metadata={
+            "document_type": payload.document_type,
+            "filename": payload.original_filename,
+        },
     )
     db.commit()
 
@@ -917,7 +1303,9 @@ def list_documents(
     token_driver_id = _get_token_driver_id(token_payload)
     effective_org_id = organization_id or uuid.UUID(str(token_org_id))
     if str(effective_org_id) != str(token_org_id):
-        raise UnauthorizedError("organization_id does not match authenticated organization")
+        raise UnauthorizedError(
+            "organization_id does not match authenticated organization"
+        )
     effective_driver_id = driver_id
     if token_role == "driver":
         if not token_driver_id:
@@ -966,14 +1354,18 @@ def get_documents_by_load(
     load_repo = LoadRepository(db)
     load = load_repo.get_by_id(load_id)
     if load is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Load not found.")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Load not found."
+        )
     if str(load.organization_id) != str(token_org_id):
         raise UnauthorizedError("Load is not in authenticated organization")
     if token_role == "driver":
         if not token_driver_id:
             raise UnauthorizedError("Driver token is missing driver_id")
         if str(load.driver_id) != token_driver_id:
-            raise UnauthorizedError("Drivers may only view documents for their own loads")
+            raise UnauthorizedError(
+                "Drivers may only view documents for their own loads"
+            )
 
     service = DocumentService(db)
     items, total_count = service.list_documents(
@@ -1062,7 +1454,9 @@ def update_document(
         metadata={"document_type": payload.document_type},
     )
     db.commit()
-    return ApiResponse(data=_serialize_document(updated), meta={"updated": True}, error=None)
+    return ApiResponse(
+        data=_serialize_document(updated), meta={"updated": True}, error=None
+    )
 
 
 @router.delete("/documents/{document_id}", response_model=ApiResponse)
@@ -1090,7 +1484,9 @@ def delete_document(
     )
     service.delete_document(document_id=str(document_id))
     db.commit()
-    return ApiResponse(data={"id": str(document_id), "deleted": True}, meta={}, error=None)
+    return ApiResponse(
+        data={"id": str(document_id), "deleted": True}, meta={}, error=None
+    )
 
 
 @router.post("/documents/{document_id}/extract", response_model=ApiResponse)
@@ -1113,7 +1509,9 @@ def extract_document(
     )
     service = ExtractionService(db)
     try:
-        result = service.extract_document(document_id=str(document_id), force=payload.force)
+        result = service.extract_document(
+            document_id=str(document_id), force=payload.force
+        )
     except Exception:
         document_service.mark_processing(
             document_id=str(document_id),
@@ -1166,7 +1564,9 @@ def link_document_to_load(
     load_repo = LoadRepository(db)
     load = load_repo.get_by_id(payload.load_id)
     if load is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Load not found.")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Load not found."
+        )
     if str(load.organization_id) != str(token_payload.get("organization_id")):
         raise UnauthorizedError("Load is not in authenticated organization")
 
@@ -1176,7 +1576,9 @@ def link_document_to_load(
         if not token_driver_id:
             raise UnauthorizedError("Driver token is missing driver_id")
         if str(load.driver_id) != str(token_driver_id):
-            raise UnauthorizedError("Drivers may only link documents to their own loads")
+            raise UnauthorizedError(
+                "Drivers may only link documents to their own loads"
+            )
 
     linker = DocumentLinker(db)
     result = linker.link_document_to_load(
