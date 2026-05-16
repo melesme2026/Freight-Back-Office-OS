@@ -11,6 +11,7 @@ from app.api.v1.loads import (
     download_load_invoice,
 )
 from app.domain.enums.document_type import DocumentType
+from app.domain.enums.processing_status import ProcessingStatus
 from app.services.carrier_profile_service import CarrierProfileService
 from app.services.documents.document_service import DocumentService
 from app.services.documents.storage_service import StorageService
@@ -98,6 +99,9 @@ def test_generate_invoice_creates_invoice_document(db_session) -> None:
     assert total == 1
     assert len(invoice_documents) == 1
     assert invoice_documents[0].load_id == load.id
+    assert invoice_documents[0].processing_status == ProcessingStatus.COMPLETED
+    assert invoice_documents[0].received_at is not None
+    assert invoice_documents[0].file_size_bytes == len(pdf_bytes)
     assert storage_service.read_bytes(relative_path=invoice_documents[0].storage_key) == pdf_bytes
     assert b"Freight Invoice" in pdf_bytes
     assert f"Load #: {load.load_number}".encode("latin-1") in pdf_bytes
@@ -205,13 +209,21 @@ def test_download_invoice_route_persists_invoice_and_reuses_existing_document(db
         page=1,
         page_size=25,
     )
+    all_documents, all_total = document_service.list_documents(
+        load_id=str(load.id),
+        page=1,
+        page_size=25,
+    )
 
     assert first_response.media_type == "application/pdf"
     assert second_response.media_type == "application/pdf"
     assert total == 1
     assert len(invoice_documents) == 1
     assert invoice_documents[0].document_type == DocumentType.INVOICE
+    assert invoice_documents[0].processing_status == ProcessingStatus.COMPLETED
     assert str(invoice_documents[0].load_id) == str(load.id)
+    assert all_total == 3
+    assert DocumentType.INVOICE in {document.document_type for document in all_documents}
 
     refreshed_load = LoadService(db_session).get_load(str(load.id))
     after = queue_service.evaluate_load(refreshed_load)
@@ -327,6 +339,7 @@ def test_regenerate_replaces_pdf_without_changing_invoice_number_or_duplicating(
     assert refreshed.invoice_number == invoice_number
     assert b"Updated invoice note" in regenerated_pdf
     assert len(documents) == 1
+    assert documents[0].processing_status == ProcessingStatus.COMPLETED
 
 
 def test_invoice_route_regenerate_requires_explicit_flag_to_replace_stale_pdf(db_session) -> None:

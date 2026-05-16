@@ -20,7 +20,7 @@ function corsHeaders(route: Route): Record<string, string> {
     "access-control-allow-origin": origin,
     "access-control-allow-methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS",
     "access-control-allow-headers": "authorization,content-type,x-organization-id,accept",
-    "access-control-expose-headers": "x-e2e-upload-mock",
+    "access-control-expose-headers": "x-e2e-upload-mock,x-invoice-number,x-invoice-document-id,x-invoice-stale,content-disposition",
     vary: "Origin",
   };
 }
@@ -567,11 +567,18 @@ export async function mockApi(page: Page) {
       if (state.invoiceCount === 0) {
         state.invoiceCount += 1;
       }
+      if (!state.documents.some((document) => document.document_type === "invoice")) {
+        state.documents.push(mockDocument("invoice", `invoice-${seed.load.load_number}.pdf`));
+      }
       return route.fulfill({
         status: 200,
         contentType: "application/pdf",
         headers: {
+          ...corsHeaders(route),
           "content-disposition": 'attachment; filename="invoice-INV-E2E-001.pdf"',
+          "x-invoice-number": "INV-E2E-001",
+          "x-invoice-document-id": "doc-invoice-e2e-001",
+          "x-invoice-stale": "false",
         },
         body: "%PDF-1.4 mock-invoice",
       });

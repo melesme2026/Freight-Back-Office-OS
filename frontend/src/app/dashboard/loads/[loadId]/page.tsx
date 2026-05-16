@@ -1369,6 +1369,7 @@ export default function LoadDetailPage() {
   const [isSettingStatus, setIsSettingStatus] = useState<boolean>(false);
   const [manualStatus, setManualStatus] = useState<LoadStatus>("docs_received");
   const [isGeneratingInvoice, setIsGeneratingInvoice] = useState<boolean>(false);
+  const [invoiceAction, setInvoiceAction] = useState<"view" | "download" | "regenerate" | null>(null);
   const [isMarkingReviewed, setIsMarkingReviewed] = useState<boolean>(false);
   const [isExecutingWorkflowAction, setIsExecutingWorkflowAction] = useState<boolean>(false);
   const [isDocumentsLoading, setIsDocumentsLoading] = useState<boolean>(false);
@@ -2760,6 +2761,8 @@ export default function LoadDetailPage() {
 
     try {
       setIsGeneratingInvoice(true);
+      setInvoiceAction(options.regenerate ? "regenerate" : options.disposition === "attachment" ? "download" : "view");
+      const hadInvoiceBeforeRequest = Boolean(invoiceStatus?.has_invoice || load.has_invoice);
       setError(null);
       setActionMessage(null);
       setInvoiceBlocker(null);
@@ -2810,7 +2813,11 @@ export default function LoadDetailPage() {
         window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
       }
 
-      const refreshedInvoiceStatus = await fetchInvoiceStatus().catch(() => null);
+      const [refreshedInvoiceStatus, refreshedDocuments, refreshedLoad] = await Promise.all([
+        fetchInvoiceStatus().catch(() => null),
+        fetchLoadDocuments({ silent: true, reason: "invoice_generated" }).catch(() => null),
+        fetchLoad().catch(() => null),
+      ]);
       if (refreshedInvoiceStatus) {
         setInvoiceStatus(refreshedInvoiceStatus);
       } else {
@@ -2826,16 +2833,33 @@ export default function LoadDetailPage() {
           updated_at: null,
         });
       }
-      setLoad((current) => current ? {
-        ...current,
-        has_invoice: true,
-        invoice_number: refreshedInvoiceStatus?.invoice_number ?? response.headers.get("X-Invoice-Number") ?? current.invoice_number,
-      } : current);
-      setActionMessage(options.regenerate ? "Invoice regenerated successfully." : invoiceStatus?.has_invoice ? "Invoice opened." : "Invoice generated successfully.");
+      if (refreshedLoad) {
+        setLoad(refreshedLoad);
+      } else {
+        setLoad((current) => current ? {
+          ...current,
+          has_invoice: true,
+          invoice_number: refreshedInvoiceStatus?.invoice_number ?? response.headers.get("X-Invoice-Number") ?? current.invoice_number,
+        } : current);
+      }
+
+      const invoiceIsVisibleInDocuments = Array.isArray(refreshedDocuments)
+        ? refreshedDocuments.some((document) => isInvoiceManagedDocument(document))
+        : loadDocumentsRef.current.some((document) => isInvoiceManagedDocument(document));
+      if (options.regenerate) {
+        setActionMessage("Invoice regenerated and updated in documents.");
+      } else if (!hadInvoiceBeforeRequest && invoiceIsVisibleInDocuments) {
+        setActionMessage("Invoice generated and added to documents.");
+      } else if (options.disposition === "attachment") {
+        setActionMessage("Invoice downloaded.");
+      } else {
+        setActionMessage("Invoice opened.");
+      }
     } catch (caught: unknown) {
       setError(extractErrorMessage(caught, "Failed to generate invoice."));
     } finally {
       setIsGeneratingInvoice(false);
+      setInvoiceAction(null);
       endWriteAction();
     }
   }
@@ -3553,7 +3577,7 @@ export default function LoadDetailPage() {
                   disabled={isGeneratingInvoice}
                   className="touch-target rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  {isGeneratingInvoice ? "Opening..." : "View Invoice"}
+                  {invoiceAction === "view" ? "Opening invoice..." : "View Invoice"}
                 </button>
                 <button
                   type="button"
@@ -3561,7 +3585,7 @@ export default function LoadDetailPage() {
                   disabled={isGeneratingInvoice}
                   className="touch-target rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  Download Invoice
+                  {invoiceAction === "download" ? "Downloading invoice..." : "Download Invoice"}
                 </button>
                 {invoiceIsStale ? (
                   <button
@@ -3570,7 +3594,7 @@ export default function LoadDetailPage() {
                     disabled={isGeneratingInvoice}
                     className="touch-target rounded-xl border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-800 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    Regenerate Invoice
+                    {invoiceAction === "regenerate" ? "Regenerating invoice..." : "Regenerate Invoice"}
                   </button>
                 ) : null}
               </>
@@ -3581,7 +3605,7 @@ export default function LoadDetailPage() {
                 disabled={isGeneratingInvoice}
                 className="touch-target rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {isGeneratingInvoice ? "Generating..." : "Generate Invoice"}
+                {invoiceAction === "view" ? "Generating invoice..." : "Generate Invoice"}
               </button>
             )}
           </div>
@@ -3609,7 +3633,7 @@ export default function LoadDetailPage() {
                 disabled={isGeneratingInvoice}
                 className="touch-target rounded-xl bg-amber-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                Regenerate Invoice
+                {invoiceAction === "regenerate" ? "Regenerating invoice..." : "Regenerate Invoice"}
               </button>
             </div>
           </div>
