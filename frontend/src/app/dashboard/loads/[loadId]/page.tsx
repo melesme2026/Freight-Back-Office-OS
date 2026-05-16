@@ -1,7 +1,14 @@
 "use client";
 
 import { useRouter, useParams } from "next/navigation";
-import { ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  ChangeEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import { ApiClientError, apiClient } from "@/lib/api-client";
 import { parseUploadErrorResponse, isHtmlErrorText } from "@/lib/upload-errors";
@@ -193,7 +200,6 @@ type LoadDocument = {
   updated_at?: string | null;
 };
 
-
 type PacketAuditFinding = {
   code: string;
   severity: "info" | "warning" | "blocking" | string;
@@ -286,11 +292,34 @@ type PaymentActionType =
 
 type ModalState =
   | { kind: "none" }
-  | { kind: "send_packet_email"; packet: SubmissionPacket; toEmail: string; subject: string; body: string }
-  | { kind: "payment_action"; action: PaymentActionType; values: Record<string, string> }
+  | {
+      kind: "send_packet_email";
+      packet: SubmissionPacket;
+      toEmail: string;
+      subject: string;
+      body: string;
+    }
+  | {
+      kind: "payment_action";
+      action: PaymentActionType;
+      values: Record<string, string>;
+    }
   | { kind: "snooze_follow_up"; taskId: string; until: string };
 
-type UploadDocumentType = "" | "rate_confirmation" | "bill_of_lading" | "proof_of_delivery" | "invoice" | "lumper_receipt" | "detention_support" | "scale_ticket" | "accessorial_support" | "payment_remittance" | "damage_claim_photo" | "other" | "unknown";
+type UploadDocumentType =
+  | ""
+  | "rate_confirmation"
+  | "bill_of_lading"
+  | "proof_of_delivery"
+  | "invoice"
+  | "lumper_receipt"
+  | "detention_support"
+  | "scale_ticket"
+  | "accessorial_support"
+  | "payment_remittance"
+  | "damage_claim_photo"
+  | "other"
+  | "unknown";
 
 type OptionalSectionKey =
   | "documents"
@@ -471,20 +500,32 @@ function packetAuditSeverityBadge(severity?: string | null) {
 }
 
 function hasBlockingPacketAudit(audit?: PacketAuditResult | null): boolean {
-  return (audit?.findings ?? []).some((finding) => (finding.severity ?? "").toLowerCase() === "blocking");
+  return (audit?.findings ?? []).some(
+    (finding) => (finding.severity ?? "").toLowerCase() === "blocking",
+  );
 }
 
 function documentStatusLabel(document: LoadDocument): string {
-  const received = (document.received_status ?? "received").replaceAll("_", " ");
-  const extraction = (document.extraction_status ?? document.processing_status ?? "not required").replaceAll("_", " ");
+  const received = (document.received_status ?? "received").replaceAll(
+    "_",
+    " ",
+  );
+  const extraction = (
+    document.extraction_status ??
+    document.processing_status ??
+    "not required"
+  ).replaceAll("_", " ");
   return `${received} · extraction ${extraction}`;
 }
 
-function optionalSectionErrorMessage(section: OptionalSectionKey, caught: unknown): string {
-  return extractErrorMessage(
-    caught,
-    `${OPTIONAL_SECTION_LABELS[section]} did not load. Core load detail is still available.`
-  );
+function optionalSectionErrorMessage(
+  section: OptionalSectionKey,
+  caught: unknown,
+): string {
+  const detail = extractErrorMessage(caught, "");
+  return detail
+    ? `${OPTIONAL_SECTION_LABELS[section]} is temporarily unavailable. ${detail}`
+    : `${OPTIONAL_SECTION_LABELS[section]} is temporarily unavailable. Refresh this section when ready.`;
 }
 
 function isMobileViewport(): boolean {
@@ -519,7 +560,8 @@ function formatCurrency(value?: number | string | null, currencyCode = "USD") {
     return "—";
   }
 
-  const numericValue = typeof value === "string" ? Number.parseFloat(value) : value;
+  const numericValue =
+    typeof value === "string" ? Number.parseFloat(value) : value;
 
   if (!Number.isFinite(numericValue)) {
     return String(value);
@@ -561,11 +603,18 @@ function diffDaysFromToday(value?: string | null): number | null {
   if (Number.isNaN(parsed.getTime())) return null;
   const today = startOfDay(new Date());
   const target = startOfDay(parsed);
-  return Math.floor((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+  return Math.floor(
+    (target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24),
+  );
 }
 
 function formatFileSize(value?: number | null) {
-  if (value === undefined || value === null || !Number.isFinite(value) || value < 0) {
+  if (
+    value === undefined ||
+    value === null ||
+    !Number.isFinite(value) ||
+    value < 0
+  ) {
     return "—";
   }
 
@@ -589,18 +638,23 @@ function asRecord(value: unknown): Record<string, unknown> | null {
   return value as Record<string, unknown>;
 }
 
-function getStringField(record: Record<string, unknown> | null, key: string): string | null {
+function getStringField(
+  record: Record<string, unknown> | null,
+  key: string,
+): string | null {
   if (!record) {
     return null;
   }
 
   const value = record[key];
-  return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+  return typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : null;
 }
 
 function getFirstStringField(
   record: Record<string, unknown> | null,
-  keys: string[]
+  keys: string[],
 ): string | null {
   for (const key of keys) {
     const value = getStringField(record, key);
@@ -613,7 +667,7 @@ function getFirstStringField(
 
 function getOptionalBooleanField(
   record: Record<string, unknown> | null,
-  key: string
+  key: string,
 ): boolean | null | undefined {
   if (!record || !(key in record)) {
     return undefined;
@@ -650,7 +704,7 @@ function getOptionalBooleanField(
 
 function getFirstOptionalBooleanField(
   record: Record<string, unknown> | null,
-  keys: string[]
+  keys: string[],
 ): boolean | null | undefined {
   if (!record) {
     return undefined;
@@ -668,14 +722,18 @@ function getFirstOptionalBooleanField(
 
 function getOptionalNumericOrStringField(
   record: Record<string, unknown> | null,
-  key: string
+  key: string,
 ): number | string | null | undefined {
   if (!record || !(key in record)) {
     return undefined;
   }
 
   const value = record[key];
-  if (typeof value === "number" || typeof value === "string" || value === null) {
+  if (
+    typeof value === "number" ||
+    typeof value === "string" ||
+    value === null
+  ) {
     return value;
   }
 
@@ -684,7 +742,7 @@ function getOptionalNumericOrStringField(
 
 function getFirstOptionalNumericOrStringField(
   record: Record<string, unknown> | null,
-  keys: string[]
+  keys: string[],
 ): number | string | null | undefined {
   if (!record) {
     return undefined;
@@ -702,7 +760,7 @@ function getFirstOptionalNumericOrStringField(
 
 function getOptionalNumberField(
   record: Record<string, unknown> | null,
-  key: string
+  key: string,
 ): number | null | undefined {
   if (!record || !(key in record)) {
     return undefined;
@@ -726,7 +784,8 @@ function getOptionalNumberField(
 }
 
 function normalizeLoadStatus(value: unknown): LoadStatus {
-  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+  const normalized =
+    typeof value === "string" ? value.trim().toLowerCase() : "";
 
   switch (normalized) {
     case "booked":
@@ -786,10 +845,16 @@ function normalizeLoad(payload: unknown): Load | null {
     invoice_number: getStringField(record, "invoice_number"),
     status: normalizeLoadStatus(record?.status),
     driver_id: getStringField(record, "driver_id"),
-    driver_name: getFirstStringField(record, ["driver_name", "driver_display_name"]),
+    driver_name: getFirstStringField(record, [
+      "driver_name",
+      "driver_display_name",
+    ]),
     broker_id: getStringField(record, "broker_id"),
     broker_name: getStringField(record, "broker_name"),
-    broker_name_raw: getFirstStringField(record, ["broker_name_raw", "broker_name"]),
+    broker_name_raw: getFirstStringField(record, [
+      "broker_name_raw",
+      "broker_name",
+    ]),
     broker_email_raw: getStringField(record, "broker_email_raw"),
     customer_account_id: getStringField(record, "customer_account_id"),
     customer_account_name: getFirstStringField(record, [
@@ -817,7 +882,10 @@ function normalizeLoad(payload: unknown): Load | null {
     paid_at: getStringField(record, "paid_at"),
     created_at: getStringField(record, "created_at"),
     updated_at: getStringField(record, "updated_at"),
-    factoring_notes: getFirstStringField(record, ["factoring_notes", "payment_notes"]),
+    factoring_notes: getFirstStringField(record, [
+      "factoring_notes",
+      "payment_notes",
+    ]),
     paid_amount: getFirstOptionalNumericOrStringField(record, ["paid_amount"]),
     amount_received: getFirstOptionalNumericOrStringField(record, [
       "amount_received",
@@ -828,8 +896,12 @@ function normalizeLoad(payload: unknown): Load | null {
       "factor_name",
       "factoring_company_name",
     ]),
-    is_factored: getFirstOptionalBooleanField(record, ["is_factored", "factored"]),
-    packet_readiness: (record?.packet_readiness as PacketReadiness | null | undefined) ?? null,
+    is_factored: getFirstOptionalBooleanField(record, [
+      "is_factored",
+      "factored",
+    ]),
+    packet_readiness:
+      (record?.packet_readiness as PacketReadiness | null | undefined) ?? null,
     operational: (record?.operational as Load["operational"]) ?? null,
   };
 }
@@ -870,18 +942,25 @@ function normalizeDocument(payload: unknown): LoadDocument | null {
     driver_id: getStringField(record, "driver_id"),
     load_id: getStringField(record, "load_id"),
     source_channel: getStringField(record, "source_channel"),
-    document_type: getStringField(record, "document_type") ?? getStringField(record, "type"),
-    original_filename: getStringField(record, "original_filename") ?? getStringField(record, "filename"),
+    document_type:
+      getStringField(record, "document_type") ?? getStringField(record, "type"),
+    original_filename:
+      getStringField(record, "original_filename") ??
+      getStringField(record, "filename"),
     mime_type: getStringField(record, "mime_type"),
     file_size_bytes: getOptionalNumberField(record, "file_size_bytes"),
     storage_bucket: getStringField(record, "storage_bucket"),
     storage_key: getStringField(record, "storage_key"),
     received_status: getStringField(record, "received_status"),
-    processing_status: getStringField(record, "processing_status") ?? getStringField(record, "status"),
+    processing_status:
+      getStringField(record, "processing_status") ??
+      getStringField(record, "status"),
     extraction_status: getStringField(record, "extraction_status"),
     validation_status: getStringField(record, "validation_status"),
     page_count: getOptionalNumberField(record, "page_count"),
-    received_at: getStringField(record, "received_at") ?? getStringField(record, "uploaded_at"),
+    received_at:
+      getStringField(record, "received_at") ??
+      getStringField(record, "uploaded_at"),
     created_at: getStringField(record, "created_at"),
     updated_at: getStringField(record, "updated_at"),
   };
@@ -923,8 +1002,10 @@ function extractStaffUserId(payload: unknown): string | null {
   return null;
 }
 
-
-function packetEmailRecipient(event: SubmissionPacketEvent, packet: SubmissionPacket) {
+function packetEmailRecipient(
+  event: SubmissionPacketEvent,
+  packet: SubmissionPacket,
+) {
   if (event.recipient) return event.recipient;
   const message = event.message ?? "";
   const match = message.match(/(?:to|for) ([^;:\s]+@[^;:\s]+)/);
@@ -935,11 +1016,18 @@ function packetEmailDetail(event: SubmissionPacketEvent) {
   const message = event.message ?? "";
   const subject = message.match(/subject=([^;]+)/)?.[1]?.trim();
   const attachments = message.match(/attachments=(\d+)/)?.[1];
-  const details = [subject ? `Subject: ${subject}` : null, attachments ? `${attachments} attachment${attachments === "1" ? "" : "s"}` : null].filter(Boolean);
+  const details = [
+    subject ? `Subject: ${subject}` : null,
+    attachments
+      ? `${attachments} attachment${attachments === "1" ? "" : "s"}`
+      : null,
+  ].filter(Boolean);
   return details.join(" • ");
 }
 
-function normalizeLoadIdParam(value: string | string[] | undefined): string | null {
+function normalizeLoadIdParam(
+  value: string | string[] | undefined,
+): string | null {
   if (typeof value === "string" && value.trim().length > 0) {
     return value.trim();
   }
@@ -1001,13 +1089,19 @@ function normalizeDocumentTypeLabel(value?: string | null) {
 }
 
 function getDocumentDisplayName(document: LoadDocument) {
-  if (document.original_filename && document.original_filename.trim().length > 0) {
+  if (
+    document.original_filename &&
+    document.original_filename.trim().length > 0
+  ) {
     return document.original_filename.trim();
   }
   return `${normalizeDocumentTypeLabel(document.document_type)} Document`;
 }
 
-function matchesDocumentType(document: LoadDocument, aliases: string[]): boolean {
+function matchesDocumentType(
+  document: LoadDocument,
+  aliases: string[],
+): boolean {
   const normalized = (document.document_type ?? "").trim().toLowerCase();
   return aliases.includes(normalized);
 }
@@ -1040,13 +1134,18 @@ function normalizeSubmissionPacket(item: unknown): SubmissionPacket | null {
     events: eventsRaw.map((event) => {
       const eventRecord = asRecord(event);
       const message = getStringField(eventRecord, "message");
-      const recipientMatch = message?.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
+      const recipientMatch = message?.match(
+        /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i,
+      );
       return {
         id: getStringField(eventRecord, "id") ?? `generated-${Math.random()}`,
         event_type: getStringField(eventRecord, "event_type"),
         message,
         created_at: getStringField(eventRecord, "created_at"),
-        recipient: getStringField(eventRecord, "recipient") ?? recipientMatch?.[0] ?? null,
+        recipient:
+          getStringField(eventRecord, "recipient") ??
+          recipientMatch?.[0] ??
+          null,
       };
     }),
   };
@@ -1064,18 +1163,26 @@ function normalizePacketAudit(item: unknown): PacketAuditResult | null {
     generated_at: getStringField(record, "generated_at"),
     findings: findingsRaw.map((finding) => {
       const findingRecord = asRecord(finding);
-      const affectedRaw = Array.isArray(findingRecord?.affected_documents) ? findingRecord.affected_documents : [];
+      const affectedRaw = Array.isArray(findingRecord?.affected_documents)
+        ? findingRecord.affected_documents
+        : [];
       return {
         code: getStringField(findingRecord, "code") ?? "packet_audit_finding",
         severity: getStringField(findingRecord, "severity") ?? "info",
-        message: getStringField(findingRecord, "message") ?? "Packet audit finding needs review.",
-        affected_documents: affectedRaw.filter((value): value is string => typeof value === "string"),
+        message:
+          getStringField(findingRecord, "message") ??
+          "Packet audit finding needs review.",
+        affected_documents: affectedRaw.filter(
+          (value): value is string => typeof value === "string",
+        ),
       };
     }),
   };
 }
 
-function normalizePaymentReconciliation(item: unknown): PaymentReconciliationRecord | null {
+function normalizePaymentReconciliation(
+  item: unknown,
+): PaymentReconciliationRecord | null {
   const record = asRecord(item);
   const id = getStringField(record, "id");
   if (!id) return null;
@@ -1126,7 +1233,10 @@ function getLoadDisplayTitle(load: Load) {
   return load.load_number ?? load.id;
 }
 
-function getOperationalDisplayValue(primary?: string | null, fallback?: string | null) {
+function getOperationalDisplayValue(
+  primary?: string | null,
+  fallback?: string | null,
+) {
   if (primary && primary.trim().length > 0) {
     return primary;
   }
@@ -1190,9 +1300,11 @@ function isValidDate(value: string) {
   return !Number.isNaN(parsed.getTime());
 }
 
-
-
-async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit = {}, timeoutMs = 15_000): Promise<Response> {
+async function fetchWithTimeout(
+  input: RequestInfo | URL,
+  init: RequestInit = {},
+  timeoutMs = 15_000,
+): Promise<Response> {
   const controller = new AbortController();
   const timeout = globalThis.setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -1208,8 +1320,10 @@ async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit = {}
 }
 
 function isMutationTimeoutError(error: unknown): boolean {
-  if (error instanceof ApiClientError && error.code === "client_timeout") return true;
-  if (error instanceof Error) return /timed out|client_timeout/i.test(error.message);
+  if (error instanceof ApiClientError && error.code === "client_timeout")
+    return true;
+  if (error instanceof Error)
+    return /timed out|client_timeout/i.test(error.message);
   return false;
 }
 
@@ -1257,16 +1371,22 @@ function SectionLoadNotice({
 }) {
   if (error) {
     return (
-      <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800" role="status">
-        {error} <span className="font-semibold">Retry or refresh this section when ready.</span>
+      <div
+        className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600"
+        role="status"
+      >
+        {error}
       </div>
     );
   }
 
   if (isLoading) {
     return (
-      <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600" role="status">
-        {emptyMessage ?? "Loading this section without blocking the load summary..."}
+      <div
+        className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600"
+        role="status"
+      >
+        {emptyMessage ?? "Loading section..."}
       </div>
     );
   }
@@ -1283,12 +1403,14 @@ function inferDocumentMimeType(document: LoadDocument): string {
   if (explicitMimeType) return explicitMimeType;
   const filename = (document.original_filename ?? "").toLowerCase();
   if (filename.endsWith(".pdf")) return "application/pdf";
-  if (filename.endsWith(".jpg") || filename.endsWith(".jpeg")) return "image/jpeg";
+  if (filename.endsWith(".jpg") || filename.endsWith(".jpeg"))
+    return "image/jpeg";
   if (filename.endsWith(".png")) return "image/png";
   if (filename.endsWith(".webp")) return "image/webp";
   if (filename.endsWith(".heic")) return "image/heic";
   if (filename.endsWith(".heif")) return "image/heif";
-  if (filename.endsWith(".tif") || filename.endsWith(".tiff")) return "image/tiff";
+  if (filename.endsWith(".tif") || filename.endsWith(".tiff"))
+    return "image/tiff";
   return "Unknown MIME";
 }
 
@@ -1311,96 +1433,153 @@ export default function LoadDetailPage() {
   const loadDocumentsRef = useRef<LoadDocument[]>([]);
   const documentsPanelRenderCountRef = useRef(0);
 
-  const traceLoadDetailAction = useCallback((event: string, details?: Record<string, unknown>) => {
-    console.info("[load-detail-action]", { event, load_id: loadId, ...details });
-  }, [loadId]);
+  const traceLoadDetailAction = useCallback(
+    (event: string, details?: Record<string, unknown>) => {
+      console.info("[load-detail-action]", {
+        event,
+        load_id: loadId,
+        ...details,
+      });
+    },
+    [loadId],
+  );
 
   const clearHydrationTimeouts = useCallback(() => {
-    hydrationTimeoutsRef.current.forEach((timeoutId) => window.clearTimeout(timeoutId));
+    hydrationTimeoutsRef.current.forEach((timeoutId) =>
+      window.clearTimeout(timeoutId),
+    );
     hydrationTimeoutsRef.current = [];
   }, []);
 
-  const getHydrationSignal = useCallback(() => hydrationAbortControllerRef.current?.signal, []);
+  const getHydrationSignal = useCallback(
+    () => hydrationAbortControllerRef.current?.signal,
+    [],
+  );
 
-  const pauseBackgroundHydrationForAction = useCallback((reason = "write_action") => {
-    traceLoadDetailAction("abort_background_hydration_start", { reason });
-    hydrationAbortControllerRef.current?.abort();
-    hydrationAbortControllerRef.current = null;
-    clearHydrationTimeouts();
-    traceLoadDetailAction("abort_background_hydration_done", { reason });
-  }, [clearHydrationTimeouts, traceLoadDetailAction]);
+  const pauseBackgroundHydrationForAction = useCallback(
+    (reason = "write_action") => {
+      traceLoadDetailAction("abort_background_hydration_start", { reason });
+      hydrationAbortControllerRef.current?.abort();
+      hydrationAbortControllerRef.current = null;
+      clearHydrationTimeouts();
+      traceLoadDetailAction("abort_background_hydration_done", { reason });
+    },
+    [clearHydrationTimeouts, traceLoadDetailAction],
+  );
 
-  const beginWriteAction = useCallback((reason: string) => {
-    if (optionalHydrationCooldownTimeoutRef.current !== null) {
-      window.clearTimeout(optionalHydrationCooldownTimeoutRef.current);
-      optionalHydrationCooldownTimeoutRef.current = null;
-    }
-    writeActionActiveRef.current = true;
-    optionalHydrationPausedUntilRef.current = Number.POSITIVE_INFINITY;
-    pauseBackgroundHydrationForAction(reason);
-
-    let ended = false;
-    return () => {
-      if (ended) return;
-      ended = true;
-      writeActionActiveRef.current = false;
-      optionalHydrationPausedUntilRef.current = Date.now() + 1_500;
-      optionalHydrationCooldownTimeoutRef.current = window.setTimeout(() => {
-        if (!writeActionActiveRef.current && Date.now() >= optionalHydrationPausedUntilRef.current) {
-          optionalHydrationPausedUntilRef.current = 0;
-        }
+  const beginWriteAction = useCallback(
+    (reason: string) => {
+      if (optionalHydrationCooldownTimeoutRef.current !== null) {
+        window.clearTimeout(optionalHydrationCooldownTimeoutRef.current);
         optionalHydrationCooldownTimeoutRef.current = null;
-      }, 1_500);
-    };
-  }, [pauseBackgroundHydrationForAction]);
+      }
+      writeActionActiveRef.current = true;
+      optionalHydrationPausedUntilRef.current = Number.POSITIVE_INFINITY;
+      pauseBackgroundHydrationForAction(reason);
+
+      let ended = false;
+      return () => {
+        if (ended) return;
+        ended = true;
+        writeActionActiveRef.current = false;
+        optionalHydrationPausedUntilRef.current = Date.now() + 1_500;
+        optionalHydrationCooldownTimeoutRef.current = window.setTimeout(() => {
+          if (
+            !writeActionActiveRef.current &&
+            Date.now() >= optionalHydrationPausedUntilRef.current
+          ) {
+            optionalHydrationPausedUntilRef.current = 0;
+          }
+          optionalHydrationCooldownTimeoutRef.current = null;
+        }, 1_500);
+      };
+    },
+    [pauseBackgroundHydrationForAction],
+  );
 
   const canStartOptionalHydration = useCallback(() => {
-    if (writeActionActiveRef.current || Date.now() < optionalHydrationPausedUntilRef.current) {
+    if (
+      writeActionActiveRef.current ||
+      Date.now() < optionalHydrationPausedUntilRef.current
+    ) {
       return false;
     }
     return !isMobileViewport() || optionalHydrationInFlightRef.current < 1;
   }, []);
 
   const [load, setLoad] = useState<Load | null>(null);
-  const [reviewQueueItem, setReviewQueueItem] = useState<ReviewQueueItem | null>(null);
+  const [reviewQueueItem, setReviewQueueItem] =
+    useState<ReviewQueueItem | null>(null);
   const [loadDocuments, setLoadDocuments] = useState<LoadDocument[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isAdvancing, setIsAdvancing] = useState<boolean>(false);
   const [isSettingStatus, setIsSettingStatus] = useState<boolean>(false);
   const [manualStatus, setManualStatus] = useState<LoadStatus>("docs_received");
-  const [isGeneratingInvoice, setIsGeneratingInvoice] = useState<boolean>(false);
-  const [invoiceAction, setInvoiceAction] = useState<"view" | "download" | "regenerate" | null>(null);
+  const [isGeneratingInvoice, setIsGeneratingInvoice] =
+    useState<boolean>(false);
+  const [invoiceAction, setInvoiceAction] = useState<
+    "view" | "download" | "regenerate" | null
+  >(null);
   const [isMarkingReviewed, setIsMarkingReviewed] = useState<boolean>(false);
-  const [isExecutingWorkflowAction, setIsExecutingWorkflowAction] = useState<boolean>(false);
+  const [isExecutingWorkflowAction, setIsExecutingWorkflowAction] =
+    useState<boolean>(false);
   const [isDocumentsLoading, setIsDocumentsLoading] = useState<boolean>(false);
-  const [optionalSectionLoading, setOptionalSectionLoading] = useState<OptionalSectionState>(
-    OPTIONAL_SECTION_INITIAL_LOADING
-  );
-  const [optionalSectionErrors, setOptionalSectionErrors] = useState<OptionalSectionErrors>({});
-  const [isUploadingDocument, setIsUploadingDocument] = useState<boolean>(false);
-  const [downloadingDocumentId, setDownloadingDocumentId] = useState<string | null>(null);
+  const [optionalSectionLoading, setOptionalSectionLoading] =
+    useState<OptionalSectionState>(OPTIONAL_SECTION_INITIAL_LOADING);
+  const [optionalSectionErrors, setOptionalSectionErrors] =
+    useState<OptionalSectionErrors>({});
+  const [isUploadingDocument, setIsUploadingDocument] =
+    useState<boolean>(false);
+  const [downloadingDocumentId, setDownloadingDocumentId] = useState<
+    string | null
+  >(null);
   const [savingDocumentId, setSavingDocumentId] = useState<string | null>(null);
-  const [deletingDocumentId, setDeletingDocumentId] = useState<string | null>(null);
+  const [deletingDocumentId, setDeletingDocumentId] = useState<string | null>(
+    null,
+  );
   const [selectedUploadDocumentType, setSelectedUploadDocumentType] =
     useState<UploadDocumentType>("");
-  const [selectedUploadFile, setSelectedUploadFile] = useState<File | null>(null);
-  const [documentUploadError, setDocumentUploadError] = useState<string | null>(null);
+  const [selectedUploadFile, setSelectedUploadFile] = useState<File | null>(
+    null,
+  );
+  const [documentUploadError, setDocumentUploadError] = useState<string | null>(
+    null,
+  );
   const [error, setError] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
-  const [packetEmailConfirmation, setPacketEmailConfirmation] = useState<string | null>(null);
-  const [invoiceBlocker, setInvoiceBlocker] = useState<InvoiceBlocker | null>(null);
-  const [invoiceStatus, setInvoiceStatus] = useState<InvoiceStatusState | null>(null);
-  const [pendingDuplicateUpload, setPendingDuplicateUpload] = useState<{ file: File; formData: FormData; message: string } | null>(null);
+  const [packetEmailConfirmation, setPacketEmailConfirmation] = useState<
+    string | null
+  >(null);
+  const [invoiceBlocker, setInvoiceBlocker] = useState<InvoiceBlocker | null>(
+    null,
+  );
+  const [invoiceStatus, setInvoiceStatus] = useState<InvoiceStatusState | null>(
+    null,
+  );
+  const [pendingDuplicateUpload, setPendingDuplicateUpload] = useState<{
+    file: File;
+    formData: FormData;
+    message: string;
+  } | null>(null);
   const [staffUsers, setStaffUsers] = useState<StaffUserOption[]>([]);
   const [followUpOwnerId, setFollowUpOwnerId] = useState("");
   const [nextFollowUpDate, setNextFollowUpDate] = useState("");
   const [isSavingFollowUp, setIsSavingFollowUp] = useState(false);
-  const [submissionPackets, setSubmissionPackets] = useState<SubmissionPacket[]>([]);
-  const [packetAudit, setPacketAudit] = useState<PacketAuditResult | null>(null);
+  const [submissionPackets, setSubmissionPackets] = useState<
+    SubmissionPacket[]
+  >([]);
+  const [packetAudit, setPacketAudit] = useState<PacketAuditResult | null>(
+    null,
+  );
   const [isSubmissionBusy, setIsSubmissionBusy] = useState(false);
-  const [downloadingPacketId, setDownloadingPacketId] = useState<string | null>(null);
-  const [carrierProfile, setCarrierProfile] = useState<CarrierProfile | null>(null);
-  const [paymentRecord, setPaymentRecord] = useState<PaymentReconciliationRecord | null>(null);
+  const [downloadingPacketId, setDownloadingPacketId] = useState<string | null>(
+    null,
+  );
+  const [carrierProfile, setCarrierProfile] = useState<CarrierProfile | null>(
+    null,
+  );
+  const [paymentRecord, setPaymentRecord] =
+    useState<PaymentReconciliationRecord | null>(null);
   const [isSavingPayment, setIsSavingPayment] = useState(false);
   const [followUpTasks, setFollowUpTasks] = useState<FollowUpTask[]>([]);
   const [isSavingFollowUpTask, setIsSavingFollowUpTask] = useState(false);
@@ -1430,32 +1609,37 @@ export default function LoadDetailPage() {
         token: token ?? undefined,
         timeoutMs: 4_000,
         signal: getHydrationSignal(),
-      }
+      },
     );
 
     return normalizeLoad(response.data);
   }, [getHydrationSignal, loadId]);
 
-  const fetchReviewQueueItem = useCallback(async (): Promise<ReviewQueueItem | null> => {
-    if (!loadId) {
-      return null;
-    }
-
-    const token = getAccessToken();
-    const response = await apiClient.get<ApiResponse<unknown>>(
-      `/review-queue/loads/${encodeURIComponent(loadId)}/context`,
-      {
-        token: token ?? undefined,
-        timeoutMs: 5_000,
-        signal: getHydrationSignal(),
+  const fetchReviewQueueItem =
+    useCallback(async (): Promise<ReviewQueueItem | null> => {
+      if (!loadId) {
+        return null;
       }
-    );
 
-    return normalizeReviewQueueItem(response.data);
-  }, [getHydrationSignal, loadId]);
+      const token = getAccessToken();
+      const response = await apiClient.get<ApiResponse<unknown>>(
+        `/review-queue/loads/${encodeURIComponent(loadId)}/context`,
+        {
+          token: token ?? undefined,
+          timeoutMs: 5_000,
+          signal: getHydrationSignal(),
+        },
+      );
+
+      return normalizeReviewQueueItem(response.data);
+    }, [getHydrationSignal, loadId]);
 
   const fetchLoadDocuments = useCallback(
-    async (options?: { silent?: boolean; reason?: string; expectedMinMutationGeneration?: number }): Promise<LoadDocument[]> => {
+    async (options?: {
+      silent?: boolean;
+      reason?: string;
+      expectedMinMutationGeneration?: number;
+    }): Promise<LoadDocument[]> => {
       if (!loadId) {
         setLoadDocuments([]);
         return [];
@@ -1463,7 +1647,7 @@ export default function LoadDetailPage() {
 
       const requestId = documentRefreshRequestRef.current + 1;
       documentRefreshRequestRef.current = requestId;
-      const cacheKey = `/loads/${encodeURIComponent(loadId)}/documents?page=1&page_size=100`;
+      const cacheKey = `/loads/${encodeURIComponent(loadId)}/documents?page=1&page_size=50`;
       const startedAtMutationGeneration = documentMutationGenerationRef.current;
 
       traceLoadDetailAction("refresh_documents_started", {
@@ -1487,7 +1671,7 @@ export default function LoadDetailPage() {
             timeoutMs: 5_000,
             dedupe: false,
             headers: { "Cache-Control": "no-cache", Pragma: "no-cache" },
-          }
+          },
         );
 
         const items = Array.isArray(response.data) ? response.data : [];
@@ -1503,7 +1687,9 @@ export default function LoadDetailPage() {
           started_at_mutation_generation: startedAtMutationGeneration,
         });
 
-        if (startedAtMutationGeneration < documentMutationGenerationRef.current) {
+        if (
+          startedAtMutationGeneration < documentMutationGenerationRef.current
+        ) {
           traceLoadDetailAction("refresh_documents_stale_ignored", {
             request_id: requestId,
             stale_request_generation: startedAtMutationGeneration,
@@ -1532,43 +1718,63 @@ export default function LoadDetailPage() {
       } catch (caught: unknown) {
         traceLoadDetailAction("refresh_documents_failed", {
           request_id: requestId,
-          reason: isClientAbortError(caught) ? "aborted" : extractErrorMessage(caught, "refresh failed"),
-          abort_reason: isClientAbortError(caught) ? extractErrorMessage(caught, "aborted") : null,
+          reason: isClientAbortError(caught)
+            ? "aborted"
+            : extractErrorMessage(caught, "refresh failed"),
+          abort_reason: isClientAbortError(caught)
+            ? extractErrorMessage(caught, "aborted")
+            : null,
         });
         throw caught;
       } finally {
         setIsDocumentsLoading(false);
       }
     },
-    [loadId, traceLoadDetailAction]
+    [loadId, traceLoadDetailAction],
   );
 
-  const fetchInvoiceStatus = useCallback(async (): Promise<InvoiceStatusState | null> => {
-    if (!loadId) return null;
-    const token = getAccessToken();
-    const response = await apiClient.get<ApiResponse<unknown>>(
-      `/loads/${encodeURIComponent(loadId)}/invoice-status`,
-      { token: token ?? undefined, timeoutMs: 3_000, signal: getHydrationSignal() }
-    );
-    return normalizeInvoiceStatus(response.data);
-  }, [getHydrationSignal, loadId]);
+  const fetchInvoiceStatus =
+    useCallback(async (): Promise<InvoiceStatusState | null> => {
+      if (!loadId) return null;
+      const token = getAccessToken();
+      const response = await apiClient.get<ApiResponse<unknown>>(
+        `/loads/${encodeURIComponent(loadId)}/invoice-status`,
+        {
+          token: token ?? undefined,
+          timeoutMs: 3_000,
+          signal: getHydrationSignal(),
+        },
+      );
+      return normalizeInvoiceStatus(response.data);
+    }, [getHydrationSignal, loadId]);
 
-  const fetchPacketAudit = useCallback(async (): Promise<PacketAuditResult | null> => {
-    if (!loadId) return null;
-    const token = getAccessToken();
-    const response = await apiClient.get<ApiResponse<unknown>>(
-      `/loads/${encodeURIComponent(loadId)}/packet-audit`,
-      { token: token ?? undefined, timeoutMs: 5_000, signal: getHydrationSignal() }
-    );
-    return normalizePacketAudit(response.data);
-  }, [getHydrationSignal, loadId]);
+  const fetchPacketAudit =
+    useCallback(async (): Promise<PacketAuditResult | null> => {
+      if (!loadId) return null;
+      const token = getAccessToken();
+      const response = await apiClient.get<ApiResponse<unknown>>(
+        `/loads/${encodeURIComponent(loadId)}/packet-audit`,
+        {
+          token: token ?? undefined,
+          timeoutMs: 5_000,
+          signal: getHydrationSignal(),
+        },
+      );
+      return normalizePacketAudit(response.data);
+    }, [getHydrationSignal, loadId]);
 
-  const fetchSubmissionPackets = useCallback(async (): Promise<SubmissionPacket[]> => {
+  const fetchSubmissionPackets = useCallback(async (): Promise<
+    SubmissionPacket[]
+  > => {
     if (!loadId) return [];
     const token = getAccessToken();
     const response = await apiClient.get<ApiResponse<unknown>>(
       `/loads/${encodeURIComponent(loadId)}/submission-packets`,
-      { token: token ?? undefined, timeoutMs: 5_000, signal: getHydrationSignal() }
+      {
+        token: token ?? undefined,
+        timeoutMs: 5_000,
+        signal: getHydrationSignal(),
+      },
     );
     const rows = Array.isArray(response.data) ? response.data : [];
     return rows
@@ -1576,38 +1782,48 @@ export default function LoadDetailPage() {
       .filter((item): item is SubmissionPacket => item !== null);
   }, [getHydrationSignal, loadId]);
 
-  const fetchCarrierProfile = useCallback(async (): Promise<CarrierProfile | null> => {
-    const token = getAccessToken();
-    const response = await apiClient.get<ApiResponse<unknown>>("/carrier-profile", {
-      token: token ?? undefined,
-      timeoutMs: 4_000,
-      signal: getHydrationSignal(),
-    });
-    const record = asRecord(response.data);
-    return {
-      legal_name: getStringField(record, "legal_name"),
-    };
-  }, [getHydrationSignal]);
+  const fetchCarrierProfile =
+    useCallback(async (): Promise<CarrierProfile | null> => {
+      const token = getAccessToken();
+      const response = await apiClient.get<ApiResponse<unknown>>(
+        "/carrier-profile",
+        {
+          token: token ?? undefined,
+          timeoutMs: 4_000,
+          signal: getHydrationSignal(),
+        },
+      );
+      const record = asRecord(response.data);
+      return {
+        legal_name: getStringField(record, "legal_name"),
+      };
+    }, [getHydrationSignal]);
 
-  const fetchPaymentReconciliation = useCallback(
-    async (): Promise<PaymentReconciliationRecord | null> => {
+  const fetchPaymentReconciliation =
+    useCallback(async (): Promise<PaymentReconciliationRecord | null> => {
       if (!loadId) return null;
       const token = getAccessToken();
       const response = await apiClient.get<ApiResponse<unknown>>(
         `/loads/${encodeURIComponent(loadId)}/payment-reconciliation/`,
-        { token: token ?? undefined, timeoutMs: 5_000, signal: getHydrationSignal() }
+        {
+          token: token ?? undefined,
+          timeoutMs: 5_000,
+          signal: getHydrationSignal(),
+        },
       );
       return normalizePaymentReconciliation(response.data);
-    },
-    [getHydrationSignal, loadId]
-  );
+    }, [getHydrationSignal, loadId]);
 
   const fetchFollowUpTasks = useCallback(async (): Promise<FollowUpTask[]> => {
     if (!loadId) return [];
     const token = getAccessToken();
     const response = await apiClient.get<ApiResponse<unknown>>(
       `/follow-ups?load_id=${encodeURIComponent(loadId)}&status=open`,
-      { token: token ?? undefined, timeoutMs: 5_000, signal: getHydrationSignal() }
+      {
+        token: token ?? undefined,
+        timeoutMs: 5_000,
+        signal: getHydrationSignal(),
+      },
     );
     const rows = Array.isArray(response.data) ? response.data : [];
     return rows
@@ -1621,7 +1837,11 @@ export default function LoadDetailPage() {
       pauseBackgroundHydrationForAction();
       setIsSubmissionBusy(true);
       const token = getAccessToken();
-      await apiClient.post(`/loads/${encodeURIComponent(loadId)}/submission-packets`, {}, { token: token ?? undefined });
+      await apiClient.post(
+        `/loads/${encodeURIComponent(loadId)}/submission-packets`,
+        {},
+        { token: token ?? undefined },
+      );
       setSubmissionPackets(await fetchSubmissionPackets());
       setPacketAudit(await fetchPacketAudit());
       setActionMessage("Billing packet created.");
@@ -1632,19 +1852,32 @@ export default function LoadDetailPage() {
     }
   }
 
-  async function handleMarkPacket(packetId: string, action: "mark-sent" | "mark-accepted" | "mark-rejected", payload?: Record<string, unknown>) {
+  async function handleMarkPacket(
+    packetId: string,
+    action: "mark-sent" | "mark-accepted" | "mark-rejected",
+    payload?: Record<string, unknown>,
+  ) {
     if (!loadId) return;
     try {
       pauseBackgroundHydrationForAction();
       setIsSubmissionBusy(true);
       const token = getAccessToken();
-      await apiClient.post(`/loads/${encodeURIComponent(loadId)}/submission-packets/${encodeURIComponent(packetId)}/${action}`, payload ?? {}, { token: token ?? undefined });
+      await apiClient.post(
+        `/loads/${encodeURIComponent(loadId)}/submission-packets/${encodeURIComponent(packetId)}/${action}`,
+        payload ?? {},
+        { token: token ?? undefined },
+      );
       setSubmissionPackets(await fetchSubmissionPackets());
       setPacketAudit(await fetchPacketAudit());
       setLoad(await fetchLoad());
       setActionMessage("Submission evidence updated.");
     } catch (caught: unknown) {
-      setError(extractErrorMessage(caught, "Failed to update packet submission status."));
+      setError(
+        extractErrorMessage(
+          caught,
+          "Failed to update packet submission status.",
+        ),
+      );
     } finally {
       setIsSubmissionBusy(false);
     }
@@ -1657,17 +1890,23 @@ export default function LoadDetailPage() {
       setDownloadingPacketId(packetId);
       setError(null);
       const token = getAccessToken();
+      const organizationId = getOrganizationId();
       const response = await fetch(
         buildConfiguredApiUrl(
-          `/loads/${encodeURIComponent(loadId)}/submission-packets/${encodeURIComponent(packetId)}/download`
+          `/loads/${encodeURIComponent(loadId)}/submission-packets/${encodeURIComponent(packetId)}/download`,
         ),
         {
           method: "GET",
-          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-        }
+          headers: {
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            ...(organizationId ? { "X-Organization-Id": organizationId } : {}),
+          },
+        },
       );
       if (!response.ok) {
-        throw new Error((await response.text()) || "Failed to download packet ZIP.");
+        throw new Error(
+          (await response.text()) || "Failed to download packet ZIP.",
+        );
       }
       const blob = await response.blob();
       const blobUrl = window.URL.createObjectURL(blob);
@@ -1689,7 +1928,8 @@ export default function LoadDetailPage() {
   async function handleCopySubmissionEmail() {
     const loadNumber = (load?.load_number || load?.id || loadId || "").trim();
     if (!loadNumber) return;
-    const invoiceNumber = (load?.invoice_number || "").trim() || `Load ${loadNumber}`;
+    const invoiceNumber =
+      (load?.invoice_number || "").trim() || `Load ${loadNumber}`;
     const carrierName = (carrierProfile?.legal_name || "Carrier").trim();
     const amountValue = load?.gross_amount ?? "0.00";
     const amountText = `${String(amountValue)} ${load?.currency_code ?? "USD"}`;
@@ -1727,9 +1967,12 @@ export default function LoadDetailPage() {
   }
 
   function openSendPacketEmailModal(packet: SubmissionPacket) {
-    const defaultTo = (packet.destination_email || "").trim() || (load?.broker_email_raw || "").trim();
+    const defaultTo =
+      (packet.destination_email || "").trim() ||
+      (load?.broker_email_raw || "").trim();
     const loadNumber = (load?.load_number || load?.id || loadId || "").trim();
-    const invoiceNumber = (load?.invoice_number || "").trim() || `Load ${loadNumber}`;
+    const invoiceNumber =
+      (load?.invoice_number || "").trim() || `Load ${loadNumber}`;
     const carrierName = (carrierProfile?.legal_name || "Carrier").trim();
     const amountValue = load?.gross_amount ?? "0.00";
     const amountText = `${String(amountValue)} ${load?.currency_code ?? "USD"}`;
@@ -1766,7 +2009,12 @@ export default function LoadDetailPage() {
     });
   }
 
-  async function handleSendPacketEmail(packetId: string, toEmail: string, subject: string, body: string) {
+  async function handleSendPacketEmail(
+    packetId: string,
+    toEmail: string,
+    subject: string,
+    body: string,
+  ) {
     if (!loadId) return;
     const logPacketEmailSuccess = (recipientEmail: string) => {
       const loggedAt = new Date().toISOString();
@@ -1788,8 +2036,8 @@ export default function LoadDetailPage() {
                   },
                   ...packet.events,
                 ],
-              }
-        )
+              },
+        ),
       );
       setPacketEmailConfirmation("Packet email sent and logged");
       setModalState({ kind: "none" });
@@ -1804,7 +2052,7 @@ export default function LoadDetailPage() {
       await apiClient.post(
         `/loads/${encodeURIComponent(loadId)}/submission-packets/${encodeURIComponent(packetId)}/send-email`,
         { to_email: toEmail, subject, body },
-        { token: token ?? undefined }
+        { token: token ?? undefined },
       );
       logPacketEmailSuccess(toEmail);
       await Promise.all([
@@ -1813,14 +2061,24 @@ export default function LoadDetailPage() {
         fetchLoad().then(setLoad),
       ]);
     } catch (caught: unknown) {
-      const message = extractErrorMessage(caught, "Packet email could not be sent. Check email configuration and try again.");
-      setModalError(message.toLowerCase().includes("smtp") ? "Packet email could not be sent. Check email configuration and try again." : message);
+      const message = extractErrorMessage(
+        caught,
+        "Packet email could not be sent. Check email configuration and try again.",
+      );
+      setModalError(
+        message.toLowerCase().includes("smtp")
+          ? "Packet email could not be sent. Check email configuration and try again."
+          : message,
+      );
     } finally {
       setIsSubmissionBusy(false);
     }
   }
 
-  async function handlePaymentAction(path: string, payload: Record<string, unknown>) {
+  async function handlePaymentAction(
+    path: string,
+    payload: Record<string, unknown>,
+  ) {
     if (!loadId) return;
     try {
       setIsSavingPayment(true);
@@ -1831,17 +2089,19 @@ export default function LoadDetailPage() {
           ? await apiClient.patch<ApiResponse<unknown>>(
               `/loads/${encodeURIComponent(loadId)}/payment-reconciliation/`,
               payload,
-              { token: token ?? undefined }
+              { token: token ?? undefined },
             )
           : await apiClient.post<ApiResponse<unknown>>(
               `/loads/${encodeURIComponent(loadId)}/payment-reconciliation/${path}`,
               payload,
-              { token: token ?? undefined }
+              { token: token ?? undefined },
             );
       setPaymentRecord(normalizePaymentReconciliation(response.data));
       setActionMessage("Payment reconciliation updated.");
     } catch (caught: unknown) {
-      setError(extractErrorMessage(caught, "Failed to update payment reconciliation."));
+      setError(
+        extractErrorMessage(caught, "Failed to update payment reconciliation."),
+      );
     } finally {
       setIsSavingPayment(false);
     }
@@ -1852,25 +2112,44 @@ export default function LoadDetailPage() {
     try {
       setIsSavingFollowUpTask(true);
       const token = getAccessToken();
-      await apiClient.post(`/loads/${encodeURIComponent(loadId)}/follow-ups/generate`, {}, { token: token ?? undefined });
+      await apiClient.post(
+        `/loads/${encodeURIComponent(loadId)}/follow-ups/generate`,
+        {},
+        { token: token ?? undefined },
+      );
       setFollowUpTasks(await fetchFollowUpTasks());
       setActionMessage("Follow-up reminders refreshed.");
     } catch (caught: unknown) {
-      setError(extractErrorMessage(caught, "Failed to generate follow-up reminders."));
+      setError(
+        extractErrorMessage(caught, "Failed to generate follow-up reminders."),
+      );
     } finally {
       setIsSavingFollowUpTask(false);
     }
   }
 
-  async function handleFollowUpAction(taskId: string, action: "complete" | "cancel" | "snooze", until?: string) {
+  async function handleFollowUpAction(
+    taskId: string,
+    action: "complete" | "cancel" | "snooze",
+    until?: string,
+  ) {
     try {
       setIsSavingFollowUpTask(true);
       const token = getAccessToken();
       if (action === "snooze") {
-        const snoozeUntil = until ?? new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString();
-        await apiClient.post(`/follow-ups/${encodeURIComponent(taskId)}/snooze`, { until: snoozeUntil }, { token: token ?? undefined });
+        const snoozeUntil =
+          until ?? new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString();
+        await apiClient.post(
+          `/follow-ups/${encodeURIComponent(taskId)}/snooze`,
+          { until: snoozeUntil },
+          { token: token ?? undefined },
+        );
       } else {
-        await apiClient.post(`/follow-ups/${encodeURIComponent(taskId)}/${action}`, {}, { token: token ?? undefined });
+        await apiClient.post(
+          `/follow-ups/${encodeURIComponent(taskId)}/${action}`,
+          {},
+          { token: token ?? undefined },
+        );
       }
       setFollowUpTasks(await fetchFollowUpTasks());
       setActionMessage("Follow-up updated.");
@@ -1883,20 +2162,45 @@ export default function LoadDetailPage() {
   }
 
   function openPaymentActionModal(action: PaymentActionType) {
-    const baseExpected = String(paymentRecord?.expected_amount ?? paymentRecord?.amount_received ?? "0");
+    const baseExpected = String(
+      paymentRecord?.expected_amount ?? paymentRecord?.amount_received ?? "0",
+    );
     const baseReceived = String(paymentRecord?.amount_received ?? "0");
     const baseAdvance = String(paymentRecord?.advance_amount ?? "0");
     const baseReserve = String(paymentRecord?.reserve_amount ?? "0");
     const baseReservePaid = String(paymentRecord?.reserve_paid_amount ?? "0");
 
     const defaults: Record<PaymentActionType, Record<string, string>> = {
-      record_payment: { amount_received: baseReceived, paid_date: new Date().toISOString().slice(0, 10) },
-      mark_fully_paid: { amount: baseExpected, paid_date: new Date().toISOString().slice(0, 10) },
-      record_partial_payment: { amount: baseReceived, paid_date: new Date().toISOString().slice(0, 10) },
-      record_factoring_advance: { amount: baseAdvance, factor_name: paymentRecord?.factor_name ?? "", advance_date: new Date().toISOString().slice(0, 10), factoring_fee_percent: paymentRecord?.factoring_fee_percent ?? "", reserve_amount: paymentRecord?.reserve_amount ?? "", notes: paymentRecord?.factoring_notes ?? "" },
+      record_payment: {
+        amount_received: baseReceived,
+        paid_date: new Date().toISOString().slice(0, 10),
+      },
+      mark_fully_paid: {
+        amount: baseExpected,
+        paid_date: new Date().toISOString().slice(0, 10),
+      },
+      record_partial_payment: {
+        amount: baseReceived,
+        paid_date: new Date().toISOString().slice(0, 10),
+      },
+      record_factoring_advance: {
+        amount: baseAdvance,
+        factor_name: paymentRecord?.factor_name ?? "",
+        advance_date: new Date().toISOString().slice(0, 10),
+        factoring_fee_percent: paymentRecord?.factoring_fee_percent ?? "",
+        reserve_amount: paymentRecord?.reserve_amount ?? "",
+        notes: paymentRecord?.factoring_notes ?? "",
+      },
       mark_reserve_pending: { reserve_amount: baseReserve },
-      record_reserve_paid: { amount: baseReservePaid, paid_date: new Date().toISOString().slice(0, 10) },
-      mark_short_paid: { received_amount: baseReceived, expected_amount: baseExpected, reason: paymentRecord?.notes ?? "" },
+      record_reserve_paid: {
+        amount: baseReservePaid,
+        paid_date: new Date().toISOString().slice(0, 10),
+      },
+      mark_short_paid: {
+        received_amount: baseReceived,
+        expected_amount: baseExpected,
+        reason: paymentRecord?.notes ?? "",
+      },
       flag_dispute: { reason: paymentRecord?.dispute_reason ?? "" },
     };
 
@@ -1904,59 +2208,103 @@ export default function LoadDetailPage() {
     setModalState({ kind: "payment_action", action, values: defaults[action] });
   }
 
-  async function submitPaymentAction(action: PaymentActionType, values: Record<string, string>) {
+  async function submitPaymentAction(
+    action: PaymentActionType,
+    values: Record<string, string>,
+  ) {
     const closePaymentModal = () => {
       setModalState({ kind: "none" });
     };
 
     if (action === "record_payment") {
-      if (!isValidAmount(values.amount_received ?? "")) return setModalError("Enter a valid payment amount.");
-      if (!isValidDate(values.paid_date ?? "")) return setModalError("Enter a valid paid date.");
-      await handlePaymentAction("", { amount_received: values.amount_received, paid_date: values.paid_date });
+      if (!isValidAmount(values.amount_received ?? ""))
+        return setModalError("Enter a valid payment amount.");
+      if (!isValidDate(values.paid_date ?? ""))
+        return setModalError("Enter a valid paid date.");
+      await handlePaymentAction("", {
+        amount_received: values.amount_received,
+        paid_date: values.paid_date,
+      });
       closePaymentModal();
       return;
     }
     if (action === "mark_fully_paid") {
-      if (!isValidAmount(values.amount ?? "")) return setModalError("Enter a valid amount.");
-      if (!isValidDate(values.paid_date ?? "")) return setModalError("Enter a valid paid date.");
-      await handlePaymentAction("mark-paid", { amount: values.amount, paid_date: values.paid_date });
+      if (!isValidAmount(values.amount ?? ""))
+        return setModalError("Enter a valid amount.");
+      if (!isValidDate(values.paid_date ?? ""))
+        return setModalError("Enter a valid paid date.");
+      await handlePaymentAction("mark-paid", {
+        amount: values.amount,
+        paid_date: values.paid_date,
+      });
       closePaymentModal();
       return;
     }
     if (action === "record_partial_payment") {
-      if (!isValidAmount(values.amount ?? "")) return setModalError("Enter a valid partial payment amount.");
-      if (!isValidDate(values.paid_date ?? "")) return setModalError("Enter a valid paid date.");
-      await handlePaymentAction("mark-partial-payment", { amount: values.amount, paid_date: values.paid_date });
+      if (!isValidAmount(values.amount ?? ""))
+        return setModalError("Enter a valid partial payment amount.");
+      if (!isValidDate(values.paid_date ?? ""))
+        return setModalError("Enter a valid paid date.");
+      await handlePaymentAction("mark-partial-payment", {
+        amount: values.amount,
+        paid_date: values.paid_date,
+      });
       closePaymentModal();
       return;
     }
     if (action === "record_factoring_advance") {
-      if (!isValidAmount(values.amount ?? "")) return setModalError("Enter a valid factoring advance amount.");
-      if (!isValidDate(values.advance_date ?? "")) return setModalError("Enter a valid advance date.");
-      await handlePaymentAction("mark-advance-paid", { amount: values.amount, factor_name: values.factor_name, advance_date: values.advance_date, factoring_fee_percent: values.factoring_fee_percent || null, reserve_amount: values.reserve_amount || null, notes: values.notes || null });
+      if (!isValidAmount(values.amount ?? ""))
+        return setModalError("Enter a valid factoring advance amount.");
+      if (!isValidDate(values.advance_date ?? ""))
+        return setModalError("Enter a valid advance date.");
+      await handlePaymentAction("mark-advance-paid", {
+        amount: values.amount,
+        factor_name: values.factor_name,
+        advance_date: values.advance_date,
+        factoring_fee_percent: values.factoring_fee_percent || null,
+        reserve_amount: values.reserve_amount || null,
+        notes: values.notes || null,
+      });
       closePaymentModal();
       return;
     }
     if (action === "mark_reserve_pending") {
-      if (!isValidAmount(values.reserve_amount ?? "")) return setModalError("Enter a valid reserve amount.");
-      await handlePaymentAction("mark-reserve-pending", { reserve_amount: values.reserve_amount });
+      if (!isValidAmount(values.reserve_amount ?? ""))
+        return setModalError("Enter a valid reserve amount.");
+      await handlePaymentAction("mark-reserve-pending", {
+        reserve_amount: values.reserve_amount,
+      });
       closePaymentModal();
       return;
     }
     if (action === "record_reserve_paid") {
-      if (!isValidAmount(values.amount ?? "")) return setModalError("Enter a valid reserve paid amount.");
-      if (!isValidDate(values.paid_date ?? "")) return setModalError("Enter a valid reserve paid date.");
-      await handlePaymentAction("mark-reserve-paid", { amount: values.amount, paid_date: values.paid_date });
+      if (!isValidAmount(values.amount ?? ""))
+        return setModalError("Enter a valid reserve paid amount.");
+      if (!isValidDate(values.paid_date ?? ""))
+        return setModalError("Enter a valid reserve paid date.");
+      await handlePaymentAction("mark-reserve-paid", {
+        amount: values.amount,
+        paid_date: values.paid_date,
+      });
       closePaymentModal();
       return;
     }
     if (action === "mark_short_paid") {
-      if (!isValidAmount(values.received_amount ?? "") || !isValidAmount(values.expected_amount ?? "")) return setModalError("Enter valid expected and received amounts.");
-      await handlePaymentAction("mark-short-paid", { received_amount: values.received_amount, expected_amount: values.expected_amount, reason: values.reason });
+      if (
+        !isValidAmount(values.received_amount ?? "") ||
+        !isValidAmount(values.expected_amount ?? "")
+      )
+        return setModalError("Enter valid expected and received amounts.");
+      await handlePaymentAction("mark-short-paid", {
+        received_amount: values.received_amount,
+        expected_amount: values.expected_amount,
+        reason: values.reason,
+      });
       closePaymentModal();
       return;
     }
-    if ((values.reason ?? "").trim().length < 3) return setModalError("Provide a brief dispute reason.");
+    if ((values.reason ?? "").trim().length < 3)
+      return setModalError("Provide a brief dispute reason.");
     await handlePaymentAction("mark-disputed", { reason: values.reason });
     closePaymentModal();
   }
@@ -1996,28 +2344,36 @@ export default function LoadDetailPage() {
       const loadData = await fetchLoad();
       if (getHydrationSignal()?.aborted) return;
       setLoad(loadData);
-      setInvoiceStatus(loadData?.has_invoice ? {
-        load_id: loadData.id,
-        invoice_number: loadData.invoice_number ?? null,
-        has_invoice: true,
-        invoice_document_id: null,
-        is_stale: false,
-        stale_reasons: [],
-        view_url: `/loads/${loadData.id}/invoice?disposition=inline`,
-        download_url: `/loads/${loadData.id}/invoice?disposition=attachment`,
-        updated_at: null,
-      } : null);
+      setInvoiceStatus(
+        loadData?.has_invoice
+          ? {
+              load_id: loadData.id,
+              invoice_number: loadData.invoice_number ?? null,
+              has_invoice: true,
+              invoice_document_id: null,
+              is_stale: false,
+              stale_reasons: [],
+              view_url: `/loads/${loadData.id}/invoice?disposition=inline`,
+              download_url: `/loads/${loadData.id}/invoice?disposition=attachment`,
+              updated_at: null,
+            }
+          : null,
+      );
       setOptionalSectionErrors({});
 
       const runOptionalSection = <T,>(
         section: OptionalSectionKey,
         loader: () => Promise<T>,
         onSuccess: (value: T) => void,
-        onFailure: () => void
+        onFailure: () => void,
       ) => {
-        if (getHydrationSignal()?.aborted || !canStartOptionalHydration()) return;
+        if (getHydrationSignal()?.aborted || !canStartOptionalHydration())
+          return;
         optionalHydrationInFlightRef.current += 1;
-        setOptionalSectionLoading((current) => ({ ...current, [section]: true }));
+        setOptionalSectionLoading((current) => ({
+          ...current,
+          [section]: true,
+        }));
         setOptionalSectionErrors((current) => {
           const next = { ...current };
           delete next[section];
@@ -2028,20 +2384,25 @@ export default function LoadDetailPage() {
             if (!getHydrationSignal()?.aborted) onSuccess(value);
           })
           .catch((caught: unknown) => {
-            if (isClientAbortError(caught) || getHydrationSignal()?.aborted) return;
+            if (isClientAbortError(caught) || getHydrationSignal()?.aborted)
+              return;
             onFailure();
             const message = optionalSectionErrorMessage(section, caught);
-            setOptionalSectionErrors((current) => ({ ...current, [section]: message }));
-            console.warn("Optional load detail section failed without blocking core load detail", {
-              section,
-              message,
-              loadId,
-            });
+            setOptionalSectionErrors((current) => ({
+              ...current,
+              [section]: message,
+            }));
           })
           .finally(() => {
-            optionalHydrationInFlightRef.current = Math.max(0, optionalHydrationInFlightRef.current - 1);
+            optionalHydrationInFlightRef.current = Math.max(
+              0,
+              optionalHydrationInFlightRef.current - 1,
+            );
             if (getHydrationSignal()?.aborted) return;
-            setOptionalSectionLoading((current) => ({ ...current, [section]: false }));
+            setOptionalSectionLoading((current) => ({
+              ...current,
+              [section]: false,
+            }));
             if (section === "documents") setIsDocumentsLoading(false);
           });
       };
@@ -2051,14 +2412,17 @@ export default function LoadDetailPage() {
         section: OptionalSectionKey,
         loader: () => Promise<T>,
         onSuccess: (value: T) => void,
-        onFailure: () => void
+        onFailure: () => void,
       ) => {
         const attemptStart = () => {
           if (getHydrationSignal()?.aborted) {
             return;
           }
           if (!canStartOptionalHydration()) {
-            const retryTimeoutId = window.setTimeout(attemptStart, isMobileViewport() ? 175 : 75);
+            const retryTimeoutId = window.setTimeout(
+              attemptStart,
+              isMobileViewport() ? 175 : 75,
+            );
             hydrationTimeoutsRef.current.push(retryTimeoutId);
             return;
           }
@@ -2077,46 +2441,71 @@ export default function LoadDetailPage() {
           loadDocumentsRef.current = documents;
           setLoadDocuments(documents);
         },
-        () => undefined
+        () => undefined,
       );
-      scheduleSection(gap * 2, "packetAudit", fetchPacketAudit, setPacketAudit, () =>
-        setPacketAudit(null)
+      scheduleSection(
+        gap * 2,
+        "packetAudit",
+        fetchPacketAudit,
+        setPacketAudit,
+        () => setPacketAudit(null),
       );
       scheduleSection(
         gap * 3,
         "submissionPackets",
         fetchSubmissionPackets,
         setSubmissionPackets,
-        () => setSubmissionPackets([])
+        () => setSubmissionPackets([]),
       );
-      scheduleSection(gap * 4, "carrierProfile", fetchCarrierProfile, setCarrierProfile, () =>
-        setCarrierProfile(null)
+      scheduleSection(
+        gap * 4,
+        "carrierProfile",
+        fetchCarrierProfile,
+        setCarrierProfile,
+        () => setCarrierProfile(null),
       );
-      scheduleSection(gap * 5, "invoiceStatus", fetchInvoiceStatus, setInvoiceStatus, () =>
-        setInvoiceStatus(loadData?.has_invoice ? {
-          load_id: loadData.id,
-          invoice_number: loadData.invoice_number ?? null,
-          has_invoice: true,
-          invoice_document_id: null,
-          is_stale: false,
-          stale_reasons: [],
-          view_url: `/loads/${loadData.id}/invoice?disposition=inline`,
-          download_url: `/loads/${loadData.id}/invoice?disposition=attachment`,
-          updated_at: null,
-        } : null)
+      scheduleSection(
+        gap * 5,
+        "invoiceStatus",
+        fetchInvoiceStatus,
+        setInvoiceStatus,
+        () =>
+          setInvoiceStatus(
+            loadData?.has_invoice
+              ? {
+                  load_id: loadData.id,
+                  invoice_number: loadData.invoice_number ?? null,
+                  has_invoice: true,
+                  invoice_document_id: null,
+                  is_stale: false,
+                  stale_reasons: [],
+                  view_url: `/loads/${loadData.id}/invoice?disposition=inline`,
+                  download_url: `/loads/${loadData.id}/invoice?disposition=attachment`,
+                  updated_at: null,
+                }
+              : null,
+          ),
       );
       scheduleSection(
         gap * 6,
         "paymentReconciliation",
         fetchPaymentReconciliation,
         setPaymentRecord,
-        () => setPaymentRecord(null)
+        () => setPaymentRecord(null),
       );
-      scheduleSection(gap * 7, "followUps", fetchFollowUpTasks, setFollowUpTasks, () =>
-        setFollowUpTasks([])
+      scheduleSection(
+        gap * 7,
+        "followUps",
+        fetchFollowUpTasks,
+        setFollowUpTasks,
+        () => setFollowUpTasks([]),
       );
-      scheduleSection(gap * 8, "reviewQueue", fetchReviewQueueItem, setReviewQueueItem, () =>
-        setReviewQueueItem(null)
+      scheduleSection(
+        gap * 8,
+        "reviewQueue",
+        fetchReviewQueueItem,
+        setReviewQueueItem,
+        () => setReviewQueueItem(null),
       );
     } catch (caught: unknown) {
       if (!isClientAbortError(caught)) {
@@ -2179,7 +2568,7 @@ export default function LoadDetailPage() {
             organizationId,
             timeoutMs: 5_000,
             signal: controller.signal,
-          }
+          },
         );
         const items = Array.isArray(response.data) ? response.data : [];
         const normalized = items
@@ -2198,7 +2587,7 @@ export default function LoadDetailPage() {
     }
     const timeoutId = window.setTimeout(
       () => void loadStaffUsers(),
-      isMobileViewport() ? 3_400 : 900
+      isMobileViewport() ? 3_400 : 900,
     );
     return () => {
       isMounted = false;
@@ -2221,7 +2610,7 @@ export default function LoadDetailPage() {
         "rate_confirmation",
         "rate-confirmation",
         "rate confirmation",
-      ])
+      ]),
     );
 
     const hasBolFromDocuments = loadDocuments.some((document) =>
@@ -2230,11 +2619,11 @@ export default function LoadDetailPage() {
         "bill_of_lading",
         "bill-of-lading",
         "bill of lading",
-      ])
+      ]),
     );
 
     const hasInvoiceFromDocuments = loadDocuments.some((document) =>
-      matchesDocumentType(document, ["invoice"])
+      matchesDocumentType(document, ["invoice"]),
     );
 
     const hasPodFromDocuments = loadDocuments.some((document) =>
@@ -2245,7 +2634,7 @@ export default function LoadDetailPage() {
         "proof of delivery",
         "delivery_receipt",
         "delivery receipt",
-      ])
+      ]),
     );
 
     return {
@@ -2253,15 +2642,18 @@ export default function LoadDetailPage() {
       hasBol: load?.has_bol === true || hasBolFromDocuments,
       hasInvoice: load?.has_invoice === true || hasInvoiceFromDocuments,
       hasPod:
-        load?.packet_readiness?.present_documents?.includes("proof_of_delivery") === true ||
-        hasPodFromDocuments,
+        load?.packet_readiness?.present_documents?.includes(
+          "proof_of_delivery",
+        ) === true || hasPodFromDocuments,
     };
   }, [load, loadDocuments]);
 
   const requiredDocsReceivedCount = useMemo(() => {
-    return [documentPresence.hasRateCon, documentPresence.hasPod, documentPresence.hasInvoice].filter(
-      Boolean
-    ).length;
+    return [
+      documentPresence.hasRateCon,
+      documentPresence.hasPod,
+      documentPresence.hasInvoice,
+    ].filter(Boolean).length;
   }, [documentPresence]);
 
   const documentChecklist = useMemo(
@@ -2283,20 +2675,24 @@ export default function LoadDetailPage() {
         status: documentPresence.hasBol ? "received" : "recommended",
       },
     ],
-    [documentPresence]
+    [documentPresence],
   );
 
   const missingSubmissionDocuments = useMemo(
-    () => documentChecklist
-      .filter((document) => document.status === "missing")
-      .map((document) => document.name),
-    [documentChecklist]
+    () =>
+      documentChecklist
+        .filter((document) => document.status === "missing")
+        .map((document) => document.name),
+    [documentChecklist],
   );
 
   const validationIssues = useMemo(() => {
     const issues = new Map<string, string>();
 
-    if (reviewQueueItem?.primary_issue && reviewQueueItem.primary_issue.trim().length > 0) {
+    if (
+      reviewQueueItem?.primary_issue &&
+      reviewQueueItem.primary_issue.trim().length > 0
+    ) {
       const value = reviewQueueItem.primary_issue.trim();
       issues.set(value.toLowerCase(), value);
     }
@@ -2345,7 +2741,9 @@ export default function LoadDetailPage() {
         nextStatus === "reserve_pending" ||
         nextStatus === "advance_paid" ||
         nextStatus === "fully_paid") &&
-      Boolean(load?.packet_readiness) ? load?.packet_readiness?.ready_to_submit !== true : requiredDocsReceivedCount < 2
+      Boolean(load?.packet_readiness)
+        ? load?.packet_readiness?.ready_to_submit !== true
+        : requiredDocsReceivedCount < 2
     ) {
       return "All required documents must be present before submission readiness.";
     }
@@ -2353,10 +2751,13 @@ export default function LoadDetailPage() {
     return null;
   }, [load, nextStatus, totalOpenIssues, requiredDocsReceivedCount]);
 
-  const canAdvanceStatus = Boolean(nextStatus) && !workflowBlockedReason && !isAdvancing;
+  const canAdvanceStatus =
+    Boolean(nextStatus) && !workflowBlockedReason && !isAdvancing;
 
   const canUploadDocuments = useMemo(() => {
-    return Boolean(load?.id && load?.customer_account_id && getOrganizationId());
+    return Boolean(
+      load?.id && load?.customer_account_id && getOrganizationId(),
+    );
   }, [load]);
 
   const workflowSteps = useMemo(() => {
@@ -2385,13 +2786,18 @@ export default function LoadDetailPage() {
       return [];
     }
 
-    const brokerIdentity = [load.broker_name_raw, load.broker_name, load.broker_id].some(
-      (value) => typeof value === "string" && value.trim().length > 0
-    );
+    const brokerIdentity = [
+      load.broker_name_raw,
+      load.broker_name,
+      load.broker_id,
+    ].some((value) => typeof value === "string" && value.trim().length > 0);
     const brokerEmailAvailable =
-      typeof load.broker_email_raw === "string" && load.broker_email_raw.trim().length > 0;
+      typeof load.broker_email_raw === "string" &&
+      load.broker_email_raw.trim().length > 0;
 
-    const documentsReady = load?.packet_readiness?.ready_to_submit === true || requiredDocsReceivedCount >= 2;
+    const documentsReady =
+      load?.packet_readiness?.ready_to_submit === true ||
+      requiredDocsReceivedCount >= 2;
     const validationReady = totalOpenIssues === 0;
     const packageReady = documentsReady && validationReady;
     const submissionCompleted =
@@ -2401,11 +2807,16 @@ export default function LoadDetailPage() {
       load.status === "advance_paid" ||
       load.status === "fully_paid" ||
       Boolean(load.submitted_at);
-    const fundingCompleted = load.status === "advance_paid" || load.status === "fully_paid" || Boolean(load.funded_at);
-    const paymentCompleted = load.status === "fully_paid" || Boolean(load.paid_at);
+    const fundingCompleted =
+      load.status === "advance_paid" ||
+      load.status === "fully_paid" ||
+      Boolean(load.funded_at);
+    const paymentCompleted =
+      load.status === "fully_paid" || Boolean(load.paid_at);
     const factoringEnabled =
       load.is_factored === true ||
-      (typeof load.factoring_provider === "string" && load.factoring_provider.trim().length > 0);
+      (typeof load.factoring_provider === "string" &&
+        load.factoring_provider.trim().length > 0);
 
     return [
       {
@@ -2427,7 +2838,11 @@ export default function LoadDetailPage() {
       {
         key: "package-readiness",
         label: "Invoice package readiness",
-        state: packageReady ? "complete" : documentsReady ? "blocked" : "pending",
+        state: packageReady
+          ? "complete"
+          : documentsReady
+            ? "blocked"
+            : "pending",
         detail: packageReady
           ? "Required docs received and no open validation blockers."
           : documentsReady
@@ -2436,8 +2851,14 @@ export default function LoadDetailPage() {
       },
       {
         key: "submission",
-        label: factoringEnabled ? "Submitted to factor/broker" : "Submitted to broker/AP",
-        state: submissionCompleted ? "complete" : packageReady ? "current" : "pending",
+        label: factoringEnabled
+          ? "Submitted to factor/broker"
+          : "Submitted to broker/AP",
+        state: submissionCompleted
+          ? "complete"
+          : packageReady
+            ? "current"
+            : "pending",
         detail: submissionCompleted
           ? `Submitted ${formatDateTime(load.submitted_at)}.`
           : packageReady
@@ -2446,8 +2867,14 @@ export default function LoadDetailPage() {
       },
       {
         key: "funding",
-        label: factoringEnabled ? "Funding confirmed" : "Payment receipt tracked",
-        state: fundingCompleted ? "complete" : submissionCompleted ? "current" : "pending",
+        label: factoringEnabled
+          ? "Funding confirmed"
+          : "Payment receipt tracked",
+        state: fundingCompleted
+          ? "complete"
+          : submissionCompleted
+            ? "current"
+            : "pending",
         detail: fundingCompleted
           ? `Funding checkpoint reached ${formatDateTime(load.funded_at)}.`
           : submissionCompleted
@@ -2457,7 +2884,11 @@ export default function LoadDetailPage() {
       {
         key: "settlement",
         label: "Final settlement complete",
-        state: paymentCompleted ? "complete" : fundingCompleted ? "current" : "pending",
+        state: paymentCompleted
+          ? "complete"
+          : fundingCompleted
+            ? "current"
+            : "pending",
         detail: paymentCompleted
           ? `Settled ${formatDateTime(load.paid_at)}.`
           : fundingCompleted
@@ -2468,7 +2899,9 @@ export default function LoadDetailPage() {
   }, [load, requiredDocsReceivedCount, totalOpenIssues]);
 
   const brokerFactoringNextAction = useMemo(() => {
-    const nextItem = brokerFactoringWorkflow.find((item) => item.state !== "complete");
+    const nextItem = brokerFactoringWorkflow.find(
+      (item) => item.state !== "complete",
+    );
     if (!nextItem) {
       return "Broker/factoring operational workflow is complete.";
     }
@@ -2477,44 +2910,76 @@ export default function LoadDetailPage() {
 
   const followUpReason = useMemo(() => {
     if (!load) return "Review load status and packet readiness.";
-    if (load.status === "short_paid") return "Payment amount does not match expected settlement.";
-    if (load.status === "disputed") return "Dispute is open and waiting on broker/factor response.";
-    if (load.status === "reserve_pending") return "Advance paid but reserve release is still outstanding.";
-    if (load.status === "submitted_to_broker" && load.operational?.is_overdue) return "Broker payment response is overdue.";
-    if (!documentPresence.hasInvoice || !documentPresence.hasRateCon) return "Required billing documents are still missing.";
+    if (load.status === "short_paid")
+      return "Payment amount does not match expected settlement.";
+    if (load.status === "disputed")
+      return "Dispute is open and waiting on broker/factor response.";
+    if (load.status === "reserve_pending")
+      return "Advance paid but reserve release is still outstanding.";
+    if (load.status === "submitted_to_broker" && load.operational?.is_overdue)
+      return "Broker payment response is overdue.";
+    if (!documentPresence.hasInvoice || !documentPresence.hasRateCon)
+      return "Required billing documents are still missing.";
     return "Load is in progress; keep follow-up cadence active until payment closes.";
   }, [load, documentPresence.hasInvoice, documentPresence.hasRateCon]);
 
-  const followUpTemplates = useMemo(() => ({
-    packetSubmission: `Subject: Billing packet submitted - Load ${load?.load_number ?? load?.id ?? ""}\n\nHello,\nWe submitted the billing packet for load ${load?.load_number ?? load?.id ?? ""}. Please confirm receipt and expected processing date.\n\nThank you.`,
-    paymentReminder: `Subject: Payment follow-up - Load ${load?.load_number ?? load?.id ?? ""}\n\nHello,\nThis is a payment follow-up for load ${load?.load_number ?? load?.id ?? ""}. Please confirm payment status and expected remittance date.\n\nThank you.`,
-    reserveFollowUp: `Subject: Reserve release follow-up - Load ${load?.load_number ?? load?.id ?? ""}\n\nHello,\nPlease share reserve release status for load ${load?.load_number ?? load?.id ?? ""} and the expected release date.\n\nThank you.`,
-    disputeFollowUp: `Subject: Short-pay/dispute follow-up - Load ${load?.load_number ?? load?.id ?? ""}\n\nHello,\nWe need an update on the short-pay/dispute for load ${load?.load_number ?? load?.id ?? ""}. Please share the reason, adjustment amount, and resolution timeline.\n\nThank you.`,
-  }), [load?.id, load?.load_number]);
+  const followUpTemplates = useMemo(
+    () => ({
+      packetSubmission: `Subject: Billing packet submitted - Load ${load?.load_number ?? load?.id ?? ""}\n\nHello,\nWe submitted the billing packet for load ${load?.load_number ?? load?.id ?? ""}. Please confirm receipt and expected processing date.\n\nThank you.`,
+      paymentReminder: `Subject: Payment follow-up - Load ${load?.load_number ?? load?.id ?? ""}\n\nHello,\nThis is a payment follow-up for load ${load?.load_number ?? load?.id ?? ""}. Please confirm payment status and expected remittance date.\n\nThank you.`,
+      reserveFollowUp: `Subject: Reserve release follow-up - Load ${load?.load_number ?? load?.id ?? ""}\n\nHello,\nPlease share reserve release status for load ${load?.load_number ?? load?.id ?? ""} and the expected release date.\n\nThank you.`,
+      disputeFollowUp: `Subject: Short-pay/dispute follow-up - Load ${load?.load_number ?? load?.id ?? ""}\n\nHello,\nWe need an update on the short-pay/dispute for load ${load?.load_number ?? load?.id ?? ""}. Please share the reason, adjustment amount, and resolution timeline.\n\nThank you.`,
+    }),
+    [load?.id, load?.load_number],
+  );
 
   const followUpUrgency = useMemo(() => {
     const daysUntil = diffDaysFromToday(load?.next_follow_up_at);
     if (daysUntil === null) {
-      return { label: "Unplanned", helper: "No next follow-up date", tone: "default" as const, sortOrder: 4 };
+      return {
+        label: "Unplanned",
+        helper: "No next follow-up date",
+        tone: "default" as const,
+        sortOrder: 4,
+      };
     }
     if (daysUntil < 0) {
-      return { label: "Overdue", helper: `Follow-up overdue by ${Math.abs(daysUntil)} day${Math.abs(daysUntil) === 1 ? "" : "s"}`, tone: "danger" as const, sortOrder: 1 };
+      return {
+        label: "Overdue",
+        helper: `Follow-up overdue by ${Math.abs(daysUntil)} day${Math.abs(daysUntil) === 1 ? "" : "s"}`,
+        tone: "danger" as const,
+        sortOrder: 1,
+      };
     }
     if (daysUntil === 0) {
-      return { label: "Due today", helper: "Follow-up due today", tone: "warning" as const, sortOrder: 2 };
+      return {
+        label: "Due today",
+        helper: "Follow-up due today",
+        tone: "warning" as const,
+        sortOrder: 2,
+      };
     }
-    return { label: "Upcoming", helper: `Next follow-up in ${daysUntil} day${daysUntil === 1 ? "" : "s"}`, tone: "default" as const, sortOrder: 3 };
+    return {
+      label: "Upcoming",
+      helper: `Next follow-up in ${daysUntil} day${daysUntil === 1 ? "" : "s"}`,
+      tone: "default" as const,
+      sortOrder: 3,
+    };
   }, [load?.next_follow_up_at]);
 
   const followUpAgeSignals = useMemo(() => {
     const signals: string[] = [];
     const lastContactDelta = diffDaysFromToday(load?.last_contacted_at);
     if (lastContactDelta !== null) {
-      signals.push(`Last contacted ${Math.abs(lastContactDelta)} day${Math.abs(lastContactDelta) === 1 ? "" : "s"} ago`);
+      signals.push(
+        `Last contacted ${Math.abs(lastContactDelta)} day${Math.abs(lastContactDelta) === 1 ? "" : "s"} ago`,
+      );
     }
     const invoiceDelta = diffDaysFromToday(load?.submitted_at);
     if (invoiceDelta !== null && invoiceDelta <= 0) {
-      signals.push(`Invoice sent ${Math.abs(invoiceDelta)} day${Math.abs(invoiceDelta) === 1 ? "" : "s"} ago`);
+      signals.push(
+        `Invoice sent ${Math.abs(invoiceDelta)} day${Math.abs(invoiceDelta) === 1 ? "" : "s"} ago`,
+      );
     }
     if (followUpUrgency.sortOrder <= 3) {
       signals.push(followUpUrgency.helper);
@@ -2523,28 +2988,79 @@ export default function LoadDetailPage() {
   }, [load?.last_contacted_at, load?.submitted_at, followUpUrgency]);
 
   const prioritizedTemplateButtons = useMemo(() => {
-    const hasMissingDocs = !documentPresence.hasInvoice || !documentPresence.hasRateCon || !documentPresence.hasBol;
+    const hasMissingDocs =
+      !documentPresence.hasInvoice ||
+      !documentPresence.hasRateCon ||
+      !documentPresence.hasBol;
     const templateButtons = [
-      { key: "packetSubmission", label: "Copy Packet Submission Template", value: followUpTemplates.packetSubmission, rank: 50 },
-      { key: "paymentReminder", label: "Copy Payment Follow-up Template", value: followUpTemplates.paymentReminder, rank: 50 },
-      { key: "reserveFollowUp", label: "Copy Reserve Follow-up Template", value: followUpTemplates.reserveFollowUp, rank: 50 },
-      { key: "disputeFollowUp", label: "Copy Short-Pay / Dispute Template", value: followUpTemplates.disputeFollowUp, rank: 50 },
+      {
+        key: "packetSubmission",
+        label: "Copy Packet Submission Template",
+        value: followUpTemplates.packetSubmission,
+        rank: 50,
+      },
+      {
+        key: "paymentReminder",
+        label: "Copy Payment Follow-up Template",
+        value: followUpTemplates.paymentReminder,
+        rank: 50,
+      },
+      {
+        key: "reserveFollowUp",
+        label: "Copy Reserve Follow-up Template",
+        value: followUpTemplates.reserveFollowUp,
+        rank: 50,
+      },
+      {
+        key: "disputeFollowUp",
+        label: "Copy Short-Pay / Dispute Template",
+        value: followUpTemplates.disputeFollowUp,
+        rank: 50,
+      },
     ];
     if (load?.status === "short_paid" || load?.status === "disputed") {
-      const prioritized = templateButtons.find((template) => template.key === "disputeFollowUp");
+      const prioritized = templateButtons.find(
+        (template) => template.key === "disputeFollowUp",
+      );
       if (prioritized) prioritized.rank = 1;
-    } else if (load?.status === "reserve_pending" || load?.status === "advance_paid" || load?.status === "submitted_to_factoring") {
-      const prioritized = templateButtons.find((template) => template.key === "reserveFollowUp");
+    } else if (
+      load?.status === "reserve_pending" ||
+      load?.status === "advance_paid" ||
+      load?.status === "submitted_to_factoring"
+    ) {
+      const prioritized = templateButtons.find(
+        (template) => template.key === "reserveFollowUp",
+      );
       if (prioritized) prioritized.rank = 1;
-    } else if (hasMissingDocs || load?.status === "packet_rejected" || load?.status === "docs_needs_attention") {
-      const prioritized = templateButtons.find((template) => template.key === "packetSubmission");
+    } else if (
+      hasMissingDocs ||
+      load?.status === "packet_rejected" ||
+      load?.status === "docs_needs_attention"
+    ) {
+      const prioritized = templateButtons.find(
+        (template) => template.key === "packetSubmission",
+      );
       if (prioritized) prioritized.rank = 1;
-    } else if (load?.status === "submitted_to_broker" || followUpUrgency.sortOrder === 1) {
-      const prioritized = templateButtons.find((template) => template.key === "paymentReminder");
+    } else if (
+      load?.status === "submitted_to_broker" ||
+      followUpUrgency.sortOrder === 1
+    ) {
+      const prioritized = templateButtons.find(
+        (template) => template.key === "paymentReminder",
+      );
       if (prioritized) prioritized.rank = 1;
     }
-    return templateButtons.sort((a, b) => a.rank - b.rank || a.label.localeCompare(b.label));
-  }, [documentPresence.hasBol, documentPresence.hasInvoice, documentPresence.hasRateCon, followUpTemplates, load?.status, followUpUrgency.sortOrder]);
+    return templateButtons.sort(
+      (a, b) => a.rank - b.rank || a.label.localeCompare(b.label),
+    );
+  }, [
+    documentPresence.hasBol,
+    documentPresence.hasInvoice,
+    documentPresence.hasRateCon,
+    followUpTemplates,
+    load?.status,
+    followUpUrgency.sortOrder,
+  ]);
 
   async function copyTemplate(value: string) {
     try {
@@ -2562,15 +3078,23 @@ export default function LoadDetailPage() {
       setError(null);
       setActionMessage(null);
       const token = getAccessToken();
-      await apiClient.patch<ApiResponse<unknown>>(`/loads/${encodeURIComponent(load.id)}`, {
-        follow_up_required: true,
-        follow_up_owner_id: followUpOwnerId || null,
-        next_follow_up_at: nextFollowUpDate ? `${nextFollowUpDate}T09:00:00Z` : null,
-      }, { token: token ?? undefined });
+      await apiClient.patch<ApiResponse<unknown>>(
+        `/loads/${encodeURIComponent(load.id)}`,
+        {
+          follow_up_required: true,
+          follow_up_owner_id: followUpOwnerId || null,
+          next_follow_up_at: nextFollowUpDate
+            ? `${nextFollowUpDate}T09:00:00Z`
+            : null,
+        },
+        { token: token ?? undefined },
+      );
       await fetchPageData();
       setActionMessage("Follow-up details updated.");
     } catch (caught: unknown) {
-      setError(extractErrorMessage(caught, "Failed to save follow-up details."));
+      setError(
+        extractErrorMessage(caught, "Failed to save follow-up details."),
+      );
     } finally {
       setIsSavingFollowUp(false);
     }
@@ -2583,10 +3107,14 @@ export default function LoadDetailPage() {
       setError(null);
       setActionMessage(null);
       const token = getAccessToken();
-      await apiClient.patch<ApiResponse<unknown>>(`/loads/${encodeURIComponent(load.id)}`, {
-        mark_contacted: true,
-        follow_up_required: true,
-      }, { token: token ?? undefined });
+      await apiClient.patch<ApiResponse<unknown>>(
+        `/loads/${encodeURIComponent(load.id)}`,
+        {
+          mark_contacted: true,
+          follow_up_required: true,
+        },
+        { token: token ?? undefined },
+      );
       await fetchPageData();
       setActionMessage("Contact logged. Last contacted timestamp refreshed.");
     } catch (caught: unknown) {
@@ -2616,7 +3144,7 @@ export default function LoadDetailPage() {
         },
         {
           token: token ?? undefined,
-        }
+        },
       );
 
       await fetchPageData();
@@ -2649,7 +3177,9 @@ export default function LoadDetailPage() {
       const token = getAccessToken();
       const staffUserId = await fetchCurrentStaffUserId();
 
-      const response = await apiClient.post<ApiResponse<StatusTransitionResponse>>(
+      const response = await apiClient.post<
+        ApiResponse<StatusTransitionResponse>
+      >(
         `/loads/${encodeURIComponent(load.id)}/status`,
         {
           new_status: nextStatus,
@@ -2659,13 +3189,15 @@ export default function LoadDetailPage() {
         },
         {
           token: token ?? undefined,
-        }
+        },
       );
 
       await fetchPageData();
 
       const resolvedStatus = response.data?.new_status ?? nextStatus;
-      setActionMessage(`Status updated to ${resolvedStatus.replaceAll("_", " ")}.`);
+      setActionMessage(
+        `Status updated to ${resolvedStatus.replaceAll("_", " ")}.`,
+      );
     } catch (caught: unknown) {
       setError(extractErrorMessage(caught, "Failed to advance status."));
     } finally {
@@ -2689,7 +3221,9 @@ export default function LoadDetailPage() {
       const token = getAccessToken();
       const staffUserId = await fetchCurrentStaffUserId();
 
-      const response = await apiClient.post<ApiResponse<StatusTransitionResponse>>(
+      const response = await apiClient.post<
+        ApiResponse<StatusTransitionResponse>
+      >(
         `/loads/${encodeURIComponent(load.id)}/status`,
         {
           new_status: manualStatus,
@@ -2699,12 +3233,14 @@ export default function LoadDetailPage() {
         },
         {
           token: token ?? undefined,
-        }
+        },
       );
 
       await fetchPageData();
       const resolvedStatus = response.data?.new_status ?? manualStatus;
-      setActionMessage(`Status updated to ${resolvedStatus.replaceAll("_", " ")}.`);
+      setActionMessage(
+        `Status updated to ${resolvedStatus.replaceAll("_", " ")}.`,
+      );
     } catch (caught: unknown) {
       setError(extractErrorMessage(caught, "Failed to set status."));
     } finally {
@@ -2728,7 +3264,9 @@ export default function LoadDetailPage() {
       const token = getAccessToken();
       const staffUserId = await fetchCurrentStaffUserId();
 
-      const response = await apiClient.post<ApiResponse<StatusTransitionResponse>>(
+      const response = await apiClient.post<
+        ApiResponse<StatusTransitionResponse>
+      >(
         `/loads/${encodeURIComponent(load.id)}/workflow-actions`,
         {
           action,
@@ -2738,64 +3276,99 @@ export default function LoadDetailPage() {
         },
         {
           token: token ?? undefined,
-        }
+        },
       );
 
       await fetchPageData();
       const resolvedStatus = response.data?.new_status ?? load.status;
-      setActionMessage(`Workflow action complete. Status is now ${resolvedStatus.replaceAll("_", " ")}.`);
+      setActionMessage(
+        `Workflow action complete. Status is now ${resolvedStatus.replaceAll("_", " ")}.`,
+      );
     } catch (caught: unknown) {
-      setError(extractErrorMessage(caught, "Failed to execute workflow action."));
+      setError(
+        extractErrorMessage(caught, "Failed to execute workflow action."),
+      );
     } finally {
       setIsExecutingWorkflowAction(false);
       endWriteAction();
     }
   }
 
-  async function openInvoicePdf(options: { regenerate?: boolean; disposition: "inline" | "attachment" }) {
+  async function openInvoicePdf(options: {
+    regenerate?: boolean;
+    disposition: "inline" | "attachment";
+  }) {
     if (!load || !load.id || isGeneratingInvoice) {
       return;
     }
 
-    const endWriteAction = beginWriteAction(options.regenerate ? "regenerate_invoice" : "generate_invoice");
+    const endWriteAction = beginWriteAction(
+      options.regenerate ? "regenerate_invoice" : "generate_invoice",
+    );
 
     try {
       setIsGeneratingInvoice(true);
-      setInvoiceAction(options.regenerate ? "regenerate" : options.disposition === "attachment" ? "download" : "view");
-      const hadInvoiceBeforeRequest = Boolean(invoiceStatus?.has_invoice || load.has_invoice);
+      setInvoiceAction(
+        options.regenerate
+          ? "regenerate"
+          : options.disposition === "attachment"
+            ? "download"
+            : "view",
+      );
+      const hadInvoiceBeforeRequest = Boolean(
+        invoiceStatus?.has_invoice || load.has_invoice,
+      );
       setError(null);
       setActionMessage(null);
       setInvoiceBlocker(null);
 
       const token = getAccessToken();
+      const organizationId = getOrganizationId();
       const params = new URLSearchParams({ disposition: options.disposition });
       if (options.regenerate) params.set("regenerate", "true");
       const response = await fetch(
-        buildConfiguredApiUrl(`/loads/${encodeURIComponent(load.id)}/invoice?${params.toString()}`),
+        buildConfiguredApiUrl(
+          `/loads/${encodeURIComponent(load.id)}/invoice?${params.toString()}`,
+        ),
         {
           method: "GET",
-          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-        }
+          headers: {
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            ...(organizationId ? { "X-Organization-Id": organizationId } : {}),
+          },
+        },
       );
 
       if (!response.ok) {
-        const payload = (await response.json().catch(() => null)) as ApiResponse<unknown> | null;
-        const errorCode = payload?.error?.code ?? String(payload?.error?.details?.code ?? "");
+        const payload = (await response
+          .json()
+          .catch(() => null)) as ApiResponse<unknown> | null;
+        const errorCode =
+          payload?.error?.code ?? String(payload?.error?.details?.code ?? "");
         if (errorCode === "carrier_profile_incomplete") {
-          const missingFields = Array.isArray(payload?.error?.details?.missing_fields)
-            ? payload?.error?.details?.missing_fields.map((item) => String(item))
+          const missingFields = Array.isArray(
+            payload?.error?.details?.missing_fields,
+          )
+            ? payload?.error?.details?.missing_fields.map((item) =>
+                String(item),
+              )
             : [];
-          const actionUrl = typeof payload?.error?.details?.action_url === "string"
-            ? payload.error.details.action_url
-            : "/dashboard/settings/carrier-profile";
+          const actionUrl =
+            typeof payload?.error?.details?.action_url === "string"
+              ? payload.error.details.action_url
+              : "/dashboard/settings/carrier-profile";
           setInvoiceBlocker({
-            message: payload?.error?.message ?? "Complete your company and remit-to details before generating an invoice.",
+            message:
+              payload?.error?.message ??
+              "Complete your company and remit-to details before generating an invoice.",
             missingFields,
             actionUrl,
           });
           return;
         }
-        throw new Error(payload?.error?.message || "Failed to generate invoice.");
+        throw new Error(
+          payload?.error?.message || "Failed to generate invoice.",
+        );
       }
 
       const blob = await response.blob();
@@ -2813,17 +3386,24 @@ export default function LoadDetailPage() {
         window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
       }
 
-      const [refreshedInvoiceStatus, refreshedDocuments, refreshedLoad] = await Promise.all([
-        fetchInvoiceStatus().catch(() => null),
-        fetchLoadDocuments({ silent: true, reason: "invoice_generated" }).catch(() => null),
-        fetchLoad().catch(() => null),
-      ]);
+      const [refreshedInvoiceStatus, refreshedDocuments, refreshedLoad] =
+        await Promise.all([
+          fetchInvoiceStatus().catch(() => null),
+          fetchLoadDocuments({
+            silent: true,
+            reason: "invoice_generated",
+          }).catch(() => null),
+          fetchLoad().catch(() => null),
+        ]);
       if (refreshedInvoiceStatus) {
         setInvoiceStatus(refreshedInvoiceStatus);
       } else {
         setInvoiceStatus({
           load_id: load.id,
-          invoice_number: response.headers.get("X-Invoice-Number") || load.invoice_number || null,
+          invoice_number:
+            response.headers.get("X-Invoice-Number") ||
+            load.invoice_number ||
+            null,
           has_invoice: true,
           invoice_document_id: response.headers.get("X-Invoice-Document-Id"),
           is_stale: response.headers.get("X-Invoice-Stale") === "true",
@@ -2836,16 +3416,27 @@ export default function LoadDetailPage() {
       if (refreshedLoad) {
         setLoad(refreshedLoad);
       } else {
-        setLoad((current) => current ? {
-          ...current,
-          has_invoice: true,
-          invoice_number: refreshedInvoiceStatus?.invoice_number ?? response.headers.get("X-Invoice-Number") ?? current.invoice_number,
-        } : current);
+        setLoad((current) =>
+          current
+            ? {
+                ...current,
+                has_invoice: true,
+                invoice_number:
+                  refreshedInvoiceStatus?.invoice_number ??
+                  response.headers.get("X-Invoice-Number") ??
+                  current.invoice_number,
+              }
+            : current,
+        );
       }
 
       const invoiceIsVisibleInDocuments = Array.isArray(refreshedDocuments)
-        ? refreshedDocuments.some((document) => isInvoiceManagedDocument(document))
-        : loadDocumentsRef.current.some((document) => isInvoiceManagedDocument(document));
+        ? refreshedDocuments.some((document) =>
+            isInvoiceManagedDocument(document),
+          )
+        : loadDocumentsRef.current.some((document) =>
+            isInvoiceManagedDocument(document),
+          );
       if (options.regenerate) {
         setActionMessage("Invoice regenerated and updated in documents.");
       } else if (!hadInvoiceBeforeRequest && invoiceIsVisibleInDocuments) {
@@ -2875,12 +3466,11 @@ export default function LoadDetailPage() {
   async function handleRegenerateInvoice() {
     if (!invoiceStatus?.has_invoice) return;
     const confirmed = window.confirm(
-      "Regenerate invoice? The existing invoice PDF will be replaced, but the current invoice number will be preserved."
+      "Regenerate invoice? The existing invoice PDF will be replaced, but the current invoice number will be preserved.",
     );
     if (!confirmed) return;
     await openInvoicePdf({ disposition: "inline", regenerate: true });
   }
-
 
   function handleUploadDocument(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0] ?? null;
@@ -2908,7 +3498,9 @@ export default function LoadDetailPage() {
     }
 
     if (!load.customer_account_id) {
-      setError("Customer account is missing for this load. Cannot upload document.");
+      setError(
+        "Customer account is missing for this load. Cannot upload document.",
+      );
       return;
     }
 
@@ -2945,12 +3537,15 @@ export default function LoadDetailPage() {
     traceLoadDetailAction("upload_clicked", {
       request_id: requestId,
       filename: file.name,
-      cache_key: `/loads/${encodeURIComponent(load.id)}/documents?page=1&page_size=100`,
+      cache_key: `/loads/${encodeURIComponent(load.id)}/documents?page=1&page_size=50`,
       mutation_generation: mutationGeneration,
       hydration_locked: writeActionActiveRef.current,
     });
 
-    loadDocumentsRef.current = [optimisticDocument, ...loadDocumentsRef.current];
+    loadDocumentsRef.current = [
+      optimisticDocument,
+      ...loadDocumentsRef.current,
+    ];
     setLoadDocuments(loadDocumentsRef.current);
     traceLoadDetailAction("optimistic_row_added", {
       request_id: requestId,
@@ -2960,25 +3555,39 @@ export default function LoadDetailPage() {
 
     const reconcileUpload = async (reason: "success" | "timeout") => {
       if (reason === "timeout") {
-        traceLoadDetailAction("upload_request_timeout", { request_id: requestId, mutation_generation: mutationGeneration });
+        traceLoadDetailAction("upload_request_timeout", {
+          request_id: requestId,
+          mutation_generation: mutationGeneration,
+        });
         loadDocumentsRef.current = loadDocumentsRef.current.map((document) =>
           document.id === optimisticDocumentId
-            ? { ...document, processing_status: "verifying", mutation_status: "verifying" }
-            : document
+            ? {
+                ...document,
+                processing_status: "verifying",
+                mutation_status: "verifying",
+              }
+            : document,
         );
         setLoadDocuments(loadDocumentsRef.current);
-        setActionMessage(`Upload timed out for "${file.name}". Verifying server state...`);
+        setActionMessage(
+          `Upload timed out for "${file.name}". Verifying server state...`,
+        );
         await new Promise((resolve) => window.setTimeout(resolve, 2_000));
       }
 
-      traceLoadDetailAction("refresh_documents_started", { request_id: requestId, reason: `upload_${reason}_reconcile` });
+      traceLoadDetailAction("refresh_documents_started", {
+        request_id: requestId,
+        reason: `upload_${reason}_reconcile`,
+      });
       const reconciledDocuments = await fetchLoadDocuments({
         silent: true,
         reason: `upload_${reason}_reconcile`,
         expectedMinMutationGeneration: mutationGeneration,
       });
-      const uploadedDocumentExists = reconciledDocuments.some((document) =>
-        document.id !== optimisticDocumentId && document.original_filename === file.name
+      const uploadedDocumentExists = reconciledDocuments.some(
+        (document) =>
+          document.id !== optimisticDocumentId &&
+          document.original_filename === file.name,
       );
 
       traceLoadDetailAction("final_documents_count", {
@@ -2987,13 +3596,16 @@ export default function LoadDetailPage() {
         uploaded_document_exists: uploadedDocumentExists,
       });
 
-      traceLoadDetailAction("readiness_refresh_started", { request_id: requestId });
+      traceLoadDetailAction("readiness_refresh_started", {
+        request_id: requestId,
+      });
       const updatedLoad = await fetchLoad().catch(() => null);
       if (updatedLoad) {
         setLoad(updatedLoad);
         traceLoadDetailAction("readiness_refresh_applied", {
           request_id: requestId,
-          present_documents: updatedLoad.packet_readiness?.present_documents ?? [],
+          present_documents:
+            updatedLoad.packet_readiness?.present_documents ?? [],
         });
       }
 
@@ -3006,27 +3618,41 @@ export default function LoadDetailPage() {
         };
         loadDocumentsRef.current = [
           visibleCandidate,
-          ...reconciledDocuments.filter((document) => document.id !== visibleCandidate.id),
+          ...reconciledDocuments.filter(
+            (document) => document.id !== visibleCandidate.id,
+          ),
         ];
         setLoadDocuments(loadDocumentsRef.current);
-        traceLoadDetailAction("refresh_documents_stale_payload_retained_optimistic", {
-          request_id: requestId,
-          optimistic_document_id: visibleCandidate.id,
-          final_documents_count: loadDocumentsRef.current.length,
-        });
+        traceLoadDetailAction(
+          "refresh_documents_stale_payload_retained_optimistic",
+          {
+            request_id: requestId,
+            optimistic_document_id: visibleCandidate.id,
+            final_documents_count: loadDocumentsRef.current.length,
+          },
+        );
         window.setTimeout(() => {
-          void fetchLoadDocuments({ silent: true, reason: "upload_success_delayed_reconcile" }).catch(() => undefined);
+          void fetchLoadDocuments({
+            silent: true,
+            reason: "upload_success_delayed_reconcile",
+          }).catch(() => undefined);
         }, 2_000);
       }
 
       if (reason === "timeout" && !uploadedDocumentExists) {
         loadDocumentsRef.current = loadDocumentsRef.current.map((document) =>
           document.id === optimisticDocumentId
-            ? { ...document, processing_status: "failed", mutation_status: "failed" }
-            : document
+            ? {
+                ...document,
+                processing_status: "failed",
+                mutation_status: "failed",
+              }
+            : document,
         );
         setLoadDocuments(loadDocumentsRef.current);
-        throw new Error("Upload could not be verified. Please retry from the document row.");
+        throw new Error(
+          "Upload could not be verified. Please retry from the document row.",
+        );
       }
 
       return reconciledDocuments;
@@ -3040,6 +3666,7 @@ export default function LoadDetailPage() {
       setActionMessage(`Uploading "${file.name}"...`);
 
       const token = getAccessToken();
+      const uploadOrganizationId = getOrganizationId() ?? organizationId;
 
       const formData = new FormData();
       formData.append("organization_id", organizationId);
@@ -3056,18 +3683,29 @@ export default function LoadDetailPage() {
         formData.append("document_type", selectedUploadDocumentType);
       }
 
-      traceLoadDetailAction("upload_request_started", { request_id: requestId, mutation_generation: mutationGeneration });
-      const uploadResponse = await fetchWithTimeout(buildConfiguredApiUrl("/documents/upload"), {
-        method: "POST",
-        headers: token
-          ? {
-              Authorization: `Bearer ${token}`,
-            }
-          : undefined,
-        body: formData,
-        cache: "no-store",
-      }, 15_000);
-      traceLoadDetailAction("upload_response_received", { request_id: requestId, status: uploadResponse.status });
+      traceLoadDetailAction("upload_request_started", {
+        request_id: requestId,
+        mutation_generation: mutationGeneration,
+      });
+      const uploadResponse = await fetchWithTimeout(
+        buildConfiguredApiUrl("/documents/upload"),
+        {
+          method: "POST",
+          headers: {
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            ...(uploadOrganizationId
+              ? { "X-Organization-Id": uploadOrganizationId }
+              : {}),
+          },
+          body: formData,
+          cache: "no-store",
+        },
+        15_000,
+      );
+      traceLoadDetailAction("upload_response_received", {
+        request_id: requestId,
+        status: uploadResponse.status,
+      });
 
       if (!uploadResponse.ok) {
         const uploadError = await parseUploadErrorResponse(
@@ -3075,7 +3713,9 @@ export default function LoadDetailPage() {
           "Document upload failed. Please try again.",
         );
         if (uploadError.duplicate) {
-          loadDocumentsRef.current = loadDocumentsRef.current.filter((document) => document.id !== optimisticDocumentId);
+          loadDocumentsRef.current = loadDocumentsRef.current.filter(
+            (document) => document.id !== optimisticDocumentId,
+          );
           setLoadDocuments(loadDocumentsRef.current);
           setPendingDuplicateUpload({
             file,
@@ -3093,14 +3733,19 @@ export default function LoadDetailPage() {
         request_id: requestId,
         has_data: uploadPayload !== null,
       });
-      const uploadedPayload = Array.isArray((uploadPayload as ApiResponse<unknown> | null)?.data)
+      const uploadedPayload = Array.isArray(
+        (uploadPayload as ApiResponse<unknown> | null)?.data,
+      )
         ? ((uploadPayload as ApiResponse<unknown>).data as unknown[])[0]
-        : (uploadPayload as ApiResponse<unknown> | null)?.data ?? uploadPayload;
+        : ((uploadPayload as ApiResponse<unknown> | null)?.data ??
+          uploadPayload);
       const canonicalUploadedDocument = normalizeDocument(uploadedPayload);
       if (canonicalUploadedDocument) {
         uploadReconciliationCandidate = canonicalUploadedDocument;
         loadDocumentsRef.current = loadDocumentsRef.current.map((document) =>
-          document.id === optimisticDocumentId ? canonicalUploadedDocument : document
+          document.id === optimisticDocumentId
+            ? canonicalUploadedDocument
+            : document,
         );
         setLoadDocuments(loadDocumentsRef.current);
       }
@@ -3128,14 +3773,19 @@ export default function LoadDetailPage() {
           setActionMessage(`Upload verified: ${file.name}.`);
           return;
         } catch (reconcileError: unknown) {
-          const message = extractErrorMessage(reconcileError, "Upload could not be verified.");
+          const message = extractErrorMessage(
+            reconcileError,
+            "Upload could not be verified.",
+          );
           setDocumentUploadError(message);
           setError(message);
           setActionMessage(null);
           return;
         }
       }
-      loadDocumentsRef.current = loadDocumentsRef.current.filter((document) => document.id !== optimisticDocumentId);
+      loadDocumentsRef.current = loadDocumentsRef.current.filter(
+        (document) => document.id !== optimisticDocumentId,
+      );
       setLoadDocuments(loadDocumentsRef.current);
       const message = extractErrorMessage(caught, "Failed to upload document.");
       setDocumentUploadError(message);
@@ -3165,12 +3815,20 @@ export default function LoadDetailPage() {
       setError(null);
       setActionMessage(`Replacing "${pendingDuplicateUpload.file.name}"...`);
       const token = getAccessToken();
+      const organizationId = getOrganizationId();
       pendingDuplicateUpload.formData.set("replace", "true");
-      const replaceResponse = await fetchWithTimeout(buildConfiguredApiUrl("/documents/upload"), {
-        method: "POST",
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-        body: pendingDuplicateUpload.formData,
-      }, 15_000);
+      const replaceResponse = await fetchWithTimeout(
+        buildConfiguredApiUrl("/documents/upload"),
+        {
+          method: "POST",
+          headers: {
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            ...(organizationId ? { "X-Organization-Id": organizationId } : {}),
+          },
+          body: pendingDuplicateUpload.formData,
+        },
+        15_000,
+      );
       if (!replaceResponse.ok) {
         const uploadError = await parseUploadErrorResponse(
           replaceResponse,
@@ -3180,7 +3838,9 @@ export default function LoadDetailPage() {
       }
       const updatedDocuments = await fetchLoadDocuments({ silent: true });
       setLoadDocuments(updatedDocuments);
-      void fetchLoad().then((updatedLoad) => setLoad(updatedLoad)).catch(() => undefined);
+      void fetchLoad()
+        .then((updatedLoad) => setLoad(updatedLoad))
+        .catch(() => undefined);
       setSelectedUploadDocumentType("");
       setSelectedUploadFile(null);
       if (fileInputRef.current) {
@@ -3189,7 +3849,10 @@ export default function LoadDetailPage() {
       setPendingDuplicateUpload(null);
       setActionMessage("Document replaced.");
     } catch (caught: unknown) {
-      const message = extractErrorMessage(caught, "Failed to replace document.");
+      const message = extractErrorMessage(
+        caught,
+        "Failed to replace document.",
+      );
       setDocumentUploadError(message);
       setError(message);
       setActionMessage(null);
@@ -3198,7 +3861,6 @@ export default function LoadDetailPage() {
       endWriteAction();
     }
   }
-
 
   async function handleDownloadDocument(document: LoadDocument) {
     if (!document.id || downloadingDocumentId) {
@@ -3211,24 +3873,27 @@ export default function LoadDetailPage() {
       setActionMessage(null);
 
       const token = getAccessToken();
+      const organizationId = getOrganizationId();
 
       const response = await fetch(
-        buildConfiguredApiUrl(`/documents/${encodeURIComponent(document.id)}/download`),
+        buildConfiguredApiUrl(
+          `/documents/${encodeURIComponent(document.id)}/download`,
+        ),
         {
           method: "GET",
-          headers: token
-            ? {
-                Authorization: `Bearer ${token}`,
-              }
-            : undefined,
-        }
+          headers: {
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            ...(organizationId ? { "X-Organization-Id": organizationId } : {}),
+          },
+        },
       );
 
       if (!response.ok) {
         const responseText = await response.text();
-        const message = responseText.trim().length > 0 && !isHtmlErrorText(responseText)
-          ? responseText
-          : "Failed to download document.";
+        const message =
+          responseText.trim().length > 0 && !isHtmlErrorText(responseText)
+            ? responseText
+            : "Failed to download document.";
         throw new Error(message);
       }
 
@@ -3284,14 +3949,19 @@ export default function LoadDetailPage() {
 
       const updatedDocuments = await fetchLoadDocuments();
       setLoadDocuments(updatedDocuments);
-      void fetchLoad().then((updatedLoad) => setLoad(updatedLoad)).catch(() => undefined);
+      void fetchLoad()
+        .then((updatedLoad) => setLoad(updatedLoad))
+        .catch(() => undefined);
       setActionMessage("Documents refreshed.");
     } catch (caught: unknown) {
       setError(extractErrorMessage(caught, "Failed to refresh documents."));
     }
   }
 
-  async function handleUpdateDocumentType(document: LoadDocument, nextType: UploadDocumentType) {
+  async function handleUpdateDocumentType(
+    document: LoadDocument,
+    nextType: UploadDocumentType,
+  ) {
     if (!document.id || savingDocumentId || !nextType) {
       return;
     }
@@ -3307,12 +3977,14 @@ export default function LoadDetailPage() {
       await apiClient.patch(
         `/documents/${encodeURIComponent(document.id)}`,
         { document_type: nextType },
-        { token: token ?? undefined }
+        { token: token ?? undefined },
       );
 
       const updatedDocuments = await fetchLoadDocuments({ silent: true });
       setLoadDocuments(updatedDocuments);
-      void fetchLoad().then((updatedLoad) => setLoad(updatedLoad)).catch(() => undefined);
+      void fetchLoad()
+        .then((updatedLoad) => setLoad(updatedLoad))
+        .catch(() => undefined);
       setActionMessage("Document type updated.");
     } catch (caught: unknown) {
       setError(extractErrorMessage(caught, "Failed to update document type."));
@@ -3323,20 +3995,25 @@ export default function LoadDetailPage() {
   }
 
   async function handleDeleteDocument(document: LoadDocument) {
-    if (!document.id || deletingDocumentId || deletingDocumentRequestRef.current) {
+    if (
+      !document.id ||
+      deletingDocumentId ||
+      deletingDocumentRequestRef.current
+    ) {
       return;
     }
 
     traceLoadDetailAction("delete_clicked", {
       document_id: document.id,
       document_type: document.document_type,
-      document_status: document.processing_status ?? document.received_status ?? null,
+      document_status:
+        document.processing_status ?? document.received_status ?? null,
       hydration_locked: writeActionActiveRef.current,
     });
 
     if (isInvoiceManagedDocument(document)) {
       setError(
-        "Invoice documents are managed from the invoice workflow. Use Regenerate Invoice to replace this file."
+        "Invoice documents are managed from the invoice workflow. Use Regenerate Invoice to replace this file.",
       );
       setActionMessage(null);
       return;
@@ -3353,7 +4030,9 @@ export default function LoadDetailPage() {
     deletingDocumentRequestRef.current = document.id;
     const documentsBeforeDelete = loadDocumentsRef.current;
 
-    loadDocumentsRef.current = loadDocumentsRef.current.filter((item) => item.id !== document.id);
+    loadDocumentsRef.current = loadDocumentsRef.current.filter(
+      (item) => item.id !== document.id,
+    );
     setLoadDocuments(loadDocumentsRef.current);
     traceLoadDetailAction("optimistic_row_removed", {
       request_id: requestId,
@@ -3364,8 +4043,14 @@ export default function LoadDetailPage() {
 
     const reconcileDelete = async (reason: "success" | "timeout") => {
       if (reason === "timeout") {
-        traceLoadDetailAction("delete_timeout", { request_id: requestId, document_id: document.id, mutation_generation: mutationGeneration });
-        setActionMessage(`Delete timed out for ${getDocumentDisplayName(document)}. Verifying server state...`);
+        traceLoadDetailAction("delete_timeout", {
+          request_id: requestId,
+          document_id: document.id,
+          mutation_generation: mutationGeneration,
+        });
+        setActionMessage(
+          `Delete timed out for ${getDocumentDisplayName(document)}. Verifying server state...`,
+        );
       }
 
       const updatedDocuments = await fetchLoadDocuments({
@@ -3373,7 +4058,9 @@ export default function LoadDetailPage() {
         reason: `delete_${reason}_reconcile`,
         expectedMinMutationGeneration: mutationGeneration,
       });
-      const documentStillExists = updatedDocuments.some((item) => item.id === document.id);
+      const documentStillExists = updatedDocuments.some(
+        (item) => item.id === document.id,
+      );
 
       traceLoadDetailAction("final_documents_count", {
         request_id: requestId,
@@ -3381,20 +4068,25 @@ export default function LoadDetailPage() {
         deleted_document_still_exists: documentStillExists,
       });
 
-      traceLoadDetailAction("readiness_refresh_started", { request_id: requestId });
+      traceLoadDetailAction("readiness_refresh_started", {
+        request_id: requestId,
+      });
       const updatedLoad = await fetchLoad().catch(() => null);
       if (updatedLoad) {
         setLoad(updatedLoad);
         traceLoadDetailAction("readiness_refresh_applied", {
           request_id: requestId,
-          present_documents: updatedLoad.packet_readiness?.present_documents ?? [],
+          present_documents:
+            updatedLoad.packet_readiness?.present_documents ?? [],
         });
       }
 
       if (reason === "timeout" && documentStillExists) {
         loadDocumentsRef.current = documentsBeforeDelete;
         setLoadDocuments(documentsBeforeDelete);
-        throw new Error("Delete could not be verified. The document was restored.");
+        throw new Error(
+          "Delete could not be verified. The document was restored.",
+        );
       }
     };
 
@@ -3404,12 +4096,19 @@ export default function LoadDetailPage() {
       setActionMessage(null);
 
       const token = getAccessToken();
-      traceLoadDetailAction("delete_request_started", { request_id: requestId, document_id: document.id, mutation_generation: mutationGeneration });
+      traceLoadDetailAction("delete_request_started", {
+        request_id: requestId,
+        document_id: document.id,
+        mutation_generation: mutationGeneration,
+      });
       await apiClient.delete(`/documents/${encodeURIComponent(document.id)}`, {
         token: token ?? undefined,
         timeoutMs: 15_000,
       });
-      traceLoadDetailAction("delete_response_received", { request_id: requestId, document_id: document.id });
+      traceLoadDetailAction("delete_response_received", {
+        request_id: requestId,
+        document_id: document.id,
+      });
 
       await reconcileDelete("success");
       setActionMessage("Deleted successfully.");
@@ -3422,8 +4121,15 @@ export default function LoadDetailPage() {
           setActionMessage("Delete verified successfully.");
           return;
         } catch (reconcileError: unknown) {
-          const message = extractErrorMessage(reconcileError, "Could not verify delete.");
-          traceLoadDetailAction("delete_failed", { request_id: requestId, document_id: document.id, message });
+          const message = extractErrorMessage(
+            reconcileError,
+            "Could not verify delete.",
+          );
+          traceLoadDetailAction("delete_failed", {
+            request_id: requestId,
+            document_id: document.id,
+            message,
+          });
           setError(message);
           setActionMessage(null);
           return;
@@ -3449,10 +4155,15 @@ export default function LoadDetailPage() {
       <main className="min-h-screen bg-slate-50 px-6 py-10 text-slate-900">
         <div className="mx-auto max-w-7xl">
           <div className="rounded-2xl border border-slate-200 bg-white p-8 shadow-soft">
-            <p className="text-sm font-medium text-brand-700">Dashboard / Loads / Detail</p>
-            <h1 className="mt-2 text-2xl font-bold text-slate-950">Loading load...</h1>
+            <p className="text-sm font-medium text-brand-700">
+              Dashboard / Loads / Detail
+            </p>
+            <h1 className="mt-2 text-2xl font-bold text-slate-950">
+              Loading load...
+            </h1>
             <p className="mt-3 text-sm text-slate-600">
-              Fetching load summary, review queue status, document completeness, and payment state.
+              Fetching load summary, review queue status, document completeness,
+              and payment state.
             </p>
           </div>
         </div>
@@ -3465,8 +4176,12 @@ export default function LoadDetailPage() {
       <main className="min-h-screen bg-slate-50 px-6 py-10 text-slate-900">
         <div className="mx-auto max-w-7xl">
           <div className="rounded-2xl border border-rose-200 bg-rose-50 p-6 shadow-soft">
-            <p className="text-sm font-medium text-brand-700">Dashboard / Loads / Detail</p>
-            <h1 className="mt-2 text-2xl font-bold text-rose-800">Unable to load load detail</h1>
+            <p className="text-sm font-medium text-brand-700">
+              Dashboard / Loads / Detail
+            </p>
+            <h1 className="mt-2 text-2xl font-bold text-rose-800">
+              Unable to load load detail
+            </h1>
             <p className="mt-2 text-sm text-rose-700">{error}</p>
             <div className="mt-5 flex flex-wrap gap-3">
               <button
@@ -3502,8 +4217,12 @@ export default function LoadDetailPage() {
       <main className="min-h-screen bg-slate-50 px-6 py-10 text-slate-900">
         <div className="mx-auto max-w-7xl">
           <div className="rounded-2xl border border-rose-200 bg-rose-50 p-6 shadow-soft">
-            <p className="text-sm font-medium text-brand-700">Dashboard / Loads / Detail</p>
-            <h1 className="mt-2 text-2xl font-bold text-rose-800">Load not found</h1>
+            <p className="text-sm font-medium text-brand-700">
+              Dashboard / Loads / Detail
+            </p>
+            <h1 className="mt-2 text-2xl font-bold text-rose-800">
+              Load not found
+            </h1>
             <p className="mt-2 text-sm text-rose-700">
               No load matched the requested identifier.
             </p>
@@ -3529,7 +4248,9 @@ export default function LoadDetailPage() {
     );
   }
 
-  const hasExistingInvoice = Boolean(invoiceStatus?.has_invoice || load.has_invoice);
+  const hasExistingInvoice = Boolean(
+    invoiceStatus?.has_invoice || load.has_invoice,
+  );
   const invoiceIsStale = Boolean(invoiceStatus?.is_stale);
 
   return (
@@ -3537,13 +4258,15 @@ export default function LoadDetailPage() {
       <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-10">
         <div className="mb-8 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
-            <p className="text-sm font-medium text-brand-700">Dashboard / Loads / Detail</p>
+            <p className="text-sm font-medium text-brand-700">
+              Dashboard / Loads / Detail
+            </p>
             <h1 className="break-mobile text-2xl font-bold tracking-tight text-slate-950 sm:text-3xl">
               {getLoadDisplayTitle(load)}
             </h1>
             <p className="mt-2 text-sm leading-6 text-slate-600">
-              Full operational view of a load, including documents, validation issues, workflow
-              progress, and payment visibility.
+              Full operational view of a load, including documents, validation
+              issues, workflow progress, and payment visibility.
             </p>
           </div>
 
@@ -3577,7 +4300,9 @@ export default function LoadDetailPage() {
                   disabled={isGeneratingInvoice}
                   className="touch-target rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  {invoiceAction === "view" ? "Opening invoice..." : "View Invoice"}
+                  {invoiceAction === "view"
+                    ? "Opening invoice..."
+                    : "View Invoice"}
                 </button>
                 <button
                   type="button"
@@ -3585,7 +4310,9 @@ export default function LoadDetailPage() {
                   disabled={isGeneratingInvoice}
                   className="touch-target rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  {invoiceAction === "download" ? "Downloading invoice..." : "Download Invoice"}
+                  {invoiceAction === "download"
+                    ? "Downloading invoice..."
+                    : "Download Invoice"}
                 </button>
                 {invoiceIsStale ? (
                   <button
@@ -3594,7 +4321,9 @@ export default function LoadDetailPage() {
                     disabled={isGeneratingInvoice}
                     className="touch-target rounded-xl border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-800 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    {invoiceAction === "regenerate" ? "Regenerating invoice..." : "Regenerate Invoice"}
+                    {invoiceAction === "regenerate"
+                      ? "Regenerating invoice..."
+                      : "Regenerate Invoice"}
                   </button>
                 ) : null}
               </>
@@ -3605,19 +4334,27 @@ export default function LoadDetailPage() {
                 disabled={isGeneratingInvoice}
                 className="touch-target rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {invoiceAction === "view" ? "Generating invoice..." : "Generate Invoice"}
+                {invoiceAction === "view"
+                  ? "Generating invoice..."
+                  : "Generate Invoice"}
               </button>
             )}
           </div>
         </div>
 
         {invoiceIsStale ? (
-          <div className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-soft" role="status">
+          <div
+            className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-soft"
+            role="status"
+          >
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <h2 className="text-lg font-semibold text-amber-900">Invoice may be outdated</h2>
+                <h2 className="text-lg font-semibold text-amber-900">
+                  Invoice may be outdated
+                </h2>
                 <p className="mt-1 text-sm text-amber-800">
-                  Load, carrier, broker/customer, or required billing document details changed after the invoice PDF was created.
+                  Load, carrier, broker/customer, or required billing document
+                  details changed after the invoice PDF was created.
                 </p>
                 {invoiceStatus?.stale_reasons.length ? (
                   <ul className="mt-2 list-disc pl-5 text-sm text-amber-900">
@@ -3633,7 +4370,9 @@ export default function LoadDetailPage() {
                 disabled={isGeneratingInvoice}
                 className="touch-target rounded-xl bg-amber-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {invoiceAction === "regenerate" ? "Regenerating invoice..." : "Regenerate Invoice"}
+                {invoiceAction === "regenerate"
+                  ? "Regenerating invoice..."
+                  : "Regenerate Invoice"}
               </button>
             </div>
           </div>
@@ -3641,9 +4380,12 @@ export default function LoadDetailPage() {
 
         {invoiceBlocker ? (
           <div className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-soft">
-            <h2 className="text-lg font-semibold text-amber-900">Carrier Profile incomplete</h2>
+            <h2 className="text-lg font-semibold text-amber-900">
+              Carrier Profile incomplete
+            </h2>
             <p className="mt-1 text-sm text-amber-800">
-              Complete your company and remit-to details before generating an invoice.
+              Complete your company and remit-to details before generating an
+              invoice.
             </p>
             {invoiceBlocker.missingFields.length > 0 ? (
               <ul className="mt-3 list-disc pl-5 text-sm text-amber-900">
@@ -3667,7 +4409,9 @@ export default function LoadDetailPage() {
               Quick status set
               <select
                 value={manualStatus}
-                onChange={(event) => setManualStatus(event.target.value as LoadStatus)}
+                onChange={(event) =>
+                  setManualStatus(event.target.value as LoadStatus)
+                }
                 className="mt-2 block w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm sm:w-auto"
               >
                 {MANUAL_STATUS_OPTIONS.map((item) => (
@@ -3692,10 +4436,12 @@ export default function LoadDetailPage() {
         </div>
 
         <div className="mb-6 rounded-2xl border border-slate-200 bg-white p-4 shadow-soft">
-          <h2 className="text-sm font-semibold text-slate-900">Broker / Factoring Staff Actions</h2>
+          <h2 className="text-sm font-semibold text-slate-900">
+            Broker / Factoring Staff Actions
+          </h2>
           <p className="mt-1 text-xs text-slate-500">
-            Use explicit actions for broker and factoring operations. Each action logs workflow
-            events and transitions status.
+            Use explicit actions for broker and factoring operations. Each
+            action logs workflow events and transitions status.
           </p>
           <div className="mt-3 grid gap-2 sm:grid-cols-2">
             <button
@@ -3756,13 +4502,21 @@ export default function LoadDetailPage() {
         ) : null}
 
         {actionMessage ? (
-          <div role="status" aria-live="polite" className="fixed bottom-[calc(1rem+env(safe-area-inset-bottom))] left-4 right-4 z-[60] rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800 shadow-soft sm:left-auto sm:right-6 sm:max-w-md">
+          <div
+            role="status"
+            aria-live="polite"
+            className="fixed bottom-[calc(1rem+env(safe-area-inset-bottom))] left-4 right-4 z-[60] rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800 shadow-soft sm:left-auto sm:right-6 sm:max-w-md"
+          >
             {actionMessage}
           </div>
         ) : null}
 
         {packetEmailConfirmation ? (
-          <div role="status" aria-live="polite" className="mb-6 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800">
+          <div
+            role="status"
+            aria-live="polite"
+            className="mb-6 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800"
+          >
             {packetEmailConfirmation}
           </div>
         ) : null}
@@ -3777,10 +4531,12 @@ export default function LoadDetailPage() {
           <section className="space-y-6">
             <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-soft sm:p-6">
               <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-                <h2 className="text-lg font-semibold text-slate-950">Load Summary</h2>
+                <h2 className="text-lg font-semibold text-slate-950">
+                  Load Summary
+                </h2>
                 <span
                   className={`rounded-full px-3 py-1 text-xs font-semibold ${statusBadge(
-                    load.status
+                    load.status,
                   )}`}
                 >
                   {load.status.replaceAll("_", " ")}
@@ -3789,26 +4545,43 @@ export default function LoadDetailPage() {
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
-                  <div className="text-xs uppercase tracking-wide text-slate-500">Driver</div>
+                  <div className="text-xs uppercase tracking-wide text-slate-500">
+                    Driver
+                  </div>
                   <div className="mt-1 text-sm font-medium text-slate-900">
-                    {getOperationalDisplayValue(load.driver_name, load.driver_id)}
+                    {getOperationalDisplayValue(
+                      load.driver_name,
+                      load.driver_id,
+                    )}
                   </div>
                 </div>
 
                 <div>
-                  <div className="text-xs uppercase tracking-wide text-slate-500">Broker</div>
+                  <div className="text-xs uppercase tracking-wide text-slate-500">
+                    Broker
+                  </div>
                   <div className="mt-1 text-sm font-medium text-slate-900">
-                    {getOperationalDisplayValue(load.broker_name_raw, load.broker_id)}
+                    {getOperationalDisplayValue(
+                      load.broker_name_raw,
+                      load.broker_id,
+                    )}
                   </div>
                   {load.broker_email_raw ? (
-                    <div className="mt-1 text-xs text-slate-500">{load.broker_email_raw}</div>
+                    <div className="mt-1 text-xs text-slate-500">
+                      {load.broker_email_raw}
+                    </div>
                   ) : null}
                 </div>
 
                 <div>
-                  <div className="text-xs uppercase tracking-wide text-slate-500">Customer</div>
+                  <div className="text-xs uppercase tracking-wide text-slate-500">
+                    Customer
+                  </div>
                   <div className="mt-1 text-sm font-medium text-slate-900">
-                    {getOperationalDisplayValue(load.customer_account_name, load.customer_account_id)}
+                    {getOperationalDisplayValue(
+                      load.customer_account_name,
+                      load.customer_account_id,
+                    )}
                   </div>
                 </div>
 
@@ -3817,7 +4590,10 @@ export default function LoadDetailPage() {
                     Gross Amount
                   </div>
                   <div className="mt-1 text-sm font-medium text-slate-900">
-                    {formatCurrency(load.gross_amount, load.currency_code ?? "USD")}
+                    {formatCurrency(
+                      load.gross_amount,
+                      load.currency_code ?? "USD",
+                    )}
                   </div>
                 </div>
 
@@ -3831,14 +4607,18 @@ export default function LoadDetailPage() {
                 </div>
 
                 <div>
-                  <div className="text-xs uppercase tracking-wide text-slate-500">Pickup</div>
+                  <div className="text-xs uppercase tracking-wide text-slate-500">
+                    Pickup
+                  </div>
                   <div className="mt-1 text-sm font-medium text-slate-900">
                     {load.pickup_location ?? "—"}
                   </div>
                 </div>
 
                 <div>
-                  <div className="text-xs uppercase tracking-wide text-slate-500">Delivery</div>
+                  <div className="text-xs uppercase tracking-wide text-slate-500">
+                    Delivery
+                  </div>
                   <div className="mt-1 text-sm font-medium text-slate-900">
                     {load.delivery_location ?? "—"}
                   </div>
@@ -3865,14 +4645,18 @@ export default function LoadDetailPage() {
                 </div>
 
                 <div>
-                  <div className="text-xs uppercase tracking-wide text-slate-500">Created</div>
+                  <div className="text-xs uppercase tracking-wide text-slate-500">
+                    Created
+                  </div>
                   <div className="mt-1 text-sm font-medium text-slate-900">
                     {formatDateTime(load.created_at)}
                   </div>
                 </div>
 
                 <div>
-                  <div className="text-xs uppercase tracking-wide text-slate-500">Updated</div>
+                  <div className="text-xs uppercase tracking-wide text-slate-500">
+                    Updated
+                  </div>
                   <div className="mt-1 text-sm font-medium text-slate-900">
                     {formatDateTime(load.updated_at)}
                   </div>
@@ -3917,7 +4701,9 @@ export default function LoadDetailPage() {
                       State Entered
                     </div>
                     <div className="mt-1 text-sm font-semibold text-slate-900">
-                      {formatDateTime(load.operational?.entered_state_at || null)}
+                      {formatDateTime(
+                        load.operational?.entered_state_at || null,
+                      )}
                     </div>
                   </div>
                 </div>
@@ -3934,14 +4720,17 @@ export default function LoadDetailPage() {
             <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-soft sm:p-6">
               <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
                 <div>
-                  <h2 className="text-lg font-semibold text-slate-950">Workflow Readiness</h2>
+                  <h2 className="text-lg font-semibold text-slate-950">
+                    Workflow Readiness
+                  </h2>
                   <p className="mt-1 text-sm text-slate-600">
-                    Current lane status, readiness blockers, and lifecycle progression.
+                    Current lane status, readiness blockers, and lifecycle
+                    progression.
                   </p>
                 </div>
                 <span
                   className={`rounded-full px-3 py-1 text-xs font-semibold ${statusBadge(
-                    load.status
+                    load.status,
                   )}`}
                 >
                   {load.status.replaceAll("_", " ")}
@@ -3950,8 +4739,12 @@ export default function LoadDetailPage() {
 
               <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 <div className="rounded-xl border border-slate-200 px-4 py-3">
-                  <div className="text-xs uppercase tracking-wide text-slate-500">Open Issues</div>
-                  <div className="mt-1 text-lg font-semibold text-slate-950">{totalOpenIssues}</div>
+                  <div className="text-xs uppercase tracking-wide text-slate-500">
+                    Open Issues
+                  </div>
+                  <div className="mt-1 text-lg font-semibold text-slate-950">
+                    {totalOpenIssues}
+                  </div>
                 </div>
                 <div className="rounded-xl border border-slate-200 px-4 py-3">
                   <div className="text-xs uppercase tracking-wide text-slate-500">
@@ -3999,8 +4792,13 @@ export default function LoadDetailPage() {
             <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-soft sm:p-6">
               <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <h2 className="text-lg font-semibold text-slate-950">Submission Packet</h2>
-                  <p className="mt-1 text-sm text-slate-600">Build the broker/factor billing packet, send it, and track delivery outcomes.</p>
+                  <h2 className="text-lg font-semibold text-slate-950">
+                    Submission Packet
+                  </h2>
+                  <p className="mt-1 text-sm text-slate-600">
+                    Build the broker/factor billing packet, send it, and track
+                    delivery outcomes.
+                  </p>
                 </div>
                 <button
                   type="button"
@@ -4012,32 +4810,69 @@ export default function LoadDetailPage() {
                 </button>
               </div>
               <div className="mb-4 text-sm text-slate-700">
-                Required docs: Invoice, Rate Confirmation, Proof of Delivery, Bill of Lading. Missing: {(load.packet_readiness?.missing_required_documents?.submission ?? []).join(", ") || "none"}.
+                Required docs: Invoice, Rate Confirmation, Proof of Delivery,
+                Bill of Lading. Missing:{" "}
+                {(
+                  load.packet_readiness?.missing_required_documents
+                    ?.submission ?? []
+                ).join(", ") || "none"}
+                .
               </div>
-              <SectionLoadNotice isLoading={optionalSectionLoading.packetAudit} error={optionalSectionErrors.packetAudit} />
-              <SectionLoadNotice isLoading={optionalSectionLoading.submissionPackets} error={optionalSectionErrors.submissionPackets} />
+              <SectionLoadNotice
+                isLoading={optionalSectionLoading.packetAudit}
+                error={optionalSectionErrors.packetAudit}
+              />
+              <SectionLoadNotice
+                isLoading={optionalSectionLoading.submissionPackets}
+                error={optionalSectionErrors.submissionPackets}
+              />
               {packetAudit ? (
                 <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                     <div>
-                      <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Packet audit summary</div>
+                      <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                        Packet audit summary
+                      </div>
                       <div className="mt-1 flex flex-wrap items-center gap-2 text-sm font-semibold text-slate-900">
-                        <span className={`rounded-full px-2 py-0.5 text-xs ${packetAuditStatusBadge(packetAudit.status)}`}>{packetAudit.status}</span>
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-xs ${packetAuditStatusBadge(packetAudit.status)}`}
+                        >
+                          {packetAudit.status}
+                        </span>
                         <span>{packetAudit.confidence_score}% confidence</span>
-                        {hasBlockingPacketAudit(packetAudit) ? <span className="text-xs text-rose-700">Blocking issue found — email send is blocked until fixed.</span> : null}
+                        {hasBlockingPacketAudit(packetAudit) ? (
+                          <span className="text-xs text-rose-700">
+                            Blocking issue found — email send is blocked until
+                            fixed.
+                          </span>
+                        ) : null}
                       </div>
                     </div>
-                    <div className="text-xs text-slate-500">Generated {formatDateTime(packetAudit.generated_at)}</div>
+                    <div className="text-xs text-slate-500">
+                      Generated {formatDateTime(packetAudit.generated_at)}
+                    </div>
                   </div>
                   <div className="mt-3 space-y-2">
                     {packetAudit.findings.length === 0 ? (
-                      <div className="text-sm text-emerald-700">No packet audit findings. Packet appears complete based on available metadata.</div>
+                      <div className="text-sm text-emerald-700">
+                        No packet audit findings. Packet appears complete based
+                        on available metadata.
+                      </div>
                     ) : (
                       packetAudit.findings.map((finding) => (
-                        <div key={`${finding.code}-${finding.message}`} className="rounded-lg border border-white bg-white p-2 text-sm text-slate-700">
+                        <div
+                          key={`${finding.code}-${finding.message}`}
+                          className="rounded-lg border border-white bg-white p-2 text-sm text-slate-700"
+                        >
                           <div className="flex flex-wrap items-center gap-2">
-                            <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${packetAuditSeverityBadge(finding.severity)}`}>{finding.severity}</span>
-                            <span className="font-medium text-slate-900">{finding.code.replaceAll("_", " ")}</span>
+                            <span
+                              className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${packetAuditSeverityBadge(finding.severity)}`}
+                            >
+                              {finding.severity}
+                            </span>
+                            <span className="font-medium text-slate-900">
+                              {finding.code.replaceAll("_", " ")}
+                            </span>
                           </div>
                           <div className="mt-1">{finding.message}</div>
                         </div>
@@ -4051,93 +4886,293 @@ export default function LoadDetailPage() {
                   const activeAudit = packet.packet_audit ?? packetAudit;
                   const auditBlocksSend = hasBlockingPacketAudit(activeAudit);
                   return (
-                  <div key={packet.id} className="rounded-xl border border-slate-200 p-3">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div className="text-sm font-semibold text-slate-900">{packet.packet_reference ?? packet.id}</div>
-                      <div className="text-xs text-slate-500">{packet.status ?? "draft"}</div>
-                    </div>
-                    <div className="mt-1 text-xs text-slate-500">Destination: {packet.destination_type ?? "—"} • Sent: {formatDateTime(packet.sent_at)}</div>
-                    <div className="mt-2 space-y-2">
-                      <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Packet actions</div>
-                      <div className="flex flex-wrap gap-2">
-                        <button title="Download a ZIP packet to send manually." type="button" onClick={() => void handleDownloadPacketZip(packet.id)} disabled={downloadingPacketId === packet.id} className="rounded-lg border border-slate-300 px-3 py-1 text-xs disabled:opacity-50">{downloadingPacketId === packet.id ? "Downloading..." : "Download Packet ZIP"}</button>
-                        <button title="Copy the packet submission email template." type="button" onClick={() => void handleCopySubmissionEmail()} className="rounded-lg border border-slate-300 px-3 py-1 text-xs">Copy Submission Email</button>
-                        <button aria-label="Email Packet" title={auditBlocksSend ? "Fix blocking packet audit findings before emailing." : "Send packet email from this page when email is configured."} type="button" onClick={() => openSendPacketEmailModal(packet)} disabled={isSubmissionBusy || auditBlocksSend || ((load.packet_readiness?.missing_required_documents?.submission ?? []).length > 0)} className="rounded-lg border border-slate-300 px-3 py-1 text-xs disabled:opacity-50">Email Packet</button>
-                      </div>
-                      <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Status updates</div>
-                      <div className="flex flex-wrap gap-2">
-                        <button title="Use when packet was sent outside the app." type="button" onClick={() => void handleMarkPacket(packet.id, "mark-sent", { destination_type: "broker", destination_name: load.broker_name_raw ?? "Broker/AP", destination_email: load.broker_email_raw ?? null })} className="rounded-lg border border-slate-300 px-3 py-1 text-xs">Mark Packet Sent</button>
-                        <button type="button" onClick={() => void handleMarkPacket(packet.id, "mark-accepted")} className="rounded-lg border border-slate-300 px-3 py-1 text-xs">Mark Accepted</button>
-                        <button type="button" onClick={() => void handleMarkPacket(packet.id, "mark-rejected", { reason: "Rejected by destination", resubmission_required: true })} className="rounded-lg border border-slate-300 px-3 py-1 text-xs">Mark Needs Resubmission</button>
-                      </div>
-                    </div>
-                    <div className="mt-2 text-xs text-slate-500">Included docs: {packet.documents.map((doc) => normalizeDocumentTypeLabel(doc.document_type)).join(", ") || "none"}</div>
-                    {activeAudit ? (
-                      <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-semibold uppercase tracking-wide text-slate-500">Audit</span>
-                          <span className={`rounded-full px-2 py-0.5 font-semibold ${packetAuditStatusBadge(activeAudit.status)}`}>{activeAudit.status}</span>
-                          <span>{activeAudit.confidence_score}% confidence</span>
+                    <div
+                      key={packet.id}
+                      className="rounded-xl border border-slate-200 p-3"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="text-sm font-semibold text-slate-900">
+                          {packet.packet_reference ?? packet.id}
                         </div>
-                        {activeAudit.findings.length > 0 ? (
-                          <div className="mt-2 space-y-1">
-                            {activeAudit.findings.map((finding) => (
-                              <div key={`${packet.id}-${finding.code}-${finding.message}`} className="flex flex-col gap-1 rounded-md bg-white p-2 sm:flex-row sm:items-start">
-                                <span className={`w-fit rounded-full px-2 py-0.5 text-[11px] font-semibold ${packetAuditSeverityBadge(finding.severity)}`}>{finding.severity}</span>
-                                <span>{finding.message}</span>
-                              </div>
-                            ))}
+                        <div className="text-xs text-slate-500">
+                          {packet.status ?? "draft"}
+                        </div>
+                      </div>
+                      <div className="mt-1 text-xs text-slate-500">
+                        Destination: {packet.destination_type ?? "—"} • Sent:{" "}
+                        {formatDateTime(packet.sent_at)}
+                      </div>
+                      <div className="mt-2 space-y-2">
+                        <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                          Packet actions
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            title="Download a ZIP packet to send manually."
+                            type="button"
+                            onClick={() =>
+                              void handleDownloadPacketZip(packet.id)
+                            }
+                            disabled={downloadingPacketId === packet.id}
+                            className="rounded-lg border border-slate-300 px-3 py-1 text-xs disabled:opacity-50"
+                          >
+                            {downloadingPacketId === packet.id
+                              ? "Downloading..."
+                              : "Download Packet ZIP"}
+                          </button>
+                          <button
+                            title="Copy the packet submission email template."
+                            type="button"
+                            onClick={() => void handleCopySubmissionEmail()}
+                            className="rounded-lg border border-slate-300 px-3 py-1 text-xs"
+                          >
+                            Copy Submission Email
+                          </button>
+                          <button
+                            aria-label="Email Packet"
+                            title={
+                              auditBlocksSend
+                                ? "Fix blocking packet audit findings before emailing."
+                                : "Send packet email from this page when email is configured."
+                            }
+                            type="button"
+                            onClick={() => openSendPacketEmailModal(packet)}
+                            disabled={
+                              isSubmissionBusy ||
+                              auditBlocksSend ||
+                              (
+                                load.packet_readiness
+                                  ?.missing_required_documents?.submission ?? []
+                              ).length > 0
+                            }
+                            className="rounded-lg border border-slate-300 px-3 py-1 text-xs disabled:opacity-50"
+                          >
+                            Email Packet
+                          </button>
+                        </div>
+                        <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                          Status updates
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            title="Use when packet was sent outside the app."
+                            type="button"
+                            onClick={() =>
+                              void handleMarkPacket(packet.id, "mark-sent", {
+                                destination_type: "broker",
+                                destination_name:
+                                  load.broker_name_raw ?? "Broker/AP",
+                                destination_email:
+                                  load.broker_email_raw ?? null,
+                              })
+                            }
+                            className="rounded-lg border border-slate-300 px-3 py-1 text-xs"
+                          >
+                            Mark Packet Sent
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              void handleMarkPacket(packet.id, "mark-accepted")
+                            }
+                            className="rounded-lg border border-slate-300 px-3 py-1 text-xs"
+                          >
+                            Mark Accepted
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              void handleMarkPacket(
+                                packet.id,
+                                "mark-rejected",
+                                {
+                                  reason: "Rejected by destination",
+                                  resubmission_required: true,
+                                },
+                              )
+                            }
+                            className="rounded-lg border border-slate-300 px-3 py-1 text-xs"
+                          >
+                            Mark Needs Resubmission
+                          </button>
+                        </div>
+                      </div>
+                      <div className="mt-2 text-xs text-slate-500">
+                        Included docs:{" "}
+                        {packet.documents
+                          .map((doc) =>
+                            normalizeDocumentTypeLabel(doc.document_type),
+                          )
+                          .join(", ") || "none"}
+                      </div>
+                      {activeAudit ? (
+                        <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="font-semibold uppercase tracking-wide text-slate-500">
+                              Audit
+                            </span>
+                            <span
+                              className={`rounded-full px-2 py-0.5 font-semibold ${packetAuditStatusBadge(activeAudit.status)}`}
+                            >
+                              {activeAudit.status}
+                            </span>
+                            <span>
+                              {activeAudit.confidence_score}% confidence
+                            </span>
                           </div>
-                        ) : <div className="mt-2 text-emerald-700">No audit findings for this packet.</div>}
-                      </div>
-                    ) : null}
-                    {packet.events.filter((event) => (event.event_type ?? "").startsWith("packet_email_")).length > 0 ? (
-                      <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
-                        <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Email delivery history</div>
-                        <div className="mt-2 space-y-1 text-xs text-slate-700">
-                          {packet.events
-                            .filter((event) => (event.event_type ?? "").startsWith("packet_email_"))
-                            .map((event) => (
-                              <div key={event.id} className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-1 last:border-b-0 last:pb-0">
-                                <span className="font-medium">{(event.event_type ?? "").replace("packet_email_", "").replaceAll("_", " ") || "send attempt"}</span>
-                                <span>{packetEmailRecipient(event, packet)}</span>
-                                <span>{packetEmailDetail(event) || "—"}</span>
-                                <span className="text-slate-500">{formatDateTime(event.created_at)}</span>
-                              </div>
-                            ))}
+                          {activeAudit.findings.length > 0 ? (
+                            <div className="mt-2 space-y-1">
+                              {activeAudit.findings.map((finding) => (
+                                <div
+                                  key={`${packet.id}-${finding.code}-${finding.message}`}
+                                  className="flex flex-col gap-1 rounded-md bg-white p-2 sm:flex-row sm:items-start"
+                                >
+                                  <span
+                                    className={`w-fit rounded-full px-2 py-0.5 text-[11px] font-semibold ${packetAuditSeverityBadge(finding.severity)}`}
+                                  >
+                                    {finding.severity}
+                                  </span>
+                                  <span>{finding.message}</span>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="mt-2 text-emerald-700">
+                              No audit findings for this packet.
+                            </div>
+                          )}
                         </div>
-                      </div>
-                    ) : null}
-                  </div>
+                      ) : null}
+                      {packet.events.filter((event) =>
+                        (event.event_type ?? "").startsWith("packet_email_"),
+                      ).length > 0 ? (
+                        <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                          <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                            Email delivery history
+                          </div>
+                          <div className="mt-2 space-y-1 text-xs text-slate-700">
+                            {packet.events
+                              .filter((event) =>
+                                (event.event_type ?? "").startsWith(
+                                  "packet_email_",
+                                ),
+                              )
+                              .map((event) => (
+                                <div
+                                  key={event.id}
+                                  className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-1 last:border-b-0 last:pb-0"
+                                >
+                                  <span className="font-medium">
+                                    {(event.event_type ?? "")
+                                      .replace("packet_email_", "")
+                                      .replaceAll("_", " ") || "send attempt"}
+                                  </span>
+                                  <span>
+                                    {packetEmailRecipient(event, packet)}
+                                  </span>
+                                  <span>{packetEmailDetail(event) || "—"}</span>
+                                  <span className="text-slate-500">
+                                    {formatDateTime(event.created_at)}
+                                  </span>
+                                </div>
+                              ))}
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
                   );
                 })}
-                {submissionPackets.length === 0 ? <div className="text-sm text-slate-500">No submission packets yet.</div> : null}
+                {submissionPackets.length === 0 ? (
+                  <div className="text-sm text-slate-500">
+                    No submission packets yet.
+                  </div>
+                ) : null}
               </div>
             </div>
 
             <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-soft sm:p-6">
               <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <h2 className="text-lg font-semibold text-slate-950">Follow-Up Actions</h2>
-                  <p className="mt-1 text-sm text-slate-600">Track reminders for packet responses, overdue payment, reserve release, and disputes.</p>
+                  <h2 className="text-lg font-semibold text-slate-950">
+                    Follow-Up Actions
+                  </h2>
+                  <p className="mt-1 text-sm text-slate-600">
+                    Track reminders for packet responses, overdue payment,
+                    reserve release, and disputes.
+                  </p>
                 </div>
-                <button type="button" onClick={() => void handleGenerateFollowUps()} disabled={isSavingFollowUpTask} className="touch-target rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:opacity-50">
-                  {isSavingFollowUpTask ? "Working..." : "Generate Follow-Up Tasks"}
+                <button
+                  type="button"
+                  onClick={() => void handleGenerateFollowUps()}
+                  disabled={isSavingFollowUpTask}
+                  className="touch-target rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:opacity-50"
+                >
+                  {isSavingFollowUpTask
+                    ? "Working..."
+                    : "Generate Follow-Up Tasks"}
                 </button>
               </div>
               <div className="space-y-3">
-                {followUpTasks.length === 0 ? <div className="text-sm text-slate-500">No open follow-up tasks for this load.</div> : null}
+                {followUpTasks.length === 0 ? (
+                  <div className="text-sm text-slate-500">
+                    No open follow-up tasks for this load.
+                  </div>
+                ) : null}
                 {followUpTasks.map((task) => (
-                  <div key={task.id} className="rounded-xl border border-slate-200 p-3">
+                  <div
+                    key={task.id}
+                    className="rounded-xl border border-slate-200 p-3"
+                  >
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div className="text-sm font-semibold text-slate-900">{task.title ?? "Follow-up task"}</div>
-                      <div className="text-xs text-slate-500">{(task.priority ?? "normal").replaceAll("_", " ")} · due {formatDateTime(task.due_at)}</div>
+                      <div className="text-sm font-semibold text-slate-900">
+                        {task.title ?? "Follow-up task"}
+                      </div>
+                      <div className="text-xs text-slate-500">
+                        {(task.priority ?? "normal").replaceAll("_", " ")} · due{" "}
+                        {formatDateTime(task.due_at)}
+                      </div>
                     </div>
-                    <div className="mt-1 text-xs text-slate-600">{task.recommended_action ?? "Follow up with broker/factor."}</div>
+                    <div className="mt-1 text-xs text-slate-600">
+                      {task.recommended_action ??
+                        "Follow up with broker/factor."}
+                    </div>
                     <div className="mt-2 flex flex-wrap gap-2">
-                      <button type="button" onClick={() => void handleFollowUpAction(task.id, "complete")} className="rounded-lg border border-slate-300 px-3 py-1 text-xs">Complete</button>
-                      <button type="button" onClick={() => { setModalError(null); setModalState({ kind: "snooze_follow_up", taskId: task.id, until: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10) }); }} className="rounded-lg border border-slate-300 px-3 py-1 text-xs">Snooze</button>
-                      <button type="button" onClick={() => void handleFollowUpAction(task.id, "cancel")} className="rounded-lg border border-slate-300 px-3 py-1 text-xs">Cancel</button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void handleFollowUpAction(task.id, "complete")
+                        }
+                        className="rounded-lg border border-slate-300 px-3 py-1 text-xs"
+                      >
+                        Complete
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setModalError(null);
+                          setModalState({
+                            kind: "snooze_follow_up",
+                            taskId: task.id,
+                            until: new Date(
+                              Date.now() + 3 * 24 * 60 * 60 * 1000,
+                            )
+                              .toISOString()
+                              .slice(0, 10),
+                          });
+                        }}
+                        className="rounded-lg border border-slate-300 px-3 py-1 text-xs"
+                      >
+                        Snooze
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          void handleFollowUpAction(task.id, "cancel")
+                        }
+                        className="rounded-lg border border-slate-300 px-3 py-1 text-xs"
+                      >
+                        Cancel
+                      </button>
                     </div>
                   </div>
                 ))}
@@ -4147,10 +5182,18 @@ export default function LoadDetailPage() {
             <div className="rounded-2xl border border-slate-200 bg-white p-4 pb-[calc(1.5rem+env(safe-area-inset-bottom))] shadow-soft sm:p-6">
               <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div>
-                  <h2 className="text-lg font-semibold text-slate-950">Documents</h2>
-                  <SectionLoadNotice isLoading={optionalSectionLoading.documents || isDocumentsLoading} error={optionalSectionErrors.documents} />
+                  <h2 className="text-lg font-semibold text-slate-950">
+                    Documents
+                  </h2>
+                  <SectionLoadNotice
+                    isLoading={
+                      optionalSectionLoading.documents || isDocumentsLoading
+                    }
+                    error={optionalSectionErrors.documents}
+                  />
                   <p className="mt-1 text-sm text-slate-600">
-                    Upload office documents, review driver uploads, and keep this load ready for invoice + submission.
+                    Upload office documents, review driver uploads, and keep
+                    this load ready for invoice + submission.
                   </p>
                 </div>
 
@@ -4165,8 +5208,13 @@ export default function LoadDetailPage() {
               </div>
 
               {pendingDuplicateUpload ? (
-                <div className="mb-5 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950" role="alert">
-                  <div className="font-semibold">Replace existing required document?</div>
+                <div
+                  className="mb-5 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950"
+                  role="alert"
+                >
+                  <div className="font-semibold">
+                    Replace existing required document?
+                  </div>
                   <p className="mt-1">{pendingDuplicateUpload.message}</p>
                   <div className="mt-3 flex flex-col gap-2 sm:flex-row">
                     <button
@@ -4175,7 +5223,9 @@ export default function LoadDetailPage() {
                       disabled={isUploadingDocument}
                       className="rounded-xl bg-amber-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      {isUploadingDocument ? "Replacing..." : "Replace document"}
+                      {isUploadingDocument
+                        ? "Replacing..."
+                        : "Replace document"}
                     </button>
                     <button
                       type="button"
@@ -4201,7 +5251,9 @@ export default function LoadDetailPage() {
                     id="documentType"
                     value={selectedUploadDocumentType}
                     onChange={(event) =>
-                      setSelectedUploadDocumentType(event.target.value as UploadDocumentType)
+                      setSelectedUploadDocumentType(
+                        event.target.value as UploadDocumentType,
+                      )
                     }
                     disabled={isUploadingDocument}
                     className="touch-target w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-base text-slate-900 outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100 disabled:cursor-not-allowed disabled:opacity-50 sm:text-sm"
@@ -4217,12 +5269,17 @@ export default function LoadDetailPage() {
                 <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-600">
                   {!canUploadDocuments ? (
                     <span>
-                      Upload is unavailable until organization context, customer account, and load
-                      linkage are present.
+                      Upload is unavailable until organization context, customer
+                      account, and load linkage are present.
                     </span>
                   ) : (
                     <span>
-                      Supported uploads: PDF and common image formats. Core documents: Rate Confirmation, Bill of Lading, and POD/Delivery Receipt. Optional support docs: lumper, scale, detention/accessorial approvals, fuel/expense receipts, and other records. Freight invoice is generated from this load workflow when ready.
+                      Supported uploads: PDF and common image formats. Core
+                      documents: Rate Confirmation, Bill of Lading, and
+                      POD/Delivery Receipt. Optional support docs: lumper,
+                      scale, detention/accessorial approvals, fuel/expense
+                      receipts, and other records. Freight invoice is generated
+                      from this load workflow when ready.
                     </span>
                   )}
                 </div>
@@ -4231,19 +5288,28 @@ export default function LoadDetailPage() {
               <div className="mb-5 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-4">
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                   <div className="min-w-0">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">File or photo</p>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      File or photo
+                    </p>
                     {selectedUploadFile ? (
                       <div className="mt-2" aria-live="polite">
                         <p className="break-mobile text-sm font-semibold text-slate-950">
                           Selected: {selectedUploadFile.name}
                         </p>
                         <p className="mt-1 text-xs text-slate-600">
-                          {formatFileSize(selectedUploadFile.size)} · {selectedUploadDocumentType ? UPLOAD_DOCUMENT_TYPE_OPTIONS.find((option) => option.value === selectedUploadDocumentType)?.label : "Auto / Unknown"}
+                          {formatFileSize(selectedUploadFile.size)} ·{" "}
+                          {selectedUploadDocumentType
+                            ? UPLOAD_DOCUMENT_TYPE_OPTIONS.find(
+                                (option) =>
+                                  option.value === selectedUploadDocumentType,
+                              )?.label
+                            : "Auto / Unknown"}
                         </p>
                       </div>
                     ) : (
                       <p className="mt-2 text-sm text-slate-600">
-                        Choose a Rate Confirmation PDF, POD photo, delivery receipt, or supporting image before uploading.
+                        Choose a Rate Confirmation PDF, POD photo, delivery
+                        receipt, or supporting image before uploading.
                       </p>
                     )}
                   </div>
@@ -4255,7 +5321,9 @@ export default function LoadDetailPage() {
                       disabled={!canUploadDocuments || isUploadingDocument}
                       className="touch-target w-full rounded-xl border border-brand-200 bg-white px-4 py-3 text-sm font-semibold text-brand-700 transition hover:bg-brand-50 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
                     >
-                      {selectedUploadFile ? "Change file" : "Choose file or photo"}
+                      {selectedUploadFile
+                        ? "Change file"
+                        : "Choose file or photo"}
                     </button>
                     {selectedUploadFile ? (
                       <button
@@ -4294,7 +5362,10 @@ export default function LoadDetailPage() {
                 </div>
               ) : null}
               {documentUploadError ? (
-                <div role="alert" className="mb-5 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-800">
+                <div
+                  role="alert"
+                  className="mb-5 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-800"
+                >
                   {documentUploadError}
                 </div>
               ) : null}
@@ -4305,10 +5376,14 @@ export default function LoadDetailPage() {
                     ? missingSubmissionDocuments.join(", ")
                     : "No required submission documents are missing."}
                 </p>
-                <p className="mt-1 text-xs">Accepted types: PDF/JPG/PNG/WEBP/HEIC/HEIF/TIFF · Max size: 15MB</p>
+                <p className="mt-1 text-xs">
+                  Accepted types: PDF/JPG/PNG/WEBP/HEIC/HEIF/TIFF · Max size:
+                  15MB
+                </p>
               </div>
               <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
-                Document extraction may be incomplete for some files. Verify critical values before submission or funding actions.
+                Document extraction may be incomplete for some files. Verify
+                critical values before submission or funding actions.
               </div>
 
               <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -4317,7 +5392,9 @@ export default function LoadDetailPage() {
                     key={document.name}
                     className="flex flex-col gap-2 rounded-xl border border-slate-200 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
                   >
-                    <div className="text-sm font-medium text-slate-900">{document.name}</div>
+                    <div className="text-sm font-medium text-slate-900">
+                      {document.name}
+                    </div>
                     <span
                       className={`rounded-full px-3 py-1 text-xs font-semibold ${
                         document.status === "received"
@@ -4333,7 +5410,132 @@ export default function LoadDetailPage() {
                 ))}
               </div>
 
-              <div className="overflow-x-auto rounded-2xl border border-slate-200">
+              <div className="space-y-3 md:hidden">
+                {loadDocuments.length > 0 ? (
+                  loadDocuments.map((document) => (
+                    <article
+                      key={document.id}
+                      className="rounded-2xl border border-slate-200 bg-white p-4 text-sm shadow-sm"
+                    >
+                      <div className="min-w-0">
+                        <h3 className="break-mobile font-semibold text-slate-950">
+                          {getDocumentDisplayName(document)}
+                        </h3>
+                        <p className="mt-1 break-mobile text-xs text-slate-500">
+                          {inferDocumentMimeType(document)}
+                        </p>
+                      </div>
+                      <div className="mt-4 grid grid-cols-2 gap-3 text-xs text-slate-600">
+                        <div className="col-span-2">
+                          <label className="block font-semibold text-slate-500">
+                            Type
+                          </label>
+                          <select
+                            value={
+                              (document.document_type as UploadDocumentType) ||
+                              "unknown"
+                            }
+                            onChange={(event) =>
+                              void handleUpdateDocumentType(
+                                document,
+                                event.target.value as UploadDocumentType,
+                              )
+                            }
+                            disabled={
+                              document.optimistic ||
+                              savingDocumentId === document.id ||
+                              isInvoiceManagedDocument(document)
+                            }
+                            className="touch-target mt-1 w-full rounded-lg border border-slate-300 bg-white px-2 py-2 text-sm text-slate-700 disabled:opacity-60"
+                          >
+                            {UPLOAD_DOCUMENT_TYPE_OPTIONS.filter(
+                              (option) => option.value !== "",
+                            ).map((option) => (
+                              <option key={option.value} value={option.value}>
+                                {option.label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <span className="block font-semibold text-slate-500">
+                            Status
+                          </span>
+                          <span
+                            className={`mt-1 inline-flex rounded-full px-3 py-1 text-xs font-semibold ${processingStatusBadge(document.processing_status)}`}
+                          >
+                            {(
+                              document.mutation_status ??
+                              document.processing_status ??
+                              "unknown"
+                            ).replaceAll("_", " ")}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="block font-semibold text-slate-500">
+                            Size
+                          </span>
+                          {formatFileSize(document.file_size_bytes)}
+                        </div>
+                        <div className="col-span-2">
+                          <span className="block font-semibold text-slate-500">
+                            Uploaded
+                          </span>
+                          {formatDateTime(
+                            document.received_at ?? document.created_at,
+                          )}
+                        </div>
+                        <div className="col-span-2 break-mobile text-slate-500">
+                          {documentStatusLabel(document)}
+                        </div>
+                      </div>
+                      <div className="mt-4 grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => void handleDownloadDocument(document)}
+                          disabled={
+                            document.optimistic ||
+                            downloadingDocumentId === document.id ||
+                            deletingDocumentId === document.id
+                          }
+                          className="touch-target rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {downloadingDocumentId === document.id
+                            ? "Downloading..."
+                            : "Download"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void handleDeleteDocument(document)}
+                          disabled={
+                            document.optimistic ||
+                            deletingDocumentId === document.id
+                          }
+                          className="touch-target rounded-xl border border-rose-300 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {isInvoiceManagedDocument(document)
+                            ? "Managed"
+                            : deletingDocumentId === document.id
+                              ? "Deleting..."
+                              : "Delete"}
+                        </button>
+                      </div>
+                    </article>
+                  ))
+                ) : (
+                  <div className="rounded-2xl border border-slate-200 bg-white px-4 py-8 text-sm text-slate-600">
+                    <p className="font-semibold text-slate-900">
+                      No documents are attached yet.
+                    </p>
+                    <p className="mt-1">
+                      Upload a Rate Confirmation, Bill of Lading, POD, or
+                      supporting image to keep this load ready.
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              <div className="hidden overflow-x-auto rounded-2xl border border-slate-200 md:block">
                 <div className="min-w-[1180px]">
                   <div className="grid grid-cols-[minmax(240px,3fr)_minmax(160px,2fr)_minmax(160px,2fr)_minmax(150px,2fr)_minmax(100px,1fr)_minmax(280px,2fr)] gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
                     <div className="min-w-0">Document</div>
@@ -4341,7 +5543,9 @@ export default function LoadDetailPage() {
                     <div className="min-w-0">Status</div>
                     <div className="min-w-0">Uploaded</div>
                     <div className="min-w-[100px] whitespace-nowrap">Size</div>
-                    <div className="min-w-[280px] whitespace-nowrap text-right">Action</div>
+                    <div className="min-w-[280px] whitespace-nowrap text-right">
+                      Action
+                    </div>
                   </div>
 
                   {loadDocuments.length > 0 ? (
@@ -4362,17 +5566,26 @@ export default function LoadDetailPage() {
 
                           <div className="min-w-0">
                             <select
-                              value={(document.document_type as UploadDocumentType) || "unknown"}
+                              value={
+                                (document.document_type as UploadDocumentType) ||
+                                "unknown"
+                              }
                               onChange={(event) =>
                                 void handleUpdateDocumentType(
                                   document,
-                                  event.target.value as UploadDocumentType
+                                  event.target.value as UploadDocumentType,
                                 )
                               }
-                              disabled={document.optimistic || savingDocumentId === document.id || isInvoiceManagedDocument(document)}
+                              disabled={
+                                document.optimistic ||
+                                savingDocumentId === document.id ||
+                                isInvoiceManagedDocument(document)
+                              }
                               className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-700 disabled:opacity-60"
                             >
-                              {UPLOAD_DOCUMENT_TYPE_OPTIONS.filter((option) => option.value !== "").map((option) => (
+                              {UPLOAD_DOCUMENT_TYPE_OPTIONS.filter(
+                                (option) => option.value !== "",
+                              ).map((option) => (
                                 <option key={option.value} value={option.value}>
                                   {option.label}
                                 </option>
@@ -4384,36 +5597,61 @@ export default function LoadDetailPage() {
                             <div className="flex flex-col items-start gap-1">
                               <span
                                 className={`rounded-full px-3 py-1 text-xs font-semibold ${processingStatusBadge(
-                                  document.processing_status
+                                  document.processing_status,
                                 )}`}
                               >
-                                {(document.mutation_status ?? document.processing_status ?? "unknown").replaceAll("_", " ")}
+                                {(
+                                  document.mutation_status ??
+                                  document.processing_status ??
+                                  "unknown"
+                                ).replaceAll("_", " ")}
                               </span>
-                              <span className="text-xs leading-5 text-slate-500">{documentStatusLabel(document)}</span>
+                              <span className="text-xs leading-5 text-slate-500">
+                                {documentStatusLabel(document)}
+                              </span>
                             </div>
                           </div>
 
                           <div className="min-w-0">
-                            <div className="break-words">{formatDateTime(document.received_at ?? document.created_at)}</div>
+                            <div className="break-words">
+                              {formatDateTime(
+                                document.received_at ?? document.created_at,
+                              )}
+                            </div>
                           </div>
 
                           <div className="min-w-[100px] whitespace-nowrap">
-                            <div>{formatFileSize(document.file_size_bytes)}</div>
+                            <div>
+                              {formatFileSize(document.file_size_bytes)}
+                            </div>
                           </div>
 
                           <div className="flex min-w-[280px] justify-end gap-2 whitespace-nowrap">
                             <button
                               type="button"
-                              onClick={() => void handleDownloadDocument(document)}
-                              disabled={document.optimistic || downloadingDocumentId === document.id || deletingDocumentId === document.id}
+                              onClick={() =>
+                                void handleDownloadDocument(document)
+                              }
+                              disabled={
+                                document.optimistic ||
+                                downloadingDocumentId === document.id ||
+                                deletingDocumentId === document.id
+                              }
                               className="touch-target rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
                             >
-                              {downloadingDocumentId === document.id ? "Downloading..." : "Download"}
+                              {downloadingDocumentId === document.id
+                                ? "Downloading..."
+                                : "Download"}
                             </button>
                             <button
                               type="button"
-                              onClick={() => void handleDeleteDocument(document)}
-                              disabled={document.optimistic || deletingDocumentId === document.id}
+                              onClick={() =>
+                                void handleDeleteDocument(document)
+                              }
+                              disabled={
+                                document.optimistic ||
+                                deletingDocumentId === document.id
+                              }
                               className="touch-target rounded-xl border border-rose-300 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
                               title={
                                 isInvoiceManagedDocument(document)
@@ -4433,8 +5671,14 @@ export default function LoadDetailPage() {
                     </div>
                   ) : (
                     <div className="px-4 py-8 text-sm text-slate-600">
-                      <p className="font-semibold text-slate-900">No documents are attached yet.</p>
-                      <p className="mt-1">Upload a Rate Confirmation, Bill of Lading, POD, or supporting image to keep this load ready for billing and submission.</p>
+                      <p className="font-semibold text-slate-900">
+                        No documents are attached yet.
+                      </p>
+                      <p className="mt-1">
+                        Upload a Rate Confirmation, Bill of Lading, POD, or
+                        supporting image to keep this load ready for billing and
+                        submission.
+                      </p>
                     </div>
                   )}
                 </div>
@@ -4443,8 +5687,13 @@ export default function LoadDetailPage() {
 
             <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-soft sm:p-6">
               <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-                <h2 className="text-lg font-semibold text-slate-950">Validation Issues</h2>
-                <SectionLoadNotice isLoading={optionalSectionLoading.reviewQueue} error={optionalSectionErrors.reviewQueue} />
+                <h2 className="text-lg font-semibold text-slate-950">
+                  Validation Issues
+                </h2>
+                <SectionLoadNotice
+                  isLoading={optionalSectionLoading.reviewQueue}
+                  error={optionalSectionErrors.reviewQueue}
+                />
 
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
@@ -4454,7 +5703,7 @@ export default function LoadDetailPage() {
                   {reviewQueueItem?.severity ? (
                     <span
                       className={`rounded-full px-3 py-1 text-xs font-semibold ${issueBadge(
-                        reviewQueueItem.severity
+                        reviewQueueItem.severity,
                       )}`}
                     >
                       {reviewQueueItem.severity}
@@ -4474,22 +5723,27 @@ export default function LoadDetailPage() {
                     </div>
                   ))}
 
-                  {reviewQueueItem && reviewQueueItem.issue_count > validationIssues.length ? (
+                  {reviewQueueItem &&
+                  reviewQueueItem.issue_count > validationIssues.length ? (
                     <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-                      Additional unresolved validation items exist for this load. Open Review Queue
-                      for the current review summary.
+                      Additional unresolved validation items exist for this
+                      load. Open Review Queue for the current review summary.
                     </div>
                   ) : null}
                 </div>
               ) : (
-                <div className="text-sm text-slate-500">No open validation issues.</div>
+                <div className="text-sm text-slate-500">
+                  No open validation issues.
+                </div>
               )}
             </div>
           </section>
 
           <aside className="space-y-6">
             <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-soft sm:p-6">
-              <h2 className="mb-4 text-lg font-semibold text-slate-950">Quick Actions</h2>
+              <h2 className="mb-4 text-lg font-semibold text-slate-950">
+                Quick Actions
+              </h2>
               <div className="space-y-3">
                 <button
                   type="button"
@@ -4509,15 +5763,21 @@ export default function LoadDetailPage() {
             </div>
 
             <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-soft sm:p-6">
-              <h2 className="mb-4 text-lg font-semibold text-slate-950">Load Metrics</h2>
+              <h2 className="mb-4 text-lg font-semibold text-slate-950">
+                Load Metrics
+              </h2>
               <div className="space-y-3 text-sm text-slate-700">
                 <div className="flex items-center justify-between">
                   <span>Total Documents</span>
-                  <span className="font-semibold text-slate-900">{loadDocuments.length}</span>
+                  <span className="font-semibold text-slate-900">
+                    {loadDocuments.length}
+                  </span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span>Required Docs Received</span>
-                  <span className="font-semibold text-slate-900">{requiredDocsReceivedCount}/3</span>
+                  <span className="font-semibold text-slate-900">
+                    {requiredDocsReceivedCount}/3
+                  </span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span>Load Status</span>
@@ -4527,46 +5787,99 @@ export default function LoadDetailPage() {
                 </div>
                 <div className="flex items-center justify-between">
                   <span>Open Issues</span>
-                  <span className="font-semibold text-slate-900">{totalOpenIssues}</span>
+                  <span className="font-semibold text-slate-900">
+                    {totalOpenIssues}
+                  </span>
                 </div>
               </div>
             </div>
 
             <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-soft sm:p-6">
-              <h2 className="mb-2 text-lg font-semibold text-slate-950">Next Action & Follow-up</h2>
-              <SectionLoadNotice isLoading={optionalSectionLoading.followUps} error={optionalSectionErrors.followUps} />
-              <p className="text-sm text-slate-600">{load.operational?.next_action?.label || "Follow up with broker"}</p>
-              <p className="mt-2 text-xs text-slate-500">Why this action is needed: {followUpReason}</p>
+              <h2 className="mb-2 text-lg font-semibold text-slate-950">
+                Next Action & Follow-up
+              </h2>
+              <SectionLoadNotice
+                isLoading={optionalSectionLoading.followUps}
+                error={optionalSectionErrors.followUps}
+              />
+              <p className="text-sm text-slate-600">
+                {load.operational?.next_action?.label ||
+                  "Follow up with broker"}
+              </p>
+              <p className="mt-2 text-xs text-slate-500">
+                Why this action is needed: {followUpReason}
+              </p>
               <div className="mt-3 flex flex-wrap items-center gap-2">
-                <span className={`rounded-md px-2 py-1 text-xs font-semibold ${followUpUrgency.tone === "danger" ? "bg-rose-100 text-rose-700" : followUpUrgency.tone === "warning" ? "bg-amber-100 text-amber-700" : "bg-slate-100 text-slate-700"}`}>
+                <span
+                  className={`rounded-md px-2 py-1 text-xs font-semibold ${followUpUrgency.tone === "danger" ? "bg-rose-100 text-rose-700" : followUpUrgency.tone === "warning" ? "bg-amber-100 text-amber-700" : "bg-slate-100 text-slate-700"}`}
+                >
                   {followUpUrgency.label}
                 </span>
                 {followUpAgeSignals.map((signal) => (
-                  <span key={signal} className="rounded-md bg-slate-100 px-2 py-1 text-xs text-slate-700">{signal}</span>
+                  <span
+                    key={signal}
+                    className="rounded-md bg-slate-100 px-2 py-1 text-xs text-slate-700"
+                  >
+                    {signal}
+                  </span>
                 ))}
               </div>
 
               <div className="mt-4 space-y-3">
-                <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500">Assign Owner</label>
-                <select value={followUpOwnerId} onChange={(event) => setFollowUpOwnerId(event.target.value)} className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm">
+                <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Assign Owner
+                </label>
+                <select
+                  value={followUpOwnerId}
+                  onChange={(event) => setFollowUpOwnerId(event.target.value)}
+                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
+                >
                   <option value="">Unassigned</option>
                   {staffUsers.map((user) => (
-                    <option key={user.id} value={user.id}>{user.full_name}</option>
+                    <option key={user.id} value={user.id}>
+                      {user.full_name}
+                    </option>
                   ))}
                 </select>
 
-                <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500">Next Follow-up Date</label>
-                <input type="date" value={nextFollowUpDate} onChange={(event) => setNextFollowUpDate(event.target.value)} className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm" />
+                <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Next Follow-up Date
+                </label>
+                <input
+                  type="date"
+                  value={nextFollowUpDate}
+                  onChange={(event) => setNextFollowUpDate(event.target.value)}
+                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
+                />
 
                 <div className="grid gap-2 sm:grid-cols-2">
-                  <button type="button" onClick={() => void handleSaveFollowUp()} disabled={isSavingFollowUp} className="rounded-xl bg-brand-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:opacity-50">Save Follow-up</button>
-                  <button type="button" onClick={() => void handleMarkContacted()} disabled={isSavingFollowUp} className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:opacity-50">Mark Contacted</button>
+                  <button
+                    type="button"
+                    onClick={() => void handleSaveFollowUp()}
+                    disabled={isSavingFollowUp}
+                    className="rounded-xl bg-brand-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:opacity-50"
+                  >
+                    Save Follow-up
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleMarkContacted()}
+                    disabled={isSavingFollowUp}
+                    className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:opacity-50"
+                  >
+                    Mark Contacted
+                  </button>
                 </div>
               </div>
 
               <div className="mt-4 grid gap-2">
                 {prioritizedTemplateButtons.map((template, index) => (
-                  <button key={template.key} type="button" onClick={() => void copyTemplate(template.value)} className={`rounded-xl border px-3 py-2 text-left text-xs font-semibold transition hover:bg-slate-100 ${index === 0 ? "border-brand-300 bg-brand-50 text-brand-800" : "border-slate-300 bg-white text-slate-700"}`}>
+                  <button
+                    key={template.key}
+                    type="button"
+                    onClick={() => void copyTemplate(template.value)}
+                    className={`rounded-xl border px-3 py-2 text-left text-xs font-semibold transition hover:bg-slate-100 ${index === 0 ? "border-brand-300 bg-brand-50 text-brand-800" : "border-slate-300 bg-white text-slate-700"}`}
+                  >
                     {template.label}
                     {index === 0 ? " · Recommended first" : ""}
                   </button>
@@ -4575,40 +5888,240 @@ export default function LoadDetailPage() {
             </div>
 
             <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-soft sm:p-6">
-              <h2 className="mb-4 text-lg font-semibold text-slate-950">Payment Reconciliation</h2>
-              <SectionLoadNotice isLoading={optionalSectionLoading.paymentReconciliation} error={optionalSectionErrors.paymentReconciliation} />
-              <p className="mb-3 text-sm text-slate-600">Use these actions to track actual money movement for this load.</p>
+              <h2 className="mb-4 text-lg font-semibold text-slate-950">
+                Payment Reconciliation
+              </h2>
+              <SectionLoadNotice
+                isLoading={optionalSectionLoading.paymentReconciliation}
+                error={optionalSectionErrors.paymentReconciliation}
+              />
+              <p className="mb-3 text-sm text-slate-600">
+                Use these actions to track actual money movement for this load.
+              </p>
               <div className="space-y-3 text-sm text-slate-700">
-                <div className="flex items-center justify-between gap-4"><span>Gross Amount</span><span className="font-medium text-slate-900">{formatCurrency(paymentRecord?.gross_amount, paymentRecord?.currency ?? load.currency_code ?? "USD")}</span></div>
-                <div className="flex items-center justify-between gap-4"><span>Expected Amount</span><span className="font-medium text-slate-900">{formatCurrency(paymentRecord?.expected_amount, paymentRecord?.currency ?? load.currency_code ?? "USD")}</span></div>
-                <div className="flex items-center justify-between gap-4"><span>Amount Received</span><span className="font-medium text-slate-900">{formatCurrency(paymentRecord?.amount_received, paymentRecord?.currency ?? load.currency_code ?? "USD")}</span></div>
-                <div className="flex items-center justify-between gap-4"><span>Payment Status</span><span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-700">{(paymentRecord?.payment_status ?? "not_submitted").replaceAll("_", " ")}</span></div>
-                <div className="flex items-center justify-between gap-4"><span>Factoring Status</span><span className="rounded-full bg-brand-50 px-2 py-1 text-xs font-semibold text-brand-700">{(paymentRecord?.factoring_status ?? "not_factored").replaceAll("_", " ")}</span></div>
-                <div className="flex items-center justify-between gap-4"><span>Reconciliation</span><span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-700">{(paymentRecord?.reconciliation_status ?? "unreconciled").replaceAll("_", " ")}</span></div>
-                <div className="flex items-center justify-between gap-4"><span>Aging</span><span className="font-medium text-slate-900">{(paymentRecord?.aging_bucket ?? "current").replaceAll("_", " ")}</span></div>
-                <div className="flex items-center justify-between gap-4"><span>Paid Date</span><span className="font-medium text-slate-900">{formatDateTime(paymentRecord?.paid_date)}</span></div>
+                <div className="flex items-center justify-between gap-4">
+                  <span>Gross Amount</span>
+                  <span className="font-medium text-slate-900">
+                    {formatCurrency(
+                      paymentRecord?.gross_amount,
+                      paymentRecord?.currency ?? load.currency_code ?? "USD",
+                    )}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-4">
+                  <span>Expected Amount</span>
+                  <span className="font-medium text-slate-900">
+                    {formatCurrency(
+                      paymentRecord?.expected_amount,
+                      paymentRecord?.currency ?? load.currency_code ?? "USD",
+                    )}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-4">
+                  <span>Amount Received</span>
+                  <span className="font-medium text-slate-900">
+                    {formatCurrency(
+                      paymentRecord?.amount_received,
+                      paymentRecord?.currency ?? load.currency_code ?? "USD",
+                    )}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-4">
+                  <span>Payment Status</span>
+                  <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-700">
+                    {(
+                      paymentRecord?.payment_status ?? "not_submitted"
+                    ).replaceAll("_", " ")}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-4">
+                  <span>Factoring Status</span>
+                  <span className="rounded-full bg-brand-50 px-2 py-1 text-xs font-semibold text-brand-700">
+                    {(
+                      paymentRecord?.factoring_status ?? "not_factored"
+                    ).replaceAll("_", " ")}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-4">
+                  <span>Reconciliation</span>
+                  <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-700">
+                    {(
+                      paymentRecord?.reconciliation_status ?? "unreconciled"
+                    ).replaceAll("_", " ")}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-4">
+                  <span>Aging</span>
+                  <span className="font-medium text-slate-900">
+                    {(paymentRecord?.aging_bucket ?? "current").replaceAll(
+                      "_",
+                      " ",
+                    )}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-4">
+                  <span>Paid Date</span>
+                  <span className="font-medium text-slate-900">
+                    {formatDateTime(paymentRecord?.paid_date)}
+                  </span>
+                </div>
                 {paymentRecord?.factoring_used ? (
                   <>
-                    <div className="flex items-center justify-between gap-4"><span>Factoring Company</span><span className="font-medium text-slate-900">{paymentRecord.factoring_company_name ?? paymentRecord.factor_name ?? "—"}</span></div>
-                    <div className="flex items-center justify-between gap-4"><span>Advance</span><span className="font-medium text-slate-900">{formatCurrency(paymentRecord?.advance_amount, paymentRecord?.currency ?? load.currency_code ?? "USD")} · {formatDateTime(paymentRecord?.advance_date)}</span></div>
-                    <div className="flex items-center justify-between gap-4"><span>Factoring Fee</span><span className="font-medium text-slate-900">{paymentRecord.factoring_fee_percent ? `${paymentRecord.factoring_fee_percent}% · ` : ""}{formatCurrency(paymentRecord?.factoring_fee_amount, paymentRecord?.currency ?? load.currency_code ?? "USD")}</span></div>
-                    <div className="flex items-center justify-between gap-4"><span>Reserve Amount</span><span className="font-medium text-slate-900">{formatCurrency(paymentRecord?.reserve_amount, paymentRecord?.currency ?? load.currency_code ?? "USD")}</span></div>
-                    <div className="flex items-center justify-between gap-4"><span>Reserve Paid</span><span className="font-medium text-slate-900">{formatCurrency(paymentRecord?.reserve_paid_amount, paymentRecord?.currency ?? load.currency_code ?? "USD")}</span></div>
-                    <div className="flex items-center justify-between gap-4"><span>Reserve Pending</span><span className="font-medium text-slate-900">{formatCurrency(paymentRecord?.reserve_pending_amount, paymentRecord?.currency ?? load.currency_code ?? "USD")}</span></div>
+                    <div className="flex items-center justify-between gap-4">
+                      <span>Factoring Company</span>
+                      <span className="font-medium text-slate-900">
+                        {paymentRecord.factoring_company_name ??
+                          paymentRecord.factor_name ??
+                          "—"}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between gap-4">
+                      <span>Advance</span>
+                      <span className="font-medium text-slate-900">
+                        {formatCurrency(
+                          paymentRecord?.advance_amount,
+                          paymentRecord?.currency ??
+                            load.currency_code ??
+                            "USD",
+                        )}{" "}
+                        · {formatDateTime(paymentRecord?.advance_date)}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between gap-4">
+                      <span>Factoring Fee</span>
+                      <span className="font-medium text-slate-900">
+                        {paymentRecord.factoring_fee_percent
+                          ? `${paymentRecord.factoring_fee_percent}% · `
+                          : ""}
+                        {formatCurrency(
+                          paymentRecord?.factoring_fee_amount,
+                          paymentRecord?.currency ??
+                            load.currency_code ??
+                            "USD",
+                        )}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between gap-4">
+                      <span>Reserve Amount</span>
+                      <span className="font-medium text-slate-900">
+                        {formatCurrency(
+                          paymentRecord?.reserve_amount,
+                          paymentRecord?.currency ??
+                            load.currency_code ??
+                            "USD",
+                        )}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between gap-4">
+                      <span>Reserve Paid</span>
+                      <span className="font-medium text-slate-900">
+                        {formatCurrency(
+                          paymentRecord?.reserve_paid_amount,
+                          paymentRecord?.currency ??
+                            load.currency_code ??
+                            "USD",
+                        )}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between gap-4">
+                      <span>Reserve Pending</span>
+                      <span className="font-medium text-slate-900">
+                        {formatCurrency(
+                          paymentRecord?.reserve_pending_amount,
+                          paymentRecord?.currency ??
+                            load.currency_code ??
+                            "USD",
+                        )}
+                      </span>
+                    </div>
                   </>
                 ) : null}
-                {paymentRecord?.short_paid_amount ? <div className="flex items-center justify-between gap-4"><span>Short-paid Amount</span><span className="font-medium text-rose-700">{formatCurrency(paymentRecord.short_paid_amount, paymentRecord?.currency ?? load.currency_code ?? "USD")}</span></div> : null}
-                {paymentRecord?.dispute_reason ? <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800">{paymentRecord.dispute_reason}</div> : null}
+                {paymentRecord?.short_paid_amount ? (
+                  <div className="flex items-center justify-between gap-4">
+                    <span>Short-paid Amount</span>
+                    <span className="font-medium text-rose-700">
+                      {formatCurrency(
+                        paymentRecord.short_paid_amount,
+                        paymentRecord?.currency ?? load.currency_code ?? "USD",
+                      )}
+                    </span>
+                  </div>
+                ) : null}
+                {paymentRecord?.dispute_reason ? (
+                  <div className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800">
+                    {paymentRecord.dispute_reason}
+                  </div>
+                ) : null}
               </div>
               <div className="mt-4 grid gap-2">
-                <button type="button" disabled={isSavingPayment} onClick={() => openPaymentActionModal("record_payment")} className="rounded-xl border border-slate-300 px-3 py-2 text-left text-xs font-semibold text-slate-700">Record payment received</button>
-                <button type="button" disabled={isSavingPayment} onClick={() => openPaymentActionModal("mark_fully_paid")} className="rounded-xl border border-slate-300 px-3 py-2 text-left text-xs font-semibold text-slate-700">Record full payment</button>
-                <button type="button" disabled={isSavingPayment} onClick={() => openPaymentActionModal("record_partial_payment")} className="rounded-xl border border-slate-300 px-3 py-2 text-left text-xs font-semibold text-slate-700">Record partial payment</button>
-                <button type="button" disabled={isSavingPayment} onClick={() => openPaymentActionModal("record_factoring_advance")} className="rounded-xl border border-slate-300 px-3 py-2 text-left text-xs font-semibold text-slate-700">Record factoring advance</button>
-                <button type="button" disabled={isSavingPayment} onClick={() => openPaymentActionModal("mark_reserve_pending")} className="rounded-xl border border-slate-300 px-3 py-2 text-left text-xs font-semibold text-slate-700">Mark reserve still pending</button>
-                <button type="button" disabled={isSavingPayment} onClick={() => openPaymentActionModal("record_reserve_paid")} className="rounded-xl border border-slate-300 px-3 py-2 text-left text-xs font-semibold text-slate-700">Record reserve release paid</button>
-                <button type="button" disabled={isSavingPayment} onClick={() => openPaymentActionModal("mark_short_paid")} className="rounded-xl border border-slate-300 px-3 py-2 text-left text-xs font-semibold text-slate-700">Mark short-pay received</button>
-                <button type="button" disabled={isSavingPayment} onClick={() => openPaymentActionModal("flag_dispute")} className="rounded-xl border border-slate-300 px-3 py-2 text-left text-xs font-semibold text-slate-700">Flag payment dispute</button>
+                <button
+                  type="button"
+                  disabled={isSavingPayment}
+                  onClick={() => openPaymentActionModal("record_payment")}
+                  className="rounded-xl border border-slate-300 px-3 py-2 text-left text-xs font-semibold text-slate-700"
+                >
+                  Record payment received
+                </button>
+                <button
+                  type="button"
+                  disabled={isSavingPayment}
+                  onClick={() => openPaymentActionModal("mark_fully_paid")}
+                  className="rounded-xl border border-slate-300 px-3 py-2 text-left text-xs font-semibold text-slate-700"
+                >
+                  Record full payment
+                </button>
+                <button
+                  type="button"
+                  disabled={isSavingPayment}
+                  onClick={() =>
+                    openPaymentActionModal("record_partial_payment")
+                  }
+                  className="rounded-xl border border-slate-300 px-3 py-2 text-left text-xs font-semibold text-slate-700"
+                >
+                  Record partial payment
+                </button>
+                <button
+                  type="button"
+                  disabled={isSavingPayment}
+                  onClick={() =>
+                    openPaymentActionModal("record_factoring_advance")
+                  }
+                  className="rounded-xl border border-slate-300 px-3 py-2 text-left text-xs font-semibold text-slate-700"
+                >
+                  Record factoring advance
+                </button>
+                <button
+                  type="button"
+                  disabled={isSavingPayment}
+                  onClick={() => openPaymentActionModal("mark_reserve_pending")}
+                  className="rounded-xl border border-slate-300 px-3 py-2 text-left text-xs font-semibold text-slate-700"
+                >
+                  Mark reserve still pending
+                </button>
+                <button
+                  type="button"
+                  disabled={isSavingPayment}
+                  onClick={() => openPaymentActionModal("record_reserve_paid")}
+                  className="rounded-xl border border-slate-300 px-3 py-2 text-left text-xs font-semibold text-slate-700"
+                >
+                  Record reserve release paid
+                </button>
+                <button
+                  type="button"
+                  disabled={isSavingPayment}
+                  onClick={() => openPaymentActionModal("mark_short_paid")}
+                  className="rounded-xl border border-slate-300 px-3 py-2 text-left text-xs font-semibold text-slate-700"
+                >
+                  Mark short-pay received
+                </button>
+                <button
+                  type="button"
+                  disabled={isSavingPayment}
+                  onClick={() => openPaymentActionModal("flag_dispute")}
+                  className="rounded-xl border border-slate-300 px-3 py-2 text-left text-xs font-semibold text-slate-700"
+                >
+                  Flag payment dispute
+                </button>
               </div>
             </div>
 
@@ -4616,11 +6129,15 @@ export default function LoadDetailPage() {
               <h2 className="mb-4 text-lg font-semibold text-slate-950">
                 Broker / Factoring Workflow
               </h2>
-              <p className="mb-4 text-sm text-slate-600">{brokerFactoringNextAction}</p>
+              <p className="mb-4 text-sm text-slate-600">
+                {brokerFactoringNextAction}
+              </p>
               <div className="space-y-3 text-sm text-slate-700">
                 <div className="flex items-center justify-between gap-4">
                   <span>Stage</span>
-                  <span className="font-semibold text-slate-900">{getPaymentStageLabel(load)}</span>
+                  <span className="font-semibold text-slate-900">
+                    {getPaymentStageLabel(load)}
+                  </span>
                 </div>
                 <div className="flex items-center justify-between gap-4">
                   <span>Submitted At</span>
@@ -4630,28 +6147,42 @@ export default function LoadDetailPage() {
                 </div>
                 <div className="flex items-center justify-between gap-4">
                   <span>Funded At</span>
-                  <span className="font-medium text-slate-900">{formatDateTime(load.funded_at)}</span>
+                  <span className="font-medium text-slate-900">
+                    {formatDateTime(load.funded_at)}
+                  </span>
                 </div>
                 <div className="flex items-center justify-between gap-4">
                   <span>Paid At</span>
-                  <span className="font-medium text-slate-900">{formatDateTime(load.paid_at)}</span>
+                  <span className="font-medium text-slate-900">
+                    {formatDateTime(load.paid_at)}
+                  </span>
                 </div>
                 <div className="flex items-center justify-between gap-4">
                   <span>Paid Amount</span>
                   <span className="font-medium text-slate-900">
-                    {formatCurrency(load.paid_amount, load.currency_code ?? "USD")}
+                    {formatCurrency(
+                      load.paid_amount,
+                      load.currency_code ?? "USD",
+                    )}
                   </span>
                 </div>
                 <div className="flex items-center justify-between gap-4">
                   <span>Amount Received</span>
                   <span className="font-medium text-slate-900">
-                    {formatCurrency(load.amount_received, load.currency_code ?? "USD")}
+                    {formatCurrency(
+                      load.amount_received,
+                      load.currency_code ?? "USD",
+                    )}
                   </span>
                 </div>
                 <div className="flex items-center justify-between gap-4">
                   <span>Factored</span>
                   <span className="font-medium text-slate-900">
-                    {load.is_factored === true ? "Yes" : load.is_factored === false ? "No" : "—"}
+                    {load.is_factored === true
+                      ? "Yes"
+                      : load.is_factored === false
+                        ? "No"
+                        : "—"}
                   </span>
                 </div>
                 <div className="flex items-center justify-between gap-4">
@@ -4685,16 +6216,20 @@ export default function LoadDetailPage() {
                     className="rounded-xl border border-slate-200 px-3 py-2"
                   >
                     <div className="flex items-center justify-between gap-3">
-                      <div className="text-sm font-medium text-slate-900">{item.label}</div>
+                      <div className="text-sm font-medium text-slate-900">
+                        {item.label}
+                      </div>
                       <span
                         className={`rounded-full px-2.5 py-1 text-xs font-semibold ${operationalChecklistBadge(
-                          item.state
+                          item.state,
                         )}`}
                       >
                         {item.state}
                       </span>
                     </div>
-                    <div className="mt-1 text-xs text-slate-600">{item.detail}</div>
+                    <div className="mt-1 text-xs text-slate-600">
+                      {item.detail}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -4707,9 +6242,13 @@ export default function LoadDetailPage() {
             </div>
 
             <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-soft sm:p-6">
-              <h2 className="mb-4 text-lg font-semibold text-slate-950">Notes</h2>
+              <h2 className="mb-4 text-lg font-semibold text-slate-950">
+                Notes
+              </h2>
               <div className="text-sm text-slate-700">
-                {load.notes && load.notes.trim().length > 0 ? load.notes : "No notes available."}
+                {load.notes && load.notes.trim().length > 0
+                  ? load.notes
+                  : "No notes available."}
               </div>
             </div>
           </aside>
@@ -4720,67 +6259,257 @@ export default function LoadDetailPage() {
           <div className="max-h-[92vh] w-full max-w-xl overflow-y-auto rounded-2xl border border-slate-200 bg-white p-4 shadow-soft sm:p-5">
             {modalState.kind === "send_packet_email" ? (
               <>
-                <h3 className="text-lg font-semibold text-slate-950">Email Billing Packet</h3>
+                <h3 className="text-lg font-semibold text-slate-950">
+                  Email Billing Packet
+                </h3>
                 <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
-                  <div className="font-semibold text-slate-900">Attachment checklist</div>
-                  <div className="mt-1">{modalState.packet.documents.map((doc) => normalizeDocumentTypeLabel(doc.document_type)).join(", ") || "No packet documents found."}</div>
-                  {(load?.packet_readiness?.missing_required_documents?.submission ?? []).length > 0 ? <div className="mt-2 text-rose-700">Missing required docs: {(load?.packet_readiness?.missing_required_documents?.submission ?? []).join(", ")}. Sending is blocked.</div> : null}
-                  {hasBlockingPacketAudit(modalState.packet.packet_audit ?? packetAudit) ? <div className="mt-2 text-rose-700">Blocking packet audit findings are present. Fix them before emailing.</div> : null}
+                  <div className="font-semibold text-slate-900">
+                    Attachment checklist
+                  </div>
+                  <div className="mt-1">
+                    {modalState.packet.documents
+                      .map((doc) =>
+                        normalizeDocumentTypeLabel(doc.document_type),
+                      )
+                      .join(", ") || "No packet documents found."}
+                  </div>
+                  {(
+                    load?.packet_readiness?.missing_required_documents
+                      ?.submission ?? []
+                  ).length > 0 ? (
+                    <div className="mt-2 text-rose-700">
+                      Missing required docs:{" "}
+                      {(
+                        load?.packet_readiness?.missing_required_documents
+                          ?.submission ?? []
+                      ).join(", ")}
+                      . Sending is blocked.
+                    </div>
+                  ) : null}
+                  {hasBlockingPacketAudit(
+                    modalState.packet.packet_audit ?? packetAudit,
+                  ) ? (
+                    <div className="mt-2 text-rose-700">
+                      Blocking packet audit findings are present. Fix them
+                      before emailing.
+                    </div>
+                  ) : null}
                 </div>
                 <div className="mt-4 space-y-3">
                   <div>
-                    <label htmlFor="packet-recipient-email" className="text-sm font-semibold text-slate-700">Recipient email</label>
-                    <input id="packet-recipient-email" type="email" className="touch-target mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-base sm:text-sm" value={modalState.toEmail} onChange={(event) => { setModalError(null); setModalState({ ...modalState, toEmail: event.target.value }); }} placeholder="Recipient email" />
+                    <label
+                      htmlFor="packet-recipient-email"
+                      className="text-sm font-semibold text-slate-700"
+                    >
+                      Recipient email
+                    </label>
+                    <input
+                      id="packet-recipient-email"
+                      type="email"
+                      className="touch-target mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-base sm:text-sm"
+                      value={modalState.toEmail}
+                      onChange={(event) => {
+                        setModalError(null);
+                        setModalState({
+                          ...modalState,
+                          toEmail: event.target.value,
+                        });
+                      }}
+                      placeholder="Recipient email"
+                    />
                   </div>
                   <div>
-                    <label htmlFor="packet-email-subject" className="text-sm font-semibold text-slate-700">Subject</label>
-                    <input id="packet-email-subject" className="touch-target mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-base sm:text-sm" value={modalState.subject} onChange={(event) => { setModalError(null); setModalState({ ...modalState, subject: event.target.value }); }} placeholder="Subject" />
+                    <label
+                      htmlFor="packet-email-subject"
+                      className="text-sm font-semibold text-slate-700"
+                    >
+                      Subject
+                    </label>
+                    <input
+                      id="packet-email-subject"
+                      className="touch-target mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-base sm:text-sm"
+                      value={modalState.subject}
+                      onChange={(event) => {
+                        setModalError(null);
+                        setModalState({
+                          ...modalState,
+                          subject: event.target.value,
+                        });
+                      }}
+                      placeholder="Subject"
+                    />
                   </div>
                   <div>
-                    <label htmlFor="packet-email-body" className="text-sm font-semibold text-slate-700">Email body</label>
-                    <textarea id="packet-email-body" className="mt-1 min-h-40 w-full rounded-xl border border-slate-300 px-3 py-2 text-base sm:text-sm" value={modalState.body} onChange={(event) => { setModalError(null); setModalState({ ...modalState, body: event.target.value }); }} placeholder="Email body" />
+                    <label
+                      htmlFor="packet-email-body"
+                      className="text-sm font-semibold text-slate-700"
+                    >
+                      Email body
+                    </label>
+                    <textarea
+                      id="packet-email-body"
+                      className="mt-1 min-h-40 w-full rounded-xl border border-slate-300 px-3 py-2 text-base sm:text-sm"
+                      value={modalState.body}
+                      onChange={(event) => {
+                        setModalError(null);
+                        setModalState({
+                          ...modalState,
+                          body: event.target.value,
+                        });
+                      }}
+                      placeholder="Email body"
+                    />
                   </div>
                 </div>
-                {modalError ? <div className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{modalError}</div> : null}
+                {modalError ? (
+                  <div className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+                    {modalError}
+                  </div>
+                ) : null}
                 <div className="mt-4 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-                  <button type="button" className="touch-target rounded-xl border border-slate-300 px-3 py-2 text-sm" onClick={() => setModalState({ kind: "none" })}>Cancel</button>
-                  <button type="button" disabled={isSubmissionBusy || hasBlockingPacketAudit(modalState.packet.packet_audit ?? packetAudit) || ((load?.packet_readiness?.missing_required_documents?.submission ?? []).length > 0)} className="touch-target rounded-xl bg-brand-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50" onClick={() => {
-                    if (!isValidEmail(modalState.toEmail)) return setModalError("Enter a valid recipient email.");
-                    if (modalState.subject.trim().length < 3) return setModalError("Email subject is required.");
-                    if (modalState.body.trim().length < 3) return setModalError("Email body is required.");
-                    void handleSendPacketEmail(modalState.packet.id, modalState.toEmail.trim(), modalState.subject.trim(), modalState.body.trim());
-                  }}>{isSubmissionBusy ? "Sending..." : "Send Email"}</button>
+                  <button
+                    type="button"
+                    className="touch-target rounded-xl border border-slate-300 px-3 py-2 text-sm"
+                    onClick={() => setModalState({ kind: "none" })}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={
+                      isSubmissionBusy ||
+                      hasBlockingPacketAudit(
+                        modalState.packet.packet_audit ?? packetAudit,
+                      ) ||
+                      (
+                        load?.packet_readiness?.missing_required_documents
+                          ?.submission ?? []
+                      ).length > 0
+                    }
+                    className="touch-target rounded-xl bg-brand-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                    onClick={() => {
+                      if (!isValidEmail(modalState.toEmail))
+                        return setModalError("Enter a valid recipient email.");
+                      if (modalState.subject.trim().length < 3)
+                        return setModalError("Email subject is required.");
+                      if (modalState.body.trim().length < 3)
+                        return setModalError("Email body is required.");
+                      void handleSendPacketEmail(
+                        modalState.packet.id,
+                        modalState.toEmail.trim(),
+                        modalState.subject.trim(),
+                        modalState.body.trim(),
+                      );
+                    }}
+                  >
+                    {isSubmissionBusy ? "Sending..." : "Send Email"}
+                  </button>
                 </div>
               </>
             ) : null}
             {modalState.kind === "payment_action" ? (
               <>
-                <h3 className="text-lg font-semibold text-slate-950">Payment Action</h3>
+                <h3 className="text-lg font-semibold text-slate-950">
+                  Payment Action
+                </h3>
                 <div className="mt-4 grid gap-3">
                   {Object.entries(modalState.values).map(([key, value]) => (
-                    <input key={key} type={key.includes("date") ? "date" : "text"} className="touch-target w-full rounded-xl border border-slate-300 px-3 py-2 text-base sm:text-sm" value={value} onChange={(event) => { setModalError(null); setModalState({ ...modalState, values: { ...modalState.values, [key]: event.target.value } }); }} placeholder={key.replaceAll("_", " ")} />
+                    <input
+                      key={key}
+                      type={key.includes("date") ? "date" : "text"}
+                      className="touch-target w-full rounded-xl border border-slate-300 px-3 py-2 text-base sm:text-sm"
+                      value={value}
+                      onChange={(event) => {
+                        setModalError(null);
+                        setModalState({
+                          ...modalState,
+                          values: {
+                            ...modalState.values,
+                            [key]: event.target.value,
+                          },
+                        });
+                      }}
+                      placeholder={key.replaceAll("_", " ")}
+                    />
                   ))}
                 </div>
-                {modalError ? <div className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{modalError}</div> : null}
+                {modalError ? (
+                  <div className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+                    {modalError}
+                  </div>
+                ) : null}
                 <div className="mt-4 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-                  <button type="button" className="touch-target rounded-xl border border-slate-300 px-3 py-2 text-sm" onClick={() => setModalState({ kind: "none" })}>Cancel</button>
-                  <button type="button" disabled={isSavingPayment} className="touch-target rounded-xl bg-brand-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50" onClick={() => void submitPaymentAction(modalState.action, modalState.values)}>{isSavingPayment ? "Saving..." : "Save payment"}</button>
+                  <button
+                    type="button"
+                    className="touch-target rounded-xl border border-slate-300 px-3 py-2 text-sm"
+                    onClick={() => setModalState({ kind: "none" })}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isSavingPayment}
+                    className="touch-target rounded-xl bg-brand-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                    onClick={() =>
+                      void submitPaymentAction(
+                        modalState.action,
+                        modalState.values,
+                      )
+                    }
+                  >
+                    {isSavingPayment ? "Saving..." : "Save payment"}
+                  </button>
                 </div>
               </>
             ) : null}
             {modalState.kind === "snooze_follow_up" ? (
               <>
-                <h3 className="text-lg font-semibold text-slate-950">Snooze Follow-Up</h3>
+                <h3 className="text-lg font-semibold text-slate-950">
+                  Snooze Follow-Up
+                </h3>
                 <div className="mt-4">
-                  <input type="date" className="touch-target w-full rounded-xl border border-slate-300 px-3 py-2 text-base sm:text-sm" value={modalState.until} onChange={(event) => { setModalError(null); setModalState({ ...modalState, until: event.target.value }); }} />
+                  <input
+                    type="date"
+                    className="touch-target w-full rounded-xl border border-slate-300 px-3 py-2 text-base sm:text-sm"
+                    value={modalState.until}
+                    onChange={(event) => {
+                      setModalError(null);
+                      setModalState({
+                        ...modalState,
+                        until: event.target.value,
+                      });
+                    }}
+                  />
                 </div>
-                {modalError ? <div className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{modalError}</div> : null}
+                {modalError ? (
+                  <div className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+                    {modalError}
+                  </div>
+                ) : null}
                 <div className="mt-4 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-                  <button type="button" className="touch-target rounded-xl border border-slate-300 px-3 py-2 text-sm" onClick={() => setModalState({ kind: "none" })}>Cancel</button>
-                  <button type="button" disabled={isSavingFollowUpTask} className="touch-target rounded-xl bg-brand-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50" onClick={() => {
-                    if (!isValidDate(modalState.until)) return setModalError("Select a valid snooze date.");
-                    void handleFollowUpAction(modalState.taskId, "snooze", new Date(`${modalState.until}T12:00:00Z`).toISOString());
-                  }}>{isSavingFollowUpTask ? "Saving..." : "Snooze"}</button>
+                  <button
+                    type="button"
+                    className="touch-target rounded-xl border border-slate-300 px-3 py-2 text-sm"
+                    onClick={() => setModalState({ kind: "none" })}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isSavingFollowUpTask}
+                    className="touch-target rounded-xl bg-brand-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
+                    onClick={() => {
+                      if (!isValidDate(modalState.until))
+                        return setModalError("Select a valid snooze date.");
+                      void handleFollowUpAction(
+                        modalState.taskId,
+                        "snooze",
+                        new Date(`${modalState.until}T12:00:00Z`).toISOString(),
+                      );
+                    }}
+                  >
+                    {isSavingFollowUpTask ? "Saving..." : "Snooze"}
+                  </button>
                 </div>
               </>
             ) : null}

@@ -134,7 +134,7 @@ export default function DriverUploadsPage() {
 
     try {
       setIsLoadingDocuments(true);
-      const payload = await apiClient.get<unknown>("/documents?page=1&page_size=100", {
+      const payload = await apiClient.get<unknown>("/documents?page=1&page_size=25", {
         token: token ?? undefined,
         organizationId: organizationId ?? undefined,
       });

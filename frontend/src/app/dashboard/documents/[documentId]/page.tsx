@@ -136,7 +136,7 @@ function statusBadgeClass(status?: string): string {
 
 function normalizeExtractedFields(
   value: unknown,
-  fallbackRecord: Record<string, unknown> | null
+  fallbackRecord: Record<string, unknown> | null,
 ): ExtractedField[] {
   if (Array.isArray(value)) {
     return value
@@ -195,7 +195,7 @@ function normalizeExtractedFields(
 
 function normalizeDocumentDetail(
   payload: unknown,
-  documentId: string
+  documentId: string,
 ): DocumentDetailView | null {
   const root = asRecord(payload);
   if (!root) {
@@ -209,8 +209,7 @@ function normalizeDocumentDetail(
     root;
 
   const extractedFieldsRecord =
-    asRecord(container.extracted_fields) ??
-    asRecord(container.extractedFields);
+    asRecord(container.extracted_fields) ?? asRecord(container.extractedFields);
 
   const previewText =
     asNullableString(container.preview_text) ??
@@ -263,7 +262,7 @@ function normalizeDocumentDetail(
       asNullableString(container.confidence),
     extractedFields: normalizeExtractedFields(
       container.extracted_fields ?? container.extractedFields,
-      extractedFieldsRecord
+      extractedFieldsRecord,
     ),
     validationIssues:
       validationIssues.length > 0 ? validationIssues : fallbackIssues,
@@ -277,7 +276,7 @@ export default function DocumentDetailPage() {
 
   const rawDocumentId = params?.documentId;
   const documentId = Array.isArray(rawDocumentId)
-    ? rawDocumentId[0] ?? ""
+    ? (rawDocumentId[0] ?? "")
     : typeof rawDocumentId === "string"
       ? rawDocumentId
       : "";
@@ -325,7 +324,7 @@ export default function DocumentDetailPage() {
           {
             token,
             organizationId,
-          }
+          },
         );
 
         const normalized = normalizeDocumentDetail(payload, documentId);
@@ -362,7 +361,7 @@ export default function DocumentDetailPage() {
 
   const hasValidationIssues = useMemo(
     () => (document?.validationIssues.length ?? 0) > 0,
-    [document]
+    [document],
   );
   const linkedLoadId = useMemo(() => {
     const value = document?.linkedLoad?.trim();
@@ -399,13 +398,17 @@ export default function DocumentDetailPage() {
           force_reclassification: true,
           force_reextraction: true,
         },
-        { token, organizationId }
+        { token, organizationId },
       );
 
       setActionMessage("Document reprocessing requested.");
       router.refresh();
     } catch (caught: unknown) {
-      setActionError(caught instanceof Error ? caught.message : "Unable to reprocess document.");
+      setActionError(
+        caught instanceof Error
+          ? caught.message
+          : "Unable to reprocess document.",
+      );
     } finally {
       setIsReprocessing(false);
     }
@@ -430,12 +433,16 @@ export default function DocumentDetailPage() {
       await apiClient.post(
         `/documents/${encodeURIComponent(documentId)}/extract`,
         { force: true },
-        { token, organizationId }
+        { token, organizationId },
       );
-      setActionMessage("Extraction requested. Refresh after processing completes.");
+      setActionMessage(
+        "Extraction requested. Refresh after processing completes.",
+      );
       router.refresh();
     } catch (caught: unknown) {
-      setActionError(caught instanceof Error ? caught.message : "Unable to run extraction.");
+      setActionError(
+        caught instanceof Error ? caught.message : "Unable to run extraction.",
+      );
     } finally {
       setIsExtracting(false);
     }
@@ -459,7 +466,7 @@ export default function DocumentDetailPage() {
 
       const blob = await apiClient.getBlob(
         `/documents/${encodeURIComponent(documentId)}/download`,
-        { token, organizationId }
+        { token, organizationId },
       );
       const downloadUrl = window.URL.createObjectURL(blob);
       const link = window.document.createElement("a");
@@ -471,7 +478,11 @@ export default function DocumentDetailPage() {
       window.URL.revokeObjectURL(downloadUrl);
       setActionMessage("Document download started.");
     } catch (caught: unknown) {
-      setActionError(caught instanceof Error ? caught.message : "Unable to download original file.");
+      setActionError(
+        caught instanceof Error
+          ? caught.message
+          : "Unable to download original file.",
+      );
     } finally {
       setIsDownloading(false);
     }
@@ -479,7 +490,7 @@ export default function DocumentDetailPage() {
 
   if (isLoading) {
     return (
-      <div className="px-6 py-10 text-slate-900">
+      <div className="safe-page px-4 py-6 text-slate-900 sm:px-6 sm:py-10">
         <div className="mx-auto max-w-7xl">
           <div className="rounded-2xl border border-slate-200 bg-white p-8 shadow-soft">
             <p className="text-sm font-medium text-brand-700">
@@ -489,7 +500,8 @@ export default function DocumentDetailPage() {
               Loading document...
             </h1>
             <p className="mt-3 text-sm text-slate-600">
-              Fetching document metadata, extracted fields, and validation results.
+              Fetching document metadata, extracted fields, and validation
+              results.
             </p>
           </div>
         </div>
@@ -499,7 +511,7 @@ export default function DocumentDetailPage() {
 
   if (error) {
     return (
-      <div className="px-6 py-10 text-slate-900">
+      <div className="safe-page px-4 py-6 text-slate-900 sm:px-6 sm:py-10">
         <div className="mx-auto max-w-7xl">
           <div className="rounded-2xl border border-rose-200 bg-rose-50 p-6 shadow-soft">
             <p className="text-sm font-medium text-brand-700">
@@ -534,7 +546,7 @@ export default function DocumentDetailPage() {
 
   if (!document) {
     return (
-      <div className="px-6 py-10 text-slate-900">
+      <div className="safe-page px-4 py-6 text-slate-900 sm:px-6 sm:py-10">
         <div className="mx-auto max-w-7xl">
           <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
             <p className="text-sm font-medium text-brand-700">
@@ -573,7 +585,7 @@ export default function DocumentDetailPage() {
   }
 
   return (
-    <div className="px-6 py-10 text-slate-900">
+    <div className="safe-page px-4 py-6 text-slate-900 sm:px-6 sm:py-10">
       <div className="mx-auto max-w-7xl">
         <div className="mb-8">
           <button
@@ -590,7 +602,7 @@ export default function DocumentDetailPage() {
             <p className="text-sm font-medium text-brand-700">
               Dashboard / Documents / Detail
             </p>
-            <h1 className="text-3xl font-bold tracking-tight text-slate-950">
+            <h1 className="break-mobile text-2xl font-bold tracking-tight text-slate-950 sm:text-3xl">
               {document.originalFilename}
             </h1>
             <p className="mt-2 text-sm leading-6 text-slate-600">
@@ -603,12 +615,12 @@ export default function DocumentDetailPage() {
             </div>
           </div>
 
-          <div className="flex flex-wrap gap-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
             <button
               type="button"
               onClick={() => void handleReprocessDocument()}
               disabled={isReprocessing || isExtracting}
-              className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+              className="touch-target rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {isReprocessing ? "Reprocessing..." : "Reprocess"}
             </button>
@@ -616,21 +628,25 @@ export default function DocumentDetailPage() {
               type="button"
               onClick={() => void handleRunExtraction()}
               disabled={isExtracting || isReprocessing}
-              className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60"
+              className="touch-target rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {isExtracting ? "Running..." : "Run Extraction"}
             </button>
           </div>
         </div>
         {actionError ? (
-          <div className="mb-6 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{actionError}</div>
+          <div className="mb-6 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+            {actionError}
+          </div>
         ) : null}
         {actionMessage ? (
-          <div className="mb-6 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{actionMessage}</div>
+          <div className="mb-6 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+            {actionMessage}
+          </div>
         ) : null}
 
-        <div className="grid gap-6 xl:grid-cols-[1.4fr,1fr]">
-          <section className="space-y-6">
+        <div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1.4fr),minmax(0,1fr)]">
+          <section className="min-w-0 space-y-6">
             <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
               <div className="mb-5 flex items-center justify-between gap-4">
                 <h2 className="text-lg font-semibold text-slate-950">
@@ -638,7 +654,7 @@ export default function DocumentDetailPage() {
                 </h2>
                 <span
                   className={`rounded-full px-3 py-1 text-xs font-semibold ${statusBadgeClass(
-                    document.processingStatus
+                    document.processingStatus,
                   )}`}
                 >
                   {asString(document.processingStatus, "unknown")}
@@ -716,7 +732,7 @@ export default function DocumentDetailPage() {
                   {document.extractedFields.map((field) => (
                     <div
                       key={`${field.field}-${field.value}`}
-                      className="flex items-center justify-between gap-4 rounded-xl border border-slate-200 px-4 py-3"
+                      className="flex min-w-0 flex-col gap-3 rounded-xl border border-slate-200 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
                     >
                       <div className="min-w-0">
                         <div className="text-xs uppercase tracking-wide text-slate-500">
@@ -727,7 +743,7 @@ export default function DocumentDetailPage() {
                         </div>
                       </div>
 
-                      <div className="shrink-0 rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+                      <div className="w-fit shrink-0 rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
                         {formatConfidence(field.confidence)}
                       </div>
                     </div>
@@ -753,7 +769,7 @@ export default function DocumentDetailPage() {
             </div>
           </section>
 
-          <aside className="space-y-6">
+          <aside className="min-w-0 space-y-6">
             <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
               <h2 className="mb-4 text-lg font-semibold text-slate-950">
                 Validation Issues

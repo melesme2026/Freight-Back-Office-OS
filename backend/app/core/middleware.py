@@ -262,7 +262,7 @@ class RequestConcurrencyLimitMiddleware(BaseHTTPMiddleware):
                 },
             )
             user_message = (
-                "This optional panel is still loading. Please retry this panel shortly."
+                "This section is temporarily busy. Please refresh it shortly."
                 if bucket == "background_panel_reads"
                 else "This action is busy. Please try again shortly."
             )
