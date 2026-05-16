@@ -13,7 +13,7 @@ from app.domain.models.load_document import LoadDocument
 from app.repositories.document_repo import DocumentRepository
 from app.repositories.load_repo import LoadRepository
 from app.services.loads.packet_readiness import calculate_packet_readiness
-from sqlalchemy import update
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 
@@ -329,6 +329,31 @@ class DocumentService:
     # ---------------------------
     # INTERNAL HELPERS
     # ---------------------------
+
+
+    def sync_load_document_flags_fast(self, load_id: str) -> None:
+        """Recompute load document readiness without loading document ORM graphs."""
+        normalized_load_id = self._normalize_required_text("load_id", load_id)
+        present_document_types = list(
+            self.db.scalars(
+                select(LoadDocument.document_type)
+                .where(LoadDocument.load_id == normalized_load_id)
+                .execution_options(populate_existing=False)
+            ).all()
+        )
+        readiness = calculate_packet_readiness(document_types=present_document_types)
+
+        self.db.execute(
+            update(Load)
+            .where(Load.id == normalized_load_id)
+            .values(
+                has_ratecon=DocumentType.RATE_CONFIRMATION in present_document_types,
+                has_bol=DocumentType.BILL_OF_LADING in present_document_types,
+                has_invoice=DocumentType.INVOICE in present_document_types,
+                documents_complete=bool(readiness["ready_to_submit"]),
+            )
+            .execution_options(synchronize_session=False)
+        )
 
     def _sync_load_document_flags(self, load_id: str) -> None:
         documents, _ = self.document_repo.list(
