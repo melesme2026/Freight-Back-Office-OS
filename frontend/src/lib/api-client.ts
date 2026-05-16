@@ -9,6 +9,7 @@ type RequestOptions = Omit<RequestInit, "body"> & {
   body?: BodyInit | null;
   jsonBody?: unknown;
   responseType?: "json" | "text" | "blob" | "response";
+  timeoutMs?: number;
 };
 
 export class ApiClientError extends Error {
@@ -208,6 +209,10 @@ async function buildError(response: Response): Promise<ApiClientError> {
   }
 }
 
+function isAbortError(error: unknown): boolean {
+  return error instanceof DOMException && error.name === "AbortError";
+}
+
 async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const {
     token,
@@ -218,6 +223,8 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     body,
     jsonBody,
     responseType = "json",
+    timeoutMs = 15_000,
+    signal,
     ...rest
   } = options;
 
@@ -236,18 +243,52 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     !normalizedHeaders["Content-Type"] &&
     !normalizedHeaders["content-type"];
 
-  const response = await fetch(buildApiUrl(path), {
-    ...rest,
-    body: resolvedBody.body,
-    headers: {
-      ...(shouldSetAcceptHeader ? { Accept: "application/json" } : {}),
-      ...(shouldSetContentTypeHeader ? { "Content-Type": "application/json" } : {}),
-      ...(resolvedToken ? { Authorization: `${resolvedTokenType} ${resolvedToken}` } : {}),
-      ...(resolvedOrganizationId ? { "X-Organization-Id": resolvedOrganizationId } : {}),
-      ...normalizedHeaders,
-    },
-    cache: "no-store",
-  });
+  const controller = new AbortController();
+  const timeout = timeoutMs > 0
+    ? globalThis.setTimeout(() => controller.abort(), timeoutMs)
+    : null;
+  if (signal) {
+    if (signal.aborted) {
+      controller.abort();
+    } else {
+      signal.addEventListener("abort", () => controller.abort(), { once: true });
+    }
+  }
+
+  const startedAt = Date.now();
+  let response: Response;
+  try {
+    response = await fetch(buildApiUrl(path), {
+      ...rest,
+      body: resolvedBody.body,
+      signal: controller.signal,
+      headers: {
+        ...(shouldSetAcceptHeader ? { Accept: "application/json" } : {}),
+        ...(shouldSetContentTypeHeader ? { "Content-Type": "application/json" } : {}),
+        ...(resolvedToken ? { Authorization: `${resolvedTokenType} ${resolvedToken}` } : {}),
+        ...(resolvedOrganizationId ? { "X-Organization-Id": resolvedOrganizationId } : {}),
+        ...normalizedHeaders,
+      },
+      cache: "no-store",
+    });
+  } catch (caught: unknown) {
+    if (isAbortError(caught)) {
+      throw new ApiClientError("Request timed out. Please try again.", {
+        status: 504,
+        code: "client_timeout",
+      });
+    }
+    throw caught;
+  } finally {
+    if (timeout !== null) {
+      globalThis.clearTimeout(timeout);
+    }
+  }
+
+  const durationMs = Date.now() - startedAt;
+  if (durationMs >= 2_000 && typeof console !== "undefined") {
+    console.warn("Slow API request", { path, method: rest.method ?? "GET", durationMs, status: response.status });
+  }
 
   if (!response.ok) {
     if (

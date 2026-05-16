@@ -237,3 +237,43 @@ def test_small_multipart_pdf_upload_then_document_list_refresh(
         for document in refreshed_load.documents
     )
     get_settings.cache_clear()
+
+
+def test_pod_upload_mark_extraction_skipped_does_not_remain_pending(db_session) -> None:
+    from app.domain.enums.processing_status import ProcessingStatus
+    from app.services.loads.load_service import LoadService
+
+    org_id = "00000000-0000-0000-0000-000000078101"
+    customer_id = "00000000-0000-0000-0000-000000078111"
+    driver_id = "00000000-0000-0000-0000-000000078121"
+    load = LoadService(db_session).create_load(
+        organization_id=org_id,
+        customer_account_id=customer_id,
+        driver_id=driver_id,
+        load_number="POD-NOT-PENDING-001",
+    )
+    document_service = DocumentService(db_session)
+    document = document_service.create_document(
+        organization_id=org_id,
+        customer_account_id=customer_id,
+        driver_id=driver_id,
+        load_id=str(load.id),
+        document_type="proof_of_delivery",
+        storage_key="uploads/pod-not-pending.pdf",
+        source_channel="manual",
+        original_filename="pod-not-pending.pdf",
+        mime_type="application/pdf",
+        file_size_bytes=1700,
+    )
+
+    completed = document_service.mark_extraction_skipped(document_id=str(document.id))
+    refreshed_load = LoadService(db_session).get_load(str(load.id))
+
+    assert completed.processing_status == ProcessingStatus.COMPLETED
+    assert completed.ocr_completed_at is None
+    assert refreshed_load.documents_complete is False
+    assert any(
+        str(item.document_type) == "proof_of_delivery"
+        and item.processing_status == ProcessingStatus.COMPLETED
+        for item in refreshed_load.documents
+    )
