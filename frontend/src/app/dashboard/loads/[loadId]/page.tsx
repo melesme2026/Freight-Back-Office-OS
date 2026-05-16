@@ -1292,6 +1292,15 @@ export default function LoadDetailPage() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const hydrationAbortControllerRef = useRef<AbortController | null>(null);
   const hydrationTimeoutsRef = useRef<number[]>([]);
+  const writeActionActiveRef = useRef(false);
+  const optionalHydrationPausedUntilRef = useRef(0);
+  const optionalHydrationInFlightRef = useRef(0);
+  const optionalHydrationCooldownTimeoutRef = useRef<number | null>(null);
+  const deletingDocumentRequestRef = useRef<string | null>(null);
+
+  const traceLoadDetailAction = useCallback((event: string, details?: Record<string, unknown>) => {
+    console.info("[load-detail-action]", { event, load_id: loadId, ...details });
+  }, [loadId]);
 
   const clearHydrationTimeouts = useCallback(() => {
     hydrationTimeoutsRef.current.forEach((timeoutId) => window.clearTimeout(timeoutId));
@@ -1300,11 +1309,44 @@ export default function LoadDetailPage() {
 
   const getHydrationSignal = useCallback(() => hydrationAbortControllerRef.current?.signal, []);
 
-  const pauseBackgroundHydrationForAction = useCallback(() => {
+  const pauseBackgroundHydrationForAction = useCallback((reason = "write_action") => {
+    traceLoadDetailAction("abort_background_hydration_start", { reason });
     hydrationAbortControllerRef.current?.abort();
     hydrationAbortControllerRef.current = null;
     clearHydrationTimeouts();
-  }, [clearHydrationTimeouts]);
+    traceLoadDetailAction("abort_background_hydration_done", { reason });
+  }, [clearHydrationTimeouts, traceLoadDetailAction]);
+
+  const beginWriteAction = useCallback((reason: string) => {
+    if (optionalHydrationCooldownTimeoutRef.current !== null) {
+      window.clearTimeout(optionalHydrationCooldownTimeoutRef.current);
+      optionalHydrationCooldownTimeoutRef.current = null;
+    }
+    writeActionActiveRef.current = true;
+    optionalHydrationPausedUntilRef.current = Number.POSITIVE_INFINITY;
+    pauseBackgroundHydrationForAction(reason);
+
+    let ended = false;
+    return () => {
+      if (ended) return;
+      ended = true;
+      writeActionActiveRef.current = false;
+      optionalHydrationPausedUntilRef.current = Date.now() + 1_500;
+      optionalHydrationCooldownTimeoutRef.current = window.setTimeout(() => {
+        if (!writeActionActiveRef.current && Date.now() >= optionalHydrationPausedUntilRef.current) {
+          optionalHydrationPausedUntilRef.current = 0;
+        }
+        optionalHydrationCooldownTimeoutRef.current = null;
+      }, 1_500);
+    };
+  }, [pauseBackgroundHydrationForAction]);
+
+  const canStartOptionalHydration = useCallback(() => {
+    if (writeActionActiveRef.current || Date.now() < optionalHydrationPausedUntilRef.current) {
+      return false;
+    }
+    return !isMobileViewport() || optionalHydrationInFlightRef.current < 1;
+  }, []);
 
   const [load, setLoad] = useState<Load | null>(null);
   const [reviewQueueItem, setReviewQueueItem] = useState<ReviewQueueItem | null>(null);
@@ -1895,7 +1937,8 @@ export default function LoadDetailPage() {
         onSuccess: (value: T) => void,
         onFailure: () => void
       ) => {
-        if (getHydrationSignal()?.aborted) return;
+        if (getHydrationSignal()?.aborted || !canStartOptionalHydration()) return;
+        optionalHydrationInFlightRef.current += 1;
         setOptionalSectionLoading((current) => ({ ...current, [section]: true }));
         setOptionalSectionErrors((current) => {
           const next = { ...current };
@@ -1918,6 +1961,7 @@ export default function LoadDetailPage() {
             });
           })
           .finally(() => {
+            optionalHydrationInFlightRef.current = Math.max(0, optionalHydrationInFlightRef.current - 1);
             if (getHydrationSignal()?.aborted) return;
             setOptionalSectionLoading((current) => ({ ...current, [section]: false }));
             if (section === "documents") setIsDocumentsLoading(false);
@@ -1931,10 +1975,18 @@ export default function LoadDetailPage() {
         onSuccess: (value: T) => void,
         onFailure: () => void
       ) => {
-        const timeoutId = window.setTimeout(
-          () => runOptionalSection(section, loader, onSuccess, onFailure),
-          delayMs
-        );
+        const attemptStart = () => {
+          if (getHydrationSignal()?.aborted) {
+            return;
+          }
+          if (!canStartOptionalHydration()) {
+            const retryTimeoutId = window.setTimeout(attemptStart, isMobileViewport() ? 175 : 75);
+            hydrationTimeoutsRef.current.push(retryTimeoutId);
+            return;
+          }
+          runOptionalSection(section, loader, onSuccess, onFailure);
+        };
+        const timeoutId = window.setTimeout(attemptStart, delayMs);
         hydrationTimeoutsRef.current.push(timeoutId);
       };
 
@@ -1994,6 +2046,7 @@ export default function LoadDetailPage() {
       setIsDocumentsLoading(false);
     }
   }, [
+    canStartOptionalHydration,
     clearHydrationTimeouts,
     fetchCarrierProfile,
     fetchLoad,
@@ -2013,6 +2066,10 @@ export default function LoadDetailPage() {
     return () => {
       hydrationAbortControllerRef.current?.abort();
       clearHydrationTimeouts();
+      if (optionalHydrationCooldownTimeoutRef.current !== null) {
+        window.clearTimeout(optionalHydrationCooldownTimeoutRef.current);
+        optionalHydrationCooldownTimeoutRef.current = null;
+      }
     };
   }, [clearHydrationTimeouts, fetchPageData]);
 
@@ -2501,6 +2558,8 @@ export default function LoadDetailPage() {
       return;
     }
 
+    const endWriteAction = beginWriteAction("advance_status");
+
     try {
       setIsAdvancing(true);
       setError(null);
@@ -2530,6 +2589,7 @@ export default function LoadDetailPage() {
       setError(extractErrorMessage(caught, "Failed to advance status."));
     } finally {
       setIsAdvancing(false);
+      endWriteAction();
     }
   }
 
@@ -2538,8 +2598,9 @@ export default function LoadDetailPage() {
       return;
     }
 
+    const endWriteAction = beginWriteAction("set_manual_status");
+
     try {
-      pauseBackgroundHydrationForAction();
       setIsSettingStatus(true);
       setError(null);
       setActionMessage(null);
@@ -2567,6 +2628,7 @@ export default function LoadDetailPage() {
       setError(extractErrorMessage(caught, "Failed to set status."));
     } finally {
       setIsSettingStatus(false);
+      endWriteAction();
     }
   }
 
@@ -2575,8 +2637,9 @@ export default function LoadDetailPage() {
       return;
     }
 
+    const endWriteAction = beginWriteAction("workflow_action");
+
     try {
-      pauseBackgroundHydrationForAction();
       setIsExecutingWorkflowAction(true);
       setError(null);
       setActionMessage(null);
@@ -2604,6 +2667,7 @@ export default function LoadDetailPage() {
       setError(extractErrorMessage(caught, "Failed to execute workflow action."));
     } finally {
       setIsExecutingWorkflowAction(false);
+      endWriteAction();
     }
   }
 
@@ -2612,8 +2676,9 @@ export default function LoadDetailPage() {
       return;
     }
 
+    const endWriteAction = beginWriteAction(options.regenerate ? "regenerate_invoice" : "generate_invoice");
+
     try {
-      pauseBackgroundHydrationForAction();
       setIsGeneratingInvoice(true);
       setError(null);
       setActionMessage(null);
@@ -2691,6 +2756,7 @@ export default function LoadDetailPage() {
       setError(extractErrorMessage(caught, "Failed to generate invoice."));
     } finally {
       setIsGeneratingInvoice(false);
+      endWriteAction();
     }
   }
 
@@ -2726,8 +2792,6 @@ export default function LoadDetailPage() {
       return;
     }
 
-    pauseBackgroundHydrationForAction();
-
     if (!load?.id) {
       setError("Load is required before uploading documents.");
       return;
@@ -2743,6 +2807,8 @@ export default function LoadDetailPage() {
       setError("Customer account is missing for this load. Cannot upload document.");
       return;
     }
+
+    const endWriteAction = beginWriteAction("upload_document");
 
     try {
       setIsUploadingDocument(true);
@@ -2815,6 +2881,7 @@ export default function LoadDetailPage() {
       setActionMessage(null);
     } finally {
       setIsUploadingDocument(false);
+      endWriteAction();
     }
   }
 
@@ -2828,8 +2895,9 @@ export default function LoadDetailPage() {
 
   async function handleReplaceDuplicateUpload() {
     if (!pendingDuplicateUpload || isUploadingDocument) return;
+    const endWriteAction = beginWriteAction("replace_document");
+
     try {
-      pauseBackgroundHydrationForAction();
       setIsUploadingDocument(true);
       setDocumentUploadError(null);
       setError(null);
@@ -2865,6 +2933,7 @@ export default function LoadDetailPage() {
       setActionMessage(null);
     } finally {
       setIsUploadingDocument(false);
+      endWriteAction();
     }
   }
 
@@ -2965,8 +3034,9 @@ export default function LoadDetailPage() {
       return;
     }
 
+    const endWriteAction = beginWriteAction("update_document_type");
+
     try {
-      pauseBackgroundHydrationForAction();
       setSavingDocumentId(document.id);
       setError(null);
       setActionMessage(null);
@@ -2986,13 +3056,20 @@ export default function LoadDetailPage() {
       setError(extractErrorMessage(caught, "Failed to update document type."));
     } finally {
       setSavingDocumentId(null);
+      endWriteAction();
     }
   }
 
   async function handleDeleteDocument(document: LoadDocument) {
-    if (!document.id || deletingDocumentId) {
+    if (!document.id || deletingDocumentId || deletingDocumentRequestRef.current) {
       return;
     }
+
+    traceLoadDetailAction("delete_clicked", {
+      document_id: document.id,
+      document_type: document.document_type,
+      document_status: document.processing_status ?? document.received_status ?? null,
+    });
 
     if (isInvoiceManagedDocument(document)) {
       setError(
@@ -3002,11 +3079,12 @@ export default function LoadDetailPage() {
       return;
     }
 
-    pauseBackgroundHydrationForAction();
-
     if (!window.confirm(`Delete ${getDocumentDisplayName(document)}?`)) {
       return;
     }
+
+    const endWriteAction = beginWriteAction("delete_document");
+    deletingDocumentRequestRef.current = document.id;
 
     try {
       setDeletingDocumentId(document.id);
@@ -3014,18 +3092,28 @@ export default function LoadDetailPage() {
       setActionMessage(null);
 
       const token = getAccessToken();
+      traceLoadDetailAction("delete_request_sent", { document_id: document.id });
       await apiClient.delete(`/documents/${encodeURIComponent(document.id)}`, {
         token: token ?? undefined,
+        timeoutMs: 15_000,
       });
+      traceLoadDetailAction("delete_response_received", { document_id: document.id });
 
+      traceLoadDetailAction("refresh_documents_start", { document_id: document.id });
       const updatedDocuments = await fetchLoadDocuments({ silent: true });
       setLoadDocuments(updatedDocuments);
-      void fetchLoad().then((updatedLoad) => setLoad(updatedLoad)).catch(() => undefined);
+      traceLoadDetailAction("refresh_documents_done", { document_id: document.id });
       setActionMessage("Deleted successfully.");
     } catch (caught: unknown) {
+      traceLoadDetailAction("delete_failed", {
+        document_id: document.id,
+        message: extractErrorMessage(caught, "Could not delete document."),
+      });
       setError(extractErrorMessage(caught, "Could not delete document."));
     } finally {
+      deletingDocumentRequestRef.current = null;
       setDeletingDocumentId(null);
+      endWriteAction();
     }
   }
 
