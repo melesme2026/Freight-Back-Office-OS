@@ -32,9 +32,11 @@ test("owner/admin launch workflow including docs, invoice, packet, payments, and
   await expect(page.getByText(/upload successful/i)).toBeVisible();
 
   await page.getByRole("button", { name: "Generate Invoice" }).click();
-  await expect(page.getByText(/invoice/i).first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "View Invoice" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Download Invoice" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Generate Invoice/i })).toHaveCount(0);
 
-  await page.getByRole("button", { name: /Generate Invoice/i }).click();
+  await page.getByRole("button", { name: "View Invoice" }).click();
   await expect(page.locator("text=INV-E2E-001")).toHaveCount(1);
 
   await page.getByRole("button", { name: /Create Submission Packet/i }).click();

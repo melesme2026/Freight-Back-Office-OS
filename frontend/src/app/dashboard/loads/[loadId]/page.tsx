@@ -99,6 +99,17 @@ type InvoiceBlocker = {
   missingFields: string[];
   actionUrl: string;
 };
+type InvoiceStatusState = {
+  load_id: string;
+  invoice_number?: string | null;
+  has_invoice: boolean;
+  invoice_document_id?: string | null;
+  is_stale: boolean;
+  stale_reasons: string[];
+  view_url?: string | null;
+  download_url?: string | null;
+  updated_at?: string | null;
+};
 const INVOICE_FIELD_LABELS: Record<string, string> = {
   address_line1: "Address Line 1",
   city: "City",
@@ -284,6 +295,7 @@ type OptionalSectionKey =
   | "packetAudit"
   | "submissionPackets"
   | "carrierProfile"
+  | "invoiceStatus"
   | "paymentReconciliation"
   | "followUps"
   | "reviewQueue";
@@ -296,6 +308,7 @@ const OPTIONAL_SECTION_LABELS: Record<OptionalSectionKey, string> = {
   packetAudit: "Packet audit",
   submissionPackets: "Submission packets",
   carrierProfile: "Carrier profile",
+  invoiceStatus: "Invoice status",
   paymentReconciliation: "Payment reconciliation",
   followUps: "Follow-ups",
   reviewQueue: "Review queue",
@@ -306,6 +319,7 @@ const OPTIONAL_SECTION_INITIAL_LOADING: OptionalSectionState = {
   packetAudit: false,
   submissionPackets: false,
   carrierProfile: false,
+  invoiceStatus: false,
   paymentReconciliation: false,
   followUps: false,
   reviewQueue: false,
@@ -1199,6 +1213,26 @@ function isClientAbortError(error: unknown): boolean {
   return false;
 }
 
+function normalizeInvoiceStatus(value: unknown): InvoiceStatusState | null {
+  const record = asRecord(value);
+  const loadId = getStringField(record, "load_id");
+  if (!loadId) return null;
+  const staleReasons = Array.isArray(record.stale_reasons)
+    ? record.stale_reasons.map((item) => String(item))
+    : [];
+  return {
+    load_id: loadId,
+    invoice_number: getStringField(record, "invoice_number"),
+    has_invoice: Boolean(record.has_invoice),
+    invoice_document_id: getStringField(record, "invoice_document_id"),
+    is_stale: Boolean(record.is_stale),
+    stale_reasons: staleReasons,
+    view_url: getStringField(record, "view_url"),
+    download_url: getStringField(record, "download_url"),
+    updated_at: getStringField(record, "updated_at"),
+  };
+}
+
 function SectionLoadNotice({
   isLoading,
   error,
@@ -1270,6 +1304,7 @@ export default function LoadDetailPage() {
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [packetEmailConfirmation, setPacketEmailConfirmation] = useState<string | null>(null);
   const [invoiceBlocker, setInvoiceBlocker] = useState<InvoiceBlocker | null>(null);
+  const [invoiceStatus, setInvoiceStatus] = useState<InvoiceStatusState | null>(null);
   const [pendingDuplicateUpload, setPendingDuplicateUpload] = useState<{ file: File; formData: FormData; message: string } | null>(null);
   const [staffUsers, setStaffUsers] = useState<StaffUserOption[]>([]);
   const [followUpOwnerId, setFollowUpOwnerId] = useState("");
@@ -1358,6 +1393,16 @@ export default function LoadDetailPage() {
     },
     [getHydrationSignal, loadId]
   );
+
+  const fetchInvoiceStatus = useCallback(async (): Promise<InvoiceStatusState | null> => {
+    if (!loadId) return null;
+    const token = getAccessToken();
+    const response = await apiClient.get<ApiResponse<unknown>>(
+      `/loads/${encodeURIComponent(loadId)}/invoice-status`,
+      { token: token ?? undefined, timeoutMs: 3_000, signal: getHydrationSignal() }
+    );
+    return normalizeInvoiceStatus(response.data);
+  }, [getHydrationSignal, loadId]);
 
   const fetchPacketAudit = useCallback(async (): Promise<PacketAuditResult | null> => {
     if (!loadId) return null;
@@ -1784,6 +1829,7 @@ export default function LoadDetailPage() {
       setLoad(null);
       setReviewQueueItem(null);
       setLoadDocuments([]);
+      setInvoiceStatus(null);
       setError("Invalid load identifier.");
       setIsLoading(false);
       return;
@@ -1799,6 +1845,17 @@ export default function LoadDetailPage() {
       const loadData = await fetchLoad();
       if (getHydrationSignal()?.aborted) return;
       setLoad(loadData);
+      setInvoiceStatus(loadData?.has_invoice ? {
+        load_id: loadData.id,
+        invoice_number: loadData.invoice_number ?? null,
+        has_invoice: true,
+        invoice_document_id: null,
+        is_stale: false,
+        stale_reasons: [],
+        view_url: `/loads/${loadData.id}/invoice?disposition=inline`,
+        download_url: `/loads/${loadData.id}/invoice?disposition=attachment`,
+        updated_at: null,
+      } : null);
       setOptionalSectionErrors({});
 
       const runOptionalSection = <T,>(
@@ -1871,17 +1928,30 @@ export default function LoadDetailPage() {
       scheduleSection(gap * 4, "carrierProfile", fetchCarrierProfile, setCarrierProfile, () =>
         setCarrierProfile(null)
       );
+      scheduleSection(gap * 5, "invoiceStatus", fetchInvoiceStatus, setInvoiceStatus, () =>
+        setInvoiceStatus(loadData?.has_invoice ? {
+          load_id: loadData.id,
+          invoice_number: loadData.invoice_number ?? null,
+          has_invoice: true,
+          invoice_document_id: null,
+          is_stale: false,
+          stale_reasons: [],
+          view_url: `/loads/${loadData.id}/invoice?disposition=inline`,
+          download_url: `/loads/${loadData.id}/invoice?disposition=attachment`,
+          updated_at: null,
+        } : null)
+      );
       scheduleSection(
-        gap * 5,
+        gap * 6,
         "paymentReconciliation",
         fetchPaymentReconciliation,
         setPaymentRecord,
         () => setPaymentRecord(null)
       );
-      scheduleSection(gap * 6, "followUps", fetchFollowUpTasks, setFollowUpTasks, () =>
+      scheduleSection(gap * 7, "followUps", fetchFollowUpTasks, setFollowUpTasks, () =>
         setFollowUpTasks([])
       );
-      scheduleSection(gap * 7, "reviewQueue", fetchReviewQueueItem, setReviewQueueItem, () =>
+      scheduleSection(gap * 8, "reviewQueue", fetchReviewQueueItem, setReviewQueueItem, () =>
         setReviewQueueItem(null)
       );
     } catch (caught: unknown) {
@@ -1896,6 +1966,7 @@ export default function LoadDetailPage() {
     clearHydrationTimeouts,
     fetchCarrierProfile,
     fetchLoad,
+    fetchInvoiceStatus,
     fetchPaymentReconciliation,
     fetchFollowUpTasks,
     fetchReviewQueueItem,
@@ -2503,7 +2574,7 @@ export default function LoadDetailPage() {
     }
   }
 
-  async function handleGenerateInvoice() {
+  async function openInvoicePdf(options: { regenerate?: boolean; disposition: "inline" | "attachment" }) {
     if (!load || !load.id || isGeneratingInvoice) {
       return;
     }
@@ -2515,10 +2586,15 @@ export default function LoadDetailPage() {
       setInvoiceBlocker(null);
 
       const token = getAccessToken();
-      const response = await fetch(buildConfiguredApiUrl(`/loads/${encodeURIComponent(load.id)}/invoice`), {
-        method: "GET",
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-      });
+      const params = new URLSearchParams({ disposition: options.disposition });
+      if (options.regenerate) params.set("regenerate", "true");
+      const response = await fetch(
+        buildConfiguredApiUrl(`/loads/${encodeURIComponent(load.id)}/invoice?${params.toString()}`),
+        {
+          method: "GET",
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        }
+      );
 
       if (!response.ok) {
         const payload = (await response.json().catch(() => null)) as ApiResponse<unknown> | null;
@@ -2542,23 +2618,65 @@ export default function LoadDetailPage() {
 
       const blob = await response.blob();
       const url = URL.createObjectURL(blob);
-      window.open(url, "_blank", "noopener,noreferrer");
-      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
-      const [refreshedLoad, refreshedReviewQueueItem, refreshedDocuments] = await Promise.all([
-        fetchLoad(),
-        fetchReviewQueueItem().catch(() => null),
-        fetchLoadDocuments({ silent: true }),
-      ]);
-      setLoad(refreshedLoad);
-      setReviewQueueItem(refreshedReviewQueueItem);
-      setLoadDocuments(refreshedDocuments);
-      setActionMessage("Invoice generated successfully.");
+      if (options.disposition === "attachment") {
+        const link = window.document.createElement("a");
+        link.href = url;
+        link.download = `invoice-${load.load_number ?? load.id}.pdf`;
+        window.document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.setTimeout(() => URL.revokeObjectURL(url), 5_000);
+      } else {
+        window.open(url, "_blank", "noopener,noreferrer");
+        window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      }
+
+      const refreshedInvoiceStatus = await fetchInvoiceStatus().catch(() => null);
+      if (refreshedInvoiceStatus) {
+        setInvoiceStatus(refreshedInvoiceStatus);
+      } else {
+        setInvoiceStatus({
+          load_id: load.id,
+          invoice_number: response.headers.get("X-Invoice-Number") || load.invoice_number || null,
+          has_invoice: true,
+          invoice_document_id: response.headers.get("X-Invoice-Document-Id"),
+          is_stale: response.headers.get("X-Invoice-Stale") === "true",
+          stale_reasons: [],
+          view_url: `/loads/${load.id}/invoice?disposition=inline`,
+          download_url: `/loads/${load.id}/invoice?disposition=attachment`,
+          updated_at: null,
+        });
+      }
+      setLoad((current) => current ? {
+        ...current,
+        has_invoice: true,
+        invoice_number: refreshedInvoiceStatus?.invoice_number ?? response.headers.get("X-Invoice-Number") ?? current.invoice_number,
+      } : current);
+      setActionMessage(options.regenerate ? "Invoice regenerated successfully." : invoiceStatus?.has_invoice ? "Invoice opened." : "Invoice generated successfully.");
     } catch (caught: unknown) {
       setError(extractErrorMessage(caught, "Failed to generate invoice."));
     } finally {
       setIsGeneratingInvoice(false);
     }
   }
+
+  async function handleGenerateInvoice() {
+    await openInvoicePdf({ disposition: "inline" });
+  }
+
+  async function handleDownloadInvoice() {
+    await openInvoicePdf({ disposition: "attachment" });
+  }
+
+  async function handleRegenerateInvoice() {
+    if (!invoiceStatus?.has_invoice) return;
+    const confirmed = window.confirm(
+      "Regenerate invoice? The existing invoice PDF will be replaced, but the current invoice number will be preserved."
+    );
+    if (!confirmed) return;
+    await openInvoicePdf({ disposition: "inline", regenerate: true });
+  }
+
 
   function handleUploadDocument(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0] ?? null;
@@ -2948,6 +3066,9 @@ export default function LoadDetailPage() {
     );
   }
 
+  const hasExistingInvoice = Boolean(invoiceStatus?.has_invoice || load.has_invoice);
+  const invoiceIsStale = Boolean(invoiceStatus?.is_stale);
+
   return (
     <main className="safe-page min-h-screen bg-slate-50 text-slate-900">
       <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 sm:py-10">
@@ -2985,16 +3106,75 @@ export default function LoadDetailPage() {
                   ? `Advance to ${nextStatus.replaceAll("_", " ")}`
                   : "No Further Status"}
             </button>
-            <button
-              type="button"
-              onClick={handleGenerateInvoice}
-              disabled={isGeneratingInvoice}
-              className="touch-target rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {isGeneratingInvoice ? "Generating..." : "Generate Invoice"}
-            </button>
+            {hasExistingInvoice ? (
+              <>
+                <button
+                  type="button"
+                  onClick={handleGenerateInvoice}
+                  disabled={isGeneratingInvoice}
+                  className="touch-target rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {isGeneratingInvoice ? "Opening..." : "View Invoice"}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDownloadInvoice}
+                  disabled={isGeneratingInvoice}
+                  className="touch-target rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Download Invoice
+                </button>
+                {invoiceIsStale ? (
+                  <button
+                    type="button"
+                    onClick={handleRegenerateInvoice}
+                    disabled={isGeneratingInvoice}
+                    className="touch-target rounded-xl border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-800 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Regenerate Invoice
+                  </button>
+                ) : null}
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={handleGenerateInvoice}
+                disabled={isGeneratingInvoice}
+                className="touch-target rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {isGeneratingInvoice ? "Generating..." : "Generate Invoice"}
+              </button>
+            )}
           </div>
         </div>
+
+        {invoiceIsStale ? (
+          <div className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-soft" role="status">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-amber-900">Invoice may be outdated</h2>
+                <p className="mt-1 text-sm text-amber-800">
+                  Load, carrier, broker/customer, or required billing document details changed after the invoice PDF was created.
+                </p>
+                {invoiceStatus?.stale_reasons.length ? (
+                  <ul className="mt-2 list-disc pl-5 text-sm text-amber-900">
+                    {invoiceStatus.stale_reasons.slice(0, 3).map((reason) => (
+                      <li key={reason}>{reason}</li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+              <button
+                type="button"
+                onClick={handleRegenerateInvoice}
+                disabled={isGeneratingInvoice}
+                className="touch-target rounded-xl bg-amber-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Regenerate Invoice
+              </button>
+            </div>
+          </div>
+        ) : null}
 
         {invoiceBlocker ? (
           <div className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-soft">

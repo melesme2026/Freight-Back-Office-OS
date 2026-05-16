@@ -549,6 +549,20 @@ export async function mockApi(page: Page) {
       return ok(route, body ?? {});
     }
 
+    if (path === `/loads/${seed.load.id}/invoice-status` && method === "GET") {
+      return ok(route, {
+        load_id: seed.load.id,
+        invoice_number: state.invoiceCount > 0 ? "INV-E2E-001" : null,
+        has_invoice: state.invoiceCount > 0,
+        invoice_document_id: state.invoiceCount > 0 ? "doc-invoice-e2e-001" : null,
+        is_stale: false,
+        stale_reasons: [],
+        view_url: state.invoiceCount > 0 ? `/loads/${seed.load.id}/invoice?disposition=inline` : null,
+        download_url: state.invoiceCount > 0 ? `/loads/${seed.load.id}/invoice?disposition=attachment` : null,
+        updated_at: state.invoiceCount > 0 ? FIXED_ISO_TIMESTAMP : null,
+      });
+    }
+
     if (path === `/loads/${seed.load.id}/invoice` && method === "GET") {
       if (state.invoiceCount === 0) {
         state.invoiceCount += 1;
