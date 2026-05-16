@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 from app.api.v1.loads import (
@@ -276,3 +277,79 @@ def test_packet_readiness_uses_documents_table_not_flags(db_session) -> None:
 
     assert DocumentType.INVOICE.value in readiness["present_documents"]
     assert DocumentType.INVOICE.value not in readiness["missing_required_documents"]["submission"]
+
+
+def test_invoice_status_reports_existing_invoice_and_staleness(db_session) -> None:
+    from app.api.v1.loads import _serialize_invoice_status
+
+    load = _create_ready_for_invoice_load(db_session)
+    _generate_and_persist_invoice_pdf(db=db_session, load=load)
+
+    fresh_status = _serialize_invoice_status(db=db_session, load=load)
+    assert fresh_status["has_invoice"] is True
+    assert fresh_status["invoice_number"] == load.invoice_number
+    assert fresh_status["is_stale"] is False
+
+    LoadService(db_session).update_load(load_id=str(load.id), gross_amount="2250.00")
+    refreshed = LoadService(db_session).get_load(str(load.id))
+    refreshed.updated_at = datetime.now(timezone.utc) + timedelta(seconds=5)
+    db_session.add(refreshed)
+    db_session.flush()
+    stale_status = _serialize_invoice_status(db=db_session, load=refreshed)
+
+    assert stale_status["has_invoice"] is True
+    assert stale_status["is_stale"] is True
+    assert any("Load amount" in reason for reason in stale_status["stale_reasons"])
+
+
+def test_regenerate_replaces_pdf_without_changing_invoice_number_or_duplicating(db_session) -> None:
+    load = _create_ready_for_invoice_load(db_session)
+    document_service = DocumentService(db_session)
+
+    _generate_and_persist_invoice_pdf(db=db_session, load=load)
+    invoice_number = load.invoice_number
+    LoadService(db_session).update_load(load_id=str(load.id), notes="Updated invoice note")
+    refreshed = LoadService(db_session).get_load(str(load.id))
+
+    regenerated_pdf = _generate_and_persist_invoice_pdf(
+        db=db_session,
+        load=refreshed,
+        force_regenerate=True,
+    )
+    documents, total = document_service.list_documents(
+        load_id=str(load.id),
+        document_type=DocumentType.INVOICE,
+        page=1,
+        page_size=25,
+    )
+
+    assert total == 1
+    assert refreshed.invoice_number == invoice_number
+    assert b"Updated invoice note" in regenerated_pdf
+    assert len(documents) == 1
+
+
+def test_invoice_route_regenerate_requires_explicit_flag_to_replace_stale_pdf(db_session) -> None:
+    load = _create_ready_for_invoice_load(db_session)
+    token_payload = {"organization_id": str(load.organization_id), "role": "staff"}
+
+    first_response = download_load_invoice(load_id=load.id, token_payload=token_payload, db=db_session)
+    first_pdf = asyncio.run(_read_streaming_response_bytes(first_response))
+    LoadService(db_session).update_load(load_id=str(load.id), notes="Regenerated only with confirmation")
+
+    stale_view_response = download_load_invoice(
+        load_id=load.id,
+        token_payload=token_payload,
+        db=db_session,
+    )
+    stale_view_pdf = asyncio.run(_read_streaming_response_bytes(stale_view_response))
+    explicit_regen_response = download_load_invoice(
+        load_id=load.id,
+        regenerate=True,
+        token_payload=token_payload,
+        db=db_session,
+    )
+    explicit_regen_pdf = asyncio.run(_read_streaming_response_bytes(explicit_regen_response))
+
+    assert stale_view_pdf == first_pdf
+    assert b"Regenerated only with" in explicit_regen_pdf

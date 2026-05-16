@@ -4,6 +4,7 @@ import csv
 import io
 import logging
 import re
+import threading
 import time
 import uuid
 from datetime import date, datetime, timedelta, timezone
@@ -17,6 +18,7 @@ from app.domain.enums.document_type import DocumentType
 from app.domain.enums.follow_up_task import FollowUpTaskStatus, FollowUpTaskType
 from app.domain.enums.load_status import LoadStatus
 from app.domain.models.follow_up_task import FollowUpTask
+from app.domain.models.load_document import LoadDocument
 from app.schemas.common import ApiResponse
 from app.services.audit.audit_service import AuditService
 from app.services.carrier_profile_service import CarrierProfileService
@@ -43,6 +45,8 @@ GET_DB_SESSION_DEPENDENCY = Depends(get_db_session)
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+_INVOICE_GENERATION_LOCKS: dict[str, threading.Lock] = {}
+_INVOICE_GENERATION_LOCKS_GUARD = threading.Lock()
 
 
 class LoadCreateRequest(BaseModel):
@@ -867,6 +871,15 @@ def _build_professional_invoice_pdf(*, load: Any, carrier_profile: dict[str, str
             return missing
         return normalized
 
+    def _format_phone_for_pdf(value: object | None) -> str:
+        normalized = _safe_text(value)
+        digits = re.sub(r"\D", "", normalized)
+        if len(digits) == 11 and digits.startswith("1"):
+            return f"+1 ({digits[1:4]}) {digits[4:7]}-{digits[7:]}"
+        if len(digits) == 10:
+            return f"({digits[:3]}) {digits[3:6]}-{digits[6:]}"
+        return normalized
+
     def _wrap_text(value: str, *, max_chars: int, max_lines: int | None = None) -> list[str]:
         normalized = str(value or "").replace("\r", " ").replace("\n", " ").strip()
         if not normalized or normalized == "N/A":
@@ -973,7 +986,7 @@ def _build_professional_invoice_pdf(*, load: Any, carrier_profile: dict[str, str
         x=left_x + 14,
         y=left_cursor,
         label="Phone",
-        value=_safe_text(carrier_phone),
+        value=_format_phone_for_pdf(carrier_phone),
         max_chars=31,
         max_lines=1,
     )
@@ -983,7 +996,7 @@ def _build_professional_invoice_pdf(*, load: Any, carrier_profile: dict[str, str
         label="Email",
         value=_safe_text(carrier_email),
         max_chars=31,
-        max_lines=1,
+        max_lines=3,
     )
     left_cursor = add_wrapped_field(
         x=left_x + 14,
@@ -1033,7 +1046,7 @@ def _build_professional_invoice_pdf(*, load: Any, carrier_profile: dict[str, str
         label="Broker Email",
         value=_safe_text(broker_email),
         max_chars=29,
-        max_lines=1,
+        max_lines=3,
     )
     right_cursor = add_wrapped_field(
         x=right_x + 14,
@@ -1139,18 +1152,18 @@ def _build_professional_invoice_pdf(*, load: Any, carrier_profile: dict[str, str
 
     required_items = [
         _pdf_checkbox_label(
-            "Rate Confirmation",
+            "Rate Confirmation received",
             checked=DocumentType.RATE_CONFIRMATION.value in present_document_values,
         ),
         _pdf_checkbox_label(
-            "Bill of Lading",
+            "Bill of Lading received",
             checked=DocumentType.BILL_OF_LADING.value in present_document_values,
         ),
         _pdf_checkbox_label(
-            "Proof of Delivery",
+            "Proof of Delivery received",
             checked=DocumentType.PROOF_OF_DELIVERY.value in present_document_values,
         ),
-        _pdf_checkbox_label("Invoice", checked=True),
+        _pdf_checkbox_label("Invoice generated", checked=True),
     ]
     optional_items = [
         (
@@ -1182,7 +1195,7 @@ def _build_professional_invoice_pdf(*, load: Any, carrier_profile: dict[str, str
         right_check_y -= line_gap
 
     # Footer / remittance
-    add_box(36, 56, 540, 94)
+    add_box(36, 44, 540, 106)
     add_filled_box(36, 122, 540, 28)
     add_text(50, 132, "Payment / Remittance", font="F2", size=10)
     add_wrapped_field(
@@ -1191,13 +1204,13 @@ def _build_professional_invoice_pdf(*, load: Any, carrier_profile: dict[str, str
         label="Remit Instructions",
         value=_safe_text(remit_to_instructions),
         max_chars=77,
-        max_lines=3,
+        max_lines=5,
         label_width=86,
     )
     add_text(
         50, 72, "Please reference invoice number and load number with payment.", font="F2", size=9
     )
-    add_text(50, 60, f"Generated At: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}", size=8)
+    add_text(50, 48, f"Generated At: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}", size=8)
 
     stream = "\n".join(text_ops).encode("latin-1", errors="replace")
 
@@ -1238,87 +1251,273 @@ def _build_professional_invoice_pdf(*, load: Any, carrier_profile: dict[str, str
     return bytes(pdf)
 
 
-def _generate_and_persist_invoice_pdf(*, db: Session, load: Any) -> bytes:
-    template_function_name = "_build_professional_invoice_pdf"
-    logger.info(
-        "USING TEMPLATE: %s for load_id=%s",
-        template_function_name,
-        getattr(load, "id", None),
+
+def _invoice_generation_lock(load_id: str) -> threading.Lock:
+    with _INVOICE_GENERATION_LOCKS_GUARD:
+        lock = _INVOICE_GENERATION_LOCKS.get(load_id)
+        if lock is None:
+            lock = threading.Lock()
+            _INVOICE_GENERATION_LOCKS[load_id] = lock
+        return lock
+
+
+def _elapsed_ms(started_at: float) -> int:
+    return int((time.perf_counter() - started_at) * 1000)
+
+
+def _first_invoice_document(*, db: Session, load_id: str) -> LoadDocument | None:
+    return db.scalar(
+        select(LoadDocument)
+        .where(
+            LoadDocument.load_id == uuid.UUID(str(load_id)),
+            LoadDocument.document_type == DocumentType.INVOICE,
+        )
+        .order_by(LoadDocument.received_at.desc(), LoadDocument.created_at.desc())
+        .limit(1)
     )
-    carrier_profile = _build_carrier_profile_context(db=db, load=load)
-    _ensure_load_invoice_number(db=db, load=load)
-    pdf_bytes = _build_professional_invoice_pdf(load=load, carrier_profile=carrier_profile)
+
+
+def _required_billing_documents(*, db: Session, load_id: str) -> list[LoadDocument]:
+    return list(
+        db.scalars(
+            select(LoadDocument)
+            .where(
+                LoadDocument.load_id == uuid.UUID(str(load_id)),
+                LoadDocument.document_type.in_(
+                    [
+                        DocumentType.RATE_CONFIRMATION,
+                        DocumentType.BILL_OF_LADING,
+                        DocumentType.PROOF_OF_DELIVERY,
+                    ]
+                ),
+            )
+            .order_by(LoadDocument.received_at.desc(), LoadDocument.created_at.desc())
+        ).all()
+    )
+
+
+def _latest_timestamp(*values: object | None) -> datetime | None:
+    latest: datetime | None = None
+    for value in values:
+        if not isinstance(value, datetime):
+            continue
+        candidate = value
+        if candidate.tzinfo is None:
+            candidate = candidate.replace(tzinfo=timezone.utc)
+        if latest is None or candidate > latest:
+            latest = candidate
+    return latest
+
+
+def _is_newer(candidate: object | None, baseline: datetime | None) -> bool:
+    if not isinstance(candidate, datetime) or baseline is None:
+        return False
+    left = candidate if candidate.tzinfo is not None else candidate.replace(tzinfo=timezone.utc)
+    right = baseline if baseline.tzinfo is not None else baseline.replace(tzinfo=timezone.utc)
+    return left > right
+
+
+def _invoice_staleness(*, db: Session, load: Any, invoice_document: LoadDocument | None) -> dict[str, Any]:
+    if invoice_document is None:
+        return {
+            "has_invoice": False,
+            "is_stale": False,
+            "stale_reasons": [],
+            "invoice_document": None,
+        }
+
+    baseline = _latest_timestamp(
+        getattr(invoice_document, "updated_at", None),
+        getattr(invoice_document, "created_at", None),
+        getattr(invoice_document, "received_at", None),
+    )
+    reasons: list[str] = []
+
+    if _is_newer(getattr(load, "updated_at", None), baseline):
+        reasons.append("Load amount, broker/customer, pickup/delivery, or notes changed")
+
+    for relation_name, reason in [
+        ("customer_account", "Broker/customer billing information changed"),
+        ("broker", "Broker/customer billing information changed"),
+    ]:
+        relation = getattr(load, relation_name, None)
+        if relation is not None and _is_newer(getattr(relation, "updated_at", None), baseline):
+            reasons.append(reason)
+
+    carrier_profile = CarrierProfileService(db).get_by_org(str(load.organization_id))
+    if carrier_profile is not None and _is_newer(getattr(carrier_profile, "updated_at", None), baseline):
+        reasons.append("Carrier profile/remit instructions changed")
+
+    for document in _required_billing_documents(db=db, load_id=str(load.id)):
+        if _is_newer(getattr(document, "updated_at", None), baseline) or _is_newer(
+            getattr(document, "received_at", None), baseline
+        ):
+            label = getattr(getattr(document, "document_type", None), "value", "billing document")
+            reasons.append(f"Required billing document changed: {label}")
+
+    deduped_reasons = list(dict.fromkeys(reasons))
+    return {
+        "has_invoice": True,
+        "is_stale": bool(deduped_reasons),
+        "stale_reasons": deduped_reasons,
+        "invoice_document": invoice_document,
+    }
+
+
+def _serialize_invoice_status(*, db: Session, load: Any) -> dict[str, Any]:
+    invoice_document = _first_invoice_document(db=db, load_id=str(load.id))
+    staleness = _invoice_staleness(db=db, load=load, invoice_document=invoice_document)
+    return {
+        "load_id": str(load.id),
+        "invoice_number": getattr(load, "invoice_number", None),
+        "has_invoice": bool(staleness["has_invoice"]),
+        "invoice_document_id": str(invoice_document.id) if invoice_document is not None else None,
+        "is_stale": bool(staleness["is_stale"]),
+        "stale_reasons": staleness["stale_reasons"],
+        "view_url": f"/loads/{load.id}/invoice?disposition=inline" if invoice_document else None,
+        "download_url": f"/loads/{load.id}/invoice?disposition=attachment" if invoice_document else None,
+        "updated_at": _to_iso_or_none(getattr(invoice_document, "updated_at", None))
+        if invoice_document is not None
+        else None,
+    }
+
+
+def _read_existing_invoice_pdf(*, invoice_document: LoadDocument) -> bytes | None:
+    storage_key = getattr(invoice_document, "storage_key", None)
+    if not storage_key:
+        return None
     storage_service = StorageService()
-    document_service = DocumentService(db)
+    if not storage_service.exists(relative_path=str(storage_key)):
+        return None
+    return storage_service.read_bytes(relative_path=str(storage_key))
 
-    existing_invoice_documents, _ = document_service.list_documents(
-        load_id=str(load.id),
-        document_type=DocumentType.INVOICE,
-        page=1,
-        page_size=10,
-    )
 
-    if existing_invoice_documents:
-        invoice_document = existing_invoice_documents[0]
-        storage_key = getattr(invoice_document, "storage_key", None)
-        if storage_key:
-            storage_service.save_bytes(
-                relative_path=str(storage_key),
-                content=pdf_bytes,
-                overwrite=True,
+def _generate_and_persist_invoice_pdf(
+    *, db: Session, load: Any, force_regenerate: bool = False
+) -> bytes:
+    load_id = str(getattr(load, "id", ""))
+    lock = _invoice_generation_lock(load_id)
+    with lock:
+        total_started_at = time.perf_counter()
+        timings: dict[str, int] = {}
+        template_function_name = "_build_professional_invoice_pdf"
+        logger.info(
+            "USING TEMPLATE: %s for load_id=%s",
+            template_function_name,
+            getattr(load, "id", None),
+        )
+
+        invoice_document = _first_invoice_document(db=db, load_id=load_id)
+        staleness = _invoice_staleness(db=db, load=load, invoice_document=invoice_document)
+        if invoice_document is not None and not force_regenerate:
+            existing_started_at = time.perf_counter()
+            existing_pdf = _read_existing_invoice_pdf(invoice_document=invoice_document)
+            timings["existing_invoice_read_ms"] = _elapsed_ms(existing_started_at)
+            if existing_pdf is not None:
+                load.has_invoice = True
+                db.add(load)
+                db.flush()
+                logger.info(
+                    "Invoice generation timings load_id=%s reused_existing=true timings=%s total_ms=%s",
+                    load_id,
+                    timings,
+                    _elapsed_ms(total_started_at),
+                )
+                return existing_pdf
+
+        carrier_started_at = time.perf_counter()
+        carrier_profile = _build_carrier_profile_context(db=db, load=load)
+        timings["carrier_profile_fetch_ms"] = _elapsed_ms(carrier_started_at)
+
+        number_started_at = time.perf_counter()
+        _ensure_load_invoice_number(db=db, load=load)
+        timings["load_fetch_ms"] = _elapsed_ms(number_started_at)
+
+        checklist_started_at = time.perf_counter()
+        # The PDF checklist uses received load document rows only; no OCR/extraction state is read here.
+        if getattr(load, "documents", None) is None:
+            db.refresh(load, attribute_names=["documents"])
+        timings["document_checklist_fetch_ms"] = _elapsed_ms(checklist_started_at)
+
+        pdf_started_at = time.perf_counter()
+        pdf_bytes = _build_professional_invoice_pdf(load=load, carrier_profile=carrier_profile)
+        timings["pdf_render_ms"] = _elapsed_ms(pdf_started_at)
+
+        save_started_at = time.perf_counter()
+        storage_service = StorageService()
+        document_service = DocumentService(db)
+
+        if invoice_document is not None:
+            storage_key = getattr(invoice_document, "storage_key", None)
+            if storage_key:
+                storage_service.save_bytes(
+                    relative_path=str(storage_key),
+                    content=pdf_bytes,
+                    overwrite=True,
+                )
+            else:
+                generated_storage_key = storage_service.save_bytes(
+                    relative_path=f"pdfs/generated-invoices/{uuid.uuid4().hex}.pdf",
+                    content=pdf_bytes,
+                    overwrite=False,
+                )
+                invoice_document.storage_key = generated_storage_key
+            invoice_document.mime_type = "application/pdf"
+            invoice_document.file_size_bytes = len(pdf_bytes)
+            invoice_document.original_filename = f"invoice-{load.load_number or load.id}.pdf"
+            invoice_document.received_at = datetime.now(timezone.utc)
+            document_service.document_repo.update(invoice_document)
+            document_service.attach_to_load(
+                document_id=str(invoice_document.id),
+                load_id=str(load.id),
+            )
+            logger.info(
+                (
+                    "Generated invoice PDF reused existing document: "
+                    "load_id=%s document_id=%s document_type=%s force_regenerate=%s"
+                ),
+                load.id,
+                getattr(invoice_document, "id", None),
+                getattr(getattr(invoice_document, "document_type", None), "value", None),
+                force_regenerate,
             )
         else:
-            generated_storage_key = storage_service.save_bytes(
+            storage_key = storage_service.save_bytes(
                 relative_path=f"pdfs/generated-invoices/{uuid.uuid4().hex}.pdf",
                 content=pdf_bytes,
                 overwrite=False,
             )
-            invoice_document.storage_key = generated_storage_key
-            invoice_document.mime_type = "application/pdf"
-            invoice_document.file_size_bytes = len(pdf_bytes)
-            invoice_document.original_filename = f"invoice-{load.load_number or load.id}.pdf"
-            document_service.document_repo.update(invoice_document)
+            invoice_document = document_service.create_document(
+                organization_id=str(load.organization_id),
+                customer_account_id=str(load.customer_account_id),
+                driver_id=str(load.driver_id) if getattr(load, "driver_id", None) else None,
+                load_id=str(load.id),
+                document_type=DocumentType.INVOICE,
+                source_channel=getattr(load, "source_channel", "manual"),
+                storage_key=storage_key,
+                original_filename=f"invoice-{load.load_number or load.id}.pdf",
+                mime_type="application/pdf",
+                file_size_bytes=len(pdf_bytes),
+            )
+            logger.info(
+                "Generated invoice PDF created document: load_id=%s document_id=%s document_type=%s",
+                load.id,
+                getattr(invoice_document, "id", None),
+                getattr(getattr(invoice_document, "document_type", None), "value", None),
+            )
 
-        document_service.attach_to_load(
-            document_id=str(invoice_document.id),
-            load_id=str(load.id),
-        )
+        load.has_invoice = True
+        db.add(load)
+        db.flush()
+        timings["db_save_ms"] = _elapsed_ms(save_started_at)
         logger.info(
-            (
-                "Generated invoice PDF reused existing document: "
-                "load_id=%s document_id=%s document_type=%s"
-            ),
-            load.id,
-            getattr(invoice_document, "id", None),
-            getattr(getattr(invoice_document, "document_type", None), "value", None),
+            "Invoice generation timings load_id=%s reused_existing=false force_regenerate=%s timings=%s total_ms=%s",
+            load_id,
+            force_regenerate,
+            timings,
+            _elapsed_ms(total_started_at),
         )
         return pdf_bytes
-
-    storage_key = storage_service.save_bytes(
-        relative_path=f"pdfs/generated-invoices/{uuid.uuid4().hex}.pdf",
-        content=pdf_bytes,
-        overwrite=False,
-    )
-    invoice_document = document_service.create_document(
-        organization_id=str(load.organization_id),
-        customer_account_id=str(load.customer_account_id),
-        driver_id=str(load.driver_id) if getattr(load, "driver_id", None) else None,
-        load_id=str(load.id),
-        document_type=DocumentType.INVOICE,
-        source_channel=getattr(load, "source_channel", "manual"),
-        storage_key=storage_key,
-        original_filename=f"invoice-{load.load_number or load.id}.pdf",
-        mime_type="application/pdf",
-        file_size_bytes=len(pdf_bytes),
-    )
-    logger.info(
-        "Generated invoice PDF created document: load_id=%s document_id=%s document_type=%s",
-        load.id,
-        getattr(invoice_document, "id", None),
-        getattr(getattr(invoice_document, "document_type", None), "value", None),
-    )
-
-    return pdf_bytes
 
 
 def _assert_staff_load_management_role(token_payload: dict[str, Any]) -> None:
@@ -2238,18 +2437,40 @@ def mark_submission_packet_rejected(
     return ApiResponse(data=_serialize_submission_packet(packet), meta={}, error=None)
 
 
-@router.get("/loads/{load_id}/invoice")
-def download_load_invoice(
+@router.get("/loads/{load_id}/invoice-status", response_model=ApiResponse)
+def get_load_invoice_status(
     load_id: uuid.UUID,
     token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
     db: Session = GET_DB_SESSION_DEPENDENCY,
-) -> StreamingResponse:
+) -> ApiResponse:
     _assert_staff_load_management_role(token_payload)
     service = LoadService(db)
     load = service.get_load(str(load_id))
     _authorize_load_access(item=load, token_payload=token_payload)
+    return ApiResponse(data=_serialize_invoice_status(db=db, load=load), meta={}, error=None)
+
+
+@router.get("/loads/{load_id}/invoice")
+def download_load_invoice(
+    load_id: uuid.UUID,
+    regenerate: bool = False,
+    disposition: str = "attachment",
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
+) -> StreamingResponse:
+    endpoint_started_at = time.perf_counter()
+    _assert_staff_load_management_role(token_payload)
+    service = LoadService(db)
+    load_fetch_started_at = time.perf_counter()
+    load = service.get_load(str(load_id))
+    load_fetch_ms = _elapsed_ms(load_fetch_started_at)
+    _authorize_load_access(item=load, token_payload=token_payload)
+    normalized_regenerate = bool(regenerate)
+    normalized_disposition = "inline" if disposition == "inline" else "attachment"
+    before_document = _first_invoice_document(db=db, load_id=str(load.id))
+    before_staleness = _invoice_staleness(db=db, load=load, invoice_document=before_document)
     try:
-        pdf_bytes = _generate_and_persist_invoice_pdf(db=db, load=load)
+        pdf_bytes = _generate_and_persist_invoice_pdf(db=db, load=load, force_regenerate=normalized_regenerate)
     except ValidationError as exc:
         details = exc.details if isinstance(exc.details, dict) else {}
         if details.get("code") == "carrier_profile_incomplete":
@@ -2264,22 +2485,42 @@ def download_load_invoice(
                 status_code=422,
             ) from exc
         raise
+    action = "invoice.regenerated" if normalized_regenerate and before_document is not None else "invoice.generated"
+    if before_document is not None and not normalized_regenerate:
+        action = "invoice.viewed" if normalized_disposition == "inline" else "invoice.downloaded"
     _log_load_activity(
         db=db,
         organization_id=load.organization_id,
         entity_type="invoice",
         entity_id=load.id,
-        action="invoice.generated",
+        action=action,
         token_payload=token_payload,
-        metadata={"load_id": str(load.id), "load_number": load.load_number},
+        metadata={
+            "load_id": str(load.id),
+            "load_number": load.load_number,
+            "regenerate": normalized_regenerate,
+            "reused_existing": before_document is not None and not normalized_regenerate,
+        },
     )
     db.commit()
+    status = _serialize_invoice_status(db=db, load=load)
+    logger.info(
+        "Invoice endpoint timings load_id=%s load_fetch_ms=%s total_ms=%s",
+        load.id,
+        load_fetch_ms,
+        _elapsed_ms(endpoint_started_at),
+    )
     filename = f"invoice-{load.load_number or load.id}.pdf"
 
     return StreamingResponse(
         io.BytesIO(pdf_bytes),
         media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        headers={
+            "Content-Disposition": f'{normalized_disposition}; filename="{filename}"',
+            "X-Invoice-Number": str(status.get("invoice_number") or ""),
+            "X-Invoice-Document-Id": str(status.get("invoice_document_id") or ""),
+            "X-Invoice-Stale": "true" if status.get("is_stale") else "false",
+        },
     )
 
 

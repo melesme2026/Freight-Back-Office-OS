@@ -221,3 +221,54 @@ def test_build_professional_invoice_pdf_prefers_load_number_for_load_reference()
 
     assert b"Load Ref: LD-7777" in pdf_bytes
     assert b"Load Ref: 11111111-2222-3333-4444-555555555555" not in pdf_bytes
+
+
+def test_build_professional_invoice_pdf_uses_received_checklist_labels_and_preserves_long_remit_text() -> None:
+    long_email = "accounts-payable-super-long-local-part@broker-domain-with-long-name.example"
+    long_remit = "Remit ACH payments to remit-team-with-long-alias@carrier-payments.example with invoice and load references included"
+    load = SimpleNamespace(
+        id=uuid.uuid4(),
+        load_number="LD-EMAIL",
+        invoice_number="INV-EMAIL",
+        rate_confirmation_number="RC-EMAIL",
+        customer_account_id=uuid.uuid4(),
+        customer_account=SimpleNamespace(account_name="Acme Shipper", billing_email=long_email),
+        organization=None,
+        broker=SimpleNamespace(name="Broker", email=long_email, mc_number="MC-1", payment_terms_days=30),
+        driver=SimpleNamespace(full_name="Jane Driver"),
+        gross_amount="1500.00",
+        currency_code="USD",
+        pickup_location="Chicago, IL",
+        pickup_date="2026-04-01",
+        delivery_location="Atlanta, GA",
+        delivery_date="2026-04-03",
+        notes="Short note",
+        documents=[
+            SimpleNamespace(document_type=DocumentType.RATE_CONFIRMATION),
+            SimpleNamespace(document_type=DocumentType.BILL_OF_LADING),
+            SimpleNamespace(document_type=DocumentType.PROOF_OF_DELIVERY),
+        ],
+        broker_name_raw=None,
+        broker_email_raw=None,
+    )
+
+    pdf_bytes = _build_professional_invoice_pdf(
+        load=load,
+        carrier_profile={
+            "legal_name": "Blue Sky Transport LLC",
+            "email": "billing-team-with-long-alias@carrier-payments.example",
+            "phone": "15551112222",
+            "address": "100 Main St | Chicago, IL 60601 | USA",
+            "mc_number": "MC-778899",
+            "dot_number": "DOT-112233",
+            "remit_to": long_remit,
+        },
+    )
+
+    assert b"Rate Confirmation received" in pdf_bytes
+    assert b"Bill of Lading received" in pdf_bytes
+    assert b"Proof of Delivery received" in pdf_bytes
+    assert b"Invoice generated" in pdf_bytes
+    assert b"remit-team-with-long-alias" in pdf_bytes
+    assert b"carrier-payments.example" in pdf_bytes
+    assert b"\\(555\\) 111-2222" in pdf_bytes or b"+1 \\(555\\) 111-2222" in pdf_bytes
