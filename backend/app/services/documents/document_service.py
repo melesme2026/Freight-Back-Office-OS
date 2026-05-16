@@ -116,6 +116,95 @@ class DocumentService:
 
         return self.document_repo.get_by_id(created.id, include_related=True) or created
 
+    def create_document_upload_hot_path(
+        self,
+        *,
+        organization_id: str,
+        customer_account_id: str,
+        storage_key: str,
+        source_channel: str | Channel,
+        driver_id: str | None = None,
+        load_id: str | None = None,
+        document_type: str | DocumentType | None = None,
+        original_filename: str | None = None,
+        mime_type: str | None = None,
+        file_size_bytes: int | None = None,
+        storage_bucket: str | None = None,
+        page_count: int | None = None,
+        uploaded_by_staff_user_id: str | None = None,
+        processing_status: ProcessingStatus = ProcessingStatus.QUEUED,
+    ) -> LoadDocument:
+        """Create an upload row without relationship hydration or broad session expiry.
+
+        The staff upload endpoint is a production hot path.  It performs scalar
+        readiness recomputation separately, so this insert helper intentionally
+        avoids the regular service method's relationship reload and legacy
+        readiness synchronizer.
+        """
+
+        normalized_organization_id = self._normalize_required_text(
+            "organization_id",
+            organization_id,
+        )
+        normalized_customer_account_id = self._normalize_required_text(
+            "customer_account_id",
+            customer_account_id,
+        )
+        normalized_storage_key = self._normalize_required_text("storage_key", storage_key)
+        normalized_source_channel = self._normalize_channel(source_channel)
+        normalized_driver_id = self._normalize_optional_text(driver_id)
+        normalized_load_id = self._normalize_optional_text(load_id)
+        normalized_original_filename = self._normalize_optional_text(original_filename)
+        normalized_mime_type = self._normalize_optional_text(mime_type)
+        normalized_storage_bucket = self._normalize_optional_text(storage_bucket)
+        normalized_uploaded_by_staff_user_id = self._normalize_optional_text(
+            uploaded_by_staff_user_id
+        )
+        normalized_document_type = self._normalize_document_type(document_type)
+        validated_file_size_bytes = self._validate_non_negative_int(
+            "file_size_bytes",
+            file_size_bytes,
+        )
+        validated_page_count = self._validate_non_negative_int("page_count", page_count)
+
+        file_hash_sha256 = self._build_file_hash(
+            storage_key=normalized_storage_key,
+            file_bytes=None,
+            original_filename=normalized_original_filename,
+            file_size_bytes=validated_file_size_bytes,
+        )
+        existing = self.document_repo.get_by_file_hash(file_hash_sha256=file_hash_sha256)
+        if existing is not None:
+            raise DuplicateRecordError(
+                "Document with the same file already exists",
+                details={
+                    "document_id": str(existing.id),
+                    "file_hash_sha256": file_hash_sha256,
+                },
+            )
+
+        model = LoadDocument(
+            organization_id=normalized_organization_id,
+            customer_account_id=normalized_customer_account_id,
+            driver_id=normalized_driver_id,
+            load_id=normalized_load_id,
+            source_channel=normalized_source_channel,
+            document_type=normalized_document_type,
+            original_filename=normalized_original_filename,
+            mime_type=normalized_mime_type,
+            file_size_bytes=validated_file_size_bytes,
+            storage_bucket=normalized_storage_bucket,
+            storage_key=normalized_storage_key,
+            file_hash_sha256=file_hash_sha256,
+            page_count=validated_page_count,
+            processing_status=processing_status,
+            classification_confidence=None,
+            ocr_completed_at=None,
+            received_at=datetime.now(timezone.utc),
+            uploaded_by_staff_user_id=normalized_uploaded_by_staff_user_id,
+        )
+        return self.document_repo.create(model)
+
     # ---------------------------
     # READ
     # ---------------------------

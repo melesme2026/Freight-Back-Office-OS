@@ -579,6 +579,91 @@ def _queue_document_processing(
     return job
 
 
+def _upload_elapsed_ms(started_at: float) -> int:
+    return int((time.perf_counter() - started_at) * 1000)
+
+
+def _run_deferred_document_upload_work(
+    *,
+    organization_id: str,
+    document_id: str,
+    token_payload: dict[str, Any],
+    audit_action: str,
+    audit_metadata: dict[str, Any],
+    upload_request_id: str,
+) -> None:
+    """Run noncritical upload side effects outside the response hot path."""
+
+    started_at = time.perf_counter()
+    session_factory = get_session_factory()
+    db = session_factory()
+    processing_job: dict[str, Any] | None = None
+    try:
+        service = DocumentService(db)
+        document = service.document_repo.get_by_id(document_id, include_related=False)
+        if document is None:
+            logger.warning(
+                "Deferred document upload work skipped because document is missing",
+                extra={
+                    "upload_request_id": upload_request_id,
+                    "document_id": document_id,
+                    "organization_id": organization_id,
+                },
+            )
+            return
+
+        _create_document_uploaded_notification(db=db, document=document)
+        _log_document_event(
+            db=db,
+            organization_id=organization_id,
+            document_id=document_id,
+            action=audit_action,
+            token_payload=token_payload,
+            metadata={**audit_metadata, "deferred": True},
+        )
+        db.commit()
+
+        operational_cache.invalidate_namespace(
+            "command_center", organization_id=organization_id
+        )
+        operational_cache.invalidate_namespace(
+            "operational_analytics", organization_id=organization_id
+        )
+        processing_job = _queue_document_processing(
+            document_id=document_id,
+            organization_id=organization_id,
+            background_tasks=None,
+            upload_request_id=upload_request_id,
+        )
+        logger.info(
+            "Deferred document upload work completed",
+            extra={
+                "upload_request_id": upload_request_id,
+                "upload_stage": "deferred_upload_work_completed",
+                "document_id": document_id,
+                "organization_id": organization_id,
+                "background_task_ms": _upload_elapsed_ms(started_at),
+                "document_processing": processing_job,
+            },
+        )
+    except Exception:
+        db.rollback()
+        logger.exception(
+            "Deferred document upload work failed",
+            extra={
+                "upload_request_id": upload_request_id,
+                "upload_stage": "deferred_upload_work_failed",
+                "document_id": document_id,
+                "organization_id": organization_id,
+                "background_task_ms": _upload_elapsed_ms(started_at),
+                "exception_trace": traceback.format_exc(),
+                "rollback_trace": "deferred_upload_session_rolled_back",
+            },
+        )
+    finally:
+        db.close()
+
+
 @router.post("/documents/upload", response_model=ApiResponse)
 async def upload_document(
     *,
@@ -599,6 +684,18 @@ async def upload_document(
     _ = uploaded_by_staff_user_id
     upload_request_id = uuid.uuid4().hex
     upload_started_at = time.perf_counter()
+    timings: dict[str, int] = {
+        "auth_ms": 0,
+        "multipart_parse_ms": 0,
+        "db_lookup_ms": 0,
+        "file_save_ms": 0,
+        "db_insert_ms": 0,
+        "readiness_recompute_ms": 0,
+        "background_task_ms": 0,
+        "commit_ms": 0,
+        "response_ms": 0,
+        "total_ms": 0,
+    }
     _log_upload_stage(
         stage="request_received",
         started_at=upload_started_at,
@@ -611,7 +708,9 @@ async def upload_document(
         upload_request_id=upload_request_id,
         extra={"content_type": file.content_type},
     )
+    stage_started_at = time.perf_counter()
     _validate_upload_file(file)
+    timings["multipart_parse_ms"] = _upload_elapsed_ms(stage_started_at)
     _log_upload_stage(
         stage="file_metadata_parsed",
         started_at=upload_started_at,
@@ -624,12 +723,14 @@ async def upload_document(
         upload_request_id=upload_request_id,
         extra={"content_type": file.content_type},
     )
+    stage_started_at = time.perf_counter()
     _ensure_staff_role(token_payload)
     token_org_id = token_payload.get("organization_id")
     if str(organization_id) != str(token_org_id):
         raise UnauthorizedError(
             "organization_id does not match authenticated organization"
         )
+    timings["auth_ms"] = _upload_elapsed_ms(stage_started_at)
     _log_upload_stage(
         stage="auth_resolved",
         started_at=upload_started_at,
@@ -649,6 +750,7 @@ async def upload_document(
     normalized_document_type = _normalize_optional_text(document_type)
     storage: StorageService | None = None
     uploaded_storage_key: str | None = None
+    old_replaced_storage_key: str | None = None
 
     try:
         service = DocumentService(db)
@@ -659,6 +761,7 @@ async def upload_document(
             server_uploaded_by_staff_user_id = token_subject
 
         replace_existing = _parse_replace_flag(replace)
+        stage_started_at = time.perf_counter()
         parsed_document_type = service._normalize_document_type(
             normalized_document_type, allow_none=True
         )
@@ -690,6 +793,7 @@ async def upload_document(
                         "can_replace": True,
                     },
                 )
+        timings["db_lookup_ms"] = _upload_elapsed_ms(stage_started_at)
 
         _log_upload_stage(
             stage="org_load_resolved",
@@ -709,10 +813,12 @@ async def upload_document(
             },
         )
 
+        stage_started_at = time.perf_counter()
         storage = StorageService()
         storage_result = await storage.save_file(
             file, max_size_bytes=MAX_UPLOAD_FILE_SIZE_BYTES
         )
+        timings["file_save_ms"] = _upload_elapsed_ms(stage_started_at)
 
         storage_key = storage_result.get("storage_key")
         if not storage_key:
@@ -745,8 +851,14 @@ async def upload_document(
             extra={"storage_bucket": storage_bucket},
         )
 
+        stage_started_at = time.perf_counter()
+        extraction_enabled = get_settings().document_upload_extraction_enabled
+        processing_status = (
+            ProcessingStatus.QUEUED if extraction_enabled else ProcessingStatus.COMPLETED
+        )
         if existing_required_doc and replace_existing:
             old_storage_key = existing_required_doc.storage_key
+            old_replaced_storage_key = str(old_storage_key) if old_storage_key else None
             existing_required_doc.original_filename = _normalize_optional_text(
                 file.filename
             )
@@ -758,20 +870,16 @@ async def upload_document(
             )
             existing_required_doc.mime_type = _infer_mime_type(file.filename, file.content_type)
             existing_required_doc.file_size_bytes = file_size_bytes
-            existing_required_doc.processing_status = ProcessingStatus.QUEUED
+            existing_required_doc.processing_status = processing_status
             existing_required_doc.received_at = datetime.utcnow()
             existing_required_doc.ocr_completed_at = None
             if server_uploaded_by_staff_user_id:
                 existing_required_doc.uploaded_by_staff_user_id = (
                     server_uploaded_by_staff_user_id
                 )
-            if not get_settings().document_upload_extraction_enabled:
-                existing_required_doc.processing_status = ProcessingStatus.COMPLETED
             item = service.document_repo.update(existing_required_doc)
-            if old_storage_key and old_storage_key != existing_required_doc.storage_key:
-                storage.delete(relative_path=old_storage_key)
         else:
-            item = service.create_document(
+            item = service.create_document_upload_hot_path(
                 organization_id=str(organization_id),
                 customer_account_id=str(customer_account_id),
                 storage_key=uploaded_storage_key,
@@ -789,9 +897,13 @@ async def upload_document(
                 file_size_bytes=file_size_bytes,
                 page_count=page_count,
                 uploaded_by_staff_user_id=server_uploaded_by_staff_user_id,
+                processing_status=processing_status,
             )
-            if not get_settings().document_upload_extraction_enabled:
-                item = service.mark_extraction_skipped(document_id=str(item.id))
+        timings["db_insert_ms"] = _upload_elapsed_ms(stage_started_at)
+        stage_started_at = time.perf_counter()
+        if load_id:
+            service.sync_load_document_flags_fast(str(load_id))
+        timings["readiness_recompute_ms"] = _upload_elapsed_ms(stage_started_at)
         _log_upload_stage(
             stage="db_document_row_created",
             started_at=upload_started_at,
@@ -807,29 +919,12 @@ async def upload_document(
             document_id=item.id,
             extra={"processing_status": _enum_to_string(item.processing_status)},
         )
-        _create_document_uploaded_notification(db=db, document=item)
-        _log_document_event(
-            db=db,
-            organization_id=organization_id,
-            document_id=item.id,
-            action=(
-                "document.replaced"
-                if existing_required_doc and replace_existing
-                else "document.uploaded"
-            ),
-            token_payload=token_payload,
-            metadata={
-                "document_type": normalized_document_type,
-                "filename": file.filename,
-                "file_size_bytes": file_size_bytes,
-                "load_id": str(load_id) if load_id else None,
-                "warning": quota_decision.reason if quota_decision.warning else None,
-            },
-        )
         item_id = str(item.id)
         item_organization_id = str(item.organization_id)
         serialized_item = _serialize_lightweight_document(item)
+        stage_started_at = time.perf_counter()
         db.commit()
+        timings["commit_ms"] = _upload_elapsed_ms(stage_started_at)
         _log_upload_stage(
             stage="db_transaction_committed",
             started_at=upload_started_at,
@@ -844,41 +939,61 @@ async def upload_document(
             storage_key=uploaded_storage_key,
             document_id=item_id,
         )
-        operational_cache.invalidate_namespace(
-            "command_center", organization_id=str(organization_id)
-        )
-        operational_cache.invalidate_namespace(
-            "operational_analytics", organization_id=str(organization_id)
-        )
-        processing_job = _queue_document_processing(
-            document_id=item_id,
-            organization_id=item_organization_id,
-            background_tasks=background_tasks,
-            upload_request_id=upload_request_id,
-        )
-        processing_meta = (
-            {
-                "status": ProcessingStatus.QUEUED.value,
-                "extraction_status": ProcessingStatus.QUEUED.value,
-                "job_id": processing_job["id"],
-                "job_type": processing_job["job_type"],
-                "idempotency_key": processing_job["idempotency_key"],
-            }
-            if processing_job is not None
-            else {
-                "status": ProcessingStatus.COMPLETED.value,
-                "extraction_status": ProcessingStatus.SKIPPED.value,
-                "job_id": None,
-                "job_type": "document_extraction",
-                "idempotency_key": None,
-                "skipped": True,
-                "reason": "document_upload_extraction_disabled",
-            }
-        )
+        processing_meta = {
+            "status": processing_status.value,
+            "extraction_status": (
+                ProcessingStatus.QUEUED.value
+                if extraction_enabled
+                else ProcessingStatus.SKIPPED.value
+            ),
+            "job_id": None,
+            "job_type": "document_extraction",
+            "idempotency_key": None,
+            "deferred": True,
+            "skipped": not extraction_enabled,
+            "reason": None if extraction_enabled else "document_upload_extraction_disabled",
+        }
+        stage_started_at = time.perf_counter()
+        if background_tasks is not None:
+            background_tasks.add_task(
+                _run_deferred_document_upload_work,
+                organization_id=item_organization_id,
+                document_id=item_id,
+                token_payload=dict(token_payload),
+                audit_action=(
+                    "document.replaced"
+                    if existing_required_doc and replace_existing
+                    else "document.uploaded"
+                ),
+                audit_metadata={
+                    "document_type": normalized_document_type,
+                    "filename": file.filename,
+                    "file_size_bytes": file_size_bytes,
+                    "load_id": str(load_id) if load_id else None,
+                    "warning": quota_decision.reason if quota_decision.warning else None,
+                },
+                upload_request_id=upload_request_id,
+            )
+            if (
+                old_replaced_storage_key
+                and old_replaced_storage_key != uploaded_storage_key
+            ):
+                background_tasks.add_task(
+                    _run_deferred_storage_delete,
+                    storage_key=old_replaced_storage_key,
+                    trace_context={
+                        "upload_request_id": upload_request_id,
+                        "document_id": item_id,
+                        "organization_id": item_organization_id,
+                        "upload_stage": "deferred_replaced_storage_delete",
+                    },
+                )
+        timings["background_task_ms"] = _upload_elapsed_ms(stage_started_at)
+        timings["total_ms"] = _upload_elapsed_ms(upload_started_at)
         _log_upload_stage(
             stage=(
-                "extraction_analysis_started"
-                if processing_job
+                "extraction_analysis_deferred"
+                if extraction_enabled
                 else "extraction_analysis_skipped"
             ),
             started_at=upload_started_at,
@@ -907,18 +1022,45 @@ async def upload_document(
             file_size_bytes=int(file_size_bytes or 0),
             storage_key=uploaded_storage_key,
             document_id=item_id,
+            extra={**timings, "deferred_optional_work": True},
         )
-
-        return ApiResponse(
-            data=serialized_item,
-            meta={
-                "uploaded": True,
-                "quota": quota_decision.as_dict(),
-                "document_processing": processing_meta,
+        stage_started_at = time.perf_counter()
+        response_meta = {
+            "uploaded": True,
+            "quota": quota_decision.as_dict(),
+            "document_processing": processing_meta,
+            "timings": timings,
+        }
+        timings["response_ms"] = _upload_elapsed_ms(stage_started_at)
+        timings["total_ms"] = _upload_elapsed_ms(upload_started_at)
+        logger.info(
+            "Document upload trace completed",
+            extra={
+                **_upload_log_context(
+                    organization_id=organization_id,
+                    customer_account_id=customer_account_id,
+                    driver_id=driver_id,
+                    load_id=load_id,
+                    document_type=normalized_document_type,
+                    filename=file.filename,
+                    upload_request_id=upload_request_id,
+                    file_size_bytes=int(file_size_bytes or 0),
+                    storage_key=uploaded_storage_key,
+                    document_id=item_id,
+                ),
+                **timings,
+                "limiter_bucket": "document_writes",
+                "deferred_optional_work": True,
+                "waited_on_optional_panels": False,
+                "waited_on_packet_audit": False,
+                "waited_on_invoice": False,
+                "waited_on_submission_packets": False,
+                "waited_on_review_context": False,
             },
-            error=None,
         )
+        return ApiResponse(data=serialized_item, meta=response_meta, error=None)
     except HTTPException:
+        db.rollback()
         if storage is not None and uploaded_storage_key:
             storage.delete(relative_path=uploaded_storage_key)
         raise

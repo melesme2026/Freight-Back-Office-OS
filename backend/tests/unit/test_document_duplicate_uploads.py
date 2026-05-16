@@ -295,7 +295,11 @@ def test_owner_upload_cleans_up_file_when_database_create_fails(
     def fail_create_document(self, *args, **kwargs):
         raise RuntimeError("simulated database failure")
 
-    monkeypatch.setattr(DocumentService, "create_document", fail_create_document)
+    monkeypatch.setattr(
+        DocumentService,
+        "create_document_upload_hot_path",
+        fail_create_document,
+    )
 
     with pytest.raises(HTTPException) as exc:
         asyncio.run(
