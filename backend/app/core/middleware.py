@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import time
 import uuid
 from collections.abc import Callable
@@ -13,6 +14,8 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
 
 PROCESS_TIME_HEADER = "X-Process-Time-Ms"
+SLOW_ENDPOINT_LOG_THRESHOLD_MS = 1500
+logger = logging.getLogger(__name__)
 
 
 class RequestContextMiddleware(BaseHTTPMiddleware):
@@ -53,6 +56,17 @@ class ProcessTimeMiddleware(BaseHTTPMiddleware):
 
         duration_ms = (time.perf_counter() - started_at) * 1000
         response.headers[PROCESS_TIME_HEADER] = f"{duration_ms:.2f}"
+        if duration_ms >= SLOW_ENDPOINT_LOG_THRESHOLD_MS:
+            logger.warning(
+                "Slow API endpoint completed",
+                extra={
+                    "path": request.url.path,
+                    "method": request.method,
+                    "status_code": response.status_code,
+                    "duration_ms": round(duration_ms, 2),
+                    "request_id": getattr(request.state, "request_id", None),
+                },
+            )
         return response
 
 

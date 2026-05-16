@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+import time
 import uuid
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
@@ -19,6 +21,7 @@ GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY = Depends(get_current_token_payload)
 GET_DB_SESSION_DEPENDENCY = Depends(get_db_session)
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 def _uuid_to_str(value: uuid.UUID | None) -> str | None:
@@ -264,6 +267,7 @@ def get_load_review_context(
 ) -> ApiResponse:
     token_org_id = token_payload.get("organization_id")
 
+    started_at = time.perf_counter()
     service = ReviewQueueService(db)
     try:
         item = service.get_load_review_context(
@@ -273,8 +277,18 @@ def get_load_review_context(
     except ValueError as exc:
         raise UnauthorizedError("Load is not in authenticated organization") from exc
 
+    elapsed_ms = int((time.perf_counter() - started_at) * 1000)
+    logger.info(
+        "Review queue load context endpoint completed",
+        extra={
+            "load_id": str(load_id),
+            "organization_id": str(token_org_id),
+            "elapsed_ms": elapsed_ms,
+        },
+    )
+
     return ApiResponse(
         data=item,
-        meta={},
+        meta={"elapsed_ms": elapsed_ms},
         error=None,
     )

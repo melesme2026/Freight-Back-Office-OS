@@ -4,6 +4,7 @@ import csv
 import io
 import logging
 import re
+import time
 import uuid
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
@@ -1752,10 +1753,20 @@ def get_load_packet_audit(
     load = service.get_load(str(load_id))
     _authorize_load_access(item=load, token_payload=token_payload)
 
+    started_at = time.perf_counter()
     audit = PacketAuditService(db).audit_load(
         load_id=str(load_id), org_id=str(load.organization_id)
     )
-    return ApiResponse(data=audit.to_dict(), meta={}, error=None)
+    elapsed_ms = int((time.perf_counter() - started_at) * 1000)
+    logger.info(
+        "Load packet audit endpoint completed",
+        extra={
+            "load_id": str(load_id),
+            "organization_id": str(load.organization_id),
+            "elapsed_ms": elapsed_ms,
+        },
+    )
+    return ApiResponse(data=audit.to_dict(), meta={"elapsed_ms": elapsed_ms}, error=None)
 
 
 @router.get("/loads/{load_id}/submission-packets", response_model=ApiResponse)
@@ -1769,15 +1780,24 @@ def list_submission_packets(
     load = service.get_load(str(load_id))
     _authorize_load_access(item=load, token_payload=token_payload)
 
+    started_at = time.perf_counter()
     packet_service = SubmissionPacketService(db)
-    audit_service = PacketAuditService(db)
     packets = packet_service.list_packets(load_id=str(load_id), org_id=str(load.organization_id))
-    for packet in packets:
-        packet.packet_audit = audit_service.audit_load(
-            load_id=str(load_id), org_id=str(load.organization_id), packet_id=str(packet.id)
-        )
+    elapsed_ms = int((time.perf_counter() - started_at) * 1000)
+    logger.info(
+        "Submission packets list endpoint completed",
+        extra={
+            "load_id": str(load_id),
+            "organization_id": str(load.organization_id),
+            "packet_count": len(packets),
+            "elapsed_ms": elapsed_ms,
+            "packet_audit_mode": "deferred",
+        },
+    )
     return ApiResponse(
-        data=[_serialize_submission_packet(packet) for packet in packets], meta={}, error=None
+        data=[_serialize_submission_packet(packet) for packet in packets],
+        meta={"elapsed_ms": elapsed_ms, "packet_audit_mode": "deferred"},
+        error=None,
     )
 
 

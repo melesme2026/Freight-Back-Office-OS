@@ -176,7 +176,9 @@ function fulfillDriverDocumentUpload(route: Route, state: MutableState) {
       filename: originalFilename,
       file_name: originalFilename,
       document_type: "proof_of_delivery",
-      processing_status: "uploaded",
+      received_status: "received",
+      processing_status: "completed",
+      extraction_status: "skipped",
       received_at: FIXED_ISO_TIMESTAMP,
       status: "uploaded",
     },
@@ -482,7 +484,10 @@ export async function mockApi(page: Page) {
         file_name: doc.original_filename,
         original_filename: doc.original_filename,
         document_type: doc.document_type,
-        processing_status: "accepted",
+        received_status: "received",
+        processing_status: "completed",
+        extraction_status: "skipped",
+        validation_status: "not_required",
         received_at: FIXED_ISO_TIMESTAMP,
       })));
     }
@@ -496,7 +501,12 @@ export async function mockApi(page: Page) {
         original_filename: doc.original_filename,
         file_name: doc.original_filename,
         document_type: doc.document_type,
-        processing_status: "accepted",
+        received_status: "received",
+        processing_status: "completed",
+        extraction_status: "skipped",
+        validation_status: "not_required",
+        received_at: FIXED_ISO_TIMESTAMP,
+        file_size_bytes: 4096,
         created_at: FIXED_ISO_TIMESTAMP,
       })));
     }

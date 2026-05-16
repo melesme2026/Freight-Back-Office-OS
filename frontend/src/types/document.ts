@@ -17,16 +17,23 @@ export type DocumentType =
 
 export type ProcessingStatus =
   | "pending"
+  | "queued"
+  | "in_progress"
   | "processing"
   | "completed"
   | "failed"
+  | "skipped"
+  | "not_required"
   | "needs_review";
 
 export type Document = {
   id: string;
   original_filename: string;
   document_type: DocumentType;
+  received_status?: "received" | "missing" | null;
   processing_status: ProcessingStatus;
+  extraction_status?: ProcessingStatus | null;
+  validation_status?: "not_required" | "needs_review" | "passed" | "failed" | null;
 
   mime_type?: string | null;
   source_channel?: string | null;

@@ -285,6 +285,34 @@ def _ensure_staff_role(token_payload: dict[str, Any]) -> None:
         raise UnauthorizedError("Driver accounts cannot access this endpoint")
 
 
+def _document_processing_value(item: Any) -> str | None:
+    return _enum_to_string(getattr(item, "processing_status", None))
+
+
+def _document_received_status(item: Any) -> str:
+    if getattr(item, "received_at", None) is not None or getattr(item, "storage_key", None):
+        return "received"
+    return "missing"
+
+
+def _document_extraction_status(item: Any) -> str:
+    processing_status = _document_processing_value(item)
+    extraction_pending_statuses = {
+        ProcessingStatus.FAILED.value,
+        ProcessingStatus.IN_PROGRESS.value,
+        ProcessingStatus.PROCESSING.value,
+        ProcessingStatus.QUEUED.value,
+        ProcessingStatus.PENDING.value,
+    }
+    if processing_status in extraction_pending_statuses:
+        return processing_status
+    if processing_status == ProcessingStatus.COMPLETED.value:
+        if getattr(item, "ocr_completed_at", None) is None:
+            return ProcessingStatus.SKIPPED.value
+        return ProcessingStatus.COMPLETED.value
+    return ProcessingStatus.NOT_REQUIRED.value
+
+
 def _serialize_document(item: Any) -> dict[str, Any]:
     loaded_values = getattr(item, "__dict__", {})
     load = loaded_values.get("load")
@@ -308,7 +336,12 @@ def _serialize_document(item: Any) -> dict[str, Any]:
         "file_size_bytes": getattr(item, "file_size_bytes", None),
         "storage_bucket": getattr(item, "storage_bucket", None),
         "storage_key": getattr(item, "storage_key", None),
-        "processing_status": _enum_to_string(getattr(item, "processing_status", None)),
+        "received_status": _document_received_status(item),
+        "processing_status": _document_processing_value(item),
+        "extraction_status": _document_extraction_status(item),
+        "validation_status": (
+            "needs_review" if getattr(item, "validation_issues", None) else "not_required"
+        ),
         "page_count": getattr(item, "page_count", None),
         "classification_confidence": getattr(item, "classification_confidence", None),
         "ocr_completed_at": _to_iso_or_none(getattr(item, "ocr_completed_at", None)),
@@ -658,12 +691,13 @@ async def upload_document(
             existing_required_doc.file_size_bytes = file_size_bytes
             existing_required_doc.processing_status = ProcessingStatus.QUEUED
             existing_required_doc.received_at = datetime.utcnow()
+            existing_required_doc.ocr_completed_at = None
             if server_uploaded_by_staff_user_id:
                 existing_required_doc.uploaded_by_staff_user_id = (
                     server_uploaded_by_staff_user_id
                 )
             if not get_settings().document_upload_extraction_enabled:
-                existing_required_doc.processing_status = ProcessingStatus.PENDING
+                existing_required_doc.processing_status = ProcessingStatus.COMPLETED
             item = service.document_repo.update(existing_required_doc)
             if old_storage_key and old_storage_key != existing_required_doc.storage_key:
                 storage.delete(relative_path=old_storage_key)
@@ -688,8 +722,7 @@ async def upload_document(
                 uploaded_by_staff_user_id=server_uploaded_by_staff_user_id,
             )
             if not get_settings().document_upload_extraction_enabled:
-                item.processing_status = ProcessingStatus.PENDING
-                item = service.document_repo.update(item)
+                item = service.mark_extraction_skipped(document_id=str(item.id))
         _log_upload_stage(
             stage="db_document_row_created",
             started_at=upload_started_at,
@@ -757,13 +790,15 @@ async def upload_document(
         processing_meta = (
             {
                 "status": ProcessingStatus.QUEUED.value,
+                "extraction_status": ProcessingStatus.QUEUED.value,
                 "job_id": processing_job["id"],
                 "job_type": processing_job["job_type"],
                 "idempotency_key": processing_job["idempotency_key"],
             }
             if processing_job is not None
             else {
-                "status": ProcessingStatus.PENDING.value,
+                "status": ProcessingStatus.COMPLETED.value,
+                "extraction_status": ProcessingStatus.SKIPPED.value,
                 "job_id": None,
                 "job_type": "document_extraction",
                 "idempotency_key": None,
@@ -1033,8 +1068,9 @@ async def upload_driver_document(
             existing_required_doc.processing_status = (
                 ProcessingStatus.QUEUED
                 if get_settings().document_upload_extraction_enabled
-                else ProcessingStatus.PENDING
+                else ProcessingStatus.COMPLETED
             )
+            existing_required_doc.ocr_completed_at = None
             existing_required_doc.received_at = datetime.utcnow()
             item = service.document_repo.update(existing_required_doc)
             if old_storage_key and old_storage_key != existing_required_doc.storage_key:
@@ -1060,8 +1096,7 @@ async def upload_driver_document(
                 uploaded_by_staff_user_id=None,
             )
             if not get_settings().document_upload_extraction_enabled:
-                item.processing_status = ProcessingStatus.PENDING
-                item = service.document_repo.update(item)
+                item = service.mark_extraction_skipped(document_id=str(item.id))
         _create_document_uploaded_notification(
             db=db,
             document=item,
@@ -1119,13 +1154,15 @@ async def upload_driver_document(
         processing_meta = (
             {
                 "status": ProcessingStatus.QUEUED.value,
+                "extraction_status": ProcessingStatus.QUEUED.value,
                 "job_id": processing_job["id"],
                 "job_type": processing_job["job_type"],
                 "idempotency_key": processing_job["idempotency_key"],
             }
             if processing_job is not None
             else {
-                "status": ProcessingStatus.PENDING.value,
+                "status": ProcessingStatus.COMPLETED.value,
+                "extraction_status": ProcessingStatus.SKIPPED.value,
                 "job_id": None,
                 "job_type": "document_extraction",
                 "idempotency_key": None,
