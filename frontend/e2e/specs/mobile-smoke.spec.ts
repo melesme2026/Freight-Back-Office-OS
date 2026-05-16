@@ -171,3 +171,37 @@ test("mobile smoke: camera-first upload shows preview and success feedback", asy
   await expect(page.getByRole("status")).toHaveText("Upload successful: pod-photo.png");
   await expectNoPageOverflow(page);
 });
+
+test("load detail renders core content when optional sections fail", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await mockApi(page);
+
+  await page.route("**/api/v1/loads/*/packet-audit", async (route) => {
+    await route.fulfill({
+      status: 504,
+      contentType: "application/json",
+      body: JSON.stringify({ error: { message: "Packet audit timed out" } }),
+    });
+  });
+  await page.route("**/api/v1/loads/*/submission-packets", async (route) => {
+    if (route.request().method() === "GET") {
+      await route.fulfill({
+        status: 500,
+        contentType: "application/json",
+        body: JSON.stringify({ error: { message: "Submission packets unavailable" } }),
+      });
+      return;
+    }
+    await route.fallback();
+  });
+
+  await loginAsOwner(page);
+  await page.goto(`/dashboard/loads/${seed.load.id}`);
+
+  await expect(page.getByRole("main").getByRole("heading", { name: seed.load.load_number })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Documents" })).toBeVisible();
+  await expect(page.getByText("Packet audit timed out")).toBeVisible();
+  await expect(page.getByText("Submission packets unavailable")).toBeVisible();
+  await expect(page.getByLabel("Upload Document Type")).toBeVisible();
+  await expectNoPageOverflow(page);
+});

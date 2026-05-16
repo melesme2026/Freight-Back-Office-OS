@@ -52,22 +52,44 @@ class ProcessTimeMiddleware(BaseHTTPMiddleware):
             started_at = time.perf_counter()
             request.state.started_at = started_at
 
-        response = await call_next(request)
-
-        duration_ms = (time.perf_counter() - started_at) * 1000
-        response.headers[PROCESS_TIME_HEADER] = f"{duration_ms:.2f}"
-        if duration_ms >= SLOW_ENDPOINT_LOG_THRESHOLD_MS:
-            logger.warning(
-                "Slow API endpoint completed",
+        response: Response | None = None
+        try:
+            response = await call_next(request)
+            return response
+        except Exception:
+            duration_ms = (time.perf_counter() - started_at) * 1000
+            logger.exception(
+                "API endpoint failed",
                 extra={
-                    "path": request.url.path,
+                    "endpoint": request.url.path,
                     "method": request.method,
-                    "status_code": response.status_code,
+                    "status": 500,
                     "duration_ms": round(duration_ms, 2),
                     "request_id": getattr(request.state, "request_id", None),
+                    "organization_id": request.headers.get("x-organization-id"),
+                    "failure_reason": "unhandled_exception",
                 },
             )
-        return response
+            raise
+        finally:
+            duration_ms = (time.perf_counter() - started_at) * 1000
+            status_code = response.status_code if response is not None else 500
+            if response is not None:
+                response.headers[PROCESS_TIME_HEADER] = f"{duration_ms:.2f}"
+            log_extra = {
+                "endpoint": request.url.path,
+                "path": request.url.path,
+                "method": request.method,
+                "status": status_code,
+                "status_code": status_code,
+                "duration_ms": round(duration_ms, 2),
+                "request_id": getattr(request.state, "request_id", None),
+                "organization_id": request.headers.get("x-organization-id"),
+            }
+            if duration_ms >= SLOW_ENDPOINT_LOG_THRESHOLD_MS or status_code >= 500:
+                logger.warning("Slow or failing API endpoint completed", extra=log_extra)
+            elif request.url.path.startswith("/api/v1/"):
+                logger.info("API endpoint completed", extra=log_extra)
 
 
 class CacheControlMiddleware(BaseHTTPMiddleware):

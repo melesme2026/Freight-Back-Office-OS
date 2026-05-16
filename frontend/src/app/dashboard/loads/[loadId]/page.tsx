@@ -279,6 +279,38 @@ type ModalState =
 
 type UploadDocumentType = "" | "rate_confirmation" | "bill_of_lading" | "proof_of_delivery" | "invoice" | "lumper_receipt" | "detention_support" | "scale_ticket" | "accessorial_support" | "payment_remittance" | "damage_claim_photo" | "other" | "unknown";
 
+type OptionalSectionKey =
+  | "documents"
+  | "packetAudit"
+  | "submissionPackets"
+  | "carrierProfile"
+  | "paymentReconciliation"
+  | "followUps"
+  | "reviewQueue";
+
+type OptionalSectionState = Record<OptionalSectionKey, boolean>;
+type OptionalSectionErrors = Partial<Record<OptionalSectionKey, string>>;
+
+const OPTIONAL_SECTION_LABELS: Record<OptionalSectionKey, string> = {
+  documents: "Documents",
+  packetAudit: "Packet audit",
+  submissionPackets: "Submission packets",
+  carrierProfile: "Carrier profile",
+  paymentReconciliation: "Payment reconciliation",
+  followUps: "Follow-ups",
+  reviewQueue: "Review queue",
+};
+
+const OPTIONAL_SECTION_INITIAL_LOADING: OptionalSectionState = {
+  documents: false,
+  packetAudit: false,
+  submissionPackets: false,
+  carrierProfile: false,
+  paymentReconciliation: false,
+  followUps: false,
+  reviewQueue: false,
+};
+
 type OperationalChecklistState = "complete" | "current" | "pending" | "blocked";
 
 type OperationalChecklistItem = {
@@ -430,6 +462,13 @@ function documentStatusLabel(document: LoadDocument): string {
   const received = (document.received_status ?? "received").replaceAll("_", " ");
   const extraction = (document.extraction_status ?? document.processing_status ?? "not required").replaceAll("_", " ");
   return `${received} · extraction ${extraction}`;
+}
+
+function optionalSectionErrorMessage(section: OptionalSectionKey, caught: unknown): string {
+  return extractErrorMessage(
+    caught,
+    `${OPTIONAL_SECTION_LABELS[section]} did not load. Core load detail is still available.`
+  );
 }
 
 function isMobileViewport(): boolean {
@@ -1135,6 +1174,51 @@ function isValidDate(value: string) {
   return !Number.isNaN(parsed.getTime());
 }
 
+
+
+async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit = {}, timeoutMs = 15_000): Promise<Response> {
+  const controller = new AbortController();
+  const timeout = globalThis.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } catch (caught: unknown) {
+    if (caught instanceof DOMException && caught.name === "AbortError") {
+      throw new Error("Request timed out. Please try again.");
+    }
+    throw caught;
+  } finally {
+    globalThis.clearTimeout(timeout);
+  }
+}
+
+function SectionLoadNotice({
+  isLoading,
+  error,
+  emptyMessage,
+}: {
+  isLoading?: boolean;
+  error?: string | null;
+  emptyMessage?: string;
+}) {
+  if (error) {
+    return (
+      <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800" role="status">
+        {error} <span className="font-semibold">Retry or refresh this section when ready.</span>
+      </div>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600" role="status">
+        {emptyMessage ?? "Loading this section without blocking the load summary..."}
+      </div>
+    );
+  }
+
+  return null;
+}
+
 export default function LoadDetailPage() {
   const router = useRouter();
   const params = useParams<{ loadId: string | string[] }>();
@@ -1153,6 +1237,10 @@ export default function LoadDetailPage() {
   const [isMarkingReviewed, setIsMarkingReviewed] = useState<boolean>(false);
   const [isExecutingWorkflowAction, setIsExecutingWorkflowAction] = useState<boolean>(false);
   const [isDocumentsLoading, setIsDocumentsLoading] = useState<boolean>(false);
+  const [optionalSectionLoading, setOptionalSectionLoading] = useState<OptionalSectionState>(
+    OPTIONAL_SECTION_INITIAL_LOADING
+  );
+  const [optionalSectionErrors, setOptionalSectionErrors] = useState<OptionalSectionErrors>({});
   const [isUploadingDocument, setIsUploadingDocument] = useState<boolean>(false);
   const [downloadingDocumentId, setDownloadingDocumentId] = useState<string | null>(null);
   const [savingDocumentId, setSavingDocumentId] = useState<string | null>(null);
@@ -1192,6 +1280,7 @@ export default function LoadDetailPage() {
       `/loads/${encodeURIComponent(loadId)}`,
       {
         token: token ?? undefined,
+        timeoutMs: 8_000,
       }
     );
 
@@ -1208,6 +1297,7 @@ export default function LoadDetailPage() {
       `/review-queue/loads/${encodeURIComponent(loadId)}/context`,
       {
         token: token ?? undefined,
+        timeoutMs: 5_000,
       }
     );
 
@@ -1231,6 +1321,7 @@ export default function LoadDetailPage() {
           `/loads/${encodeURIComponent(loadId)}/documents?page=1&page_size=100`,
           {
             token: token ?? undefined,
+            timeoutMs: 5_000,
           }
         );
 
@@ -1253,7 +1344,7 @@ export default function LoadDetailPage() {
     const token = getAccessToken();
     const response = await apiClient.get<ApiResponse<unknown>>(
       `/loads/${encodeURIComponent(loadId)}/packet-audit`,
-      { token: token ?? undefined }
+      { token: token ?? undefined, timeoutMs: 5_000 }
     );
     return normalizePacketAudit(response.data);
   }, [loadId]);
@@ -1263,7 +1354,7 @@ export default function LoadDetailPage() {
     const token = getAccessToken();
     const response = await apiClient.get<ApiResponse<unknown>>(
       `/loads/${encodeURIComponent(loadId)}/submission-packets`,
-      { token: token ?? undefined }
+      { token: token ?? undefined, timeoutMs: 5_000 }
     );
     const rows = Array.isArray(response.data) ? response.data : [];
     return rows
@@ -1275,6 +1366,7 @@ export default function LoadDetailPage() {
     const token = getAccessToken();
     const response = await apiClient.get<ApiResponse<unknown>>("/carrier-profile", {
       token: token ?? undefined,
+      timeoutMs: 4_000,
     });
     const record = asRecord(response.data);
     return {
@@ -1287,7 +1379,7 @@ export default function LoadDetailPage() {
     const token = getAccessToken();
     const response = await apiClient.get<ApiResponse<unknown>>(
       `/loads/${encodeURIComponent(loadId)}/payment-reconciliation/`,
-      { token: token ?? undefined }
+      { token: token ?? undefined, timeoutMs: 5_000 }
     );
     return normalizePaymentReconciliation(response.data);
   }, [loadId]);
@@ -1297,7 +1389,7 @@ export default function LoadDetailPage() {
     const token = getAccessToken();
     const response = await apiClient.get<ApiResponse<unknown>>(
       `/follow-ups?load_id=${encodeURIComponent(loadId)}&status=open`,
-      { token: token ?? undefined }
+      { token: token ?? undefined, timeoutMs: 5_000 }
     );
     const rows = Array.isArray(response.data) ? response.data : [];
     return rows.map((item) => normalizeFollowUpTask(item)).filter((item): item is FollowUpTask => item !== null);
@@ -1677,38 +1769,49 @@ export default function LoadDetailPage() {
 
       const loadData = await fetchLoad();
       setLoad(loadData);
+      setOptionalSectionErrors({});
+
+      const runOptionalSection = <T,>(
+        section: OptionalSectionKey,
+        loader: () => Promise<T>,
+        onSuccess: (value: T) => void,
+        onFailure: () => void
+      ) => {
+        setOptionalSectionLoading((current) => ({ ...current, [section]: true }));
+        setOptionalSectionErrors((current) => {
+          const next = { ...current };
+          delete next[section];
+          return next;
+        });
+        void loader()
+          .then(onSuccess)
+          .catch((caught: unknown) => {
+            onFailure();
+            const message = optionalSectionErrorMessage(section, caught);
+            setOptionalSectionErrors((current) => ({ ...current, [section]: message }));
+            console.warn("Optional load detail section failed", { section, message });
+          })
+          .finally(() => {
+            setOptionalSectionLoading((current) => ({ ...current, [section]: false }));
+            if (section === "documents") setIsDocumentsLoading(false);
+          });
+      };
 
       const fetchPrimarySections = () => {
-        void fetchLoadDocuments({ silent: true })
-          .then((documents) => {
-            setLoadDocuments(documents);
-          })
-          .catch(() => {
-            setLoadDocuments([]);
-          });
-        void fetchPacketAudit().then((audit) => setPacketAudit(audit)).catch(() => setPacketAudit(null));
+        runOptionalSection("documents", () => fetchLoadDocuments({ silent: true }), setLoadDocuments, () => setLoadDocuments([]));
+        runOptionalSection("packetAudit", fetchPacketAudit, setPacketAudit, () => setPacketAudit(null));
       };
 
       const fetchOptionalSections = () => {
-        void fetchSubmissionPackets().then((packets) => setSubmissionPackets(packets)).catch(() => setSubmissionPackets([]));
-        void fetchCarrierProfile().then((profile) => setCarrierProfile(profile)).catch(() => setCarrierProfile(null));
-        void fetchPaymentReconciliation().then((record) => setPaymentRecord(record)).catch(() => setPaymentRecord(null));
-        void fetchFollowUpTasks().then((tasks) => setFollowUpTasks(tasks)).catch(() => setFollowUpTasks([]));
-        void fetchReviewQueueItem()
-          .then((reviewItem) => {
-            setReviewQueueItem(reviewItem);
-          })
-          .catch(() => {
-            setReviewQueueItem(null);
-          });
+        runOptionalSection("submissionPackets", fetchSubmissionPackets, setSubmissionPackets, () => setSubmissionPackets([]));
+        window.setTimeout(() => runOptionalSection("carrierProfile", fetchCarrierProfile, setCarrierProfile, () => setCarrierProfile(null)), 100);
+        window.setTimeout(() => runOptionalSection("paymentReconciliation", fetchPaymentReconciliation, setPaymentRecord, () => setPaymentRecord(null)), 200);
+        window.setTimeout(() => runOptionalSection("followUps", fetchFollowUpTasks, setFollowUpTasks, () => setFollowUpTasks([])), 300);
+        window.setTimeout(() => runOptionalSection("reviewQueue", fetchReviewQueueItem, setReviewQueueItem, () => setReviewQueueItem(null)), 400);
       };
 
       fetchPrimarySections();
-      if (isMobileViewport()) {
-        window.setTimeout(fetchOptionalSections, 250);
-      } else {
-        fetchOptionalSections();
-      }
+      window.setTimeout(fetchOptionalSections, isMobileViewport() ? 300 : 75);
     } catch (caught: unknown) {
       setError(extractErrorMessage(caught, "Failed to fetch load."));
     } finally {
@@ -2408,7 +2511,7 @@ export default function LoadDetailPage() {
         formData.append("document_type", selectedUploadDocumentType);
       }
 
-      const uploadResponse = await fetch(buildConfiguredApiUrl("/documents/upload"), {
+      const uploadResponse = await fetchWithTimeout(buildConfiguredApiUrl("/documents/upload"), {
         method: "POST",
         headers: token
           ? {
@@ -2416,7 +2519,7 @@ export default function LoadDetailPage() {
             }
           : undefined,
         body: formData,
-      });
+      }, 15_000);
 
       if (!uploadResponse.ok) {
         const uploadError = await parseUploadErrorResponse(
@@ -2435,13 +2538,10 @@ export default function LoadDetailPage() {
         throw new Error(uploadError.message);
       }
 
-      const [updatedLoad, updatedDocuments] = await Promise.all([
-        fetchLoad(),
-        fetchLoadDocuments({ silent: true }),
-      ]);
-
-      setLoad(updatedLoad);
+      const updatedDocuments = await fetchLoadDocuments({ silent: true });
       setLoadDocuments(updatedDocuments);
+      void fetchLoad().then((updatedLoad) => setLoad(updatedLoad)).catch(() => undefined);
+      void fetchPacketAudit().then((audit) => setPacketAudit(audit)).catch(() => undefined);
       setSelectedUploadDocumentType("");
       setSelectedUploadFile(null);
       if (fileInputRef.current) {
@@ -2479,11 +2579,11 @@ export default function LoadDetailPage() {
       setActionMessage(`Replacing "${pendingDuplicateUpload.file.name}"...`);
       const token = getAccessToken();
       pendingDuplicateUpload.formData.set("replace", "true");
-      const replaceResponse = await fetch(buildConfiguredApiUrl("/documents/upload"), {
+      const replaceResponse = await fetchWithTimeout(buildConfiguredApiUrl("/documents/upload"), {
         method: "POST",
         headers: token ? { Authorization: `Bearer ${token}` } : undefined,
         body: pendingDuplicateUpload.formData,
-      });
+      }, 15_000);
       if (!replaceResponse.ok) {
         const uploadError = await parseUploadErrorResponse(
           replaceResponse,
@@ -2491,12 +2591,9 @@ export default function LoadDetailPage() {
         );
         throw new Error(uploadError.message);
       }
-      const [updatedLoad, updatedDocuments] = await Promise.all([
-        fetchLoad(),
-        fetchLoadDocuments({ silent: true }),
-      ]);
-      setLoad(updatedLoad);
+      const updatedDocuments = await fetchLoadDocuments({ silent: true });
       setLoadDocuments(updatedDocuments);
+      void fetchLoad().then((updatedLoad) => setLoad(updatedLoad)).catch(() => undefined);
       setSelectedUploadDocumentType("");
       setSelectedUploadFile(null);
       if (fileInputRef.current) {
@@ -2596,13 +2693,9 @@ export default function LoadDetailPage() {
       setError(null);
       setActionMessage(null);
 
-      const [updatedLoad, updatedDocuments] = await Promise.all([
-        fetchLoad(),
-        fetchLoadDocuments(),
-      ]);
-
-      setLoad(updatedLoad);
+      const updatedDocuments = await fetchLoadDocuments();
       setLoadDocuments(updatedDocuments);
+      void fetchLoad().then((updatedLoad) => setLoad(updatedLoad)).catch(() => undefined);
       setActionMessage("Documents refreshed.");
     } catch (caught: unknown) {
       setError(extractErrorMessage(caught, "Failed to refresh documents."));
@@ -2626,13 +2719,9 @@ export default function LoadDetailPage() {
         { token: token ?? undefined }
       );
 
-      const [updatedLoad, updatedDocuments] = await Promise.all([
-        fetchLoad(),
-        fetchLoadDocuments({ silent: true }),
-      ]);
-
-      setLoad(updatedLoad);
+      const updatedDocuments = await fetchLoadDocuments({ silent: true });
       setLoadDocuments(updatedDocuments);
+      void fetchLoad().then((updatedLoad) => setLoad(updatedLoad)).catch(() => undefined);
       setActionMessage("Document type updated.");
     } catch (caught: unknown) {
       setError(extractErrorMessage(caught, "Failed to update document type."));
@@ -2660,12 +2749,9 @@ export default function LoadDetailPage() {
         token: token ?? undefined,
       });
 
-      const [updatedLoad, updatedDocuments] = await Promise.all([
-        fetchLoad(),
-        fetchLoadDocuments({ silent: true }),
-      ]);
-      setLoad(updatedLoad);
+      const updatedDocuments = await fetchLoadDocuments({ silent: true });
       setLoadDocuments(updatedDocuments);
+      void fetchLoad().then((updatedLoad) => setLoad(updatedLoad)).catch(() => undefined);
       setActionMessage("Document deleted.");
     } catch (caught: unknown) {
       setError(extractErrorMessage(caught, "Failed to delete document."));
@@ -3175,6 +3261,8 @@ export default function LoadDetailPage() {
               <div className="mb-4 text-sm text-slate-700">
                 Required docs: Invoice, Rate Confirmation, Proof of Delivery, Bill of Lading. Missing: {(load.packet_readiness?.missing_required_documents?.submission ?? []).join(", ") || "none"}.
               </div>
+              <SectionLoadNotice isLoading={optionalSectionLoading.packetAudit} error={optionalSectionErrors.packetAudit} />
+              <SectionLoadNotice isLoading={optionalSectionLoading.submissionPackets} error={optionalSectionErrors.submissionPackets} />
               {packetAudit ? (
                 <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -3307,6 +3395,7 @@ export default function LoadDetailPage() {
               <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div>
                   <h2 className="text-lg font-semibold text-slate-950">Documents</h2>
+                  <SectionLoadNotice isLoading={optionalSectionLoading.documents || isDocumentsLoading} error={optionalSectionErrors.documents} />
                   <p className="mt-1 text-sm text-slate-600">
                     Upload office documents, review driver uploads, and keep this load ready for invoice + submission.
                   </p>
@@ -3595,6 +3684,7 @@ export default function LoadDetailPage() {
             <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-soft sm:p-6">
               <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                 <h2 className="text-lg font-semibold text-slate-950">Validation Issues</h2>
+                <SectionLoadNotice isLoading={optionalSectionLoading.reviewQueue} error={optionalSectionErrors.reviewQueue} />
 
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
@@ -3684,6 +3774,7 @@ export default function LoadDetailPage() {
 
             <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-soft sm:p-6">
               <h2 className="mb-2 text-lg font-semibold text-slate-950">Next Action & Follow-up</h2>
+              <SectionLoadNotice isLoading={optionalSectionLoading.followUps} error={optionalSectionErrors.followUps} />
               <p className="text-sm text-slate-600">{load.operational?.next_action?.label || "Follow up with broker"}</p>
               <p className="mt-2 text-xs text-slate-500">Why this action is needed: {followUpReason}</p>
               <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -3725,6 +3816,7 @@ export default function LoadDetailPage() {
 
             <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-soft sm:p-6">
               <h2 className="mb-4 text-lg font-semibold text-slate-950">Payment Reconciliation</h2>
+              <SectionLoadNotice isLoading={optionalSectionLoading.paymentReconciliation} error={optionalSectionErrors.paymentReconciliation} />
               <p className="mb-3 text-sm text-slate-600">Use these actions to track actual money movement for this load.</p>
               <div className="space-y-3 text-sm text-slate-700">
                 <div className="flex items-center justify-between gap-4"><span>Gross Amount</span><span className="font-medium text-slate-900">{formatCurrency(paymentRecord?.gross_amount, paymentRecord?.currency ?? load.currency_code ?? "USD")}</span></div>

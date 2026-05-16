@@ -36,6 +36,13 @@ class LoadDocument(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         Index("ix_load_documents_processing_status", "processing_status"),
         Index("ix_load_documents_received_at", "received_at"),
         Index("ix_load_documents_file_hash_sha256", "file_hash_sha256", unique=True),
+        Index(
+            "ix_load_documents_org_load_type_received",
+            "organization_id",
+            "load_id",
+            "document_type",
+            "received_at",
+        ),
     )
 
     organization_id: Mapped[uuid.UUID] = mapped_column(
