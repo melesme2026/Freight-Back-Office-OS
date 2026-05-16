@@ -315,6 +315,7 @@ def test_invite_returns_manual_link_when_email_disabled_outside_dev(
     monkeypatch.setenv("EMAIL_DEV_ALLOW_TOKEN_RESPONSE", "false")
     monkeypatch.setenv("ENVIRONMENT", "staging")
     monkeypatch.setenv("SECRET_KEY", "test-secret-key-that-is-long-enough-12345")
+    monkeypatch.setenv("WEB_APP_BASE_URL", "https://app.adwafreight.com")
     get_settings.cache_clear()
 
     signup_response = signup(
@@ -353,4 +354,6 @@ def test_invite_returns_manual_link_when_email_disabled_outside_dev(
 
     assert invite_response.data["email_status"] == "disabled"
     assert "activation_url" in invite_response.data
-    assert invite_response.data["activation_url"]
+    assert invite_response.data["activation_url"].startswith(
+        "https://app.adwafreight.com/activate-account?token="
+    )
