@@ -5,7 +5,12 @@ from datetime import date, datetime, timezone
 from typing import Any
 
 from app.core.dependencies import get_db_session
-from app.core.exceptions import AppError, NotFoundError, UnauthorizedError, ValidationError
+from app.core.exceptions import (
+    AppError,
+    NotFoundError,
+    UnauthorizedError,
+    ValidationError,
+)
 from app.core.security import get_current_token_payload, hash_password
 from app.domain.enums.role import Role
 from app.domain.models.staff_user import StaffUser
@@ -87,7 +92,9 @@ def _normalize_role_value(value: object | None) -> str:
     return normalize_role(value)
 
 
-def _count_org_admin_owners(repo: StaffUserRepository, organization_id: uuid.UUID) -> int:
+def _count_org_admin_owners(
+    repo: StaffUserRepository, organization_id: uuid.UUID
+) -> int:
     members, _ = repo.list(
         organization_id=organization_id,
         page=1,
@@ -119,7 +126,9 @@ def _is_final_active_owner_or_admin(
         and member.is_active
         and _normalize_role_value(member.role) in OWNER_ADMIN_ROLES
     ]
-    return len(active_admin_owner_ids) == 1 and active_admin_owner_ids[0] == target_user_id
+    return (
+        len(active_admin_owner_ids) == 1 and active_admin_owner_ids[0] == target_user_id
+    )
 
 
 def _normalize_required_text(value: str, field_name: str) -> str:
@@ -207,7 +216,9 @@ def create_staff_user(
 
     token_organization_id = _normalize_token_organization_id(token_payload)
     if payload.organization_id != token_organization_id:
-        raise UnauthorizedError("organization_id does not match authenticated organization")
+        raise UnauthorizedError(
+            "organization_id does not match authenticated organization"
+        )
 
     repo = StaffUserRepository(db)
 
@@ -273,7 +284,9 @@ def list_staff_users(
     token_organization_id = _normalize_token_organization_id(token_payload)
 
     if organization_id is not None and organization_id != token_organization_id:
-        raise UnauthorizedError("organization_id does not match authenticated organization")
+        raise UnauthorizedError(
+            "organization_id does not match authenticated organization"
+        )
 
     effective_organization_id = organization_id or token_organization_id
     items, total = repo.list(
@@ -284,10 +297,14 @@ def list_staff_users(
         page=page,
         page_size=page_size,
         include_removed=include_removed,
-        include_related=True,
+        include_related=False,
     )
     if role is None:
-        items = [item for item in items if _normalize_role_value(item.role) != Role.DRIVER.value]
+        items = [
+            item
+            for item in items
+            if _normalize_role_value(item.role) != Role.DRIVER.value
+        ]
         total = len(items)
 
     return ApiResponse(
@@ -366,11 +383,16 @@ def update_staff_user(
         item.full_name = _normalize_required_text(payload.full_name, "full_name")
 
     if payload.password is not None:
-        item.password_hash = hash_password(_normalize_required_text(payload.password, "password"))
+        item.password_hash = hash_password(
+            _normalize_required_text(payload.password, "password")
+        )
 
     if payload.role is not None:
         normalized_target_role = _normalize_required_text(payload.role, "role").lower()
-        if normalized_target_role == Role.OWNER.value and token_role != Role.OWNER.value:
+        if (
+            normalized_target_role == Role.OWNER.value
+            and token_role != Role.OWNER.value
+        ):
             raise UnauthorizedError("Only owner can assign owner role")
         if (
             normalized_target_role in {Role.ADMIN.value, Role.OPS_MANAGER.value}
@@ -378,7 +400,9 @@ def update_staff_user(
         ):
             raise UnauthorizedError("Only owner can assign admin or ops manager roles")
         if normalized_target_role == Role.DRIVER.value:
-            raise UnauthorizedError("Driver role must be onboarded through the invite flow")
+            raise UnauthorizedError(
+                "Driver role must be onboarded through the invite flow"
+            )
         current_role = _normalize_role_value(item.role)
         if (
             current_role in {Role.OWNER.value, Role.ADMIN.value}
@@ -486,7 +510,9 @@ def remove_staff_user(
             "role": _normalize_role_value(updated.role),
         },
     )
-    return ApiResponse(data={"id": str(staff_user_id), "removed": True}, meta={}, error=None)
+    return ApiResponse(
+        data={"id": str(staff_user_id), "removed": True}, meta={}, error=None
+    )
 
 
 @router.delete("/staff-users/{staff_user_id}", response_model=ApiResponse)

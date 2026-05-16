@@ -10,6 +10,7 @@ from app.core.middleware import (
     ProcessTimeMiddleware,
     RateLimitMiddleware,
     RequestContextMiddleware,
+    RequestConcurrencyLimitMiddleware,
     SecurityHeadersMiddleware,
 )
 from app.lifespan import lifespan
@@ -36,6 +37,7 @@ def create_app() -> FastAPI:
     app.add_middleware(CacheControlMiddleware)
     app.add_middleware(RateLimitMiddleware)
     app.add_middleware(RequestContextMiddleware)
+    app.add_middleware(RequestConcurrencyLimitMiddleware)
     app.add_middleware(ProcessTimeMiddleware)
 
     app.add_middleware(

@@ -1,13 +1,20 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 import uuid
+from collections import defaultdict
 from collections.abc import Callable
 
 from app.core.config import get_settings
 from app.core.constants import REQUEST_ID_HEADER
 from app.core.request_context import client_ip
+from app.core.request_metrics import (
+    get_request_metrics,
+    reset_request_metrics,
+    start_request_metrics,
+)
 from fastapi import Request, Response
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -52,12 +59,16 @@ class ProcessTimeMiddleware(BaseHTTPMiddleware):
             started_at = time.perf_counter()
             request.state.started_at = started_at
 
+        metrics_token = start_request_metrics()
+        serialization_started_at: float | None = None
         response: Response | None = None
         try:
             response = await call_next(request)
+            serialization_started_at = time.perf_counter()
             return response
         except Exception:
             duration_ms = (time.perf_counter() - started_at) * 1000
+            metrics = get_request_metrics()
             logger.exception(
                 "API endpoint failed",
                 extra={
@@ -65,6 +76,10 @@ class ProcessTimeMiddleware(BaseHTTPMiddleware):
                     "method": request.method,
                     "status": 500,
                     "duration_ms": round(duration_ms, 2),
+                    "db_query_time_ms": (
+                        round(metrics.db_query_time_ms, 2) if metrics else 0.0
+                    ),
+                    "query_count": metrics.query_count if metrics else 0,
                     "request_id": getattr(request.state, "request_id", None),
                     "organization_id": request.headers.get("x-organization-id"),
                     "failure_reason": "unhandled_exception",
@@ -73,9 +88,24 @@ class ProcessTimeMiddleware(BaseHTTPMiddleware):
             raise
         finally:
             duration_ms = (time.perf_counter() - started_at) * 1000
+            metrics = get_request_metrics()
             status_code = response.status_code if response is not None else 500
+            serialization_ms = (
+                max((time.perf_counter() - serialization_started_at) * 1000, 0.0)
+                if serialization_started_at is not None
+                else 0.0
+            )
             if response is not None:
                 response.headers[PROCESS_TIME_HEADER] = f"{duration_ms:.2f}"
+                response.headers["Server-Timing"] = (
+                    f"db;dur={metrics.db_query_time_ms:.2f}, "
+                    f"serialize;dur={serialization_ms:.2f}, total;dur={duration_ms:.2f}"
+                    if metrics is not None
+                    else f"total;dur={duration_ms:.2f}"
+                )
+                response.headers["X-Query-Count"] = str(
+                    metrics.query_count if metrics else 0
+                )
             log_extra = {
                 "endpoint": request.url.path,
                 "path": request.url.path,
@@ -83,13 +113,89 @@ class ProcessTimeMiddleware(BaseHTTPMiddleware):
                 "status": status_code,
                 "status_code": status_code,
                 "duration_ms": round(duration_ms, 2),
+                "db_query_time_ms": (
+                    round(metrics.db_query_time_ms, 2) if metrics else 0.0
+                ),
+                "serialization_time_ms": round(serialization_ms, 2),
+                "query_count": metrics.query_count if metrics else 0,
                 "request_id": getattr(request.state, "request_id", None),
                 "organization_id": request.headers.get("x-organization-id"),
             }
-            if duration_ms >= SLOW_ENDPOINT_LOG_THRESHOLD_MS or status_code >= 500:
-                logger.warning("Slow or failing API endpoint completed", extra=log_extra)
+            if (
+                (metrics and metrics.query_count >= 20)
+                or duration_ms >= SLOW_ENDPOINT_LOG_THRESHOLD_MS
+                or status_code >= 500
+            ):
+                logger.warning(
+                    "Slow, query-heavy, or failing API endpoint completed",
+                    extra=log_extra,
+                )
             elif request.url.path.startswith("/api/v1/"):
                 logger.info("API endpoint completed", extra=log_extra)
+            reset_request_metrics(metrics_token)
+
+
+class RequestConcurrencyLimitMiddleware(BaseHTTPMiddleware):
+    """Bound concurrent expensive load-detail panel requests per organization/path.
+
+    This keeps a single browser session from fanning out enough hot endpoints to
+    monopolize API workers while still allowing the core /loads/{id} response and
+    health checks to bypass the limiter.
+    """
+
+    HOT_PATH_MARKERS = (
+        "/documents",
+        "/submission-packets",
+        "/payment-reconciliation",
+        "/review-queue/loads/",
+        "/packet-audit",
+        "/staff-users",
+        "/documents/upload",
+    )
+    _semaphores: dict[str, asyncio.Semaphore] = defaultdict(
+        lambda: asyncio.Semaphore(4)
+    )
+
+    def _is_hot_path(self, path: str) -> bool:
+        return path.startswith("/api/v1/") and any(
+            marker in path for marker in self.HOT_PATH_MARKERS
+        )
+
+    def _key(self, request: Request) -> str:
+        org = request.headers.get("x-organization-id") or "unknown-org"
+        ip = client_ip(request) or "unknown-ip"
+        return f"{org}:{ip}"
+
+    async def dispatch(
+        self, request: Request, call_next: Callable[[Request], Response]
+    ) -> Response:
+        if request.method.upper() == "OPTIONS" or not self._is_hot_path(
+            request.url.path
+        ):
+            return await call_next(request)
+
+        semaphore = self._semaphores[self._key(request)]
+        try:
+            await asyncio.wait_for(semaphore.acquire(), timeout=0.05)
+        except TimeoutError:
+            return JSONResponse(
+                status_code=429,
+                headers={"Retry-After": "1", "X-Concurrency-Limit": "hot-load-detail"},
+                content={
+                    "data": None,
+                    "meta": {"request_id": getattr(request.state, "request_id", None)},
+                    "error": {
+                        "code": "request_concurrency_limited",
+                        "message": "Too many load-detail requests are running. Please retry this panel shortly.",
+                    },
+                },
+            )
+        try:
+            response = await call_next(request)
+            response.headers.setdefault("X-Concurrency-Limit", "hot-load-detail")
+            return response
+        finally:
+            semaphore.release()
 
 
 class CacheControlMiddleware(BaseHTTPMiddleware):
@@ -155,7 +261,9 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             return response
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
         response.headers.setdefault("X-Frame-Options", "DENY")
-        response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+        response.headers.setdefault(
+            "Referrer-Policy", "strict-origin-when-cross-origin"
+        )
         response.headers.setdefault(
             "Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=()"
         )
@@ -189,7 +297,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 settings.rate_limit_login_max_requests,
                 settings.rate_limit_login_window_seconds,
             )
-        if path.endswith("/auth/request-password-reset") or path.endswith("/auth/reset-password"):
+        if path.endswith("/auth/request-password-reset") or path.endswith(
+            "/auth/reset-password"
+        ):
             return (
                 "password_reset",
                 settings.rate_limit_login_max_requests,
@@ -257,7 +367,10 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         if count > max_requests:
             return JSONResponse(
                 status_code=429,
-                headers={"Retry-After": str(retry_after), "X-RateLimit-Policy": policy_name},
+                headers={
+                    "Retry-After": str(retry_after),
+                    "X-RateLimit-Policy": policy_name,
+                },
                 content={
                     "data": None,
                     "meta": {
@@ -278,6 +391,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
         response = await call_next(request)
         response.headers.setdefault("X-RateLimit-Limit", str(max_requests))
-        response.headers.setdefault("X-RateLimit-Remaining", str(max(0, max_requests - count)))
+        response.headers.setdefault(
+            "X-RateLimit-Remaining", str(max(0, max_requests - count))
+        )
         response.headers.setdefault("X-RateLimit-Reset", str(int(reset_at)))
         return response

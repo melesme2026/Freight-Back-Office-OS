@@ -5,8 +5,10 @@ from contextlib import contextmanager
 from functools import lru_cache
 from typing import Any
 
+from app.core.request_metrics import mark_query_end, mark_query_start
+
 from app.core.config import get_settings
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, event, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
@@ -29,10 +31,22 @@ def _build_engine() -> Engine:
         engine_kwargs["pool_size"] = settings.sqlalchemy_pool_size
         engine_kwargs["max_overflow"] = settings.sqlalchemy_max_overflow
 
-    return create_engine(
+    engine = create_engine(
         database_url,
         **engine_kwargs,
     )
+
+    @event.listens_for(engine, "before_cursor_execute")
+    def _before_cursor_execute(conn, cursor, statement, parameters, context, executemany):  # type: ignore[no-untyped-def]
+        context._request_metrics_token = mark_query_start()
+
+    @event.listens_for(engine, "after_cursor_execute")
+    def _after_cursor_execute(conn, cursor, statement, parameters, context, executemany):  # type: ignore[no-untyped-def]
+        token = getattr(context, "_request_metrics_token", None)
+        if token is not None:
+            mark_query_end(token)
+
+    return engine
 
 
 @lru_cache(maxsize=1)
@@ -118,7 +132,9 @@ def _import_all_models() -> None:
     from app.domain.models.staff_user import StaffUser  # noqa: F401
     from app.domain.models.submission_event import SubmissionEvent  # noqa: F401
     from app.domain.models.submission_packet import SubmissionPacket  # noqa: F401
-    from app.domain.models.submission_packet_document import SubmissionPacketDocument  # noqa: F401
+    from app.domain.models.submission_packet_document import (
+        SubmissionPacketDocument,
+    )  # noqa: F401
     from app.domain.models.subscription import Subscription  # noqa: F401
     from app.domain.models.support_ticket import SupportTicket  # noqa: F401
     from app.domain.models.usage_record import UsageRecord  # noqa: F401

@@ -840,10 +840,10 @@ function normalizeReviewQueueItem(payload: unknown): ReviewQueueItem | null {
 function normalizeDocument(payload: unknown): LoadDocument | null {
   const record = asRecord(payload);
   const id = getStringField(record, "id");
-  const organizationId = getStringField(record, "organization_id");
-  const customerAccountId = getStringField(record, "customer_account_id");
+  const organizationId = getStringField(record, "organization_id") ?? "";
+  const customerAccountId = getStringField(record, "customer_account_id") ?? "";
 
-  if (!id || !organizationId || !customerAccountId) {
+  if (!id) {
     return null;
   }
 
@@ -854,18 +854,18 @@ function normalizeDocument(payload: unknown): LoadDocument | null {
     driver_id: getStringField(record, "driver_id"),
     load_id: getStringField(record, "load_id"),
     source_channel: getStringField(record, "source_channel"),
-    document_type: getStringField(record, "document_type"),
-    original_filename: getStringField(record, "original_filename"),
+    document_type: getStringField(record, "document_type") ?? getStringField(record, "type"),
+    original_filename: getStringField(record, "original_filename") ?? getStringField(record, "filename"),
     mime_type: getStringField(record, "mime_type"),
     file_size_bytes: getOptionalNumberField(record, "file_size_bytes"),
     storage_bucket: getStringField(record, "storage_bucket"),
     storage_key: getStringField(record, "storage_key"),
     received_status: getStringField(record, "received_status"),
-    processing_status: getStringField(record, "processing_status"),
+    processing_status: getStringField(record, "processing_status") ?? getStringField(record, "status"),
     extraction_status: getStringField(record, "extraction_status"),
     validation_status: getStringField(record, "validation_status"),
     page_count: getOptionalNumberField(record, "page_count"),
-    received_at: getStringField(record, "received_at"),
+    received_at: getStringField(record, "received_at") ?? getStringField(record, "uploaded_at"),
     created_at: getStringField(record, "created_at"),
     updated_at: getStringField(record, "updated_at"),
   };
@@ -1191,6 +1191,14 @@ async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit = {}
   }
 }
 
+function isClientAbortError(error: unknown): boolean {
+  if (error instanceof DOMException && error.name === "AbortError") return true;
+  if (error instanceof Error) {
+    return /canceled|cancelled|aborted/i.test(error.message);
+  }
+  return false;
+}
+
 function SectionLoadNotice({
   isLoading,
   error,
@@ -1225,6 +1233,15 @@ export default function LoadDetailPage() {
   const loadId = normalizeLoadIdParam(params?.loadId);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const hydrationAbortControllerRef = useRef<AbortController | null>(null);
+  const hydrationTimeoutsRef = useRef<number[]>([]);
+
+  const clearHydrationTimeouts = useCallback(() => {
+    hydrationTimeoutsRef.current.forEach((timeoutId) => window.clearTimeout(timeoutId));
+    hydrationTimeoutsRef.current = [];
+  }, []);
+
+  const getHydrationSignal = useCallback(() => hydrationAbortControllerRef.current?.signal, []);
 
   const [load, setLoad] = useState<Load | null>(null);
   const [reviewQueueItem, setReviewQueueItem] = useState<ReviewQueueItem | null>(null);
@@ -1280,12 +1297,13 @@ export default function LoadDetailPage() {
       `/loads/${encodeURIComponent(loadId)}`,
       {
         token: token ?? undefined,
-        timeoutMs: 20_000,
+        timeoutMs: 4_000,
+        signal: getHydrationSignal(),
       }
     );
 
     return normalizeLoad(response.data);
-  }, [loadId]);
+  }, [getHydrationSignal, loadId]);
 
   const fetchReviewQueueItem = useCallback(async (): Promise<ReviewQueueItem | null> => {
     if (!loadId) {
@@ -1298,11 +1316,12 @@ export default function LoadDetailPage() {
       {
         token: token ?? undefined,
         timeoutMs: 5_000,
+        signal: getHydrationSignal(),
       }
     );
 
     return normalizeReviewQueueItem(response.data);
-  }, [loadId]);
+  }, [getHydrationSignal, loadId]);
 
   const fetchLoadDocuments = useCallback(
     async (options?: { silent?: boolean }): Promise<LoadDocument[]> => {
@@ -1322,6 +1341,7 @@ export default function LoadDetailPage() {
           {
             token: token ?? undefined,
             timeoutMs: 5_000,
+            signal: getHydrationSignal(),
           }
         );
 
@@ -1336,7 +1356,7 @@ export default function LoadDetailPage() {
         setIsDocumentsLoading(false);
       }
     },
-    [loadId]
+    [getHydrationSignal, loadId]
   );
 
   const fetchPacketAudit = useCallback(async (): Promise<PacketAuditResult | null> => {
@@ -1344,56 +1364,62 @@ export default function LoadDetailPage() {
     const token = getAccessToken();
     const response = await apiClient.get<ApiResponse<unknown>>(
       `/loads/${encodeURIComponent(loadId)}/packet-audit`,
-      { token: token ?? undefined, timeoutMs: 5_000 }
+      { token: token ?? undefined, timeoutMs: 5_000, signal: getHydrationSignal() }
     );
     return normalizePacketAudit(response.data);
-  }, [loadId]);
+  }, [getHydrationSignal, loadId]);
 
   const fetchSubmissionPackets = useCallback(async (): Promise<SubmissionPacket[]> => {
     if (!loadId) return [];
     const token = getAccessToken();
     const response = await apiClient.get<ApiResponse<unknown>>(
       `/loads/${encodeURIComponent(loadId)}/submission-packets`,
-      { token: token ?? undefined, timeoutMs: 5_000 }
+      { token: token ?? undefined, timeoutMs: 5_000, signal: getHydrationSignal() }
     );
     const rows = Array.isArray(response.data) ? response.data : [];
     return rows
       .map((item) => normalizeSubmissionPacket(item))
       .filter((item): item is SubmissionPacket => item !== null);
-  }, [loadId]);
+  }, [getHydrationSignal, loadId]);
 
   const fetchCarrierProfile = useCallback(async (): Promise<CarrierProfile | null> => {
     const token = getAccessToken();
     const response = await apiClient.get<ApiResponse<unknown>>("/carrier-profile", {
       token: token ?? undefined,
       timeoutMs: 4_000,
+      signal: getHydrationSignal(),
     });
     const record = asRecord(response.data);
     return {
       legal_name: getStringField(record, "legal_name"),
     };
-  }, []);
+  }, [getHydrationSignal]);
 
-  const fetchPaymentReconciliation = useCallback(async (): Promise<PaymentReconciliationRecord | null> => {
-    if (!loadId) return null;
-    const token = getAccessToken();
-    const response = await apiClient.get<ApiResponse<unknown>>(
-      `/loads/${encodeURIComponent(loadId)}/payment-reconciliation/`,
-      { token: token ?? undefined, timeoutMs: 5_000 }
-    );
-    return normalizePaymentReconciliation(response.data);
-  }, [loadId]);
+  const fetchPaymentReconciliation = useCallback(
+    async (): Promise<PaymentReconciliationRecord | null> => {
+      if (!loadId) return null;
+      const token = getAccessToken();
+      const response = await apiClient.get<ApiResponse<unknown>>(
+        `/loads/${encodeURIComponent(loadId)}/payment-reconciliation/`,
+        { token: token ?? undefined, timeoutMs: 5_000, signal: getHydrationSignal() }
+      );
+      return normalizePaymentReconciliation(response.data);
+    },
+    [getHydrationSignal, loadId]
+  );
 
   const fetchFollowUpTasks = useCallback(async (): Promise<FollowUpTask[]> => {
     if (!loadId) return [];
     const token = getAccessToken();
     const response = await apiClient.get<ApiResponse<unknown>>(
       `/follow-ups?load_id=${encodeURIComponent(loadId)}&status=open`,
-      { token: token ?? undefined, timeoutMs: 5_000 }
+      { token: token ?? undefined, timeoutMs: 5_000, signal: getHydrationSignal() }
     );
     const rows = Array.isArray(response.data) ? response.data : [];
-    return rows.map((item) => normalizeFollowUpTask(item)).filter((item): item is FollowUpTask => item !== null);
-  }, [loadId]);
+    return rows
+      .map((item) => normalizeFollowUpTask(item))
+      .filter((item): item is FollowUpTask => item !== null);
+  }, [getHydrationSignal, loadId]);
 
   async function handleCreateSubmissionPacket() {
     if (!loadId) return;
@@ -1764,10 +1790,14 @@ export default function LoadDetailPage() {
     }
 
     try {
+      hydrationAbortControllerRef.current?.abort();
+      clearHydrationTimeouts();
+      hydrationAbortControllerRef.current = new AbortController();
       setIsLoading(true);
       setError(null);
 
       const loadData = await fetchLoad();
+      if (getHydrationSignal()?.aborted) return;
       setLoad(loadData);
       setOptionalSectionErrors({});
 
@@ -1777,6 +1807,7 @@ export default function LoadDetailPage() {
         onSuccess: (value: T) => void,
         onFailure: () => void
       ) => {
+        if (getHydrationSignal()?.aborted) return;
         setOptionalSectionLoading((current) => ({ ...current, [section]: true }));
         setOptionalSectionErrors((current) => {
           const next = { ...current };
@@ -1784,45 +1815,104 @@ export default function LoadDetailPage() {
           return next;
         });
         void loader()
-          .then(onSuccess)
+          .then((value) => {
+            if (!getHydrationSignal()?.aborted) onSuccess(value);
+          })
           .catch((caught: unknown) => {
+            if (isClientAbortError(caught) || getHydrationSignal()?.aborted) return;
             onFailure();
             const message = optionalSectionErrorMessage(section, caught);
             setOptionalSectionErrors((current) => ({ ...current, [section]: message }));
-            console.warn("Optional load detail section failed without blocking core load detail", { section, message, loadId });
+            console.warn("Optional load detail section failed without blocking core load detail", {
+              section,
+              message,
+              loadId,
+            });
           })
           .finally(() => {
+            if (getHydrationSignal()?.aborted) return;
             setOptionalSectionLoading((current) => ({ ...current, [section]: false }));
             if (section === "documents") setIsDocumentsLoading(false);
           });
       };
 
-      const fetchPrimarySections = () => {
-        runOptionalSection("documents", () => fetchLoadDocuments({ silent: true }), setLoadDocuments, () => setLoadDocuments([]));
-        runOptionalSection("packetAudit", fetchPacketAudit, setPacketAudit, () => setPacketAudit(null));
+      const scheduleSection = <T,>(
+        delayMs: number,
+        section: OptionalSectionKey,
+        loader: () => Promise<T>,
+        onSuccess: (value: T) => void,
+        onFailure: () => void
+      ) => {
+        const timeoutId = window.setTimeout(
+          () => runOptionalSection(section, loader, onSuccess, onFailure),
+          delayMs
+        );
+        hydrationTimeoutsRef.current.push(timeoutId);
       };
 
-      const fetchOptionalSections = () => {
-        runOptionalSection("submissionPackets", fetchSubmissionPackets, setSubmissionPackets, () => setSubmissionPackets([]));
-        window.setTimeout(() => runOptionalSection("carrierProfile", fetchCarrierProfile, setCarrierProfile, () => setCarrierProfile(null)), 100);
-        window.setTimeout(() => runOptionalSection("paymentReconciliation", fetchPaymentReconciliation, setPaymentRecord, () => setPaymentRecord(null)), 200);
-        window.setTimeout(() => runOptionalSection("followUps", fetchFollowUpTasks, setFollowUpTasks, () => setFollowUpTasks([])), 300);
-        window.setTimeout(() => runOptionalSection("reviewQueue", fetchReviewQueueItem, setReviewQueueItem, () => setReviewQueueItem(null)), 400);
-      };
-
-      fetchPrimarySections();
-      window.setTimeout(fetchOptionalSections, isMobileViewport() ? 300 : 75);
+      const gap = isMobileViewport() ? 450 : 125;
+      scheduleSection(
+        gap,
+        "documents",
+        () => fetchLoadDocuments({ silent: true }),
+        setLoadDocuments,
+        () => setLoadDocuments([])
+      );
+      scheduleSection(gap * 2, "packetAudit", fetchPacketAudit, setPacketAudit, () =>
+        setPacketAudit(null)
+      );
+      scheduleSection(
+        gap * 3,
+        "submissionPackets",
+        fetchSubmissionPackets,
+        setSubmissionPackets,
+        () => setSubmissionPackets([])
+      );
+      scheduleSection(gap * 4, "carrierProfile", fetchCarrierProfile, setCarrierProfile, () =>
+        setCarrierProfile(null)
+      );
+      scheduleSection(
+        gap * 5,
+        "paymentReconciliation",
+        fetchPaymentReconciliation,
+        setPaymentRecord,
+        () => setPaymentRecord(null)
+      );
+      scheduleSection(gap * 6, "followUps", fetchFollowUpTasks, setFollowUpTasks, () =>
+        setFollowUpTasks([])
+      );
+      scheduleSection(gap * 7, "reviewQueue", fetchReviewQueueItem, setReviewQueueItem, () =>
+        setReviewQueueItem(null)
+      );
     } catch (caught: unknown) {
-      setError(extractErrorMessage(caught, "Failed to fetch load."));
+      if (!isClientAbortError(caught)) {
+        setError(extractErrorMessage(caught, "Failed to fetch load."));
+      }
     } finally {
       setIsLoading(false);
       setIsDocumentsLoading(false);
     }
-  }, [fetchCarrierProfile, fetchLoad, fetchPaymentReconciliation, fetchFollowUpTasks, fetchReviewQueueItem, fetchLoadDocuments, fetchPacketAudit, fetchSubmissionPackets, loadId]);
+  }, [
+    clearHydrationTimeouts,
+    fetchCarrierProfile,
+    fetchLoad,
+    fetchPaymentReconciliation,
+    fetchFollowUpTasks,
+    fetchReviewQueueItem,
+    fetchLoadDocuments,
+    fetchPacketAudit,
+    fetchSubmissionPackets,
+    getHydrationSignal,
+    loadId,
+  ]);
 
   useEffect(() => {
     void fetchPageData();
-  }, [fetchPageData]);
+    return () => {
+      hydrationAbortControllerRef.current?.abort();
+      clearHydrationTimeouts();
+    };
+  }, [clearHydrationTimeouts, fetchPageData]);
 
   useEffect(() => {
     if (!load) {
@@ -1834,6 +1924,7 @@ export default function LoadDetailPage() {
 
   useEffect(() => {
     let isMounted = true;
+    const controller = new AbortController();
     async function loadStaffUsers() {
       const token = getAccessToken();
       const organizationId = getOrganizationId();
@@ -1841,10 +1932,15 @@ export default function LoadDetailPage() {
         return;
       }
       try {
-        const response = await apiClient.get<ApiResponse<unknown>>("/staff-users?page=1&page_size=200&is_active=true", {
-          token: token ?? undefined,
-          organizationId,
-        });
+        const response = await apiClient.get<ApiResponse<unknown>>(
+          "/staff-users?page=1&page_size=200&is_active=true",
+          {
+            token: token ?? undefined,
+            organizationId,
+            timeoutMs: 5_000,
+            signal: controller.signal,
+          }
+        );
         const items = Array.isArray(response.data) ? response.data : [];
         const normalized = items
           .map((item) => {
@@ -1860,8 +1956,15 @@ export default function LoadDetailPage() {
         if (isMounted) setStaffUsers([]);
       }
     }
-    void loadStaffUsers();
-    return () => { isMounted = false; };
+    const timeoutId = window.setTimeout(
+      () => void loadStaffUsers(),
+      isMobileViewport() ? 3_400 : 900
+    );
+    return () => {
+      isMounted = false;
+      controller.abort();
+      window.clearTimeout(timeoutId);
+    };
   }, []);
 
   const nextStatus = useMemo(() => {
