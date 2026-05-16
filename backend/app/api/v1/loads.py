@@ -17,6 +17,7 @@ from app.core.security import get_current_token_payload
 from app.domain.enums.document_type import DocumentType
 from app.domain.enums.follow_up_task import FollowUpTaskStatus, FollowUpTaskType
 from app.domain.enums.load_status import LoadStatus
+from app.domain.enums.processing_status import ProcessingStatus
 from app.domain.models.follow_up_task import FollowUpTask
 from app.domain.models.load_document import LoadDocument
 from app.schemas.common import ApiResponse
@@ -1465,6 +1466,8 @@ def _generate_and_persist_invoice_pdf(
             invoice_document.mime_type = "application/pdf"
             invoice_document.file_size_bytes = len(pdf_bytes)
             invoice_document.original_filename = f"invoice-{load.load_number or load.id}.pdf"
+            invoice_document.processing_status = ProcessingStatus.COMPLETED
+            invoice_document.ocr_completed_at = None
             invoice_document.received_at = datetime.now(timezone.utc)
             document_service.document_repo.update(invoice_document)
             document_service.attach_to_load(
@@ -1499,6 +1502,9 @@ def _generate_and_persist_invoice_pdf(
                 mime_type="application/pdf",
                 file_size_bytes=len(pdf_bytes),
             )
+            invoice_document.processing_status = ProcessingStatus.COMPLETED
+            invoice_document.ocr_completed_at = None
+            document_service.document_repo.update(invoice_document)
             logger.info(
                 "Generated invoice PDF created document: load_id=%s document_id=%s document_type=%s",
                 load.id,

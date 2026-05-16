@@ -205,6 +205,39 @@ test("mobile optional hydration runs at max one idle request and zero during del
   expect(optionalDuringDelete).toBe(0);
 });
 
+
+test("generated invoice is refreshed into documents table without duplicates", async ({ page }) => {
+  const invoiceFilename = `invoice-${seed.load.load_number}.pdf`;
+  const invoiceRequests: string[] = [];
+  page.on("request", (request) => {
+    const url = new URL(request.url());
+    if (url.pathname === `/api/v1/loads/${seed.load.id}/invoice`) {
+      invoiceRequests.push(`${request.method()} ${url.pathname}${url.search}`);
+    }
+  });
+  page.on("popup", async (popup) => {
+    await popup.close().catch(() => undefined);
+  });
+
+  await loginAsOwner(page);
+  await page.goto(`/dashboard/loads/${seed.load.id}`);
+  await expectCoreLoadDetail(page);
+  await expect(page.getByText(invoiceFilename)).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Generate Invoice" }).click();
+
+  await expect(page.getByText("Invoice generated and added to documents.")).toBeVisible();
+  await expect(page.getByText(invoiceFilename)).toBeVisible();
+  await expect(page.getByRole("button", { name: "View Invoice" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Download Invoice" })).toBeVisible();
+  await expect(page.getByText(invoiceFilename)).toHaveCount(1);
+
+  await page.getByRole("button", { name: "Download Invoice" }).click();
+  await expect(page.getByText(/Invoice downloaded\.|Invoice opened\./)).toBeVisible();
+  await expect(page.getByText(invoiceFilename)).toHaveCount(1);
+  expect(invoiceRequests.length).toBeGreaterThanOrEqual(2);
+});
+
 test("upload reconciles document row without hard refresh", async ({ page }) => {
   const requests: string[] = [];
   page.on("request", (request) => {
