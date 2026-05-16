@@ -3,7 +3,7 @@
 import { useRouter, useParams } from "next/navigation";
 import { ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { apiClient } from "@/lib/api-client";
+import { ApiClientError, apiClient } from "@/lib/api-client";
 import { parseUploadErrorResponse, isHtmlErrorText } from "@/lib/upload-errors";
 import { getAccessToken, getOrganizationId } from "@/lib/auth";
 import { buildApiUrl as buildConfiguredApiUrl } from "@/lib/config";
@@ -170,6 +170,8 @@ type MarkReviewedResponse = {
 
 type LoadDocument = {
   id: string;
+  optimistic?: boolean;
+  mutation_status?: "uploading" | "verifying" | "failed";
   organization_id: string;
   customer_account_id: string;
   driver_id?: string | null;
@@ -1205,6 +1207,12 @@ async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit = {}
   }
 }
 
+function isMutationTimeoutError(error: unknown): boolean {
+  if (error instanceof ApiClientError && error.code === "client_timeout") return true;
+  if (error instanceof Error) return /timed out|client_timeout/i.test(error.message);
+  return false;
+}
+
 function isClientAbortError(error: unknown): boolean {
   if (error instanceof DOMException && error.name === "AbortError") return true;
   if (error instanceof Error) {
@@ -1297,6 +1305,11 @@ export default function LoadDetailPage() {
   const optionalHydrationInFlightRef = useRef(0);
   const optionalHydrationCooldownTimeoutRef = useRef<number | null>(null);
   const deletingDocumentRequestRef = useRef<string | null>(null);
+  const documentMutationGenerationRef = useRef(0);
+  const documentRefreshRequestRef = useRef(0);
+  const latestAppliedDocumentRefreshRef = useRef(0);
+  const loadDocumentsRef = useRef<LoadDocument[]>([]);
+  const documentsPanelRenderCountRef = useRef(0);
 
   const traceLoadDetailAction = useCallback((event: string, details?: Record<string, unknown>) => {
     console.info("[load-detail-action]", { event, load_id: loadId, ...details });
@@ -1393,6 +1406,17 @@ export default function LoadDetailPage() {
   const [modalState, setModalState] = useState<ModalState>({ kind: "none" });
   const [modalError, setModalError] = useState<string | null>(null);
 
+  useEffect(() => {
+    loadDocumentsRef.current = loadDocuments;
+    documentsPanelRenderCountRef.current += 1;
+    traceLoadDetailAction("documents_panel_render", {
+      render_count: documentsPanelRenderCountRef.current,
+      documents_count: loadDocuments.length,
+      hydration_locked: writeActionActiveRef.current,
+      mutation_generation: documentMutationGenerationRef.current,
+    });
+  }, [loadDocuments, traceLoadDetailAction]);
+
   const fetchLoad = useCallback(async (): Promise<Load | null> => {
     if (!loadId) {
       return null;
@@ -1430,11 +1454,24 @@ export default function LoadDetailPage() {
   }, [getHydrationSignal, loadId]);
 
   const fetchLoadDocuments = useCallback(
-    async (options?: { silent?: boolean }): Promise<LoadDocument[]> => {
+    async (options?: { silent?: boolean; reason?: string; expectedMinMutationGeneration?: number }): Promise<LoadDocument[]> => {
       if (!loadId) {
         setLoadDocuments([]);
         return [];
       }
+
+      const requestId = documentRefreshRequestRef.current + 1;
+      documentRefreshRequestRef.current = requestId;
+      const cacheKey = `/loads/${encodeURIComponent(loadId)}/documents?page=1&page_size=100`;
+      const startedAtMutationGeneration = documentMutationGenerationRef.current;
+
+      traceLoadDetailAction("refresh_documents_started", {
+        request_id: requestId,
+        cache_key: cacheKey,
+        reason: options?.reason ?? "manual",
+        mutation_generation: startedAtMutationGeneration,
+        hydration_locked: writeActionActiveRef.current,
+      });
 
       try {
         if (!options?.silent) {
@@ -1443,11 +1480,12 @@ export default function LoadDetailPage() {
 
         const token = getAccessToken();
         const response = await apiClient.get<ApiResponse<unknown>>(
-          `/loads/${encodeURIComponent(loadId)}/documents?page=1&page_size=100`,
+          `${cacheKey}&_document_refresh_request=${requestId}&_document_refresh_at=${Date.now()}`,
           {
             token: token ?? undefined,
             timeoutMs: 5_000,
-            signal: getHydrationSignal(),
+            dedupe: false,
+            headers: { "Cache-Control": "no-cache", Pragma: "no-cache" },
           }
         );
 
@@ -1456,13 +1494,52 @@ export default function LoadDetailPage() {
           .map((item) => normalizeDocument(item))
           .filter((item): item is LoadDocument => item !== null);
 
+        traceLoadDetailAction("refresh_documents_response", {
+          request_id: requestId,
+          cache_key: cacheKey,
+          response_count: normalizedDocuments.length,
+          current_mutation_generation: documentMutationGenerationRef.current,
+          started_at_mutation_generation: startedAtMutationGeneration,
+        });
+
+        if (startedAtMutationGeneration < documentMutationGenerationRef.current) {
+          traceLoadDetailAction("refresh_documents_stale_ignored", {
+            request_id: requestId,
+            stale_request_generation: startedAtMutationGeneration,
+            latest_mutation_generation: documentMutationGenerationRef.current,
+          });
+          return loadDocumentsRef.current;
+        }
+
+        if (requestId < latestAppliedDocumentRefreshRef.current) {
+          traceLoadDetailAction("refresh_documents_stale_ignored", {
+            request_id: requestId,
+            latest_applied_request_id: latestAppliedDocumentRefreshRef.current,
+          });
+          return loadDocumentsRef.current;
+        }
+
+        latestAppliedDocumentRefreshRef.current = requestId;
+        loadDocumentsRef.current = normalizedDocuments;
         setLoadDocuments(normalizedDocuments);
+        traceLoadDetailAction("refresh_documents_applied", {
+          request_id: requestId,
+          final_documents_count: normalizedDocuments.length,
+          mutation_generation: documentMutationGenerationRef.current,
+        });
         return normalizedDocuments;
+      } catch (caught: unknown) {
+        traceLoadDetailAction("refresh_documents_failed", {
+          request_id: requestId,
+          reason: isClientAbortError(caught) ? "aborted" : extractErrorMessage(caught, "refresh failed"),
+          abort_reason: isClientAbortError(caught) ? extractErrorMessage(caught, "aborted") : null,
+        });
+        throw caught;
       } finally {
         setIsDocumentsLoading(false);
       }
     },
-    [getHydrationSignal, loadId]
+    [loadId, traceLoadDetailAction]
   );
 
   const fetchInvoiceStatus = useCallback(async (): Promise<InvoiceStatusState | null> => {
@@ -1994,9 +2071,12 @@ export default function LoadDetailPage() {
       scheduleSection(
         gap,
         "documents",
-        () => fetchLoadDocuments({ silent: true }),
-        setLoadDocuments,
-        () => setLoadDocuments([])
+        () => fetchLoadDocuments({ silent: true, reason: "initial_documents" }),
+        (documents) => {
+          loadDocumentsRef.current = documents;
+          setLoadDocuments(documents);
+        },
+        () => undefined
       );
       scheduleSection(gap * 2, "packetAudit", fetchPacketAudit, setPacketAudit, () =>
         setPacketAudit(null)
@@ -2809,6 +2889,124 @@ export default function LoadDetailPage() {
     }
 
     const endWriteAction = beginWriteAction("upload_document");
+    const mutationGeneration = documentMutationGenerationRef.current + 1;
+    documentMutationGenerationRef.current = mutationGeneration;
+    const optimisticDocumentId = `optimistic-upload-${mutationGeneration}-${Date.now()}`;
+    const requestId = `upload-${mutationGeneration}`;
+    let uploadReconciliationCandidate: LoadDocument;
+    const optimisticDocument: LoadDocument = {
+      id: optimisticDocumentId,
+      organization_id: organizationId,
+      customer_account_id: load.customer_account_id,
+      driver_id: load.driver_id,
+      load_id: load.id,
+      source_channel: "manual",
+      document_type: selectedUploadDocumentType || "support",
+      original_filename: file.name,
+      mime_type: file.type || null,
+      file_size_bytes: file.size,
+      received_status: "pending",
+      processing_status: "uploading",
+      extraction_status: null,
+      validation_status: null,
+      received_at: new Date().toISOString(),
+      created_at: new Date().toISOString(),
+      updated_at: null,
+      optimistic: true,
+      mutation_status: "uploading",
+    };
+
+    uploadReconciliationCandidate = optimisticDocument;
+
+    traceLoadDetailAction("upload_clicked", {
+      request_id: requestId,
+      filename: file.name,
+      cache_key: `/loads/${encodeURIComponent(load.id)}/documents?page=1&page_size=100`,
+      mutation_generation: mutationGeneration,
+      hydration_locked: writeActionActiveRef.current,
+    });
+
+    loadDocumentsRef.current = [optimisticDocument, ...loadDocumentsRef.current];
+    setLoadDocuments(loadDocumentsRef.current);
+    traceLoadDetailAction("optimistic_row_added", {
+      request_id: requestId,
+      optimistic_document_id: optimisticDocumentId,
+      final_documents_count: loadDocumentsRef.current.length,
+    });
+
+    const reconcileUpload = async (reason: "success" | "timeout") => {
+      if (reason === "timeout") {
+        traceLoadDetailAction("upload_request_timeout", { request_id: requestId, mutation_generation: mutationGeneration });
+        loadDocumentsRef.current = loadDocumentsRef.current.map((document) =>
+          document.id === optimisticDocumentId
+            ? { ...document, processing_status: "verifying", mutation_status: "verifying" }
+            : document
+        );
+        setLoadDocuments(loadDocumentsRef.current);
+        setActionMessage(`Upload timed out for "${file.name}". Verifying server state...`);
+        await new Promise((resolve) => window.setTimeout(resolve, 2_000));
+      }
+
+      traceLoadDetailAction("refresh_documents_started", { request_id: requestId, reason: `upload_${reason}_reconcile` });
+      const reconciledDocuments = await fetchLoadDocuments({
+        silent: true,
+        reason: `upload_${reason}_reconcile`,
+        expectedMinMutationGeneration: mutationGeneration,
+      });
+      const uploadedDocumentExists = reconciledDocuments.some((document) =>
+        document.id !== optimisticDocumentId && document.original_filename === file.name
+      );
+
+      traceLoadDetailAction("final_documents_count", {
+        request_id: requestId,
+        final_documents_count: reconciledDocuments.length,
+        uploaded_document_exists: uploadedDocumentExists,
+      });
+
+      traceLoadDetailAction("readiness_refresh_started", { request_id: requestId });
+      const updatedLoad = await fetchLoad().catch(() => null);
+      if (updatedLoad) {
+        setLoad(updatedLoad);
+        traceLoadDetailAction("readiness_refresh_applied", {
+          request_id: requestId,
+          present_documents: updatedLoad.packet_readiness?.present_documents ?? [],
+        });
+      }
+
+      if (reason === "success" && !uploadedDocumentExists) {
+        const visibleCandidate = {
+          ...uploadReconciliationCandidate,
+          optimistic: true,
+          mutation_status: "verifying" as const,
+          processing_status: "verifying",
+        };
+        loadDocumentsRef.current = [
+          visibleCandidate,
+          ...reconciledDocuments.filter((document) => document.id !== visibleCandidate.id),
+        ];
+        setLoadDocuments(loadDocumentsRef.current);
+        traceLoadDetailAction("refresh_documents_stale_payload_retained_optimistic", {
+          request_id: requestId,
+          optimistic_document_id: visibleCandidate.id,
+          final_documents_count: loadDocumentsRef.current.length,
+        });
+        window.setTimeout(() => {
+          void fetchLoadDocuments({ silent: true, reason: "upload_success_delayed_reconcile" }).catch(() => undefined);
+        }, 2_000);
+      }
+
+      if (reason === "timeout" && !uploadedDocumentExists) {
+        loadDocumentsRef.current = loadDocumentsRef.current.map((document) =>
+          document.id === optimisticDocumentId
+            ? { ...document, processing_status: "failed", mutation_status: "failed" }
+            : document
+        );
+        setLoadDocuments(loadDocumentsRef.current);
+        throw new Error("Upload could not be verified. Please retry from the document row.");
+      }
+
+      return reconciledDocuments;
+    };
 
     try {
       setIsUploadingDocument(true);
@@ -2834,6 +3032,7 @@ export default function LoadDetailPage() {
         formData.append("document_type", selectedUploadDocumentType);
       }
 
+      traceLoadDetailAction("upload_request_started", { request_id: requestId, mutation_generation: mutationGeneration });
       const uploadResponse = await fetchWithTimeout(buildConfiguredApiUrl("/documents/upload"), {
         method: "POST",
         headers: token
@@ -2842,7 +3041,9 @@ export default function LoadDetailPage() {
             }
           : undefined,
         body: formData,
+        cache: "no-store",
       }, 15_000);
+      traceLoadDetailAction("upload_response_received", { request_id: requestId, status: uploadResponse.status });
 
       if (!uploadResponse.ok) {
         const uploadError = await parseUploadErrorResponse(
@@ -2850,6 +3051,8 @@ export default function LoadDetailPage() {
           "Document upload failed. Please try again.",
         );
         if (uploadError.duplicate) {
+          loadDocumentsRef.current = loadDocumentsRef.current.filter((document) => document.id !== optimisticDocumentId);
+          setLoadDocuments(loadDocumentsRef.current);
           setPendingDuplicateUpload({
             file,
             formData,
@@ -2861,9 +3064,24 @@ export default function LoadDetailPage() {
         throw new Error(uploadError.message);
       }
 
-      const updatedDocuments = await fetchLoadDocuments({ silent: true });
-      setLoadDocuments(updatedDocuments);
-      void fetchLoad().then((updatedLoad) => setLoad(updatedLoad)).catch(() => undefined);
+      const uploadPayload = await uploadResponse.json().catch(() => null);
+      traceLoadDetailAction("upload_response_parsed", {
+        request_id: requestId,
+        has_data: uploadPayload !== null,
+      });
+      const uploadedPayload = Array.isArray((uploadPayload as ApiResponse<unknown> | null)?.data)
+        ? ((uploadPayload as ApiResponse<unknown>).data as unknown[])[0]
+        : (uploadPayload as ApiResponse<unknown> | null)?.data ?? uploadPayload;
+      const canonicalUploadedDocument = normalizeDocument(uploadedPayload);
+      if (canonicalUploadedDocument) {
+        uploadReconciliationCandidate = canonicalUploadedDocument;
+        loadDocumentsRef.current = loadDocumentsRef.current.map((document) =>
+          document.id === optimisticDocumentId ? canonicalUploadedDocument : document
+        );
+        setLoadDocuments(loadDocumentsRef.current);
+      }
+
+      await reconcileUpload("success");
       setSelectedUploadDocumentType("");
       setSelectedUploadFile(null);
       if (fileInputRef.current) {
@@ -2875,6 +3093,26 @@ export default function LoadDetailPage() {
       const uploadTypeSuffix = uploadTypeLabel ? ` (${uploadTypeLabel})` : "";
       setActionMessage(`Upload successful: ${file.name}${uploadTypeSuffix}.`);
     } catch (caught: unknown) {
+      if (isMutationTimeoutError(caught)) {
+        try {
+          await reconcileUpload("timeout");
+          setSelectedUploadDocumentType("");
+          setSelectedUploadFile(null);
+          if (fileInputRef.current) fileInputRef.current.value = "";
+          setDocumentUploadError(null);
+          setError(null);
+          setActionMessage(`Upload verified: ${file.name}.`);
+          return;
+        } catch (reconcileError: unknown) {
+          const message = extractErrorMessage(reconcileError, "Upload could not be verified.");
+          setDocumentUploadError(message);
+          setError(message);
+          setActionMessage(null);
+          return;
+        }
+      }
+      loadDocumentsRef.current = loadDocumentsRef.current.filter((document) => document.id !== optimisticDocumentId);
+      setLoadDocuments(loadDocumentsRef.current);
       const message = extractErrorMessage(caught, "Failed to upload document.");
       setDocumentUploadError(message);
       setError(message);
@@ -3069,6 +3307,7 @@ export default function LoadDetailPage() {
       document_id: document.id,
       document_type: document.document_type,
       document_status: document.processing_status ?? document.received_status ?? null,
+      hydration_locked: writeActionActiveRef.current,
     });
 
     if (isInvoiceManagedDocument(document)) {
@@ -3084,7 +3323,56 @@ export default function LoadDetailPage() {
     }
 
     const endWriteAction = beginWriteAction("delete_document");
+    const mutationGeneration = documentMutationGenerationRef.current + 1;
+    documentMutationGenerationRef.current = mutationGeneration;
+    const requestId = `delete-${mutationGeneration}`;
     deletingDocumentRequestRef.current = document.id;
+    const documentsBeforeDelete = loadDocumentsRef.current;
+
+    loadDocumentsRef.current = loadDocumentsRef.current.filter((item) => item.id !== document.id);
+    setLoadDocuments(loadDocumentsRef.current);
+    traceLoadDetailAction("optimistic_row_removed", {
+      request_id: requestId,
+      document_id: document.id,
+      final_documents_count: loadDocumentsRef.current.length,
+      mutation_generation: mutationGeneration,
+    });
+
+    const reconcileDelete = async (reason: "success" | "timeout") => {
+      if (reason === "timeout") {
+        traceLoadDetailAction("delete_timeout", { request_id: requestId, document_id: document.id, mutation_generation: mutationGeneration });
+        setActionMessage(`Delete timed out for ${getDocumentDisplayName(document)}. Verifying server state...`);
+      }
+
+      const updatedDocuments = await fetchLoadDocuments({
+        silent: true,
+        reason: `delete_${reason}_reconcile`,
+        expectedMinMutationGeneration: mutationGeneration,
+      });
+      const documentStillExists = updatedDocuments.some((item) => item.id === document.id);
+
+      traceLoadDetailAction("final_documents_count", {
+        request_id: requestId,
+        final_documents_count: updatedDocuments.length,
+        deleted_document_still_exists: documentStillExists,
+      });
+
+      traceLoadDetailAction("readiness_refresh_started", { request_id: requestId });
+      const updatedLoad = await fetchLoad().catch(() => null);
+      if (updatedLoad) {
+        setLoad(updatedLoad);
+        traceLoadDetailAction("readiness_refresh_applied", {
+          request_id: requestId,
+          present_documents: updatedLoad.packet_readiness?.present_documents ?? [],
+        });
+      }
+
+      if (reason === "timeout" && documentStillExists) {
+        loadDocumentsRef.current = documentsBeforeDelete;
+        setLoadDocuments(documentsBeforeDelete);
+        throw new Error("Delete could not be verified. The document was restored.");
+      }
+    };
 
     try {
       setDeletingDocumentId(document.id);
@@ -3092,20 +3380,35 @@ export default function LoadDetailPage() {
       setActionMessage(null);
 
       const token = getAccessToken();
-      traceLoadDetailAction("delete_request_sent", { document_id: document.id });
+      traceLoadDetailAction("delete_request_started", { request_id: requestId, document_id: document.id, mutation_generation: mutationGeneration });
       await apiClient.delete(`/documents/${encodeURIComponent(document.id)}`, {
         token: token ?? undefined,
         timeoutMs: 15_000,
       });
-      traceLoadDetailAction("delete_response_received", { document_id: document.id });
+      traceLoadDetailAction("delete_response_received", { request_id: requestId, document_id: document.id });
 
-      traceLoadDetailAction("refresh_documents_start", { document_id: document.id });
-      const updatedDocuments = await fetchLoadDocuments({ silent: true });
-      setLoadDocuments(updatedDocuments);
-      traceLoadDetailAction("refresh_documents_done", { document_id: document.id });
+      await reconcileDelete("success");
       setActionMessage("Deleted successfully.");
     } catch (caught: unknown) {
+      if (isMutationTimeoutError(caught)) {
+        try {
+          await new Promise((resolve) => window.setTimeout(resolve, 2_000));
+          await reconcileDelete("timeout");
+          setError(null);
+          setActionMessage("Delete verified successfully.");
+          return;
+        } catch (reconcileError: unknown) {
+          const message = extractErrorMessage(reconcileError, "Could not verify delete.");
+          traceLoadDetailAction("delete_failed", { request_id: requestId, document_id: document.id, message });
+          setError(message);
+          setActionMessage(null);
+          return;
+        }
+      }
+      loadDocumentsRef.current = documentsBeforeDelete;
+      setLoadDocuments(documentsBeforeDelete);
       traceLoadDetailAction("delete_failed", {
+        request_id: requestId,
         document_id: document.id,
         message: extractErrorMessage(caught, "Could not delete document."),
       });
@@ -4042,7 +4345,7 @@ export default function LoadDetailPage() {
                                 event.target.value as UploadDocumentType
                               )
                             }
-                            disabled={savingDocumentId === document.id || isInvoiceManagedDocument(document)}
+                            disabled={document.optimistic || savingDocumentId === document.id || isInvoiceManagedDocument(document)}
                             className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-700 disabled:opacity-60"
                           >
                             {UPLOAD_DOCUMENT_TYPE_OPTIONS.filter((option) => option.value !== "").map((option) => (
@@ -4061,7 +4364,7 @@ export default function LoadDetailPage() {
                                 document.processing_status
                               )}`}
                             >
-                              {(document.processing_status ?? "unknown").replaceAll("_", " ")}
+                              {(document.mutation_status ?? document.processing_status ?? "unknown").replaceAll("_", " ")}
                             </span>
                             <span className="text-xs leading-5 text-slate-500">{documentStatusLabel(document)}</span>
                           </div>
@@ -4081,7 +4384,7 @@ export default function LoadDetailPage() {
                           <button
                             type="button"
                             onClick={() => void handleDownloadDocument(document)}
-                            disabled={downloadingDocumentId === document.id || deletingDocumentId === document.id}
+                            disabled={document.optimistic || downloadingDocumentId === document.id || deletingDocumentId === document.id}
                             className="touch-target rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
                           >
                             {downloadingDocumentId === document.id ? "Downloading..." : "Download"}
@@ -4089,7 +4392,7 @@ export default function LoadDetailPage() {
                           <button
                             type="button"
                             onClick={() => void handleDeleteDocument(document)}
-                            disabled={deletingDocumentId === document.id}
+                            disabled={document.optimistic || deletingDocumentId === document.id}
                             className="touch-target rounded-xl border border-rose-300 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50 sm:ml-2"
                             title={
                               isInvoiceManagedDocument(document)
