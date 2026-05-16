@@ -63,13 +63,18 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [noticeMessage, setNoticeMessage] = useState<string | null>(null);
   const [isCheckingSession, setIsCheckingSession] = useState(true);
   const [organizationOptions, setOrganizationOptions] = useState<LoginOrganizationOption[]>([]);
 
   // 🔥 Auto-redirect if already logged in
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.get("session") === "expired") {
+    const reason = params.get("reason");
+    const session = params.get("session");
+    if (reason === "logged_out") {
+      setNoticeMessage("You have been signed out.");
+    } else if (session === "expired") {
       setErrorMessage("Your session expired. Please sign in again.");
     }
 
@@ -93,6 +98,7 @@ export default function LoginPage() {
     const normalizedSelectedOrganizationId = normalizeText(selectedOrganizationId ?? "");
     setIsSubmitting(true);
     setErrorMessage(null);
+    setNoticeMessage(null);
 
     try {
       clearAuth();
@@ -231,6 +237,12 @@ export default function LoginPage() {
               disabled={isSubmitting}
             />
           </div>
+
+          {noticeMessage && (
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+              {noticeMessage}
+            </div>
+          )}
 
           {errorMessage && (
             <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">

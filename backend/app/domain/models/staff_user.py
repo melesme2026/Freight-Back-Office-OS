@@ -28,6 +28,7 @@ class StaffUser(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         Index("ix_staff_users_organization_id", "organization_id"),
         Index("ix_staff_users_role", "role"),
         Index("ix_staff_users_is_active", "is_active"),
+        Index("ix_staff_users_email_active_role", "email", "is_active", "role"),
         Index("ix_staff_users_org_email", "organization_id", "email", unique=True),
     )
 

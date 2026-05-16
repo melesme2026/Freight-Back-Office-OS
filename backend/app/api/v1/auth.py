@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+import time
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -44,6 +46,7 @@ GET_BEARER_TOKEN_DEPENDENCY = Depends(get_bearer_token)
 GET_DB_SESSION_DEPENDENCY = Depends(get_db_session)
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 ACCESS_TOKEN_EXPIRES_IN_SECONDS = 60 * 60
 ALLOWED_INVITE_ROLES = {role.value for role in Role}
@@ -286,19 +289,26 @@ def signup(
 
     normalized_full_name = _normalize_required_text(payload.full_name, "full_name")
     normalized_email = _normalize_email(payload.email)
-    normalized_org_name = _normalize_required_text(payload.organization_name, "organization_name")
+    normalized_org_name = _normalize_required_text(
+        payload.organization_name, "organization_name"
+    )
 
     if payload.password != payload.confirm_password:
-        raise ValidationError("Passwords do not match", details={"field": "confirm_password"})
+        raise ValidationError(
+            "Passwords do not match", details={"field": "confirm_password"}
+        )
     if len(payload.password.strip()) < 8:
         raise ValidationError(
             "Password must be at least 8 characters", details={"field": "password"}
         )
 
-    existing_email = db.scalar(select(StaffUser).where(StaffUser.email == normalized_email))
+    existing_email = db.scalar(
+        select(StaffUser).where(StaffUser.email == normalized_email)
+    )
     if existing_email is not None:
         raise ValidationError(
-            "An account with this email already exists", details={"email": normalized_email}
+            "An account with this email already exists",
+            details={"email": normalized_email},
         )
 
     organization_repo = OrganizationRepository(db)
@@ -344,17 +354,20 @@ def signup(
     return LoginResponse(data=data, meta={"signup_completed": True}, error=None)
 
 
-@router.post("/auth/login", response_model=LoginResponse)
-def login(
+def _login_response(
+    *,
     payload: LoginRequestBody,
-    request: Request = None,  # type: ignore[assignment]
-    db: Session = GET_DB_SESSION_DEPENDENCY,
-    x_organization_id: str | None = Header(default=None, alias="X-Organization-Id"),
+    request: Request | None,
+    db: Session,
+    x_organization_id: str | None,
+    required_role: Role | None = None,
 ) -> LoginResponse:
+    started_at = time.perf_counter()
     hinted_organization_id = _resolve_organization_id(
         payload_organization_id=payload.organization_id,
         x_organization_id=x_organization_id,
     )
+    auth_scope = required_role.value if required_role is not None else "any"
 
     auth_service = AuthService(db)
     try:
@@ -362,19 +375,39 @@ def login(
             email=payload.email,
             password=payload.password,
             organization_id=hinted_organization_id,
+            required_role=required_role,
         )
     except AppError as exc:
+        duration_ms = int((time.perf_counter() - started_at) * 1000)
+        logger.info(
+            "auth_login_failed",
+            extra={
+                "auth_scope": auth_scope,
+                "email": payload.email.strip().lower(),
+                "organization_id": (
+                    str(hinted_organization_id) if hinted_organization_id else None
+                ),
+                "reason": exc.code,
+                "status_code": exc.status_code,
+                "duration_ms": duration_ms,
+            },
+        )
         audit_user = _find_single_user_for_login_audit(
             db, email=payload.email, organization_id=hinted_organization_id
         )
         _audit_auth_event(
             db,
-            organization_id=getattr(audit_user, "organization_id", hinted_organization_id),
+            organization_id=getattr(
+                audit_user, "organization_id", hinted_organization_id
+            ),
             entity_id=getattr(audit_user, "id", None),
             action="auth.login.failed",
             request=request,
             metadata_json=_safe_login_audit_metadata(
-                request, email=payload.email, success=False, reason=exc.code
+                request,
+                email=payload.email,
+                success=False,
+                reason=f"{auth_scope}:{exc.code}",
             ),
         )
         db.commit()
@@ -400,7 +433,10 @@ def login(
                 request=request,
                 actor_id=user.id,
                 metadata_json=_safe_login_audit_metadata(
-                    request, email=payload.email, success=False, reason="mfa_required_or_invalid"
+                    request,
+                    email=payload.email,
+                    success=False,
+                    reason="mfa_required_or_invalid",
                 ),
             )
             db.commit()
@@ -414,10 +450,24 @@ def login(
         action="auth.login.succeeded",
         request=request,
         actor_id=user.id,
-        metadata_json=_safe_login_audit_metadata(request, email=payload.email, success=True),
+        metadata_json=_safe_login_audit_metadata(
+            request, email=payload.email, success=True
+        ),
     )
     db.commit()
     access_token = auth_service.build_access_token(user)
+
+    duration_ms = int((time.perf_counter() - started_at) * 1000)
+    logger.info(
+        "auth_login_succeeded",
+        extra={
+            "auth_scope": auth_scope,
+            "email": payload.email.strip().lower(),
+            "organization_id": str(user.organization_id),
+            "role": str(getattr(user.role, "value", user.role)).lower(),
+            "duration_ms": duration_ms,
+        },
+    )
 
     data = LoginResponseData(
         access_token=access_token,
@@ -426,6 +476,37 @@ def login(
         user=_serialize_staff_user(user),
     )
     return LoginResponse(data=data, meta={}, error=None)
+
+
+@router.post("/auth/login", response_model=LoginResponse)
+def login(
+    payload: LoginRequestBody,
+    request: Request = None,  # type: ignore[assignment]
+    db: Session = GET_DB_SESSION_DEPENDENCY,
+    x_organization_id: str | None = Header(default=None, alias="X-Organization-Id"),
+) -> LoginResponse:
+    return _login_response(
+        payload=payload,
+        request=request,
+        db=db,
+        x_organization_id=x_organization_id,
+    )
+
+
+@router.post("/auth/driver-login", response_model=LoginResponse)
+def driver_login(
+    payload: LoginRequestBody,
+    request: Request = None,  # type: ignore[assignment]
+    db: Session = GET_DB_SESSION_DEPENDENCY,
+    x_organization_id: str | None = Header(default=None, alias="X-Organization-Id"),
+) -> LoginResponse:
+    return _login_response(
+        payload=payload,
+        request=request,
+        db=db,
+        x_organization_id=x_organization_id,
+        required_role=Role.DRIVER,
+    )
 
 
 @router.get("/auth/me", response_model=CurrentUserResponse)
@@ -443,7 +524,11 @@ def get_current_user(
     return CurrentUserResponse(
         data=_serialize_staff_user(
             user,
-            driver_id=str(payload.get("driver_id")).strip() if payload.get("driver_id") else None,
+            driver_id=(
+                str(payload.get("driver_id")).strip()
+                if payload.get("driver_id")
+                else None
+            ),
         ),
         meta={},
         error=None,
@@ -507,7 +592,9 @@ def invite_user(
 
     allowed_target_roles = INVITE_PERMISSION_MATRIX.get(requester_role, set())
     if normalized_role not in allowed_target_roles:
-        raise UnauthorizedError("Your role cannot invite users for the requested target role")
+        raise UnauthorizedError(
+            "Your role cannot invite users for the requested target role"
+        )
 
     if normalized_role == Role.DRIVER.value:
         driver_repo = DriverRepository(db)
@@ -518,10 +605,15 @@ def invite_user(
         if driver_profile is None:
             raise ValidationError(
                 "Driver profile not found for invite email. Create the driver profile first.",
-                details={"email": normalized_email, "organization_id": str(organization_id)},
+                details={
+                    "email": normalized_email,
+                    "organization_id": str(organization_id),
+                },
             )
 
-    existing = repo.get_by_email(organization_id=organization_id, email=normalized_email)
+    existing = repo.get_by_email(
+        organization_id=organization_id, email=normalized_email
+    )
     created_new_user = False
 
     if existing is None:
@@ -567,9 +659,7 @@ def invite_user(
     )
 
     settings = get_settings()
-    activation_url = (
-        f"{settings.web_app_base_url.rstrip('/')}/activate-account?token={activation_token}"
-    )
+    activation_url = f"{settings.web_app_base_url.rstrip('/')}/activate-account?token={activation_token}"
     email_service = EmailService()
     email_status = "unknown"
     invite_message = "Invite generated."
@@ -648,7 +738,9 @@ def activate_account(
 
     token_organization_id = token_payload.get("organization_id")
     if str(token_organization_id) != str(user.organization_id):
-        raise UnauthorizedError("Activation token organization does not match user organization")
+        raise UnauthorizedError(
+            "Activation token organization does not match user organization"
+        )
 
     user.password_hash = hash_password(payload.password)
     user.is_active = True
@@ -664,7 +756,9 @@ def activate_account(
     db.commit()
     db.refresh(user)
 
-    return ApiResponse(data={"activated": True, "user_id": str(user.id)}, meta={}, error=None)
+    return ApiResponse(
+        data={"activated": True, "user_id": str(user.id)}, meta={}, error=None
+    )
 
 
 @router.post("/auth/request-password-reset", response_model=ApiResponse)
@@ -678,7 +772,9 @@ def request_password_reset(
 
     if organization_id is None:
         stmt = (
-            select(StaffUser.organization_id).where(StaffUser.email == normalized_email).distinct()
+            select(StaffUser.organization_id)
+            .where(StaffUser.email == normalized_email)
+            .distinct()
         )
         organization_ids = list(db.scalars(stmt).all())
         if len(organization_ids) != 1:
@@ -702,7 +798,9 @@ def request_password_reset(
     )
 
     settings = get_settings()
-    reset_url = f"{settings.web_app_base_url.rstrip('/')}/reset-password?token={reset_token}"
+    reset_url = (
+        f"{settings.web_app_base_url.rstrip('/')}/reset-password?token={reset_token}"
+    )
     email_service = EmailService()
     email_result = email_service.send_message(
         to_email=user.email,
@@ -712,7 +810,10 @@ def request_password_reset(
             f"Reset your password using this link:\n{reset_url}\n\n"
             "If you did not request this, ignore this message."
         ),
-        metadata={"type": "auth_password_reset", "organization_id": str(user.organization_id)},
+        metadata={
+            "type": "auth_password_reset",
+            "organization_id": str(user.organization_id),
+        },
     )
 
     response_data: dict[str, str | bool] = {
@@ -756,7 +857,9 @@ def reset_password(
 
     token_organization_id = token_payload.get("organization_id")
     if str(token_organization_id) != str(user.organization_id):
-        raise UnauthorizedError("Reset token organization does not match user organization")
+        raise UnauthorizedError(
+            "Reset token organization does not match user organization"
+        )
 
     user.password_hash = hash_password(payload.new_password)
     db.add(user)
@@ -771,7 +874,9 @@ def reset_password(
     db.commit()
     db.refresh(user)
 
-    return ApiResponse(data={"password_reset": True, "user_id": str(user.id)}, meta={}, error=None)
+    return ApiResponse(
+        data={"password_reset": True, "user_id": str(user.id)}, meta={}, error=None
+    )
 
 
 @router.post("/auth/logout", response_model=ApiResponse)
@@ -804,9 +909,11 @@ def get_mfa_status(
         data={
             "mfa_enabled": bool(getattr(user, "mfa_enabled", False)),
             "totp_configured": bool(getattr(user, "mfa_totp_secret", None)),
-            "enabled_at": user.mfa_enabled_at.isoformat()
-            if getattr(user, "mfa_enabled_at", None)
-            else None,
+            "enabled_at": (
+                user.mfa_enabled_at.isoformat()
+                if getattr(user, "mfa_enabled_at", None)
+                else None
+            ),
         },
         meta={"mfa_required_by_default": False},
         error=None,
@@ -839,7 +946,9 @@ def setup_mfa(
         data={
             "mfa_enabled": False,
             "secret": secret,
-            "provisioning_uri": MfaService.provisioning_uri(email=user.email, secret=secret),
+            "provisioning_uri": MfaService.provisioning_uri(
+                email=user.email, secret=secret
+            ),
             "recovery_codes_supported": False,
         },
         meta={"setup_required_before_enforcement": True},

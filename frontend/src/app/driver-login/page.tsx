@@ -58,11 +58,16 @@ export default function DriverLoginPage() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isCheckingSession, setIsCheckingSession] = useState(true);
   const [sessionNotice, setSessionNotice] = useState<string | null>(null);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [organizationOptions, setOrganizationOptions] = useState<LoginOrganizationOption[]>([]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.get("session") === "expired") {
+    const reason = params.get("reason");
+    const session = params.get("session");
+    if (reason === "logged_out") {
+      setStatusMessage("You have been signed out.");
+    } else if (session === "expired") {
       setErrorMessage("Your session expired. Please sign in again.");
     }
     setSessionNotice(null);
@@ -90,6 +95,7 @@ export default function DriverLoginPage() {
     clearAuth();
     setSessionNotice(null);
     setErrorMessage(null);
+    setStatusMessage("You have been signed out.");
     setIsCheckingSession(false);
   }
 
@@ -97,17 +103,18 @@ export default function DriverLoginPage() {
     const normalizedSelectedOrganizationId = normalizeText(selectedOrganizationId ?? "");
     setIsSubmitting(true);
     setErrorMessage(null);
+    setStatusMessage(null);
 
     try {
       clearAuth();
       const payload = await apiClient.post<LoginResponse>(
-        "/auth/login",
+        "/auth/driver-login",
         {
           email: normalizedEmail,
           password,
           ...(normalizedSelectedOrganizationId ? { organization_id: normalizedSelectedOrganizationId } : {}),
         },
-        { onUnauthorized: "throw" }
+        { onUnauthorized: "throw", timeoutMs: 8_000 }
       );
 
       const accessToken = payload?.data?.access_token?.trim();
@@ -146,12 +153,10 @@ export default function DriverLoginPage() {
             : [];
           setOrganizationOptions(organizations);
           setErrorMessage("This email is linked to multiple workspaces. Choose which workspace to access.");
-        } else if (error.status === 401) {
-          if (error.message.toLowerCase().includes("inactive")) {
-            setErrorMessage("This driver account is inactive. Contact your dispatcher.");
-          } else {
-            setErrorMessage("Invalid credentials");
-          }
+        } else if (error.status === 401 || error.status === 403) {
+          setErrorMessage("Driver account not found or not activated. Please contact your dispatcher.");
+        } else if (error.code === "client_timeout") {
+          setErrorMessage("Driver login is taking longer than expected. Check your connection and try again.");
         } else {
           setErrorMessage(error.message || "Unable to sign in. Please verify your credentials and try again.");
         }
@@ -167,6 +172,10 @@ export default function DriverLoginPage() {
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
+    if (isSubmitting) {
+      return;
+    }
 
     if (!normalizedEmail || !isValidEmail(normalizedEmail)) {
       setErrorMessage("Please enter a valid email address.");
@@ -235,6 +244,8 @@ export default function DriverLoginPage() {
               </div>
             </div>
           )}
+
+          {statusMessage && <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{statusMessage}</div>}
 
           {errorMessage && <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{errorMessage}</div>}
 

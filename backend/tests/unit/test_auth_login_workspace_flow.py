@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 
 import pytest
-from app.api.v1.auth import LoginRequestBody, get_current_user, login
+from app.api.v1.auth import LoginRequestBody, driver_login, get_current_user, login
 from app.core.exceptions import AppError
 from app.core.security import decode_token, hash_password
 from app.domain.enums.role import Role
@@ -47,7 +47,11 @@ def test_single_workspace_staff_login_succeeds(db_session) -> None:
     org_id = uuid.uuid4()
     _seed_org(db_session, org_id, name="Adwa Express LLC", slug="adwa-express")
     _seed_user(
-        db_session, org_id=org_id, email="staff@example.com", role=Role.OWNER, password="Owner123!"
+        db_session,
+        org_id=org_id,
+        email="staff@example.com",
+        role=Role.OWNER,
+        password="Owner123!",
     )
     db_session.commit()
 
@@ -64,7 +68,9 @@ def test_single_workspace_staff_login_succeeds(db_session) -> None:
     assert claims.get("sub")
 
 
-def test_single_workspace_driver_login_and_me_include_driver_context(db_session) -> None:
+def test_single_workspace_driver_login_and_me_include_driver_context(
+    db_session,
+) -> None:
     org_id = uuid.uuid4()
     _seed_org(db_session, org_id, name="Adwa Driver Ops", slug="adwa-driver-ops")
     user = _seed_user(
@@ -104,7 +110,9 @@ def test_single_workspace_driver_login_and_me_include_driver_context(db_session)
 
 def test_inactive_driver_login_is_blocked_with_friendly_message(db_session) -> None:
     org_id = uuid.uuid4()
-    _seed_org(db_session, org_id, name="Inactive Driver Org", slug="inactive-driver-org")
+    _seed_org(
+        db_session, org_id, name="Inactive Driver Org", slug="inactive-driver-org"
+    )
     _seed_user(
         db_session,
         org_id=org_id,
@@ -127,25 +135,102 @@ def test_inactive_driver_login_is_blocked_with_friendly_message(db_session) -> N
 
     with pytest.raises(AppError) as exc_info:
         login(
-            LoginRequestBody(email="inactive-driver@example.com", password="Driver123!"),
+            LoginRequestBody(
+                email="inactive-driver@example.com", password="Driver123!"
+            ),
             db=db_session,
             x_organization_id=None,
         )
 
     assert exc_info.value.status_code == 401
-    assert str(exc_info.value) == "This driver account is inactive. Contact your dispatcher."
+    assert (
+        str(exc_info.value)
+        == "Driver account not found or not activated. Please contact your dispatcher."
+    )
 
 
-def test_multi_workspace_login_requires_explicit_organization_selection(db_session) -> None:
+def test_driver_specific_login_rejects_staff_account_quickly(db_session) -> None:
+    org_id = uuid.uuid4()
+    _seed_org(db_session, org_id, name="Driver Scoped Org", slug="driver-scoped-org")
+    _seed_user(
+        db_session,
+        org_id=org_id,
+        email="staff-driver-page@example.com",
+        role=Role.OWNER,
+        password="Owner123!",
+    )
+    db_session.commit()
+
+    with pytest.raises(AppError) as exc_info:
+        driver_login(
+            LoginRequestBody(
+                email="staff-driver-page@example.com", password="Owner123!"
+            ),
+            db=db_session,
+            x_organization_id=None,
+        )
+
+    assert exc_info.value.status_code == 401
+    assert (
+        str(exc_info.value)
+        == "Driver account not found or not activated. Please contact your dispatcher."
+    )
+
+
+def test_driver_specific_login_succeeds_for_activated_driver(db_session) -> None:
+    org_id = uuid.uuid4()
+    _seed_org(db_session, org_id, name="Driver Login Org", slug="driver-login-org")
+    user = _seed_user(
+        db_session,
+        org_id=org_id,
+        email="driver-login@example.com",
+        role=Role.DRIVER,
+        password="Driver123!",
+    )
+    driver = Driver(
+        id=uuid.uuid4(),
+        organization_id=org_id,
+        customer_account_id=None,
+        full_name="Driver Login",
+        phone="+15550003333",
+        email="driver-login@example.com",
+        is_active=True,
+    )
+    db_session.add(driver)
+    db_session.commit()
+
+    response = driver_login(
+        LoginRequestBody(email="driver-login@example.com", password="Driver123!"),
+        db=db_session,
+        x_organization_id=None,
+    )
+
+    claims = decode_token(response.data.access_token)
+    assert response.data.user.role == Role.DRIVER.value
+    assert claims.get("sub") == str(user.id)
+    assert claims.get("driver_id") == str(driver.id)
+
+
+def test_multi_workspace_login_requires_explicit_organization_selection(
+    db_session,
+) -> None:
     org_a = uuid.uuid4()
     org_b = uuid.uuid4()
     _seed_org(db_session, org_a, name="Adwa Express LLC", slug="adwa-express")
     _seed_org(db_session, org_b, name="Adwa Driver Ops", slug="adwa-driver-ops")
     _seed_user(
-        db_session, org_id=org_a, email="multi@example.com", role=Role.OWNER, password="Owner123!"
+        db_session,
+        org_id=org_a,
+        email="multi@example.com",
+        role=Role.OWNER,
+        password="Owner123!",
     )
     _seed_user(
-        db_session, org_id=org_b, email="multi@example.com", role=Role.DRIVER, password="Owner123!"
+        db_session,
+        org_id=org_b,
+        email="multi@example.com",
+        role=Role.DRIVER,
+        password="Owner123!",
     )
     db_session.add(
         Driver(
@@ -173,7 +258,9 @@ def test_multi_workspace_login_requires_explicit_organization_selection(db_sessi
     assert "Adwa Driver Ops" in payload
 
     selected = login(
-        LoginRequestBody(email="multi@example.com", password="Owner123!", organization_id=org_b),
+        LoginRequestBody(
+            email="multi@example.com", password="Owner123!", organization_id=org_b
+        ),
         db=db_session,
         x_organization_id=None,
     )
@@ -186,7 +273,11 @@ def test_multi_workspace_login_rejects_invalid_organization_id(db_session) -> No
     org_a = uuid.uuid4()
     _seed_org(db_session, org_a, name="Adwa Express LLC", slug="adwa-express")
     _seed_user(
-        db_session, org_id=org_a, email="multi@example.com", role=Role.OWNER, password="Owner123!"
+        db_session,
+        org_id=org_a,
+        email="multi@example.com",
+        role=Role.OWNER,
+        password="Owner123!",
     )
     db_session.commit()
 
@@ -194,7 +285,9 @@ def test_multi_workspace_login_rejects_invalid_organization_id(db_session) -> No
     with pytest.raises(AppError) as exc_info:
         login(
             LoginRequestBody(
-                email="multi@example.com", password="Owner123!", organization_id=invalid_org
+                email="multi@example.com",
+                password="Owner123!",
+                organization_id=invalid_org,
             ),
             db=db_session,
             x_organization_id=None,

@@ -24,6 +24,7 @@ class Driver(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         Index("ix_drivers_organization_id", "organization_id"),
         Index("ix_drivers_customer_account_id", "customer_account_id"),
         Index("ix_drivers_phone", "phone"),
+        Index("ix_drivers_org_email_active", "organization_id", "email", "is_active"),
         Index("ix_drivers_is_active", "is_active"),
     )
 
