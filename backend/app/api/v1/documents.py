@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import mimetypes
 import time
 import uuid
 from datetime import date, datetime
@@ -88,6 +89,35 @@ def _document_label(value: DocumentType) -> str:
         DocumentType.INVOICE: "Invoice",
     }
     return labels.get(value, value.value.replace("_", " ").title())
+
+
+
+def _infer_mime_type(filename: str | None, content_type: str | None) -> str | None:
+    normalized_content_type = _normalize_optional_text(content_type)
+    if normalized_content_type:
+        return normalized_content_type.lower()
+    normalized_filename = _normalize_optional_text(filename)
+    if not normalized_filename:
+        return None
+    guessed, _ = mimetypes.guess_type(normalized_filename)
+    if guessed:
+        return guessed.lower()
+    suffix = normalized_filename.rsplit(".", 1)[-1].lower() if "." in normalized_filename else ""
+    return {
+        "pdf": "application/pdf",
+        "jpg": "image/jpeg",
+        "jpeg": "image/jpeg",
+        "png": "image/png",
+        "webp": "image/webp",
+        "heic": "image/heic",
+        "heif": "image/heif",
+        "tif": "image/tiff",
+        "tiff": "image/tiff",
+    }.get(suffix)
+
+
+def _is_invoice_document(item: Any) -> bool:
+    return _enum_to_string(getattr(item, "document_type", None)) == DocumentType.INVOICE.value
 
 
 def _upload_log_context(
@@ -372,12 +402,30 @@ def _serialize_document(item: Any) -> dict[str, Any]:
 
 
 def _serialize_lightweight_document(item: Any) -> dict[str, Any]:
+    mime_type = _infer_mime_type(
+        getattr(item, "original_filename", None), getattr(item, "mime_type", None)
+    )
+    document_type = _enum_to_string(getattr(item, "document_type", None))
     return {
         "id": str(item.id),
+        "organization_id": str(item.organization_id),
+        "customer_account_id": str(item.customer_account_id),
+        "driver_id": str(item.driver_id) if getattr(item, "driver_id", None) else None,
+        "load_id": str(item.load_id) if getattr(item, "load_id", None) else None,
         "filename": getattr(item, "original_filename", None),
-        "type": _enum_to_string(getattr(item, "document_type", None)),
+        "original_filename": getattr(item, "original_filename", None),
+        "type": document_type,
+        "document_type": document_type,
+        "mime_type": mime_type,
+        "file_size_bytes": getattr(item, "file_size_bytes", None),
         "uploaded_at": _to_iso_or_none(getattr(item, "received_at", None)),
+        "received_at": _to_iso_or_none(getattr(item, "received_at", None)),
+        "created_at": _to_iso_or_none(getattr(item, "created_at", None)),
+        "updated_at": _to_iso_or_none(getattr(item, "updated_at", None)),
+        "received_status": _document_received_status(item),
         "status": _document_processing_value(item),
+        "processing_status": _document_processing_value(item),
+        "extraction_status": _document_extraction_status(item),
     }
 
 
@@ -402,7 +450,7 @@ def _validate_upload_file(file: UploadFile) -> None:
             detail="A file with a valid filename is required.",
         )
 
-    content_type = _normalize_optional_text(file.content_type)
+    content_type = _infer_mime_type(filename, file.content_type)
     if content_type and content_type.lower() not in ALLOWED_UPLOAD_MIME_TYPES:
         allowed_types = ", ".join(sorted(ALLOWED_UPLOAD_MIME_TYPES))
         raise HTTPException(
@@ -699,9 +747,7 @@ async def upload_document(
                 if storage_bucket is not None
                 else None
             )
-            existing_required_doc.mime_type = _normalize_optional_text(
-                file.content_type
-            )
+            existing_required_doc.mime_type = _infer_mime_type(file.filename, file.content_type)
             existing_required_doc.file_size_bytes = file_size_bytes
             existing_required_doc.processing_status = ProcessingStatus.QUEUED
             existing_required_doc.received_at = datetime.utcnow()
@@ -730,7 +776,7 @@ async def upload_document(
                 load_id=_uuid_to_str(load_id),
                 document_type=normalized_document_type,
                 original_filename=_normalize_optional_text(file.filename),
-                mime_type=_normalize_optional_text(file.content_type),
+                mime_type=_infer_mime_type(file.filename, file.content_type),
                 file_size_bytes=file_size_bytes,
                 page_count=page_count,
                 uploaded_by_staff_user_id=server_uploaded_by_staff_user_id,
@@ -1075,9 +1121,7 @@ async def upload_driver_document(
                 if storage_result.get("bucket") is not None
                 else None
             )
-            existing_required_doc.mime_type = _normalize_optional_text(
-                file.content_type
-            )
+            existing_required_doc.mime_type = _infer_mime_type(file.filename, file.content_type)
             existing_required_doc.file_size_bytes = file_size_bytes
             existing_required_doc.processing_status = (
                 ProcessingStatus.QUEUED
@@ -1104,7 +1148,7 @@ async def upload_driver_document(
                 load_id=resolved_load_id,
                 document_type=normalized_document_type,
                 original_filename=_normalize_optional_text(file.filename),
-                mime_type=_normalize_optional_text(file.content_type),
+                mime_type=_infer_mime_type(file.filename, file.content_type),
                 file_size_bytes=file_size_bytes,
                 page_count=None,
                 uploaded_by_staff_user_id=None,
@@ -1535,6 +1579,17 @@ def delete_document(
         organization_id=str(token_payload.get("organization_id")),
     )
     _authorize_document_mutation(item=item, token_payload=token_payload)
+    if _is_invoice_document(item):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "invoice_document_managed_by_invoice_workflow",
+                "message": (
+                    "Invoice documents are managed from the invoice workflow. "
+                    "Use Regenerate Invoice to replace this file."
+                ),
+            },
+        )
     _log_document_event(
         db=db,
         organization_id=item.organization_id,

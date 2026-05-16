@@ -277,3 +277,85 @@ def test_pod_upload_mark_extraction_skipped_does_not_remain_pending(db_session) 
         and item.processing_status == ProcessingStatus.COMPLETED
         for item in refreshed_load.documents
     )
+
+
+def test_delete_document_blocks_generated_invoice_documents(db_session) -> None:
+    import pytest
+    from app.api.v1.documents import delete_document
+    from app.services.loads.load_service import LoadService
+    from fastapi import HTTPException
+
+    org_id = "00000000-0000-0000-0000-000000078201"
+    customer_id = "00000000-0000-0000-0000-000000078211"
+    driver_id = "00000000-0000-0000-0000-000000078221"
+    load = LoadService(db_session).create_load(
+        organization_id=org_id,
+        customer_account_id=customer_id,
+        driver_id=driver_id,
+        load_number="INV-DELETE-BLOCK-001",
+    )
+    document = DocumentService(db_session).create_document(
+        organization_id=org_id,
+        customer_account_id=customer_id,
+        driver_id=driver_id,
+        load_id=str(load.id),
+        document_type="invoice",
+        storage_key="uploads/generated-invoice-delete-block.pdf",
+        source_channel="manual",
+        original_filename="generated-invoice-delete-block.pdf",
+        mime_type="application/pdf",
+        file_size_bytes=2048,
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        delete_document(
+            document_id=document.id,
+            token_payload={"organization_id": org_id, "role": "owner", "sub": driver_id},
+            db=db_session,
+        )
+
+    assert exc_info.value.status_code == 409
+    assert exc_info.value.detail["code"] == "invoice_document_managed_by_invoice_workflow"
+    assert exc_info.value.detail["message"] == (
+        "Invoice documents are managed from the invoice workflow. "
+        "Use Regenerate Invoice to replace this file."
+    )
+    assert DocumentService(db_session).get_document(str(document.id)).id == document.id
+
+
+def test_lightweight_documents_infers_pdf_mime_when_browser_omits_type(db_session) -> None:
+    from app.api.v1.documents import get_documents_by_load
+    from app.services.loads.load_service import LoadService
+
+    org_id = "00000000-0000-0000-0000-000000078301"
+    customer_id = "00000000-0000-0000-0000-000000078311"
+    driver_id = "00000000-0000-0000-0000-000000078321"
+    load = LoadService(db_session).create_load(
+        organization_id=org_id,
+        customer_account_id=customer_id,
+        driver_id=driver_id,
+        load_number="MIME-INFER-001",
+    )
+    DocumentService(db_session).create_document(
+        organization_id=org_id,
+        customer_account_id=customer_id,
+        driver_id=driver_id,
+        load_id=str(load.id),
+        document_type="proof_of_delivery",
+        storage_key="uploads/no-content-type.pdf",
+        source_channel="manual",
+        original_filename="no-content-type.pdf",
+        mime_type=None,
+        file_size_bytes=4096,
+    )
+
+    response = get_documents_by_load(
+        load_id=load.id,
+        token_payload={"organization_id": org_id, "role": "owner", "sub": driver_id},
+        page=1,
+        page_size=100,
+        db=db_session,
+    )
+
+    assert response.data[0]["mime_type"] == "application/pdf"
+    assert response.data[0]["file_size_bytes"] == 4096

@@ -1266,6 +1266,24 @@ function SectionLoadNotice({
   return null;
 }
 
+function isInvoiceManagedDocument(document: LoadDocument): boolean {
+  return (document.document_type ?? "").toLowerCase() === "invoice";
+}
+
+function inferDocumentMimeType(document: LoadDocument): string {
+  const explicitMimeType = document.mime_type?.trim();
+  if (explicitMimeType) return explicitMimeType;
+  const filename = (document.original_filename ?? "").toLowerCase();
+  if (filename.endsWith(".pdf")) return "application/pdf";
+  if (filename.endsWith(".jpg") || filename.endsWith(".jpeg")) return "image/jpeg";
+  if (filename.endsWith(".png")) return "image/png";
+  if (filename.endsWith(".webp")) return "image/webp";
+  if (filename.endsWith(".heic")) return "image/heic";
+  if (filename.endsWith(".heif")) return "image/heif";
+  if (filename.endsWith(".tif") || filename.endsWith(".tiff")) return "image/tiff";
+  return "Unknown MIME";
+}
+
 export default function LoadDetailPage() {
   const router = useRouter();
   const params = useParams<{ loadId: string | string[] }>();
@@ -1281,6 +1299,12 @@ export default function LoadDetailPage() {
   }, []);
 
   const getHydrationSignal = useCallback(() => hydrationAbortControllerRef.current?.signal, []);
+
+  const pauseBackgroundHydrationForAction = useCallback(() => {
+    hydrationAbortControllerRef.current?.abort();
+    hydrationAbortControllerRef.current = null;
+    clearHydrationTimeouts();
+  }, [clearHydrationTimeouts]);
 
   const [load, setLoad] = useState<Load | null>(null);
   const [reviewQueueItem, setReviewQueueItem] = useState<ReviewQueueItem | null>(null);
@@ -1474,6 +1498,7 @@ export default function LoadDetailPage() {
   async function handleCreateSubmissionPacket() {
     if (!loadId) return;
     try {
+      pauseBackgroundHydrationForAction();
       setIsSubmissionBusy(true);
       const token = getAccessToken();
       await apiClient.post(`/loads/${encodeURIComponent(loadId)}/submission-packets`, {}, { token: token ?? undefined });
@@ -1490,6 +1515,7 @@ export default function LoadDetailPage() {
   async function handleMarkPacket(packetId: string, action: "mark-sent" | "mark-accepted" | "mark-rejected", payload?: Record<string, unknown>) {
     if (!loadId) return;
     try {
+      pauseBackgroundHydrationForAction();
       setIsSubmissionBusy(true);
       const token = getAccessToken();
       await apiClient.post(`/loads/${encodeURIComponent(loadId)}/submission-packets/${encodeURIComponent(packetId)}/${action}`, payload ?? {}, { token: token ?? undefined });
@@ -2513,6 +2539,7 @@ export default function LoadDetailPage() {
     }
 
     try {
+      pauseBackgroundHydrationForAction();
       setIsSettingStatus(true);
       setError(null);
       setActionMessage(null);
@@ -2549,6 +2576,7 @@ export default function LoadDetailPage() {
     }
 
     try {
+      pauseBackgroundHydrationForAction();
       setIsExecutingWorkflowAction(true);
       setError(null);
       setActionMessage(null);
@@ -2585,6 +2613,7 @@ export default function LoadDetailPage() {
     }
 
     try {
+      pauseBackgroundHydrationForAction();
       setIsGeneratingInvoice(true);
       setError(null);
       setActionMessage(null);
@@ -2697,6 +2726,8 @@ export default function LoadDetailPage() {
       return;
     }
 
+    pauseBackgroundHydrationForAction();
+
     if (!load?.id) {
       setError("Load is required before uploading documents.");
       return;
@@ -2767,7 +2798,6 @@ export default function LoadDetailPage() {
       const updatedDocuments = await fetchLoadDocuments({ silent: true });
       setLoadDocuments(updatedDocuments);
       void fetchLoad().then((updatedLoad) => setLoad(updatedLoad)).catch(() => undefined);
-      void fetchPacketAudit().then((audit) => setPacketAudit(audit)).catch(() => undefined);
       setSelectedUploadDocumentType("");
       setSelectedUploadFile(null);
       if (fileInputRef.current) {
@@ -2799,6 +2829,7 @@ export default function LoadDetailPage() {
   async function handleReplaceDuplicateUpload() {
     if (!pendingDuplicateUpload || isUploadingDocument) return;
     try {
+      pauseBackgroundHydrationForAction();
       setIsUploadingDocument(true);
       setDocumentUploadError(null);
       setError(null);
@@ -2916,6 +2947,7 @@ export default function LoadDetailPage() {
 
   async function handleRefreshDocuments() {
     try {
+      pauseBackgroundHydrationForAction();
       setError(null);
       setActionMessage(null);
 
@@ -2934,6 +2966,7 @@ export default function LoadDetailPage() {
     }
 
     try {
+      pauseBackgroundHydrationForAction();
       setSavingDocumentId(document.id);
       setError(null);
       setActionMessage(null);
@@ -2961,6 +2994,16 @@ export default function LoadDetailPage() {
       return;
     }
 
+    if (isInvoiceManagedDocument(document)) {
+      setError(
+        "Invoice documents are managed from the invoice workflow. Use Regenerate Invoice to replace this file."
+      );
+      setActionMessage(null);
+      return;
+    }
+
+    pauseBackgroundHydrationForAction();
+
     if (!window.confirm(`Delete ${getDocumentDisplayName(document)}?`)) {
       return;
     }
@@ -2978,9 +3021,9 @@ export default function LoadDetailPage() {
       const updatedDocuments = await fetchLoadDocuments({ silent: true });
       setLoadDocuments(updatedDocuments);
       void fetchLoad().then((updatedLoad) => setLoad(updatedLoad)).catch(() => undefined);
-      setActionMessage("Document deleted.");
+      setActionMessage("Deleted successfully.");
     } catch (caught: unknown) {
-      setError(extractErrorMessage(caught, "Failed to delete document."));
+      setError(extractErrorMessage(caught, "Could not delete document."));
     } finally {
       setDeletingDocumentId(null);
     }
@@ -3897,7 +3940,7 @@ export default function LoadDetailPage() {
                             {getDocumentDisplayName(document)}
                           </div>
                           <div className="mt-1 text-xs text-slate-500">
-                            {document.mime_type ?? "Unknown MIME"}
+                            {inferDocumentMimeType(document)}
                           </div>
                         </div>
 
@@ -3911,7 +3954,7 @@ export default function LoadDetailPage() {
                                 event.target.value as UploadDocumentType
                               )
                             }
-                            disabled={savingDocumentId === document.id}
+                            disabled={savingDocumentId === document.id || isInvoiceManagedDocument(document)}
                             className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-700 disabled:opacity-60"
                           >
                             {UPLOAD_DOCUMENT_TYPE_OPTIONS.filter((option) => option.value !== "").map((option) => (
@@ -3960,8 +4003,17 @@ export default function LoadDetailPage() {
                             onClick={() => void handleDeleteDocument(document)}
                             disabled={deletingDocumentId === document.id}
                             className="touch-target rounded-xl border border-rose-300 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50 sm:ml-2"
+                            title={
+                              isInvoiceManagedDocument(document)
+                                ? "Invoice documents are managed from the invoice workflow. Use Regenerate Invoice to replace this file."
+                                : undefined
+                            }
                           >
-                            {deletingDocumentId === document.id ? "Deleting..." : "Delete"}
+                            {isInvoiceManagedDocument(document)
+                              ? "Managed by invoice"
+                              : deletingDocumentId === document.id
+                                ? "Deleting..."
+                                : "Delete"}
                           </button>
                         </div>
                       </div>
