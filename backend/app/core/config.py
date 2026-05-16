@@ -5,7 +5,13 @@ from pathlib import Path
 from typing import Literal
 from urllib.parse import urlparse
 
-from pydantic import AliasChoices, Field, computed_field, field_validator, model_validator
+from pydantic import (
+    AliasChoices,
+    Field,
+    computed_field,
+    field_validator,
+    model_validator,
+)
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ROOT_DIR = Path(__file__).resolve().parents[3]
@@ -34,7 +40,9 @@ class Settings(BaseSettings):
 
     app_name: str = Field(default="Freight Back Office OS API")
     app_version: str = Field(default="0.1.0")
-    environment: Literal["local", "development", "staging", "production"] = Field(default="local")
+    environment: Literal["local", "development", "staging", "production"] = Field(
+        default="local"
+    )
     debug: bool = Field(default=False)
     secret_key: str = Field(
         default=_DEFAULT_SECRET_KEY,
@@ -95,7 +103,9 @@ class Settings(BaseSettings):
     storage_use_ssl: bool = Field(default=False)
 
     sentry_dsn: str | None = Field(default=None)
-    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = Field(default="INFO")
+    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = Field(
+        default="INFO"
+    )
     log_json: bool = Field(default=True)
 
     jwt_algorithm: str = Field(default="HS256")
@@ -116,11 +126,15 @@ class Settings(BaseSettings):
     )
     email_delivery_enabled: bool = Field(
         default=False,
-        validation_alias=AliasChoices("EMAIL_DELIVERY_ENABLED", "email_delivery_enabled"),
+        validation_alias=AliasChoices(
+            "EMAIL_DELIVERY_ENABLED", "email_delivery_enabled"
+        ),
     )
     ops_notification_email: str | None = Field(
         default=None,
-        validation_alias=AliasChoices("OPS_NOTIFICATION_EMAIL", "ops_notification_email"),
+        validation_alias=AliasChoices(
+            "OPS_NOTIFICATION_EMAIL", "ops_notification_email"
+        ),
     )
     email_enabled: bool = Field(default=False)
     email_provider: Literal["smtp", "ses", "sendgrid", "none"] = Field(default="none")
@@ -130,16 +144,19 @@ class Settings(BaseSettings):
         validation_alias=AliasChoices("EMAIL_SENDING_ENABLED", "email_sending_enabled"),
     )
     email_from_address: str | None = Field(
-        default=None, validation_alias=AliasChoices("EMAIL_FROM_ADDRESS", "email_from_address")
+        default=None,
+        validation_alias=AliasChoices("EMAIL_FROM_ADDRESS", "email_from_address"),
     )
     email_from_name: str | None = Field(
-        default=None, validation_alias=AliasChoices("EMAIL_FROM_NAME", "email_from_name")
+        default=None,
+        validation_alias=AliasChoices("EMAIL_FROM_NAME", "email_from_name"),
     )
     web_app_base_url: str = Field(default="http://localhost:3000")
     email_dev_allow_token_response: bool = Field(default=False)
     public_signup_enabled: bool = Field(default=True)
     rate_limit_enabled: bool = Field(
-        default=True, validation_alias=AliasChoices("RATE_LIMIT_ENABLED", "rate_limit_enabled")
+        default=True,
+        validation_alias=AliasChoices("RATE_LIMIT_ENABLED", "rate_limit_enabled"),
     )
     rate_limit_login_max_requests: int = Field(default=10, ge=1, le=1000)
     rate_limit_login_window_seconds: int = Field(default=300, ge=1, le=86400)
@@ -151,7 +168,9 @@ class Settings(BaseSettings):
     rate_limit_billing_window_seconds: int = Field(default=300, ge=1, le=86400)
     security_headers_enabled: bool = Field(
         default=True,
-        validation_alias=AliasChoices("SECURITY_HEADERS_ENABLED", "security_headers_enabled"),
+        validation_alias=AliasChoices(
+            "SECURITY_HEADERS_ENABLED", "security_headers_enabled"
+        ),
     )
     security_hsts_enabled: bool = Field(
         default=True,
@@ -167,7 +186,8 @@ class Settings(BaseSettings):
     smtp_use_tls: bool = Field(default=True)
     smtp_use_ssl: bool = Field(default=False)
     sendgrid_api_key: str | None = Field(
-        default=None, validation_alias=AliasChoices("SENDGRID_API_KEY", "sendgrid_api_key")
+        default=None,
+        validation_alias=AliasChoices("SENDGRID_API_KEY", "sendgrid_api_key"),
     )
 
     billing_enabled: bool = Field(default=False)
@@ -219,6 +239,13 @@ class Settings(BaseSettings):
     healthcheck_timeout_seconds: int = Field(default=5, ge=1)
     seed_mode: Literal["demo", "minimal"] = Field(default="demo")
     max_upload_file_size_mb: int = Field(default=15, ge=1, le=100)
+    document_upload_extraction_enabled: bool = Field(
+        default=False,
+        validation_alias=AliasChoices(
+            "DOCUMENT_UPLOAD_EXTRACTION_ENABLED",
+            "document_upload_extraction_enabled",
+        ),
+    )
     frontend_api_url: str | None = Field(default=None)
     public_backend_url: str | None = Field(default=None)
 
@@ -271,7 +298,9 @@ class Settings(BaseSettings):
             return [item.strip() for item in stripped.split(",") if item.strip()]
         if isinstance(value, list):
             return [str(item).strip() for item in value if str(item).strip()]
-        raise TypeError("cors_allowed_origins must be a list[str] or comma-separated str")
+        raise TypeError(
+            "cors_allowed_origins must be a list[str] or comma-separated str"
+        )
 
     @field_validator("cors_allow_methods", "cors_allow_headers", mode="before")
     @classmethod
@@ -354,7 +383,9 @@ class Settings(BaseSettings):
             raise TypeError("environment must be a string")
         normalized = value.strip().lower()
         if normalized not in _ALLOWED_ENVIRONMENTS:
-            raise ValueError(f"environment must be one of {sorted(_ALLOWED_ENVIRONMENTS)}")
+            raise ValueError(
+                f"environment must be one of {sorted(_ALLOWED_ENVIRONMENTS)}"
+            )
         return normalized
 
     @field_validator("storage_provider", mode="before")
@@ -388,7 +419,9 @@ class Settings(BaseSettings):
             raise TypeError("email_provider must be a string")
         normalized = value.strip().lower()
         if normalized not in _ALLOWED_EMAIL_PROVIDERS:
-            raise ValueError(f"email_provider must be one of {sorted(_ALLOWED_EMAIL_PROVIDERS)}")
+            raise ValueError(
+                f"email_provider must be one of {sorted(_ALLOWED_EMAIL_PROVIDERS)}"
+            )
         return normalized
 
     @field_validator("payment_provider", mode="before")
@@ -417,16 +450,24 @@ class Settings(BaseSettings):
             raise ValueError("api_v1_prefix must start with '/'")
 
         if self.storage_provider == "local" and not self.storage_local_root:
-            raise ValueError("storage_local_root is required when storage_provider='local'")
+            raise ValueError(
+                "storage_local_root is required when storage_provider='local'"
+            )
 
         if self.storage_provider in {"s3", "minio"} and not self.storage_bucket_name:
-            raise ValueError("storage_bucket_name is required when storage_provider is s3 or minio")
+            raise ValueError(
+                "storage_bucket_name is required when storage_provider is s3 or minio"
+            )
 
         if self.whatsapp_enabled and self.whatsapp_provider == "none":
-            raise ValueError("whatsapp_provider must be configured when whatsapp_enabled=True")
+            raise ValueError(
+                "whatsapp_provider must be configured when whatsapp_enabled=True"
+            )
 
         if self.email_enabled and self.email_provider == "none":
-            raise ValueError("email_provider must be configured when email_enabled=True")
+            raise ValueError(
+                "email_provider must be configured when email_enabled=True"
+            )
         if self.email_enabled and self.email_provider == "smtp" and not self.smtp_host:
             raise ValueError(
                 "smtp_host must be configured when email_enabled=True and email_provider='smtp'"
@@ -434,16 +475,22 @@ class Settings(BaseSettings):
 
         if self.email_sending_enabled and self.email_provider == "smtp":
             if not self.smtp_host:
-                raise ValueError("smtp_host must be configured when EMAIL_SENDING_ENABLED=true")
+                raise ValueError(
+                    "smtp_host must be configured when EMAIL_SENDING_ENABLED=true"
+                )
             if not self.smtp_username or not self.smtp_password:
                 raise ValueError(
                     "smtp_username and smtp_password are required when EMAIL_SENDING_ENABLED=true"
                 )
             if not self.email_from_address:
-                raise ValueError("email_from_address is required when EMAIL_SENDING_ENABLED=true")
+                raise ValueError(
+                    "email_from_address is required when EMAIL_SENDING_ENABLED=true"
+                )
 
         if self.billing_enabled and self.payment_provider == "none":
-            raise ValueError("payment_provider must be configured when billing_enabled=True")
+            raise ValueError(
+                "payment_provider must be configured when billing_enabled=True"
+            )
 
         if self.ai_enabled and not self.openai_api_key:
             raise ValueError("openai_api_key must be configured when ai_enabled=True")
@@ -577,7 +624,9 @@ class Settings(BaseSettings):
                     )
 
             if self.email_enabled and self.email_provider == "none":
-                raise ValueError("email_provider must be configured when email_enabled=True")
+                raise ValueError(
+                    "email_provider must be configured when email_enabled=True"
+                )
 
             if self.billing_enabled:
                 if self.payment_provider == "none":
@@ -596,7 +645,9 @@ class Settings(BaseSettings):
                         )
 
             if self.ai_enabled and not self.openai_api_key:
-                raise ValueError("openai_api_key must be configured when ai_enabled=True")
+                raise ValueError(
+                    "openai_api_key must be configured when ai_enabled=True"
+                )
 
             if not self.cors_allowed_origins:
                 raise ValueError("cors_allowed_origins must not be empty in production")
@@ -609,7 +660,9 @@ class Settings(BaseSettings):
 
             parsed_web = urlparse(self.web_app_base_url)
             if not parsed_web.scheme or not parsed_web.netloc:
-                raise ValueError("web_app_base_url must be a fully-qualified URL in production")
+                raise ValueError(
+                    "web_app_base_url must be a fully-qualified URL in production"
+                )
 
         if not self.is_local and self.secret_key == _DEFAULT_SECRET_KEY:
             raise ValueError("secret_key must be changed outside local environment")

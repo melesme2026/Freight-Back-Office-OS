@@ -40,7 +40,7 @@ services:
     dockerCommand: uvicorn app.main:app --host 0.0.0.0 --port 8000
     envVars:
       - key: ENVIRONMENT
-        value: staging
+        value: production
       - key: DEBUG
         value: "false"
       - key: SECRET_KEY
@@ -50,9 +50,9 @@ services:
           name: fbos-postgres
           property: connectionString
       - key: WEB_APP_BASE_URL
-        value: https://fbos-nginx.onrender.com
+        value: https://app.adwafreight.com
       - key: CORS_ALLOWED_ORIGINS
-        value: '["https://fbos-nginx.onrender.com"]'
+        value: '["https://app.adwafreight.com","https://fbos-nginx.onrender.com"]'
       - key: STORAGE_PROVIDER
         value: local
       - key: STORAGE_LOCAL_ROOT
@@ -62,6 +62,8 @@ services:
       - key: LOG_JSON
         value: "true"
       - key: AI_ENABLED
+        value: "false"
+      - key: DOCUMENT_UPLOAD_EXTRACTION_ENABLED
         value: "false"
       - key: WHATSAPP_ENABLED
         value: "false"
