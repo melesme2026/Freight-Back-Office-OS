@@ -290,7 +290,9 @@ def _document_processing_value(item: Any) -> str | None:
 
 
 def _document_received_status(item: Any) -> str:
-    if getattr(item, "received_at", None) is not None or getattr(item, "storage_key", None):
+    if getattr(item, "received_at", None) is not None or getattr(
+        item, "storage_key", None
+    ):
         return "received"
     return "missing"
 
@@ -340,7 +342,9 @@ def _serialize_document(item: Any) -> dict[str, Any]:
         "processing_status": _document_processing_value(item),
         "extraction_status": _document_extraction_status(item),
         "validation_status": (
-            "needs_review" if getattr(item, "validation_issues", None) else "not_required"
+            "needs_review"
+            if getattr(item, "validation_issues", None)
+            else "not_required"
         ),
         "page_count": getattr(item, "page_count", None),
         "classification_confidence": getattr(item, "classification_confidence", None),
@@ -364,6 +368,16 @@ def _serialize_document(item: Any) -> dict[str, Any]:
         ),
         "created_at": _to_iso_or_none(getattr(item, "created_at", None)),
         "updated_at": _to_iso_or_none(getattr(item, "updated_at", None)),
+    }
+
+
+def _serialize_lightweight_document(item: Any) -> dict[str, Any]:
+    return {
+        "id": str(item.id),
+        "filename": getattr(item, "original_filename", None),
+        "type": _enum_to_string(getattr(item, "document_type", None)),
+        "uploaded_at": _to_iso_or_none(getattr(item, "received_at", None)),
+        "status": _document_processing_value(item),
     }
 
 
@@ -759,7 +773,7 @@ async def upload_document(
         )
         item_id = str(item.id)
         item_organization_id = str(item.organization_id)
-        serialized_item = _serialize_document(item)
+        serialized_item = _serialize_lightweight_document(item)
         db.commit()
         _log_upload_stage(
             stage="db_transaction_committed",
@@ -1123,7 +1137,7 @@ async def upload_driver_document(
         )
         item_id = str(item.id)
         item_organization_id = str(item.organization_id)
-        serialized_item = _serialize_document(item)
+        serialized_item = _serialize_lightweight_document(item)
         db.commit()
         _log_upload_stage(
             stage="db_transaction_committed",
@@ -1405,22 +1419,35 @@ def get_documents_by_load(
             )
 
     service = DocumentService(db)
+    started_at = time.perf_counter()
     items, total_count = service.list_documents(
         organization_id=str(token_org_id),
         load_id=str(load_id),
         page=page,
         page_size=page_size,
-        include_related=True,
+        include_related=False,
+    )
+    elapsed_ms = int((time.perf_counter() - started_at) * 1000)
+    logger.info(
+        "Lightweight load documents endpoint completed",
+        extra={
+            "load_id": str(load_id),
+            "organization_id": str(token_org_id),
+            "document_count": len(items),
+            "elapsed_ms": elapsed_ms,
+            "hydration_mode": "lightweight",
+        },
     )
 
     return ApiResponse(
-        data=[_serialize_document(item) for item in items],
+        data=[_serialize_lightweight_document(item) for item in items],
         meta=_build_document_list_meta(
             total_count=total_count,
             page=page,
             page_size=page_size,
             load_id=str(load_id),
-        ),
+        )
+        | {"elapsed_ms": elapsed_ms, "hydration_mode": "lightweight"},
         error=None,
     )
 

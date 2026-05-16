@@ -3,6 +3,8 @@ import { clearAuth, getAccessToken, getOrganizationId, getTokenType } from "@/li
 
 type RequestOptions = Omit<RequestInit, "body"> & {
   token?: string;
+  dedupe?: boolean;
+  retry?: boolean;
   organizationId?: string;
   authMode?: "auto" | "none";
   onUnauthorized?: "redirect" | "throw";
@@ -31,6 +33,78 @@ export class ApiClientError extends Error {
     this.code = options.code;
     this.details = options.details;
   }
+}
+
+const inFlightGetRequests = new Map<string, Promise<unknown>>();
+let activeApiRequests = 0;
+const queuedApiRequests: Array<() => void> = [];
+
+function isMobileSafariRuntime(): boolean {
+  if (typeof navigator === "undefined") {
+    return false;
+  }
+  const ua = navigator.userAgent;
+  return /iP(ad|hone|od)/.test(ua) && /Safari/.test(ua) && !/CriOS|FxiOS|EdgiOS/.test(ua);
+}
+
+function maxConcurrentApiRequests(): number {
+  return isMobileSafariRuntime() ? 2 : 4;
+}
+
+async function withApiRequestSlot<T>(runner: () => Promise<T>): Promise<T> {
+  if (activeApiRequests >= maxConcurrentApiRequests()) {
+    await new Promise<void>((resolve) => queuedApiRequests.push(resolve));
+  }
+  activeApiRequests += 1;
+  try {
+    return await runner();
+  } finally {
+    activeApiRequests = Math.max(0, activeApiRequests - 1);
+    const next = queuedApiRequests.shift();
+    if (next) {
+      next();
+    }
+  }
+}
+
+function dedupeKey(path: string, options: RequestOptions): string {
+  const method = (options.method ?? "GET").toUpperCase();
+  return JSON.stringify({
+    method,
+    path,
+    organizationId: options.organizationId ?? getOrganizationId() ?? null,
+    authMode: options.authMode ?? "auto",
+    responseType: options.responseType ?? "json",
+  });
+}
+
+function shouldRetryRequest(error: unknown): boolean {
+  if (error instanceof ApiClientError) {
+    return [429, 502, 503, 504].includes(error.status);
+  }
+  return error instanceof TypeError;
+}
+
+function backoffDelayMs(attempt: number): number {
+  const base = 250 * 2 ** Math.max(0, attempt - 1);
+  return base + Math.floor(Math.random() * 100);
+}
+
+function delay(ms: number, signal?: AbortSignal | null): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const timeout = globalThis.setTimeout(resolve, ms);
+    const onAbort = () => {
+      globalThis.clearTimeout(timeout);
+      reject(new DOMException("Request was canceled", "AbortError"));
+    };
+    if (signal) {
+      if (signal.aborted) {
+        onAbort();
+        return;
+      }
+      signal.addEventListener("abort", onAbort, { once: true });
+    }
+  });
 }
 
 function normalizeHeaders(headers?: HeadersInit): Record<string, string> {
@@ -221,7 +295,7 @@ function logApiClientDiagnostic(message: string, details: Record<string, unknown
   console.warn(message, details);
 }
 
-async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+async function performRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const {
     token,
     organizationId,
@@ -233,6 +307,8 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     responseType = "json",
     timeoutMs = 15_000,
     signal,
+    dedupe: _dedupe,
+    retry: _retry,
     ...rest
   } = options;
 
@@ -360,6 +436,41 @@ function resolveMutationBody(body?: unknown): MutationRequestBody {
   }
 
   return {};
+}
+
+async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  const method = (options.method ?? "GET").toUpperCase();
+  const shouldDedupe = method === "GET" && options.dedupe !== false;
+  const key = shouldDedupe ? dedupeKey(path, options) : null;
+  if (key && inFlightGetRequests.has(key)) {
+    return inFlightGetRequests.get(key) as Promise<T>;
+  }
+
+  const runner = async () => {
+    const maxAttempts = options.retry === false ? 1 : method === "GET" ? 2 : 1;
+    let attempt = 0;
+    let lastError: unknown;
+    while (attempt < maxAttempts) {
+      attempt += 1;
+      try {
+        return await withApiRequestSlot(() => performRequest<T>(path, options));
+      } catch (caught: unknown) {
+        lastError = caught;
+        if (attempt >= maxAttempts || !shouldRetryRequest(caught)) {
+          throw caught;
+        }
+        await delay(backoffDelayMs(attempt), options.signal ?? null);
+      }
+    }
+    throw lastError;
+  };
+
+  const promise = runner();
+  if (key) {
+    inFlightGetRequests.set(key, promise);
+    promise.finally(() => inFlightGetRequests.delete(key));
+  }
+  return promise;
 }
 
 export const apiClient = {
