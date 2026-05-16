@@ -593,6 +593,13 @@ class Settings(BaseSettings):
     def shared_path(self) -> Path:
         return SHARED_DIR
 
+    @staticmethod
+    def _is_fully_qualified_url(value: str | None) -> bool:
+        if not value:
+            return False
+        parsed = urlparse(value)
+        return bool(parsed.scheme and parsed.netloc)
+
     def ensure_runtime_directories(self) -> None:
         self.data_path.mkdir(parents=True, exist_ok=True)
         if self.storage_provider == "local":
@@ -655,13 +662,32 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "DATABASE_URL must be configured via DATABASE_URL_OVERRIDE in production"
                 )
-            if not self.frontend_api_url:
-                raise ValueError("frontend_api_url must be configured in production")
 
-            parsed_web = urlparse(self.web_app_base_url)
-            if not parsed_web.scheme or not parsed_web.netloc:
+            required_urls = {
+                "WEB_APP_BASE_URL": self.web_app_base_url,
+                "FRONTEND_API_URL": self.frontend_api_url,
+                "PUBLIC_BACKEND_URL": self.public_backend_url,
+            }
+            missing_urls = [
+                env_name for env_name, url in required_urls.items() if not url
+            ]
+            if missing_urls:
+                joined = ", ".join(missing_urls)
                 raise ValueError(
-                    "web_app_base_url must be a fully-qualified URL in production"
+                    f"Production URL configuration is incomplete: {joined} must be "
+                    "configured as fully-qualified URL(s)."
+                )
+
+            invalid_urls = [
+                env_name
+                for env_name, url in required_urls.items()
+                if not self._is_fully_qualified_url(url)
+            ]
+            if invalid_urls:
+                joined = ", ".join(invalid_urls)
+                raise ValueError(
+                    f"Production URL configuration is invalid: {joined} must be "
+                    "fully-qualified URL(s) including scheme and host."
                 )
 
         if not self.is_local and self.secret_key == _DEFAULT_SECRET_KEY:
