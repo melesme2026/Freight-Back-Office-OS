@@ -1135,6 +1135,8 @@ export default function LoadDetailPage() {
   const [deletingDocumentId, setDeletingDocumentId] = useState<string | null>(null);
   const [selectedUploadDocumentType, setSelectedUploadDocumentType] =
     useState<UploadDocumentType>("");
+  const [selectedUploadFile, setSelectedUploadFile] = useState<File | null>(null);
+  const [documentUploadError, setDocumentUploadError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [packetEmailConfirmation, setPacketEmailConfirmation] = useState<string | null>(null);
@@ -2317,40 +2319,40 @@ export default function LoadDetailPage() {
     }
   }
 
-  async function handleUploadDocument(event: ChangeEvent<HTMLInputElement>) {
-    if (isUploadingDocument) {
-      event.target.value = "";
-      return;
-    }
-
+  function handleUploadDocument(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0] ?? null;
+    setPendingDuplicateUpload(null);
+    setDocumentUploadError(null);
+    setError(null);
+    setActionMessage(null);
+    setSelectedUploadFile(file);
+  }
 
-    if (!file) {
+  async function uploadSelectedDocument(file: File) {
+    if (isUploadingDocument) {
       return;
     }
 
     if (!load?.id) {
       setError("Load is required before uploading documents.");
-      event.target.value = "";
       return;
     }
 
     const organizationId = getOrganizationId();
     if (!organizationId) {
       setError("Organization context is missing. Please sign in again.");
-      event.target.value = "";
       return;
     }
 
     if (!load.customer_account_id) {
       setError("Customer account is missing for this load. Cannot upload document.");
-      event.target.value = "";
       return;
     }
 
     try {
       setIsUploadingDocument(true);
       setPendingDuplicateUpload(null);
+      setDocumentUploadError(null);
       setError(null);
       setActionMessage(`Uploading "${file.name}"...`);
 
@@ -2406,25 +2408,38 @@ export default function LoadDetailPage() {
       setLoad(updatedLoad);
       setLoadDocuments(updatedDocuments);
       setSelectedUploadDocumentType("");
+      setSelectedUploadFile(null);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
       const uploadTypeLabel = UPLOAD_DOCUMENT_TYPE_OPTIONS.find(
         (option) => option.value === selectedUploadDocumentType,
       )?.label;
       const uploadTypeSuffix = uploadTypeLabel ? ` (${uploadTypeLabel})` : "";
       setActionMessage(`Upload successful: ${file.name}${uploadTypeSuffix}.`);
     } catch (caught: unknown) {
-      setError(extractErrorMessage(caught, "Failed to upload document."));
+      const message = extractErrorMessage(caught, "Failed to upload document.");
+      setDocumentUploadError(message);
+      setError(message);
+      setActionMessage(null);
     } finally {
       setIsUploadingDocument(false);
-      if (event.target) {
-        event.target.value = "";
-      }
     }
+  }
+
+  function handlePrimaryUploadAction() {
+    if (selectedUploadFile) {
+      void uploadSelectedDocument(selectedUploadFile);
+      return;
+    }
+    fileInputRef.current?.click();
   }
 
   async function handleReplaceDuplicateUpload() {
     if (!pendingDuplicateUpload || isUploadingDocument) return;
     try {
       setIsUploadingDocument(true);
+      setDocumentUploadError(null);
       setError(null);
       setActionMessage(`Replacing "${pendingDuplicateUpload.file.name}"...`);
       const token = getAccessToken();
@@ -2448,10 +2463,17 @@ export default function LoadDetailPage() {
       setLoad(updatedLoad);
       setLoadDocuments(updatedDocuments);
       setSelectedUploadDocumentType("");
+      setSelectedUploadFile(null);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
       setPendingDuplicateUpload(null);
       setActionMessage("Document replaced.");
     } catch (caught: unknown) {
-      setError(extractErrorMessage(caught, "Failed to replace document."));
+      const message = extractErrorMessage(caught, "Failed to replace document.");
+      setDocumentUploadError(message);
+      setError(message);
+      setActionMessage(null);
     } finally {
       setIsUploadingDocument(false);
     }
@@ -2522,6 +2544,16 @@ export default function LoadDetailPage() {
 
   function handleOpenFilePicker() {
     fileInputRef.current?.click();
+  }
+
+  function handleClearSelectedUploadFile() {
+    setSelectedUploadFile(null);
+    setPendingDuplicateUpload(null);
+    setDocumentUploadError(null);
+    setActionMessage(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
   }
 
   async function handleRefreshDocuments() {
@@ -2850,7 +2882,7 @@ export default function LoadDetailPage() {
         ) : null}
 
         {actionMessage ? (
-          <div role="status" aria-live="polite" className="fixed bottom-4 left-4 right-4 z-[60] rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800 shadow-soft sm:left-auto sm:right-6 sm:max-w-md">
+          <div role="status" aria-live="polite" className="fixed bottom-[calc(1rem+env(safe-area-inset-bottom))] left-4 right-4 z-[60] rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800 shadow-soft sm:left-auto sm:right-6 sm:max-w-md">
             {actionMessage}
           </div>
         ) : null}
@@ -3236,7 +3268,7 @@ export default function LoadDetailPage() {
               </div>
             </div>
 
-            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-soft sm:p-6">
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 pb-[calc(1.5rem+env(safe-area-inset-bottom))] shadow-soft sm:p-6">
               <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                 <div>
                   <h2 className="text-lg font-semibold text-slate-950">Documents</h2>
@@ -3245,33 +3277,14 @@ export default function LoadDetailPage() {
                   </p>
                 </div>
 
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={handleRefreshDocuments}
-                    disabled={isDocumentsLoading || isUploadingDocument}
-                    className="touch-target rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {isDocumentsLoading ? "Refreshing..." : "Refresh"}
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={handleOpenFilePicker}
-                    disabled={!canUploadDocuments || isUploadingDocument}
-                    className="rounded-xl bg-brand-600 px-5 py-3 text-base font-semibold text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {isUploadingDocument ? "Uploading..." : "Upload Document"}
-                  </button>
-
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    className="hidden"
-                    accept=".pdf,.png,.jpg,.jpeg,.webp,.heic,.heif,.tif,.tiff"
-                    onChange={handleUploadDocument}
-                  />
-                </div>
+                <button
+                  type="button"
+                  onClick={handleRefreshDocuments}
+                  disabled={isDocumentsLoading || isUploadingDocument}
+                  className="touch-target w-full rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+                >
+                  {isDocumentsLoading ? "Refreshing..." : "Refresh"}
+                </button>
               </div>
 
               {pendingDuplicateUpload ? (
@@ -3299,7 +3312,7 @@ export default function LoadDetailPage() {
                 </div>
               ) : null}
 
-              <div className="mb-5 grid gap-4 lg:grid-cols-[240px,1fr]">
+              <div className="mb-5 grid gap-4 lg:grid-cols-[minmax(220px,280px),minmax(0,1fr)]">
                 <div>
                   <label
                     htmlFor="documentType"
@@ -3314,7 +3327,7 @@ export default function LoadDetailPage() {
                       setSelectedUploadDocumentType(event.target.value as UploadDocumentType)
                     }
                     disabled={isUploadingDocument}
-                    className="touch-target w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="touch-target w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-base text-slate-900 outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100 disabled:cursor-not-allowed disabled:opacity-50 sm:text-sm"
                   >
                     {UPLOAD_DOCUMENT_TYPE_OPTIONS.map((option) => (
                       <option key={option.value || "auto"} value={option.value}>
@@ -3324,7 +3337,7 @@ export default function LoadDetailPage() {
                   </select>
                 </div>
 
-                <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-600">
                   {!canUploadDocuments ? (
                     <span>
                       Upload is unavailable until organization context, customer account, and load
@@ -3337,6 +3350,77 @@ export default function LoadDetailPage() {
                   )}
                 </div>
               </div>
+
+              <div className="mb-5 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-4">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">File or photo</p>
+                    {selectedUploadFile ? (
+                      <div className="mt-2" aria-live="polite">
+                        <p className="break-mobile text-sm font-semibold text-slate-950">
+                          Selected: {selectedUploadFile.name}
+                        </p>
+                        <p className="mt-1 text-xs text-slate-600">
+                          {formatFileSize(selectedUploadFile.size)} · {selectedUploadDocumentType ? UPLOAD_DOCUMENT_TYPE_OPTIONS.find((option) => option.value === selectedUploadDocumentType)?.label : "Auto / Unknown"}
+                        </p>
+                      </div>
+                    ) : (
+                      <p className="mt-2 text-sm text-slate-600">
+                        Choose a Rate Confirmation PDF, POD photo, delivery receipt, or supporting image before uploading.
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="flex w-full flex-col gap-2 sm:flex-row lg:w-auto lg:shrink-0">
+                    <button
+                      type="button"
+                      onClick={handleOpenFilePicker}
+                      disabled={!canUploadDocuments || isUploadingDocument}
+                      className="touch-target w-full rounded-xl border border-brand-200 bg-white px-4 py-3 text-sm font-semibold text-brand-700 transition hover:bg-brand-50 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+                    >
+                      {selectedUploadFile ? "Change file" : "Choose file or photo"}
+                    </button>
+                    {selectedUploadFile ? (
+                      <button
+                        type="button"
+                        onClick={handleClearSelectedUploadFile}
+                        disabled={isUploadingDocument}
+                        className="touch-target w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+                      >
+                        Clear
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={handlePrimaryUploadAction}
+                      disabled={!canUploadDocuments || isUploadingDocument}
+                      className="touch-target w-full rounded-xl bg-brand-600 px-5 py-3 text-base font-semibold text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+                    >
+                      {isUploadingDocument ? "Uploading..." : "Upload Document"}
+                    </button>
+                  </div>
+                </div>
+
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  className="sr-only"
+                  aria-label="Document file or photo"
+                  accept=".pdf,.png,.jpg,.jpeg,.webp,.heic,.heif,.tif,.tiff,application/pdf,image/*"
+                  disabled={!canUploadDocuments || isUploadingDocument}
+                  onChange={handleUploadDocument}
+                />
+              </div>
+              {actionMessage ? (
+                <div className="mb-5 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800">
+                  {actionMessage}
+                </div>
+              ) : null}
+              {documentUploadError ? (
+                <div role="alert" className="mb-5 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-800">
+                  {documentUploadError}
+                </div>
+              ) : null}
               <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
                 <p className="font-semibold">What is missing right now</p>
                 <p className="mt-1 text-xs">
@@ -3462,8 +3546,9 @@ export default function LoadDetailPage() {
                     ))}
                   </div>
                 ) : (
-                  <div className="px-4 py-8 text-sm text-slate-500">
-                    No documents are attached to this load yet.
+                  <div className="px-4 py-8 text-sm text-slate-600">
+                    <p className="font-semibold text-slate-900">No documents are attached yet.</p>
+                    <p className="mt-1">Upload a Rate Confirmation, Bill of Lading, POD, or supporting image to keep this load ready for billing and submission.</p>
                   </div>
                 )}
               </div>
