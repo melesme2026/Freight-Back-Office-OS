@@ -72,7 +72,7 @@ ALLOWED_UPLOAD_MIME_TYPES = {
 }
 MAX_UPLOAD_FILE_SIZE_BYTES = get_settings().max_upload_file_size_mb * 1024 * 1024
 
-DEFAULT_LOAD_DOCUMENT_PAGE_SIZE = 100
+DEFAULT_LOAD_DOCUMENT_PAGE_SIZE = 50
 
 
 REQUIRED_SINGLETON_DOCUMENT_TYPES = {
@@ -411,31 +411,47 @@ def _serialize_document(item: Any) -> dict[str, Any]:
 
 
 def _serialize_lightweight_document(item: Any) -> dict[str, Any]:
-    mime_type = _infer_mime_type(
-        getattr(item, "original_filename", None), getattr(item, "mime_type", None)
-    )
     document_type = _enum_to_string(getattr(item, "document_type", None))
     return {
         "id": str(item.id),
-        "organization_id": str(item.organization_id),
-        "customer_account_id": str(item.customer_account_id),
-        "driver_id": str(item.driver_id) if getattr(item, "driver_id", None) else None,
-        "load_id": str(item.load_id) if getattr(item, "load_id", None) else None,
         "filename": getattr(item, "original_filename", None),
-        "original_filename": getattr(item, "original_filename", None),
         "type": document_type,
-        "document_type": document_type,
-        "mime_type": mime_type,
-        "file_size_bytes": getattr(item, "file_size_bytes", None),
         "uploaded_at": _to_iso_or_none(getattr(item, "received_at", None)),
-        "received_at": _to_iso_or_none(getattr(item, "received_at", None)),
-        "created_at": _to_iso_or_none(getattr(item, "created_at", None)),
-        "updated_at": _to_iso_or_none(getattr(item, "updated_at", None)),
-        "received_status": _document_received_status(item),
         "status": _document_processing_value(item),
-        "processing_status": _document_processing_value(item),
-        "extraction_status": _document_extraction_status(item),
     }
+
+
+def _serialize_document_list_item(item: Any) -> dict[str, Any]:
+    payload = _serialize_lightweight_document(item)
+    document_type = _enum_to_string(getattr(item, "document_type", None))
+    payload.update(
+        {
+            "organization_id": str(item.organization_id),
+            "customer_account_id": str(item.customer_account_id),
+            "driver_id": str(item.driver_id) if getattr(item, "driver_id", None) else None,
+            "load_id": str(item.load_id) if getattr(item, "load_id", None) else None,
+            "original_filename": getattr(item, "original_filename", None),
+            "type": document_type,
+            "document_type": document_type,
+            "processing_status": _document_processing_value(item),
+            "received_status": _document_received_status(item),
+            "extraction_status": _document_extraction_status(item),
+            "mime_type": _infer_mime_type(
+                getattr(item, "original_filename", None), getattr(item, "mime_type", None)
+            ),
+            "file_size_bytes": getattr(item, "file_size_bytes", None),
+            "received_at": _to_iso_or_none(getattr(item, "received_at", None)),
+            "created_at": _to_iso_or_none(getattr(item, "created_at", None)),
+            "updated_at": _to_iso_or_none(getattr(item, "updated_at", None)),
+            "source_channel": _enum_to_string(getattr(item, "source_channel", None)),
+            "uploaded_by_staff_user_id": (
+                str(getattr(item, "uploaded_by_staff_user_id", None))
+                if getattr(item, "uploaded_by_staff_user_id", None)
+                else None
+            ),
+        }
+    )
+    return payload
 
 
 def _validate_upload_size(file_size_bytes: int | None) -> None:
@@ -921,7 +937,7 @@ async def upload_document(
         )
         item_id = str(item.id)
         item_organization_id = str(item.organization_id)
-        serialized_item = _serialize_lightweight_document(item)
+        serialized_item = _serialize_document_list_item(item)
         stage_started_at = time.perf_counter()
         db.commit()
         timings["commit_ms"] = _upload_elapsed_ms(stage_started_at)
@@ -988,6 +1004,28 @@ async def upload_document(
                         "upload_stage": "deferred_replaced_storage_delete",
                     },
                 )
+        else:
+            _create_document_uploaded_notification(db=db, document=item)
+            _log_document_event(
+                db=db,
+                organization_id=organization_id,
+                document_id=item.id,
+                action=(
+                    "document.replaced"
+                    if existing_required_doc and replace_existing
+                    else "document.uploaded"
+                ),
+                token_payload=token_payload,
+                metadata={
+                    "document_type": normalized_document_type,
+                    "filename": file.filename,
+                    "file_size_bytes": file_size_bytes,
+                    "load_id": str(load_id) if load_id else None,
+                    "warning": quota_decision.reason if quota_decision.warning else None,
+                    "deferred": False,
+                },
+            )
+            db.commit()
         timings["background_task_ms"] = _upload_elapsed_ms(stage_started_at)
         timings["total_ms"] = _upload_elapsed_ms(upload_started_at)
         _log_upload_stage(
@@ -1332,7 +1370,7 @@ async def upload_driver_document(
         )
         item_id = str(item.id)
         item_organization_id = str(item.organization_id)
-        serialized_item = _serialize_lightweight_document(item)
+        serialized_item = _serialize_document_list_item(item)
         db.commit()
         _log_upload_stage(
             stage="db_transaction_committed",
@@ -1570,11 +1608,11 @@ def list_documents(
         processing_status=_normalize_optional_text(processing_status),
         page=page,
         page_size=page_size,
-        include_related=True,
+        include_related=False,
     )
 
     return ApiResponse(
-        data=[_serialize_document(item) for item in items],
+        data=[_serialize_document_list_item(item) for item in items],
         meta=_build_document_list_meta(
             total_count=total_count,
             page=page,
@@ -1635,7 +1673,7 @@ def get_documents_by_load(
     )
 
     return ApiResponse(
-        data=[_serialize_lightweight_document(item) for item in items],
+        data=[_serialize_document_list_item(item) for item in items],
         meta=_build_document_list_meta(
             total_count=total_count,
             page=page,

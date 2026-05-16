@@ -113,7 +113,7 @@ export default function DriverLoadDetailPage() {
         token: token ?? undefined,
         organizationId: organizationId ?? undefined,
       }),
-      apiClient.get<unknown>(`/loads/${loadId}/documents?page=1&page_size=100`, {
+      apiClient.get<unknown>(`/loads/${loadId}/documents?page=1&page_size=25`, {
         token: token ?? undefined,
         organizationId: organizationId ?? undefined,
       }),

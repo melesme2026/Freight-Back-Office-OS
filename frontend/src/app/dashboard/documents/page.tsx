@@ -18,6 +18,14 @@ type ApiResponse<T> = {
   error?: ApiError | null;
 };
 
+type DocumentsMeta = {
+  totalCount: number | null;
+  page: number;
+  pageSize: number;
+};
+
+const DOCUMENTS_PAGE_SIZE = 25;
+
 type LoadDocument = {
   id: string;
   organization_id: string;
@@ -119,6 +127,21 @@ function normalizeDocument(value: unknown): LoadDocument | null {
   };
 }
 
+function normalizeDocumentsMeta(
+  payload: unknown,
+  fallbackPage: number,
+): DocumentsMeta {
+  const root = asRecord(payload);
+  const meta = asRecord(root?.meta);
+  return {
+    totalCount: asOptionalNumber(meta?.total_count ?? meta?.totalCount) ?? null,
+    page: asOptionalNumber(meta?.page) ?? fallbackPage,
+    pageSize:
+      asOptionalNumber(meta?.page_size ?? meta?.pageSize) ??
+      DOCUMENTS_PAGE_SIZE,
+  };
+}
+
 function normalizeDocumentsResponse(payload: unknown): LoadDocument[] {
   const root = asRecord(payload);
 
@@ -153,7 +176,12 @@ function formatDateTime(value?: string | null): string {
 }
 
 function formatFileSize(value?: number | null): string {
-  if (value === undefined || value === null || !Number.isFinite(value) || value < 0) {
+  if (
+    value === undefined ||
+    value === null ||
+    !Number.isFinite(value) ||
+    value < 0
+  ) {
     return "—";
   }
 
@@ -245,7 +273,10 @@ function normalizeDocumentTypeLabel(value?: string | null) {
 }
 
 function getDocumentDisplayName(document: LoadDocument) {
-  if (document.original_filename && document.original_filename.trim().length > 0) {
+  if (
+    document.original_filename &&
+    document.original_filename.trim().length > 0
+  ) {
     return document.original_filename.trim();
   }
 
@@ -256,10 +287,19 @@ export default function DocumentsPage() {
   const router = useRouter();
 
   const [documents, setDocuments] = useState<LoadDocument[]>([]);
+  const [meta, setMeta] = useState<DocumentsMeta>({
+    totalCount: null,
+    page: 1,
+    pageSize: DOCUMENTS_PAGE_SIZE,
+  });
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  async function loadDocuments() {
+  async function loadDocuments(
+    pageToLoad = 1,
+    options: { append?: boolean } = {},
+  ) {
     const token = getAccessToken();
     const organizationId = getOrganizationId();
 
@@ -271,27 +311,40 @@ export default function DocumentsPage() {
     }
 
     try {
-      setIsLoading(true);
+      if (options.append) {
+        setIsLoadingMore(true);
+      } else {
+        setIsLoading(true);
+      }
       setErrorMessage(null);
 
       const payload = await apiClient.get<ApiResponse<unknown>>(
-        "/documents?page=1&page_size=100",
+        `/documents?page=${pageToLoad}&page_size=${DOCUMENTS_PAGE_SIZE}`,
         {
           token,
           organizationId,
-        }
+          timeoutMs: 10_000,
+          dedupe: false,
+        },
       );
 
-      setDocuments(normalizeDocumentsResponse(payload));
+      const nextDocuments = normalizeDocumentsResponse(payload);
+      setDocuments((current) =>
+        options.append ? [...current, ...nextDocuments] : nextDocuments,
+      );
+      setMeta(normalizeDocumentsMeta(payload, pageToLoad));
     } catch (error) {
-      setDocuments([]);
+      if (!options.append) {
+        setDocuments([]);
+      }
       setErrorMessage(
         error instanceof Error && error.message
           ? error.message
-          : "Failed to load documents."
+          : "Failed to load documents.",
       );
     } finally {
       setIsLoading(false);
+      setIsLoadingMore(false);
     }
   }
 
@@ -302,15 +355,17 @@ export default function DocumentsPage() {
   const metrics = useMemo(() => {
     const total = documents.length;
     const pending = documents.filter(
-      (document) => (document.processing_status ?? "").toLowerCase() === "pending"
+      (document) =>
+        (document.processing_status ?? "").toLowerCase() === "pending",
     ).length;
     const processing = documents.filter((document) =>
       ["processing", "in_progress", "in-progress"].includes(
-        (document.processing_status ?? "").toLowerCase()
-      )
+        (document.processing_status ?? "").toLowerCase(),
+      ),
     ).length;
     const completed = documents.filter(
-      (document) => (document.processing_status ?? "").toLowerCase() === "completed"
+      (document) =>
+        (document.processing_status ?? "").toLowerCase() === "completed",
     ).length;
 
     return {
@@ -318,8 +373,13 @@ export default function DocumentsPage() {
       pending,
       processing,
       completed,
+      totalAvailable: meta.totalCount ?? total,
+      hasMore:
+        meta.totalCount === null
+          ? documents.length >= meta.page * meta.pageSize
+          : documents.length < meta.totalCount,
     };
-  }, [documents]);
+  }, [documents, meta.page, meta.pageSize, meta.totalCount]);
 
   function openDocument(documentId: string) {
     router.push(`/dashboard/documents/${documentId}`);
@@ -330,11 +390,15 @@ export default function DocumentsPage() {
       <div className="mx-auto max-w-7xl">
         <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
           <div>
-            <p className="text-sm font-medium text-brand-700">Dashboard / Documents</p>
-            <h1 className="text-2xl font-bold tracking-tight text-slate-950 sm:text-3xl">Documents</h1>
+            <p className="text-sm font-medium text-brand-700">
+              Dashboard / Documents
+            </p>
+            <h1 className="text-2xl font-bold tracking-tight text-slate-950 sm:text-3xl">
+              Documents
+            </h1>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-              Review uploaded documents, processing status, classification results, and
-              linked operational records across the system.
+              Review uploaded documents, processing status, classification
+              results, and linked operational records across the system.
             </p>
           </div>
 
@@ -352,9 +416,12 @@ export default function DocumentsPage() {
 
         <section className="grid gap-4 md:grid-cols-4">
           <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-soft">
-            <div className="text-sm text-slate-500">Total documents</div>
+            <div className="text-sm text-slate-500">Loaded documents</div>
             <div className="mt-2 text-3xl font-bold text-slate-950">
               {isLoading ? "..." : metrics.total}
+            </div>
+            <div className="mt-1 text-xs text-slate-500">
+              {isLoading ? "" : `of ${metrics.totalAvailable} available`}
             </div>
           </div>
 
@@ -402,10 +469,90 @@ export default function DocumentsPage() {
         ) : null}
 
         <section className="mt-8 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-soft">
-          <div className="border-b border-amber-200 bg-amber-50 px-5 py-3 text-xs text-amber-900">
-            OCR/extraction may return incomplete field output for some documents. Verify key values before submission.
+          <div className="border-b border-slate-200 bg-slate-50 px-5 py-3 text-xs text-slate-600">
+            Showing {documents.length} of {metrics.totalAvailable} documents.
+            OCR/extraction may need verification for operational decisions.
           </div>
-          <div className="mobile-scroll-area overflow-x-auto">
+
+          <div className="divide-y divide-slate-100 md:hidden">
+            {isLoading ? (
+              <div className="px-5 py-10 text-center text-slate-500">
+                Loading documents...
+              </div>
+            ) : documents.length === 0 ? (
+              <div className="px-5 py-10 text-center text-slate-600">
+                <p className="font-semibold text-slate-700">
+                  No documents yet.
+                </p>
+                <p className="mt-2 text-sm">
+                  Upload BOL, rate con, or POD files from Load Detail or Driver
+                  Portal.
+                </p>
+              </div>
+            ) : (
+              documents.map((document) => (
+                <article key={document.id} className="space-y-3 p-4">
+                  <div className="min-w-0">
+                    <h3 className="break-mobile text-sm font-semibold text-slate-950">
+                      {getDocumentDisplayName(document)}
+                    </h3>
+                    <p className="mt-1 break-all text-xs text-slate-500">
+                      {document.id}
+                    </p>
+                    <p className="mt-1 break-mobile text-xs text-slate-500">
+                      {document.mime_type ?? "Unknown MIME"}
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 text-xs text-slate-600">
+                    <div>
+                      <span className="block font-semibold text-slate-500">
+                        Type
+                      </span>
+                      {normalizeDocumentTypeLabel(document.document_type)}
+                    </div>
+                    <div>
+                      <span className="block font-semibold text-slate-500">
+                        Status
+                      </span>
+                      {(document.processing_status ?? "unknown").replaceAll(
+                        "_",
+                        " ",
+                      )}
+                    </div>
+                    <div>
+                      <span className="block font-semibold text-slate-500">
+                        Load
+                      </span>
+                      <span className="break-all">
+                        {document.load_id ?? "—"}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="block font-semibold text-slate-500">
+                        Size
+                      </span>
+                      {formatFileSize(document.file_size_bytes)}
+                    </div>
+                    <div className="col-span-2">
+                      <span className="block font-semibold text-slate-500">
+                        Uploaded
+                      </span>
+                      {formatDateTime(document.created_at)}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => openDocument(document.id)}
+                    className="touch-target w-full rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white"
+                  >
+                    View Document
+                  </button>
+                </article>
+              ))
+            )}
+          </div>
+
+          <div className="mobile-scroll-area hidden overflow-x-auto md:block">
             <table className="min-w-[920px] divide-y divide-slate-200 text-sm lg:min-w-full">
               <thead className="bg-slate-50">
                 <tr className="text-left text-slate-600">
@@ -424,17 +571,31 @@ export default function DocumentsPage() {
               <tbody className="divide-y divide-slate-100">
                 {isLoading ? (
                   <tr>
-                    <td colSpan={9} className="px-5 py-10 text-center text-slate-500">
+                    <td
+                      colSpan={9}
+                      className="px-5 py-10 text-center text-slate-500"
+                    >
                       Loading documents...
                     </td>
                   </tr>
                 ) : documents.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="px-5 py-10 text-center text-slate-600">
+                    <td
+                      colSpan={9}
+                      className="px-5 py-10 text-center text-slate-600"
+                    >
                       <div className="space-y-2">
-                        <p className="font-semibold text-slate-700">No documents yet.</p>
-                        <p>Upload BOL, rate con, or POD files from Load Detail (office workflow) or Driver Portal (driver workflow).</p>
-                        <p className="text-xs text-slate-500">After upload, verify extracted fields before creating invoices or packets.</p>
+                        <p className="font-semibold text-slate-700">
+                          No documents yet.
+                        </p>
+                        <p>
+                          Upload BOL, rate con, or POD files from Load Detail
+                          (office workflow) or Driver Portal (driver workflow).
+                        </p>
+                        <p className="text-xs text-slate-500">
+                          After upload, verify extracted fields before creating
+                          invoices or packets.
+                        </p>
                       </div>
                     </td>
                   </tr>
@@ -445,7 +606,9 @@ export default function DocumentsPage() {
                         <div className="font-semibold text-slate-900">
                           {getDocumentDisplayName(document)}
                         </div>
-                        <div className="mt-1 text-xs text-slate-500">{document.id}</div>
+                        <div className="mt-1 text-xs text-slate-500">
+                          {document.id}
+                        </div>
                         <div className="mt-1 text-xs text-slate-500">
                           {document.mime_type ?? "Unknown MIME"}
                         </div>
@@ -460,10 +623,13 @@ export default function DocumentsPage() {
                       <td className="px-5 py-4 align-top">
                         <span
                           className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${processingStatusBadge(
-                            document.processing_status
+                            document.processing_status,
                           )}`}
                         >
-                          {(document.processing_status ?? "unknown").replaceAll("_", " ")}
+                          {(document.processing_status ?? "unknown").replaceAll(
+                            "_",
+                            " ",
+                          )}
                         </span>
                       </td>
 
@@ -480,11 +646,16 @@ export default function DocumentsPage() {
                       </td>
 
                       <td className="px-5 py-4 align-top text-slate-700">
-                        {(document.source_channel ?? "unknown").replaceAll("_", " ")}
+                        {(document.source_channel ?? "unknown").replaceAll(
+                          "_",
+                          " ",
+                        )}
                       </td>
 
                       <td className="px-5 py-4 align-top text-slate-700">
-                        {document.uploaded_by_staff_user_name ?? document.uploaded_by_staff_user_id ?? "System / Driver"}
+                        {document.uploaded_by_staff_user_name ??
+                          document.uploaded_by_staff_user_id ??
+                          "System / Driver"}
                       </td>
 
                       <td className="px-5 py-4 align-top">
@@ -504,10 +675,29 @@ export default function DocumentsPage() {
           </div>
         </section>
 
+        {metrics.hasMore && !isLoading ? (
+          <div className="mt-4 flex justify-center">
+            <button
+              type="button"
+              onClick={() =>
+                void loadDocuments(meta.page + 1, { append: true })
+              }
+              disabled={isLoadingMore}
+              className="touch-target rounded-xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-700 shadow-soft transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {isLoadingMore ? "Loading more..." : "Load more documents"}
+            </button>
+          </div>
+        ) : null}
+
         <section className="mt-8 rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
-          <h2 className="text-lg font-semibold text-slate-950">Workspace note</h2>
+          <h2 className="text-lg font-semibold text-slate-950">
+            Workspace note
+          </h2>
           <p className="mt-2 text-sm leading-6 text-slate-600">
-            Use this workspace to monitor incoming paperwork across all loads. For office uploads, open a load detail page and upload documents directly into that load packet.
+            Use this workspace to monitor incoming paperwork across all loads.
+            For office uploads, open a load detail page and upload documents
+            directly into that load packet.
           </p>
         </section>
       </div>

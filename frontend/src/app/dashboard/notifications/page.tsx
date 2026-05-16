@@ -167,7 +167,7 @@ export default function NotificationsPage() {
           throw new Error("Missing organization context.");
         }
 
-        const payload = await apiClient.get<unknown>("/notifications?page=1&page_size=100", {
+        const payload = await apiClient.get<unknown>("/notifications?page=1&page_size=25", {
           token: token ?? undefined,
           organizationId,
         });

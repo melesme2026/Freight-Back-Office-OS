@@ -11,6 +11,8 @@ body {
   padding: 0;
   margin: 0;
   min-height: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
   font-family:
     Inter,
     ui-sans-serif,
@@ -25,6 +27,19 @@ body {
 
 * {
   box-sizing: border-box;
+}
+
+img,
+svg,
+video,
+canvas,
+iframe {
+  max-width: 100%;
+}
+
+#__next,
+main {
+  min-width: 0;
 }
 
 a {
