@@ -285,8 +285,11 @@ def _parse_load_status(value: str) -> LoadStatus:
     )
 
 
-def _build_load_packet_readiness(item: Any, *, db: Session | None = None) -> dict[str, Any]:
-    documents = getattr(item, "documents", None)
+def _build_load_packet_readiness(
+    item: Any, *, db: Session | None = None, allow_document_query: bool = True
+) -> dict[str, Any]:
+    loaded_values = getattr(item, "__dict__", {})
+    documents = loaded_values.get("documents")
 
     document_types = []
     if isinstance(documents, list):
@@ -296,7 +299,21 @@ def _build_load_packet_readiness(item: Any, *, db: Session | None = None) -> dic
                 document_types.append(document_type)
 
     readiness_source = "load.documents"
-    if not document_types and db is not None and getattr(item, "id", None):
+    if not document_types:
+        if getattr(item, "has_ratecon", False):
+            document_types.append(DocumentType.RATE_CONFIRMATION)
+        if getattr(item, "has_bol", False):
+            document_types.append(DocumentType.BILL_OF_LADING)
+        if getattr(item, "has_invoice", False):
+            document_types.append(DocumentType.INVOICE)
+        readiness_source = "load.document_flags"
+
+    if (
+        not document_types
+        and allow_document_query
+        and db is not None
+        and getattr(item, "id", None)
+    ):
         document_service = DocumentService(db)
         persisted_documents, _ = document_service.list_documents(
             load_id=str(item.id),
@@ -541,7 +558,7 @@ def _serialize_load(
     documents = getattr(item, "documents", None)
     last_reviewed_by_user = getattr(item, "last_reviewed_by_user", None)
 
-    packet_readiness = _build_load_packet_readiness(item, db=db)
+    packet_readiness = _build_load_packet_readiness(item, db=db, allow_document_query=False)
     operational = OperationalQueueService().evaluate_load(item)
 
     payload = {
@@ -1585,12 +1602,28 @@ def get_load(
     token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
     db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
+    started_at = time.perf_counter()
     service = LoadService(db)
-    item = service.get_load(str(load_id))
+    item = service.get_load(str(load_id), core_detail=True)
+    loaded_at = time.perf_counter()
     _authorize_load_access(item=item, token_payload=token_payload)
+    authorized_at = time.perf_counter()
+    payload = _serialize_load(item, detailed=True, db=db)
+    serialized_at = time.perf_counter()
+
+    logger.info(
+        "Authenticated load detail timing load_id=%s org_id=%s role=%s load_query_ms=%.1f auth_ms=%.1f serialize_ms=%.1f total_ms=%.1f",
+        load_id,
+        token_payload.get("organization_id"),
+        token_payload.get("role"),
+        (loaded_at - started_at) * 1000,
+        (authorized_at - loaded_at) * 1000,
+        (serialized_at - authorized_at) * 1000,
+        (serialized_at - started_at) * 1000,
+    )
 
     return ApiResponse(
-        data=_serialize_load(item, detailed=True, db=db),
+        data=payload,
         meta={},
         error=None,
     )

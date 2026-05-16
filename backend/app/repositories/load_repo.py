@@ -29,12 +29,15 @@ class LoadRepository:
         load_id: uuid.UUID | str,
         *,
         include_related: bool = False,
+        core_detail: bool = False,
     ) -> Load | None:
         normalized_id = self._normalize_uuid(load_id, field_name="load_id")
 
         stmt = select(Load).where(Load.id == normalized_id)
 
-        if include_related:
+        if core_detail:
+            stmt = self._apply_core_detail_loads(stmt)
+        elif include_related:
             stmt = self._apply_related_loads(stmt)
         else:
             stmt = stmt.options(noload("*"))
@@ -182,12 +185,23 @@ class LoadRepository:
         self.db.delete(load)
         self.db.flush()
 
+    def _apply_core_detail_loads(self, stmt: Select[tuple[Load]]) -> Select[tuple[Load]]:
+        return stmt.options(
+            noload("*"),
+            selectinload(Load.driver),
+            selectinload(Load.customer_account),
+            selectinload(Load.broker),
+            selectinload(Load.last_reviewed_by_user),
+            selectinload(Load.follow_up_owner),
+        )
+
     def _apply_related_loads(self, stmt: Select[tuple[Load]]) -> Select[tuple[Load]]:
         return stmt.options(
             selectinload(Load.driver),
             selectinload(Load.customer_account),
             selectinload(Load.broker),
             selectinload(Load.last_reviewed_by_user),
+            selectinload(Load.follow_up_owner),
             selectinload(Load.documents),
             selectinload(Load.validation_issues),
             selectinload(Load.workflow_events),

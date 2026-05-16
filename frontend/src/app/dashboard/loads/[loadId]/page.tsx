@@ -1280,7 +1280,7 @@ export default function LoadDetailPage() {
       `/loads/${encodeURIComponent(loadId)}`,
       {
         token: token ?? undefined,
-        timeoutMs: 8_000,
+        timeoutMs: 20_000,
       }
     );
 
@@ -1789,7 +1789,7 @@ export default function LoadDetailPage() {
             onFailure();
             const message = optionalSectionErrorMessage(section, caught);
             setOptionalSectionErrors((current) => ({ ...current, [section]: message }));
-            console.warn("Optional load detail section failed", { section, message });
+            console.warn("Optional load detail section failed without blocking core load detail", { section, message, loadId });
           })
           .finally(() => {
             setOptionalSectionLoading((current) => ({ ...current, [section]: false }));
@@ -2785,6 +2785,13 @@ export default function LoadDetailPage() {
             <h1 className="mt-2 text-2xl font-bold text-rose-800">Unable to load load detail</h1>
             <p className="mt-2 text-sm text-rose-700">{error}</p>
             <div className="mt-5 flex flex-wrap gap-3">
+              <button
+                type="button"
+                onClick={() => void fetchPageData()}
+                className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-700"
+              >
+                Retry Load Detail
+              </button>
               <button
                 type="button"
                 onClick={handleGoBack}

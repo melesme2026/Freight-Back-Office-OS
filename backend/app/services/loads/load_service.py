@@ -100,11 +100,12 @@ class LoadService:
         )
         return self.load_repo.create(load)
 
-    def get_load(self, load_id: str) -> Load:
+    def get_load(self, load_id: str, *, core_detail: bool = False) -> Load:
         normalized_load_id = self._require_text(load_id, field_name="load_id")
         load = self.load_repo.get_by_id(
             normalized_load_id,
-            include_related=True,
+            include_related=not core_detail,
+            core_detail=core_detail,
         )
         if load is None:
             raise NotFoundError("Load not found", details={"load_id": normalized_load_id})
