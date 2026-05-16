@@ -1214,7 +1214,12 @@ function isClientAbortError(error: unknown): boolean {
 }
 
 function normalizeInvoiceStatus(value: unknown): InvoiceStatusState | null {
-  const record = asRecord(value);
+  const maybeRecord = asRecord(value);
+  if (!maybeRecord || typeof maybeRecord !== "object") {
+    return null;
+  }
+
+  const record = maybeRecord as Record<string, unknown>;
   const loadId = getStringField(record, "load_id");
   if (!loadId) return null;
   const staleReasons = Array.isArray(record.stale_reasons)
