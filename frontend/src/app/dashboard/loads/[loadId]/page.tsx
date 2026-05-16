@@ -4309,113 +4309,111 @@ export default function LoadDetailPage() {
                 ))}
               </div>
 
-              <div className="rounded-2xl border border-slate-200">
-                <div className="hidden grid-cols-12 gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500 lg:grid">
-                  <div className="col-span-12 lg:col-span-4">Document</div>
-                  <div className="col-span-1 lg:col-span-2">Type</div>
-                  <div className="col-span-1 lg:col-span-2">Status</div>
-                  <div className="col-span-1 lg:col-span-2">Uploaded</div>
-                  <div className="col-span-1 lg:col-span-1">Size</div>
-                  <div className="col-span-12 lg:col-span-1 text-right">Action</div>
-                </div>
+              <div className="overflow-x-auto rounded-2xl border border-slate-200">
+                <div className="min-w-[1180px]">
+                  <div className="grid grid-cols-[minmax(240px,3fr)_minmax(160px,2fr)_minmax(160px,2fr)_minmax(150px,2fr)_minmax(100px,1fr)_minmax(280px,2fr)] gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    <div className="min-w-0">Document</div>
+                    <div className="min-w-0">Type</div>
+                    <div className="min-w-0">Status</div>
+                    <div className="min-w-0">Uploaded</div>
+                    <div className="min-w-[100px] whitespace-nowrap">Size</div>
+                    <div className="min-w-[280px] whitespace-nowrap text-right">Action</div>
+                  </div>
 
-                {loadDocuments.length > 0 ? (
-                  <div className="divide-y divide-slate-200">
-                    {loadDocuments.map((document) => (
-                      <div
-                        key={document.id}
-                        className="grid grid-cols-1 gap-4 px-4 py-4 text-sm text-slate-700 sm:grid-cols-2 lg:grid-cols-12 lg:gap-3"
-                      >
-                        <div className="sm:col-span-2 lg:col-span-4">
-                          <div className="font-medium text-slate-900">
-                            {getDocumentDisplayName(document)}
+                  {loadDocuments.length > 0 ? (
+                    <div className="divide-y divide-slate-200">
+                      {loadDocuments.map((document) => (
+                        <div
+                          key={document.id}
+                          className="grid grid-cols-[minmax(240px,3fr)_minmax(160px,2fr)_minmax(160px,2fr)_minmax(150px,2fr)_minmax(100px,1fr)_minmax(280px,2fr)] gap-3 px-4 py-4 text-sm text-slate-700"
+                        >
+                          <div className="min-w-0">
+                            <div className="break-words font-medium text-slate-900">
+                              {getDocumentDisplayName(document)}
+                            </div>
+                            <div className="mt-1 break-words text-xs text-slate-500">
+                              {inferDocumentMimeType(document)}
+                            </div>
                           </div>
-                          <div className="mt-1 text-xs text-slate-500">
-                            {inferDocumentMimeType(document)}
-                          </div>
-                        </div>
 
-                        <div className="min-w-0 lg:col-span-2">
-                          <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500 lg:hidden">Type</div>
-                          <select
-                            value={(document.document_type as UploadDocumentType) || "unknown"}
-                            onChange={(event) =>
-                              void handleUpdateDocumentType(
-                                document,
-                                event.target.value as UploadDocumentType
-                              )
-                            }
-                            disabled={document.optimistic || savingDocumentId === document.id || isInvoiceManagedDocument(document)}
-                            className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-700 disabled:opacity-60"
-                          >
-                            {UPLOAD_DOCUMENT_TYPE_OPTIONS.filter((option) => option.value !== "").map((option) => (
-                              <option key={option.value} value={option.value}>
-                                {option.label}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-
-                        <div className="min-w-0 lg:col-span-2">
-                          <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500 lg:hidden">Status</div>
-                          <div className="flex flex-col items-start gap-1">
-                            <span
-                              className={`rounded-full px-3 py-1 text-xs font-semibold ${processingStatusBadge(
-                                document.processing_status
-                              )}`}
+                          <div className="min-w-0">
+                            <select
+                              value={(document.document_type as UploadDocumentType) || "unknown"}
+                              onChange={(event) =>
+                                void handleUpdateDocumentType(
+                                  document,
+                                  event.target.value as UploadDocumentType
+                                )
+                              }
+                              disabled={document.optimistic || savingDocumentId === document.id || isInvoiceManagedDocument(document)}
+                              className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-700 disabled:opacity-60"
                             >
-                              {(document.mutation_status ?? document.processing_status ?? "unknown").replaceAll("_", " ")}
-                            </span>
-                            <span className="text-xs leading-5 text-slate-500">{documentStatusLabel(document)}</span>
+                              {UPLOAD_DOCUMENT_TYPE_OPTIONS.filter((option) => option.value !== "").map((option) => (
+                                <option key={option.value} value={option.value}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+
+                          <div className="min-w-0">
+                            <div className="flex flex-col items-start gap-1">
+                              <span
+                                className={`rounded-full px-3 py-1 text-xs font-semibold ${processingStatusBadge(
+                                  document.processing_status
+                                )}`}
+                              >
+                                {(document.mutation_status ?? document.processing_status ?? "unknown").replaceAll("_", " ")}
+                              </span>
+                              <span className="text-xs leading-5 text-slate-500">{documentStatusLabel(document)}</span>
+                            </div>
+                          </div>
+
+                          <div className="min-w-0">
+                            <div className="break-words">{formatDateTime(document.received_at ?? document.created_at)}</div>
+                          </div>
+
+                          <div className="min-w-[100px] whitespace-nowrap">
+                            <div>{formatFileSize(document.file_size_bytes)}</div>
+                          </div>
+
+                          <div className="flex min-w-[280px] justify-end gap-2 whitespace-nowrap">
+                            <button
+                              type="button"
+                              onClick={() => void handleDownloadDocument(document)}
+                              disabled={document.optimistic || downloadingDocumentId === document.id || deletingDocumentId === document.id}
+                              className="touch-target rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              {downloadingDocumentId === document.id ? "Downloading..." : "Download"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void handleDeleteDocument(document)}
+                              disabled={document.optimistic || deletingDocumentId === document.id}
+                              className="touch-target rounded-xl border border-rose-300 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
+                              title={
+                                isInvoiceManagedDocument(document)
+                                  ? "Invoice documents are managed from the invoice workflow. Use Regenerate Invoice to replace this file."
+                                  : undefined
+                              }
+                            >
+                              {isInvoiceManagedDocument(document)
+                                ? "Managed by invoice"
+                                : deletingDocumentId === document.id
+                                  ? "Deleting..."
+                                  : "Delete"}
+                            </button>
                           </div>
                         </div>
-
-                        <div className="min-w-0 lg:col-span-2">
-                          <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500 lg:hidden">Uploaded</div>
-                          <div className="break-words">{formatDateTime(document.received_at ?? document.created_at)}</div>
-                        </div>
-
-                        <div className="min-w-0 lg:col-span-1">
-                          <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500 lg:hidden">Size</div>
-                          <div>{formatFileSize(document.file_size_bytes)}</div>
-                        </div>
-
-                        <div className="flex flex-col gap-2 sm:col-span-2 sm:flex-row lg:col-span-1 lg:justify-end">
-                          <button
-                            type="button"
-                            onClick={() => void handleDownloadDocument(document)}
-                            disabled={document.optimistic || downloadingDocumentId === document.id || deletingDocumentId === document.id}
-                            className="touch-target rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
-                          >
-                            {downloadingDocumentId === document.id ? "Downloading..." : "Download"}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => void handleDeleteDocument(document)}
-                            disabled={document.optimistic || deletingDocumentId === document.id}
-                            className="touch-target rounded-xl border border-rose-300 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50 sm:ml-2"
-                            title={
-                              isInvoiceManagedDocument(document)
-                                ? "Invoice documents are managed from the invoice workflow. Use Regenerate Invoice to replace this file."
-                                : undefined
-                            }
-                          >
-                            {isInvoiceManagedDocument(document)
-                              ? "Managed by invoice"
-                              : deletingDocumentId === document.id
-                                ? "Deleting..."
-                                : "Delete"}
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="px-4 py-8 text-sm text-slate-600">
-                    <p className="font-semibold text-slate-900">No documents are attached yet.</p>
-                    <p className="mt-1">Upload a Rate Confirmation, Bill of Lading, POD, or supporting image to keep this load ready for billing and submission.</p>
-                  </div>
-                )}
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="px-4 py-8 text-sm text-slate-600">
+                      <p className="font-semibold text-slate-900">No documents are attached yet.</p>
+                      <p className="mt-1">Upload a Rate Confirmation, Bill of Lading, POD, or supporting image to keep this load ready for billing and submission.</p>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 
