@@ -99,7 +99,7 @@ export default function TeamPage() {
 
     try {
       setIsLoading((previous) => previous || !isRefreshing);
-      const payload = await apiClient.get<{ data?: StaffMember[] }>("/staff-users?page=1&page_size=200", {
+      const payload = await apiClient.get<{ data?: StaffMember[] }>("/staff-users?page=1&page_size=25", {
         token,
         organizationId,
       });
@@ -347,8 +347,19 @@ export default function TeamPage() {
         )}
 
         {errorMessage ? (
-          <div className="mt-6 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-            {errorMessage}
+          <div className="mt-6 flex flex-col gap-3 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 sm:flex-row sm:items-center sm:justify-between">
+            <span>{errorMessage}</span>
+            <button
+              type="button"
+              onClick={() => {
+                setIsRefreshing(true);
+                void loadStaff();
+              }}
+              className="rounded-lg bg-rose-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-rose-700 disabled:opacity-60"
+              disabled={isRefreshing || isLoading}
+            >
+              {isRefreshing || isLoading ? "Retrying..." : "Retry"}
+            </button>
           </div>
         ) : null}
 

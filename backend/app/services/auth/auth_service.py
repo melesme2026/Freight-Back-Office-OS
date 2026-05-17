@@ -10,8 +10,8 @@ from app.domain.models.organization import Organization
 from app.domain.models.staff_user import StaffUser
 from app.repositories.driver_repo import DriverRepository
 from app.repositories.staff_user_repo import StaffUserRepository
-from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session, noload
 
 DRIVER_INVALID_LOGIN_MESSAGE = "Driver account not found or password is incorrect."
 DRIVER_INACTIVE_MESSAGE = "Driver account is not activated. Please contact your dispatcher."
@@ -64,7 +64,7 @@ class AuthService:
         stmt = (
             select(StaffUser.organization_id, StaffUser.role, Organization.name)
             .join(Organization, StaffUser.organization_id == Organization.id)
-            .where(StaffUser.email == normalized_email)
+            .where(func.lower(StaffUser.email) == normalized_email)
             .distinct()
         )
         organization_records = list(self.db.execute(stmt).all())
@@ -109,8 +109,9 @@ class AuthService:
         normalized_required_role = self._normalize_role(required_role)
         stmt = (
             select(StaffUser, Organization.name)
+            .options(noload("*"))
             .join(Organization, StaffUser.organization_id == Organization.id)
-            .where(StaffUser.email == normalized_email)
+            .where(func.lower(StaffUser.email) == normalized_email)
         )
         if normalized_required_role is not None:
             stmt = stmt.where(StaffUser.role == normalized_required_role)
@@ -120,7 +121,7 @@ class AuthService:
 
         if not organization_records:
             if organization_id is not None and self.db.scalar(
-                select(StaffUser.id).where(StaffUser.email == normalized_email).limit(1)
+                select(StaffUser.id).where(func.lower(StaffUser.email) == normalized_email).limit(1)
             ):
                 raise AppError(
                     "Invalid workspace selection.",
@@ -144,9 +145,7 @@ class AuthService:
         active_matches = []
         inactive_driver_matches = []
         for record in password_matches:
-            role_value = str(
-                getattr(record.StaffUser.role, "value", record.StaffUser.role)
-            ).lower()
+            role_value = str(getattr(record.StaffUser.role, "value", record.StaffUser.role)).lower()
             if role_value != "driver":
                 if not record.StaffUser.is_active:
                     raise UnauthorizedError("User account is inactive")

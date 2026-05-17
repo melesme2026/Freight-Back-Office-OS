@@ -114,7 +114,7 @@ export default function DriverLoginPage() {
           password,
           ...(normalizedSelectedOrganizationId ? { organization_id: normalizedSelectedOrganizationId } : {}),
         },
-        { onUnauthorized: "throw", timeoutMs: 5_000 }
+        { onUnauthorized: "throw", timeoutMs: 10_000 }
       );
 
       const accessToken = payload?.data?.access_token?.trim();

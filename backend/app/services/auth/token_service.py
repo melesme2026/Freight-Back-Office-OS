@@ -39,7 +39,7 @@ class TokenService:
         except (TypeError, ValueError) as exc:
             raise UnauthorizedError("Invalid token organization_id") from exc
 
-        user = self.staff_user_repo.get_by_id(user_id, include_related=True)
+        user = self.staff_user_repo.get_by_id(user_id, include_related=False)
         if user is None:
             raise UnauthorizedError("User not found")
 

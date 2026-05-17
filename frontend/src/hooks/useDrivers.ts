@@ -166,7 +166,7 @@ export function useDrivers(options?: { includeInactive?: boolean }) {
       setIsLoading(true);
       setError(null);
 
-      const response = await apiClient.get<unknown>(`/drivers?page=1&page_size=200${includeInactive ? "" : "&is_active=true"}`, {
+      const response = await apiClient.get<unknown>(`/drivers?page=1&page_size=25${includeInactive ? "" : "&is_active=true"}`, {
         token: token ?? undefined,
         organizationId,
         signal: controller.signal,
