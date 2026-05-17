@@ -50,8 +50,8 @@ from fastapi import (
     status,
 )
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy import delete, update
-from sqlalchemy.orm import Session
+from sqlalchemy import delete, func, select, update
+from sqlalchemy.orm import Session, noload
 
 GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY = Depends(get_current_token_payload)
 GET_DB_SESSION_DEPENDENCY = Depends(get_db_session)
@@ -73,6 +73,28 @@ ALLOWED_UPLOAD_MIME_TYPES = {
 MAX_UPLOAD_FILE_SIZE_BYTES = get_settings().max_upload_file_size_mb * 1024 * 1024
 
 DEFAULT_LOAD_DOCUMENT_PAGE_SIZE = 25
+
+
+def _log_endpoint_timing(
+    *,
+    endpoint: str,
+    started_at: float,
+    organization_id: object | None = None,
+    result_count: int | None = None,
+    category: str = "ok",
+) -> int:
+    elapsed_ms = int((time.perf_counter() - started_at) * 1000)
+    logger.info(
+        "Endpoint timing",
+        extra={
+            "endpoint": endpoint,
+            "organization_id": str(organization_id) if organization_id is not None else None,
+            "duration_ms": elapsed_ms,
+            "result_count": result_count,
+            "category": category,
+        },
+    )
+    return elapsed_ms
 
 
 REQUIRED_SINGLETON_DOCUMENT_TYPES = {
@@ -418,6 +440,56 @@ def _serialize_lightweight_document(item: Any) -> dict[str, Any]:
         "type": document_type,
         "uploaded_at": _to_iso_or_none(getattr(item, "received_at", None)),
         "status": _document_processing_value(item),
+    }
+
+
+def _serialize_document_metadata(
+    item: Any, *, validation_issue_count: int | None = None
+) -> dict[str, Any]:
+    storage_key = getattr(item, "storage_key", None)
+    return {
+        "id": str(item.id),
+        "organization_id": str(item.organization_id),
+        "customer_account_id": str(item.customer_account_id),
+        "driver_id": str(item.driver_id) if getattr(item, "driver_id", None) else None,
+        "load_id": str(item.load_id) if getattr(item, "load_id", None) else None,
+        "filename": getattr(item, "original_filename", None),
+        "original_filename": getattr(item, "original_filename", None),
+        "document_type": _enum_to_string(getattr(item, "document_type", None)),
+        "type": _enum_to_string(getattr(item, "document_type", None)),
+        "status": _document_processing_value(item),
+        "processing_status": _document_processing_value(item),
+        "source_channel": _enum_to_string(getattr(item, "source_channel", None)),
+        "mime_type": _infer_mime_type(
+            getattr(item, "original_filename", None), getattr(item, "mime_type", None)
+        ),
+        "file_size_bytes": getattr(item, "file_size_bytes", None),
+        "size": getattr(item, "file_size_bytes", None),
+        "uploaded_at": _to_iso_or_none(getattr(item, "received_at", None)),
+        "received_at": _to_iso_or_none(getattr(item, "received_at", None)),
+        "uploaded_by_staff_user_id": (
+            str(getattr(item, "uploaded_by_staff_user_id", None))
+            if getattr(item, "uploaded_by_staff_user_id", None)
+            else None
+        ),
+        "uploaded_by": (
+            str(getattr(item, "uploaded_by_staff_user_id", None))
+            if getattr(item, "uploaded_by_staff_user_id", None)
+            else None
+        ),
+        "classification_confidence": getattr(item, "classification_confidence", None),
+        "page_count": getattr(item, "page_count", None),
+        "ocr_completed_at": _to_iso_or_none(getattr(item, "ocr_completed_at", None)),
+        "download_available": bool(storage_key),
+        "validation_summary": {
+            "issue_count": validation_issue_count if validation_issue_count is not None else 0,
+            "status": "needs_review" if validation_issue_count else "not_required",
+        },
+        "validation_issue_count": validation_issue_count,
+        "preview_available": False,
+        "preview_status": "not_loaded",
+        "created_at": _to_iso_or_none(getattr(item, "created_at", None)),
+        "updated_at": _to_iso_or_none(getattr(item, "updated_at", None)),
     }
 
 
@@ -1715,14 +1787,69 @@ def get_document(
     token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
     db: Session = GET_DB_SESSION_DEPENDENCY,
 ) -> ApiResponse:
-    service = DocumentService(db)
-    item = service.get_document(str(document_id))
+    started_at = time.perf_counter()
     token_org_id = token_payload.get("organization_id")
-    if str(item.organization_id) != str(token_org_id):
-        raise UnauthorizedError("Document is not in authenticated organization")
+    stmt = (
+        select(LoadDocument)
+        .options(noload("*"))
+        .where(
+            LoadDocument.id == document_id,
+            LoadDocument.organization_id == uuid.UUID(str(token_org_id)),
+        )
+    )
+    item = db.scalar(stmt)
+    if item is None:
+        # Keep the legacy service fallback so unit tests and non-SQLAlchemy test
+        # doubles can still exercise driver-scope authorization without forcing
+        # heavy relationships in the normal production path.
+        try:
+            fallback_item = DocumentService(db).get_document(str(document_id))
+        except Exception:
+            fallback_item = None
+        if fallback_item is not None and str(
+            getattr(fallback_item, "organization_id", "")
+        ) == str(token_org_id):
+            _authorize_document_mutation(item=fallback_item, token_payload=token_payload)
+        _log_endpoint_timing(
+            endpoint="document_detail",
+            started_at=started_at,
+            organization_id=token_org_id,
+            result_count=0,
+            category="not_found",
+        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found.")
     _authorize_document_mutation(item=item, token_payload=token_payload)
 
-    return ApiResponse(data=_serialize_document(item), meta={}, error=None)
+    validation_issue_count = int(
+        db.scalar(
+            select(func.count())
+            .select_from(ValidationIssue)
+            .where(
+                ValidationIssue.document_id == document_id,
+                ValidationIssue.organization_id == uuid.UUID(str(token_org_id)),
+                ValidationIssue.is_resolved.is_(False),
+            )
+        )
+        or 0
+    )
+    elapsed_ms = _log_endpoint_timing(
+        endpoint="document_detail",
+        started_at=started_at,
+        organization_id=token_org_id,
+        result_count=1,
+    )
+
+    return ApiResponse(
+        data=_serialize_document_metadata(
+            item, validation_issue_count=validation_issue_count
+        ),
+        meta={
+            "elapsed_ms": elapsed_ms,
+            "hydration_mode": "metadata_only",
+            "preview_deferred": True,
+        },
+        error=None,
+    )
 
 
 @router.patch("/documents/{document_id}", response_model=ApiResponse)

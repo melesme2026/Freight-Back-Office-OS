@@ -24,6 +24,27 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
+def _log_endpoint_timing(
+    *,
+    endpoint: str,
+    started_at: float,
+    organization_id: object | None = None,
+    result_count: int | None = None,
+    category: str = "ok",
+) -> int:
+    elapsed_ms = int((time.perf_counter() - started_at) * 1000)
+    logger.info(
+        "Endpoint timing",
+        extra={
+            "endpoint": endpoint,
+            "organization_id": str(organization_id) if organization_id is not None else None,
+            "duration_ms": elapsed_ms,
+            "result_count": result_count,
+            "category": category,
+        },
+    )
+    return elapsed_ms
+
 def _uuid_to_str(value: uuid.UUID | None) -> str | None:
     return str(value) if value is not None else None
 
@@ -157,11 +178,19 @@ def get_review_queue(
     if str(effective_org_id) != str(token_org_id):
         raise UnauthorizedError("organization_id does not match authenticated organization")
 
+    started_at = time.perf_counter()
     service = ReviewQueueService(db)
     result = service.get_review_queue(
         organization_id=_uuid_to_str(effective_org_id),
         page=page,
         page_size=page_size,
+    )
+
+    elapsed_ms = _log_endpoint_timing(
+        endpoint="review_queue",
+        started_at=started_at,
+        organization_id=effective_org_id,
+        result_count=len(result["items"]),
     )
 
     return ApiResponse(
@@ -170,6 +199,8 @@ def get_review_queue(
             "page": result["page"],
             "page_size": result["page_size"],
             "total": result["total"],
+            "elapsed_ms": elapsed_ms,
+            "hydration_mode": "issue_first",
         },
         error=None,
     )

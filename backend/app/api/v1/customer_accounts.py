@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+import time
 import uuid
 from datetime import date, datetime
 from typing import Any
@@ -17,6 +19,7 @@ GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY = Depends(get_current_token_payload)
 GET_DB_SESSION_DEPENDENCY = Depends(get_db_session)
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 class CustomerAccountCreateRequest(BaseModel):
@@ -43,6 +46,28 @@ class CustomerAccountUpdateRequest(BaseModel):
     primary_contact_phone: str | None = None
     billing_email: str | None = None
     notes: str | None = None
+
+
+def _log_endpoint_timing(
+    *,
+    endpoint: str,
+    started_at: float,
+    organization_id: object | None = None,
+    result_count: int | None = None,
+    category: str = "ok",
+) -> int:
+    elapsed_ms = int((time.perf_counter() - started_at) * 1000)
+    logger.info(
+        "Endpoint timing",
+        extra={
+            "endpoint": endpoint,
+            "organization_id": str(organization_id) if organization_id is not None else None,
+            "duration_ms": elapsed_ms,
+            "result_count": result_count,
+            "category": category,
+        },
+    )
+    return elapsed_ms
 
 
 def _to_iso_or_none(value: object | None) -> str | None:
@@ -166,6 +191,7 @@ def list_customer_accounts(
     if str(effective_org_id) != str(token_org_id):
         raise UnauthorizedError("organization_id does not match authenticated organization")
 
+    started_at = time.perf_counter()
     service = CustomerAccountService(db)
     items, total = service.list_customer_accounts(
         organization_id=str(effective_org_id),
@@ -175,12 +201,21 @@ def list_customer_accounts(
         page_size=page_size,
     )
 
+    elapsed_ms = _log_endpoint_timing(
+        endpoint="customer_accounts",
+        started_at=started_at,
+        organization_id=effective_org_id,
+        result_count=len(items),
+    )
+
     return ApiResponse(
         data=[_serialize_customer_account(item) for item in items],
         meta={
             "page": page,
             "page_size": page_size,
             "total": total,
+            "elapsed_ms": elapsed_ms,
+            "hydration_mode": "lightweight",
         },
         error=None,
     )
