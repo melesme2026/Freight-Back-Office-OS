@@ -8,10 +8,13 @@ from app.repositories.validation_repo import ValidationRepository
 from app.services.validation.rules.amount_mismatch import AmountMismatchRule
 from app.services.validation.rules.broker_consistency import BrokerConsistencyRule
 from app.services.validation.rules.duplicate_load import DuplicateLoadRule
-from app.services.validation.rules.missing_required_fields import MissingRequiredFieldsRule
+from app.services.validation.rules.missing_required_fields import (
+    MissingRequiredFieldsRule,
+)
 from app.services.validation.rules.missing_signature import MissingSignatureRule
 from app.services.validation.rules.unreadable_document import UnreadableDocumentRule
 from app.services.validation.validation_engine import ValidationEngine
+from app.services.validation.validation_issue_generator import ValidationIssueGenerator
 from sqlalchemy.orm import Session
 
 
@@ -38,12 +41,21 @@ class ValidationOrchestrator:
         document_id: str | None = None,
         payload: dict[str, Any],
     ) -> list[ValidationIssue]:
+        canonical_issues = ValidationIssueGenerator(self.db).generate(
+            organization_id=organization_id,
+            load_id=load_id,
+            document_id=document_id,
+            payload=payload,
+        )
         results = self.engine.run(payload=payload)
 
         issues: list[ValidationIssue] = []
         now = datetime.now(timezone.utc)
 
+        canonical_rule_codes = {issue.rule_code for issue in canonical_issues}
         for item in results:
+            if item["rule_code"] in canonical_rule_codes:
+                continue
             issue = ValidationIssue(
                 organization_id=organization_id,
                 load_id=load_id,
@@ -63,6 +75,6 @@ class ValidationOrchestrator:
             issues.append(issue)
 
         if issues:
-            return self.validation_repo.create_many(issues)
+            canonical_issues.extend(self.validation_repo.create_many(issues))
 
-        return []
+        return canonical_issues

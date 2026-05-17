@@ -15,6 +15,7 @@ from app.domain.models.validation_issue import ValidationIssue
 from app.schemas.common import ApiResponse
 from app.services.loads.load_service import LoadService
 from app.services.loads.operational_queue_service import OperationalQueueService
+from app.services.loads.packet_readiness import calculate_organization_readiness_counts
 from fastapi import APIRouter, Depends
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -52,7 +53,9 @@ def get_dashboard(
     token_org_id = token_payload.get("organization_id")
     effective_org_id = organization_id or uuid.UUID(str(token_org_id))
     if str(effective_org_id) != str(token_org_id):
-        raise UnauthorizedError("organization_id does not match authenticated organization")
+        raise UnauthorizedError(
+            "organization_id does not match authenticated organization"
+        )
 
     loads_total_stmt = _apply_optional_org_filter(
         select(func.count()).select_from(Load),
@@ -68,24 +71,24 @@ def get_dashboard(
         model=Load,
     )
 
-    loads_ready_to_submit_stmt = _apply_optional_org_filter(
-        select(func.count()).select_from(Load).where(Load.status == LoadStatus.INVOICE_READY),
-        organization_id=effective_org_id,
-        model=Load,
-    )
-
     loads_paid_stmt = _apply_optional_org_filter(
-        select(func.count()).select_from(Load).where(Load.status == LoadStatus.FULLY_PAID),
+        select(func.count())
+        .select_from(Load)
+        .where(Load.status == LoadStatus.FULLY_PAID),
         organization_id=effective_org_id,
         model=Load,
     )
     loads_submitted_to_broker_stmt = _apply_optional_org_filter(
-        select(func.count()).select_from(Load).where(Load.status == LoadStatus.SUBMITTED_TO_BROKER),
+        select(func.count())
+        .select_from(Load)
+        .where(Load.status == LoadStatus.SUBMITTED_TO_BROKER),
         organization_id=effective_org_id,
         model=Load,
     )
     loads_waiting_on_broker_stmt = _apply_optional_org_filter(
-        select(func.count()).select_from(Load).where(Load.status == LoadStatus.SUBMITTED_TO_BROKER),
+        select(func.count())
+        .select_from(Load)
+        .where(Load.status == LoadStatus.SUBMITTED_TO_BROKER),
         organization_id=effective_org_id,
         model=Load,
     )
@@ -97,12 +100,16 @@ def get_dashboard(
         model=Load,
     )
     loads_waiting_on_funding_stmt = _apply_optional_org_filter(
-        select(func.count()).select_from(Load).where(Load.status == LoadStatus.RESERVE_PENDING),
+        select(func.count())
+        .select_from(Load)
+        .where(Load.status == LoadStatus.RESERVE_PENDING),
         organization_id=effective_org_id,
         model=Load,
     )
     loads_funded_stmt = _apply_optional_org_filter(
-        select(func.count()).select_from(Load).where(Load.status == LoadStatus.ADVANCE_PAID),
+        select(func.count())
+        .select_from(Load)
+        .where(Load.status == LoadStatus.ADVANCE_PAID),
         organization_id=effective_org_id,
         model=Load,
     )
@@ -124,8 +131,12 @@ def get_dashboard(
         model=ValidationIssue,
     )
 
+    canonical_readiness_counts = calculate_organization_readiness_counts(
+        db=db, organization_id=str(effective_org_id)
+    )
+
     load_service = LoadService(db)
-    queue_service = OperationalQueueService()
+    queue_service = OperationalQueueService(db)
     queue_counts: dict[str, int] = defaultdict(int)
     queue_examples: dict[str, list[dict[str, object]]] = defaultdict(list)
 
@@ -160,8 +171,10 @@ def get_dashboard(
         data={
             "loads_total": _scalar_count(db, loads_total_stmt),
             "loads_needing_review": _scalar_count(db, loads_needing_review_stmt),
-            "loads_validated": _scalar_count(db, loads_ready_to_submit_stmt),
-            "loads_ready_to_submit": _scalar_count(db, loads_ready_to_submit_stmt),
+            "loads_validated": canonical_readiness_counts["loads_ready_to_submit"],
+            "loads_ready_to_submit": canonical_readiness_counts[
+                "loads_ready_to_submit"
+            ],
             "loads_submitted_to_broker": _scalar_count(
                 db,
                 loads_submitted_to_broker_stmt,
@@ -171,7 +184,9 @@ def get_dashboard(
                 db,
                 loads_submitted_to_factoring_stmt,
             ),
-            "loads_waiting_on_funding": _scalar_count(db, loads_waiting_on_funding_stmt),
+            "loads_waiting_on_funding": _scalar_count(
+                db, loads_waiting_on_funding_stmt
+            ),
             "loads_funded": _scalar_count(db, loads_funded_stmt),
             "loads_paid": _scalar_count(db, loads_paid_stmt),
             "documents_pending_processing": _scalar_count(
@@ -182,7 +197,12 @@ def get_dashboard(
                 db,
                 critical_validation_issues_stmt,
             ),
-            "operational_queues": dict(queue_counts),
+            "operational_queues": {
+                **dict(queue_counts),
+                "missing_documents": canonical_readiness_counts[
+                    "loads_missing_documents"
+                ],
+            },
             "queue_load_examples": dict(queue_examples),
         },
         meta={},

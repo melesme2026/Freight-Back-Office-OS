@@ -143,6 +143,56 @@ def sync_load_document_readiness(*, db: Session, load_id: str) -> dict[str, obje
     return readiness
 
 
+def calculate_organization_readiness_counts(
+    *, db: Session, organization_id: str
+) -> dict[str, int]:
+    """Aggregate load readiness from actual attached documents.
+
+    This is intentionally document-table based so dashboard KPIs cannot be
+    overridden by stale denormalized load flags or older readiness snapshots.
+    """
+
+    load_ids = list(
+        db.scalars(select(Load.id).where(Load.organization_id == organization_id)).all()
+    )
+    if not load_ids:
+        return {
+            "loads_ready_for_invoice": 0,
+            "loads_ready_to_submit": 0,
+            "loads_missing_documents": 0,
+        }
+
+    documents_by_load_id: dict[object, list[DocumentType | str | None]] = {
+        load_id: [] for load_id in load_ids
+    }
+    rows = db.execute(
+        select(LoadDocument.load_id, LoadDocument.document_type).where(
+            LoadDocument.organization_id == organization_id,
+            LoadDocument.load_id.in_(load_ids),
+        )
+    ).all()
+    for load_id, document_type in rows:
+        documents_by_load_id.setdefault(load_id, []).append(document_type)
+
+    ready_for_invoice = 0
+    ready_to_submit = 0
+    missing_documents = 0
+    for document_types in documents_by_load_id.values():
+        readiness = calculate_packet_readiness(document_types=document_types)
+        if readiness["ready_for_invoice"]:
+            ready_for_invoice += 1
+        if readiness["ready_to_submit"]:
+            ready_to_submit += 1
+        if readiness["missing_required_documents"]["submission"]:
+            missing_documents += 1
+
+    return {
+        "loads_ready_for_invoice": ready_for_invoice,
+        "loads_ready_to_submit": ready_to_submit,
+        "loads_missing_documents": missing_documents,
+    }
+
+
 def calculate_packet_readiness(
     *,
     document_types: Iterable[DocumentType | str | None],
@@ -150,9 +200,15 @@ def calculate_packet_readiness(
 ) -> dict[str, object]:
     present = _present_values(document_types)
 
-    invoice_required_values = [_document_value(value) for value in rule_set.invoice_required]
-    submission_required_values = [_document_value(value) for value in rule_set.submission_required]
-    recommended_values = [_document_value(value) for value in rule_set.recommended_for_submission]
+    invoice_required_values = [
+        _document_value(value) for value in rule_set.invoice_required
+    ]
+    submission_required_values = [
+        _document_value(value) for value in rule_set.submission_required
+    ]
+    recommended_values = [
+        _document_value(value) for value in rule_set.recommended_for_submission
+    ]
 
     present_invoice_required = sorted(
         value for value in invoice_required_values if value in present
@@ -171,12 +227,15 @@ def calculate_packet_readiness(
     optional_present = sorted(
         value
         for value in (
-            _document_value(document_type) for document_type in READINESS_OPTIONAL_DOCUMENT_TYPES
+            _document_value(document_type)
+            for document_type in READINESS_OPTIONAL_DOCUMENT_TYPES
         )
         if value in present
     )
 
-    missing_recommended = sorted(value for value in recommended_values if value not in present)
+    missing_recommended = sorted(
+        value for value in recommended_values if value not in present
+    )
 
     ready_for_invoice = not missing_invoice_required
     ready_to_submit = not missing_submission_required
@@ -186,15 +245,19 @@ def calculate_packet_readiness(
 
     if missing_invoice_required:
         blockers.append(
-            "Missing invoice-readiness documents: " + ", ".join(missing_invoice_required)
+            "Missing invoice-readiness documents: "
+            + ", ".join(missing_invoice_required)
         )
     if missing_submission_required:
         blockers.append(
-            "Missing submission-required documents: " + ", ".join(missing_submission_required)
+            "Missing submission-required documents: "
+            + ", ".join(missing_submission_required)
         )
 
     if missing_recommended:
-        notes.append("Recommended documents still missing: " + ", ".join(missing_recommended))
+        notes.append(
+            "Recommended documents still missing: " + ", ".join(missing_recommended)
+        )
 
     if ready_to_submit:
         readiness_state = "ready_to_submit"
