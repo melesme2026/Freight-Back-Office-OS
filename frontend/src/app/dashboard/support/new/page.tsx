@@ -105,9 +105,18 @@ export default function NewSupportTicketPage() {
     error: loadsError,
   } = useLoads();
 
-  const typedCustomerAccounts = (customerAccounts ?? []) as CustomerAccountOption[];
-  const typedDrivers = (drivers ?? []) as DriverOption[];
-  const typedLoads = (loads ?? []) as LoadOption[];
+  const typedCustomerAccounts = useMemo(
+    () => (Array.isArray(customerAccounts) ? (customerAccounts as CustomerAccountOption[]) : []),
+    [customerAccounts]
+  );
+  const typedDrivers = useMemo(
+    () => (Array.isArray(drivers) ? (drivers as DriverOption[]) : []),
+    [drivers]
+  );
+  const typedLoads = useMemo(
+    () => (Array.isArray(loads) ? (loads as LoadOption[]) : []),
+    [loads]
+  );
   const [staffUsers, setStaffUsers] = useState<StaffUserOption[]>([]);
   const [staffUsersError, setStaffUsersError] = useState<string | null>(null);
   const [isLoadingStaffUsers, setIsLoadingStaffUsers] = useState<boolean>(true);

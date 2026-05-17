@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import type { Route } from "next";
 import { useEffect, useMemo, useState } from "react";
 
 import { getDashboardMetrics, type DashboardMetrics } from "@/lib/dashboard";
@@ -9,6 +10,8 @@ import { useLoads, type Load } from "@/hooks/useLoads";
 
 type WorkMode = "dispatcher" | "billing" | "collections";
 type Tone = "default" | "warning" | "danger" | "success";
+type DashboardHref = Route;
+type KpiCardProps = { label: string; value: number | string; helper: string; tone?: Tone; href?: DashboardHref };
 
 const WORK_MODE_STORAGE_KEY = "dashboard_work_mode";
 
@@ -50,7 +53,11 @@ function SkeletonBlock({ className = "h-20" }: { className?: string }) {
   return <div aria-hidden="true" className={`skeleton rounded-2xl bg-slate-200/80 ${className}`} />;
 }
 
-function KpiCard({ label, value, helper, tone = "default", href }: { label: string; value: number | string; helper: string; tone?: Tone; href?: string }) {
+function isDashboardHref(href: string): href is DashboardHref {
+  return href.startsWith("/dashboard/") || href === "/dashboard";
+}
+
+function KpiCard({ label, value, helper, tone = "default", href }: KpiCardProps) {
   const body = (
     <div className={`h-full rounded-2xl border p-4 shadow-sm transition ${toneClasses(tone)} ${href ? "hover:-translate-y-0.5 hover:border-brand-300" : ""}`}>
       <div className="text-xs font-bold uppercase tracking-[0.12em] opacity-70">{label}</div>
@@ -213,7 +220,11 @@ function SecondaryIntelligence({ commandCenter }: { commandCenter: CommandCenter
 
       {recommendations.length > 0 ? (
         <div className="mt-5 flex flex-wrap gap-2">
-          {recommendations.slice(0, 4).map((item) => <Link key={item.id} href={item.href} className="rounded-full bg-brand-50 px-3 py-1.5 text-xs font-semibold text-brand-700">{item.title}</Link>)}
+          {recommendations.slice(0, 4).map((item) => {
+            const href = isDashboardHref(item.href) ? item.href : "/dashboard";
+
+            return <Link key={item.id} href={href} className="rounded-full bg-brand-50 px-3 py-1.5 text-xs font-semibold text-brand-700">{item.title}</Link>;
+          })}
         </div>
       ) : null}
     </section>
@@ -261,7 +272,7 @@ export default function DashboardPage() {
     { label: "Awaiting Submission", value: metrics?.operational_queues?.ready_to_submit ?? commandCenter?.kpis.pending_packet_sends ?? 0, helper: "Invoices or packets ready to send", tone: "warning" as Tone, href: "/dashboard/billing" },
     { label: "Payment Overdue", value: metrics?.operational_queues?.payment_overdue ?? commandCenter?.kpis.overdue_invoices ?? 0, helper: "Collection follow-up required", tone: "danger" as Tone, href: "/dashboard/money" },
     { label: "Open Follow-Ups", value: commandCenter?.tasks.summary.total ?? metrics?.operational_queues?.disputed_or_short_paid ?? 0, helper: "Owner-assigned operational next steps", tone: "default" as Tone, href: "/dashboard/follow-ups" },
-  ];
+  ] satisfies KpiCardProps[];
 
   const isFreshWorkspace = !loading && (metrics?.loads_total ?? 0) === 0;
 

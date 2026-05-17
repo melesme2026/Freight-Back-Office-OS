@@ -243,7 +243,10 @@ export default function LoadsPage() {
     anchor.remove();
     window.URL.revokeObjectURL(url);
   }
-  const typedLoads = (loads ?? []) as LoadListItem[];
+  const typedLoads = useMemo(
+    () => (Array.isArray(loads) ? (loads as LoadListItem[]) : []),
+    [loads]
+  );
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
