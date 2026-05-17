@@ -307,10 +307,13 @@ async function performRequest<T>(path: string, options: RequestOptions = {}): Pr
     responseType = "json",
     timeoutMs = 15_000,
     signal,
-    dedupe: _dedupe,
-    retry: _retry,
+    dedupe,
+    retry,
     ...rest
   } = options;
+
+  void dedupe;
+  void retry;
 
   const resolvedToken =
     authMode === "none" ? undefined : token ?? getAccessToken() ?? undefined;
