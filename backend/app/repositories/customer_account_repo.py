@@ -5,7 +5,7 @@ import uuid
 from app.domain.enums.customer_account_status import CustomerAccountStatus
 from app.domain.models.customer_account import CustomerAccount
 from sqlalchemy import Select, func, or_, select
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session, noload, selectinload
 
 
 class CustomerAccountRepository:
@@ -78,6 +78,8 @@ class CustomerAccountRepository:
 
         if include_related:
             stmt = self._apply_related(stmt)
+        else:
+            stmt = stmt.options(noload("*"))
 
         if normalized_organization_id is not None:
             stmt = stmt.where(CustomerAccount.organization_id == normalized_organization_id)

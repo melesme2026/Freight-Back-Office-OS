@@ -525,9 +525,8 @@ function optionalSectionErrorMessage(
   caught: unknown,
 ): string {
   const detail = extractErrorMessage(caught, "");
-  return detail
-    ? `${OPTIONAL_SECTION_LABELS[section]} needs a moment to refresh. ${detail}`
-    : `${OPTIONAL_SECTION_LABELS[section]} will refresh automatically when data is available.`;
+  void detail;
+  return "Couldn’t refresh this panel. Core load data is still available.";
 }
 
 function isMobileViewport(): boolean {
@@ -1586,7 +1585,8 @@ export default function LoadDetailPage() {
         `/review-queue/loads/${encodeURIComponent(loadId)}/context`,
         {
           token: token ?? undefined,
-          timeoutMs: 5_000,
+          timeoutMs: 2_500,
+          retry: false,
           signal: getHydrationSignal(),
         },
       );
@@ -1628,7 +1628,8 @@ export default function LoadDetailPage() {
           `${cacheKey}&_document_refresh_request=${requestId}&_document_refresh_at=${Date.now()}`,
           {
             token: token ?? undefined,
-            timeoutMs: 5_000,
+            timeoutMs: 3_000,
+            retry: false,
             dedupe: false,
             headers: { "Cache-Control": "no-cache", Pragma: "no-cache" },
           },
@@ -1716,7 +1717,8 @@ export default function LoadDetailPage() {
         `/loads/${encodeURIComponent(loadId)}/packet-audit`,
         {
           token: token ?? undefined,
-          timeoutMs: 5_000,
+          timeoutMs: 2_500,
+          retry: false,
           signal: getHydrationSignal(),
         },
       );
@@ -1732,7 +1734,8 @@ export default function LoadDetailPage() {
       `/loads/${encodeURIComponent(loadId)}/submission-packets`,
       {
         token: token ?? undefined,
-        timeoutMs: 5_000,
+        timeoutMs: 2_500,
+        retry: false,
         signal: getHydrationSignal(),
       },
     );
@@ -1767,7 +1770,8 @@ export default function LoadDetailPage() {
         `/loads/${encodeURIComponent(loadId)}/payment-reconciliation/`,
         {
           token: token ?? undefined,
-          timeoutMs: 5_000,
+          timeoutMs: 2_500,
+          retry: false,
           signal: getHydrationSignal(),
         },
       );
@@ -1781,7 +1785,8 @@ export default function LoadDetailPage() {
       `/follow-ups?load_id=${encodeURIComponent(loadId)}&status=open`,
       {
         token: token ?? undefined,
-        timeoutMs: 5_000,
+        timeoutMs: 2_500,
+        retry: false,
         signal: getHydrationSignal(),
       },
     );
@@ -2390,14 +2395,14 @@ export default function LoadDetailPage() {
         "packetAudit",
         fetchPacketAudit,
         setPacketAudit,
-        () => setPacketAudit(null),
+        () => undefined,
       );
       scheduleSection(
         gap * 3,
         "submissionPackets",
         fetchSubmissionPackets,
         setSubmissionPackets,
-        () => setSubmissionPackets([]),
+        () => undefined,
       );
       scheduleSection(
         gap * 4,
@@ -2433,21 +2438,21 @@ export default function LoadDetailPage() {
         "paymentReconciliation",
         fetchPaymentReconciliation,
         setPaymentRecord,
-        () => setPaymentRecord(null),
+        () => undefined,
       );
       scheduleSection(
         gap * 7,
         "followUps",
         fetchFollowUpTasks,
         setFollowUpTasks,
-        () => setFollowUpTasks([]),
+        () => undefined,
       );
       scheduleSection(
         gap * 8,
         "reviewQueue",
         fetchReviewQueueItem,
         setReviewQueueItem,
-        () => setReviewQueueItem(null),
+        () => undefined,
       );
     } catch (caught: unknown) {
       if (!isClientAbortError(caught)) {

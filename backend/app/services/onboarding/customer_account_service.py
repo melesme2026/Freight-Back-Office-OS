@@ -85,7 +85,7 @@ class CustomerAccountService:
             search=self._clean_text(search),
             page=page,
             page_size=page_size,
-            include_related=True,
+            include_related=False,
         )
 
     def update_customer_account(

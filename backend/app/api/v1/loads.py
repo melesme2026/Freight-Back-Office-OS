@@ -519,7 +519,11 @@ def _build_default_packet_email(
 
 
 def _serialize_load(
-    item: Any, *, detailed: bool = False, db: Session | None = None
+    item: Any,
+    *,
+    detailed: bool = False,
+    db: Session | None = None,
+    include_packet_readiness: bool = True,
 ) -> dict[str, Any]:
     customer_account = getattr(item, "customer_account", None)
     driver = getattr(item, "driver", None)
@@ -529,7 +533,11 @@ def _serialize_load(
     documents = getattr(item, "documents", None)
     last_reviewed_by_user = getattr(item, "last_reviewed_by_user", None)
 
-    packet_readiness = _build_load_packet_readiness(item, db=db, allow_document_query=True)
+    packet_readiness = (
+        _build_load_packet_readiness(item, db=db, allow_document_query=True)
+        if include_packet_readiness
+        else None
+    )
     operational = OperationalQueueService(db).evaluate_load(item)
 
     payload = {
@@ -1779,7 +1787,7 @@ def get_load(
     loaded_at = time.perf_counter()
     _authorize_load_access(item=item, token_payload=token_payload)
     authorized_at = time.perf_counter()
-    payload = _serialize_load(item, detailed=True, db=db)
+    payload = _serialize_load(item, detailed=True, db=db, include_packet_readiness=False)
     serialized_at = time.perf_counter()
 
     logger.info(
@@ -1795,7 +1803,10 @@ def get_load(
 
     return ApiResponse(
         data=payload,
-        meta={},
+        meta={
+            "elapsed_ms": int((serialized_at - started_at) * 1000),
+            "optional_panels_deferred": True,
+        },
         error=None,
     )
 

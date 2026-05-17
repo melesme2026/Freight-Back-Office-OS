@@ -39,6 +39,9 @@ type DocumentDetailView = {
   extractedFields: ExtractedField[];
   validationIssues: string[];
   previewText: string;
+  fileSizeBytes: number | null;
+  downloadAvailable: boolean;
+  validationSummary: { issueCount: number; status: string };
 };
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -224,6 +227,8 @@ function normalizeDocumentDetail(
     asStringArray(container.validationIssues);
 
   const fallbackIssues = asStringArray(container.issues);
+  const validationSummaryRecord = asRecord(container.validation_summary);
+  const validationSummaryIssueCount = validationSummaryRecord?.issue_count;
 
   return {
     id:
@@ -268,6 +273,24 @@ function normalizeDocumentDetail(
     validationIssues:
       validationIssues.length > 0 ? validationIssues : fallbackIssues,
     previewText,
+    fileSizeBytes:
+      typeof container.file_size_bytes === "number"
+        ? container.file_size_bytes
+        : typeof container.size === "number"
+          ? container.size
+          : null,
+    downloadAvailable: container.download_available !== false,
+    validationSummary: {
+      issueCount:
+        typeof validationSummaryIssueCount === "number"
+          ? validationSummaryIssueCount
+          : validationIssues.length + fallbackIssues.length,
+      status:
+        asNullableString(validationSummaryRecord?.status) ??
+        (validationIssues.length + fallbackIssues.length > 0
+          ? "needs_review"
+          : "not_required"),
+    },
   };
 }
 
@@ -325,6 +348,8 @@ export default function DocumentDetailPage() {
           {
             token,
             organizationId,
+            timeoutMs: 3_000,
+            retry: false,
           },
         );
 
@@ -491,12 +516,13 @@ export default function DocumentDetailPage() {
               Dashboard / Documents / Detail
             </p>
             <h1 className="mt-2 text-2xl font-bold text-slate-950">
-              Loading document...
+              Opening document metadata…
             </h1>
-            <p className="mt-3 text-sm text-slate-600">
-              Fetching document metadata, extracted fields, and validation
-              results.
-            </p>
+            <div className="mt-5 space-y-3">
+              <div className="h-4 w-2/3 animate-pulse rounded bg-slate-100" />
+              <div className="h-4 w-1/2 animate-pulse rounded bg-slate-100" />
+              <div className="h-20 animate-pulse rounded-xl bg-slate-100" />
+            </div>
           </div>
         </div>
       </div>
@@ -600,8 +626,8 @@ export default function DocumentDetailPage() {
               {document.originalFilename}
             </h1>
             <p className="mt-2 text-sm leading-6 text-slate-600">
-              Review document metadata, extracted fields, validation outcomes,
-              and preview content.
+              Review document metadata first. Extraction, validation detail,
+              and preview content load only when already available.
             </p>
             <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">
               Extraction/OCR may produce incomplete values for some files.
@@ -719,7 +745,8 @@ export default function DocumentDetailPage() {
 
               {document.extractedFields.length === 0 ? (
                 <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-600">
-                  No extracted fields are available for this document yet.
+                  Metadata loaded. Extracted fields are not available yet;
+                  preview/OCR work is deferred from this page load.
                 </div>
               ) : (
                 <div className="space-y-3">
@@ -757,7 +784,7 @@ export default function DocumentDetailPage() {
                 </pre>
               ) : (
                 <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-6 text-sm text-slate-600">
-                  No preview text is available for this document.
+                  Preview is not loaded with metadata. Download remains available when storage is present.
                 </div>
               )}
             </div>

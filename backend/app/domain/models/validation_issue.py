@@ -27,6 +27,13 @@ class ValidationIssue(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         Index("ix_validation_issues_rule_code", "rule_code"),
         Index("ix_validation_issues_severity", "severity"),
         Index("ix_validation_issues_is_resolved", "is_resolved"),
+        Index("ix_validation_issues_status_severity", "is_resolved", "severity"),
+        Index(
+            "ix_validation_issues_org_status_load",
+            "organization_id",
+            "is_resolved",
+            "load_id",
+        ),
         Index("ix_validation_issues_resolved_by_staff_user_id", "resolved_by_staff_user_id"),
     )
 
