@@ -5,7 +5,7 @@ import uuid
 from app.domain.enums.role import Role
 from app.domain.models.staff_user import StaffUser
 from sqlalchemy import Select, func, or_, select
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session, noload, selectinload
 
 
 class StaffUserRepository:
@@ -37,6 +37,8 @@ class StaffUserRepository:
 
         if include_related:
             stmt = self._apply_related(stmt)
+        else:
+            stmt = stmt.options(noload("*"))
 
         return self.db.scalar(stmt)
 
@@ -54,11 +56,13 @@ class StaffUserRepository:
 
         stmt = select(StaffUser).where(
             StaffUser.organization_id == normalized_organization_id,
-            StaffUser.email == email,
+            func.lower(StaffUser.email) == email.strip().lower(),
         )
 
         if include_related:
             stmt = self._apply_related(stmt)
+        else:
+            stmt = stmt.options(noload("*"))
 
         return self.db.scalar(stmt)
 
@@ -90,6 +94,8 @@ class StaffUserRepository:
 
         if include_related:
             stmt = self._apply_related(stmt)
+        else:
+            stmt = stmt.options(noload("*"))
 
         if normalized_organization_id is not None:
             stmt = stmt.where(StaffUser.organization_id == normalized_organization_id)
@@ -136,6 +142,7 @@ class StaffUserRepository:
 
     def _apply_related(self, stmt: Select[tuple[StaffUser]]) -> Select[tuple[StaffUser]]:
         return stmt.options(
+            noload("*"),
             selectinload(StaffUser.organization),
             selectinload(StaffUser.reviewed_loads),
             selectinload(StaffUser.validation_issues_resolved),

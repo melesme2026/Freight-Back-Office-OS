@@ -104,6 +104,7 @@ def _serialize(profile: Any) -> dict[str, Any]:
     }
 
 
+@router.get("/settings/carrier-profile", response_model=ApiResponse)
 @router.get("/carrier-profile", response_model=ApiResponse)
 def get_carrier_profile(
     token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
@@ -117,6 +118,7 @@ def get_carrier_profile(
     return ApiResponse(data=_serialize(profile), meta={}, error=None)
 
 
+@router.post("/settings/carrier-profile", response_model=ApiResponse)
 @router.post("/carrier-profile", response_model=ApiResponse)
 def create_carrier_profile(
     payload: CarrierProfileUpsertRequest,
@@ -138,6 +140,7 @@ def create_carrier_profile(
     return ApiResponse(data=_serialize(profile), meta={}, error=None)
 
 
+@router.patch("/settings/carrier-profile", response_model=ApiResponse)
 @router.patch("/carrier-profile", response_model=ApiResponse)
 def update_carrier_profile(
     payload: CarrierProfilePatchRequest,

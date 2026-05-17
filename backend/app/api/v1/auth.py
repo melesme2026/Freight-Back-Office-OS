@@ -485,11 +485,20 @@ def _login_response(
         },
     )
 
+    login_driver_id = None
+    if str(getattr(user.role, "value", user.role)).lower() == Role.DRIVER.value:
+        driver = auth_service.driver_repo.get_by_email(
+            organization_id=user.organization_id,
+            email=user.email,
+            include_related=False,
+        )
+        login_driver_id = str(driver.id) if driver is not None else None
+
     data = LoginResponseData(
         access_token=access_token,
         token_type="bearer",
         expires_in=ACCESS_TOKEN_EXPIRES_IN_SECONDS,
-        user=_serialize_staff_user(user),
+        user=_serialize_staff_user(user, driver_id=login_driver_id),
     )
     return LoginResponse(data=data, meta={}, error=None)
 

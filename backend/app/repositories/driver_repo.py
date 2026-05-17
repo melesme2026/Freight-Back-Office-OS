@@ -4,7 +4,7 @@ import uuid
 
 from app.domain.models.driver import Driver
 from sqlalchemy import Select, func, or_, select
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session, noload, selectinload
 
 
 class DriverRepository:
@@ -33,6 +33,8 @@ class DriverRepository:
 
         if include_related:
             stmt = self._apply_related(stmt)
+        else:
+            stmt = stmt.options(noload("*"))
 
         return self.db.scalar(stmt)
 
@@ -65,11 +67,13 @@ class DriverRepository:
 
         stmt = select(Driver).where(
             Driver.organization_id == normalized_organization_id,
-            Driver.email == normalized_email,
+            func.lower(Driver.email) == normalized_email,
         )
 
         if include_related:
             stmt = self._apply_related(stmt)
+        else:
+            stmt = stmt.options(noload("*"))
 
         stmt = stmt.order_by(Driver.created_at.desc())
         return list(self.db.scalars(stmt).all())
@@ -105,17 +109,15 @@ class DriverRepository:
 
         if include_related:
             stmt = self._apply_related(stmt)
+        else:
+            stmt = stmt.options(noload("*"))
 
         if normalized_organization_id is not None:
             stmt = stmt.where(Driver.organization_id == normalized_organization_id)
-            count_stmt = count_stmt.where(
-                Driver.organization_id == normalized_organization_id
-            )
+            count_stmt = count_stmt.where(Driver.organization_id == normalized_organization_id)
 
         if normalized_customer_account_id is not None:
-            stmt = stmt.where(
-                Driver.customer_account_id == normalized_customer_account_id
-            )
+            stmt = stmt.where(Driver.customer_account_id == normalized_customer_account_id)
             count_stmt = count_stmt.where(
                 Driver.customer_account_id == normalized_customer_account_id
             )
@@ -137,11 +139,7 @@ class DriverRepository:
         total = int(self.db.scalar(count_stmt) or 0)
 
         offset = (normalized_page - 1) * normalized_page_size
-        stmt = (
-            stmt.order_by(Driver.created_at.desc())
-            .offset(offset)
-            .limit(normalized_page_size)
-        )
+        stmt = stmt.order_by(Driver.created_at.desc()).offset(offset).limit(normalized_page_size)
 
         items = list(self.db.scalars(stmt).all())
         return items, total
@@ -158,6 +156,7 @@ class DriverRepository:
 
     def _apply_related(self, stmt: Select[tuple[Driver]]) -> Select[tuple[Driver]]:
         return stmt.options(
+            noload("*"),
             selectinload(Driver.customer_account),
             selectinload(Driver.organization),
         )

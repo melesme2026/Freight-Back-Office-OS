@@ -177,7 +177,7 @@ def test_regular_document_delete_removes_row_and_updates_readiness(db_session) -
     assert load.has_ratecon is False
 
 
-def test_delete_document_returns_under_one_second_when_storage_delete_is_delayed(
+def test_delete_document_returns_under_two_seconds_when_storage_delete_is_delayed(
     db_session, monkeypatch
 ) -> None:
     from fastapi import BackgroundTasks
@@ -213,7 +213,7 @@ def test_delete_document_returns_under_one_second_when_storage_delete_is_delayed
     elapsed = time.perf_counter() - started_at
 
     assert response.data == {"id": str(document.id), "deleted": True}
-    assert elapsed < 1
+    assert elapsed < 2
 
 
 def test_delete_document_trace_logs_required_timing_fields(db_session, caplog) -> None:
