@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import type { Route } from "next";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
@@ -12,34 +11,9 @@ import {
   type AuthSession,
 } from "@/lib/auth";
 import { canAccessDashboardPath, canManageLeadPipeline } from "@/lib/rbac";
+import { WORKSPACE_NAV_ITEMS, WORKSPACE_NAV_SECTIONS, type WorkspaceNavItem } from "@/lib/navigation";
 
-type NavItem = {
-  href: Route;
-  label: string;
-};
-
-const NAV_ITEMS: NavItem[] = [
-  { href: "/dashboard", label: "Overview" },
-  { href: "/dashboard/loads", label: "Loads" },
-  { href: "/dashboard/review-queue", label: "Review Queue" },
-  { href: "/dashboard/documents", label: "Documents" },
-  { href: "/dashboard/customers", label: "Customers" },
-  { href: "/dashboard/brokers", label: "Brokers" },
-  { href: "/dashboard/drivers", label: "Drivers" },
-  { href: "/dashboard/team", label: "Team" },
-  { href: "/dashboard/leads", label: "Leads" },
-  { href: "/dashboard/billing", label: "Billing" },
-  { href: "/dashboard/factoring", label: "Factoring" },
-  { href: "/dashboard/money", label: "Money" },
-  { href: "/dashboard/analytics", label: "Analytics" },
-  { href: "/dashboard/accounting", label: "Accounting" },
-  { href: "/dashboard/onboarding", label: "Onboarding" },
-  { href: "/dashboard/notifications", label: "Notifications" },
-  { href: "/dashboard/support", label: "Support" },
-  { href: "/dashboard/settings", label: "Settings" },
-];
-
-function canShowNavItem(item: NavItem, role: string | null): boolean {
+function canShowNavItem(item: WorkspaceNavItem, role: string | null): boolean {
   if (item.href === "/dashboard/leads") {
     return canManageLeadPipeline(role);
   }
@@ -55,6 +29,67 @@ function isActivePath(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
+function NavLink({ item, pathname, onNavigate }: { item: WorkspaceNavItem; pathname: string; onNavigate?: () => void }) {
+  const active = isActivePath(pathname, item.href);
+
+  return (
+    <Link
+      href={item.href}
+      onClick={onNavigate}
+      aria-current={active ? "page" : undefined}
+      className={`group flex min-h-11 items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold outline-none transition focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 ${
+        active
+          ? "bg-slate-950 text-white shadow-sm"
+          : "text-slate-700 hover:bg-slate-100 hover:text-slate-950"
+      }`}
+    >
+      <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-xs ${active ? "bg-white/15 text-white" : "bg-slate-100 text-slate-500 group-hover:bg-white"}`} aria-hidden="true">
+        {item.icon}
+      </span>
+      <span className="min-w-0 flex-1 truncate">{item.label}</span>
+      {item.placeholder ? (
+        <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${active ? "bg-white/15 text-white" : "bg-slate-100 text-slate-500"}`}>
+          Soon
+        </span>
+      ) : null}
+    </Link>
+  );
+}
+
+function GroupedNavigation({ role, pathname, onNavigate, mobile = false }: { role: string | null; pathname: string; onNavigate?: () => void; mobile?: boolean }) {
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+
+  return (
+    <nav aria-label="Workspace sections" className="space-y-5">
+      {WORKSPACE_NAV_SECTIONS.map((section) => {
+        const visibleItems = section.items.filter((item) => canShowNavItem(item, role));
+        if (visibleItems.length === 0) return null;
+        const isCollapsed = Boolean(collapsed[section.id]);
+
+        return (
+          <section key={section.id} aria-labelledby={`nav-${section.id}`} className="space-y-2">
+            <button
+              id={`nav-${section.id}`}
+              type="button"
+              onClick={() => mobile ? setCollapsed((current) => ({ ...current, [section.id]: !isCollapsed })) : undefined}
+              aria-expanded={!isCollapsed}
+              className={`flex w-full items-center justify-between rounded-lg px-2 py-1 text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400 ${mobile ? "hover:bg-slate-100" : "cursor-default"}`}
+            >
+              <span>{section.label}</span>
+              {mobile ? <span aria-hidden="true">{isCollapsed ? "+" : "−"}</span> : null}
+            </button>
+            <div className={isCollapsed && mobile ? "hidden" : "space-y-1"}>
+              {visibleItems.map((item) => (
+                <NavLink key={item.href} item={item} pathname={pathname} onNavigate={onNavigate} />
+              ))}
+            </div>
+          </section>
+        );
+      })}
+    </nav>
+  );
+}
+
 export default function DashboardLayout({
   children,
 }: Readonly<{
@@ -63,6 +98,7 @@ export default function DashboardLayout({
   const pathname = usePathname();
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [session, setSession] = useState<AuthSession>(() => ({
     accessToken: null,
     tokenType: "Bearer",
@@ -80,9 +116,11 @@ export default function DashboardLayout({
   }, []);
 
   useEffect(() => {
-    if (!mounted) {
-      return;
-    }
+    setMobileNavOpen(false);
+  }, [pathname]);
+
+  useEffect(() => {
+    if (!mounted) return;
 
     if (!session.accessToken || !session.organizationId) {
       router.replace("/login?session=expired");
@@ -102,7 +140,7 @@ export default function DashboardLayout({
   }, [mounted, pathname, router, session.accessToken, session.organizationId, session.userRole]);
 
   const pageTitle = useMemo(() => {
-    const activeItem = NAV_ITEMS.find((item) => isActivePath(pathname, item.href));
+    const activeItem = WORKSPACE_NAV_ITEMS.find((item) => isActivePath(pathname, item.href));
     return activeItem?.label ?? "Dashboard";
   }, [pathname]);
 
@@ -111,13 +149,8 @@ export default function DashboardLayout({
     router.replace("/login?reason=logged_out");
   }
 
-  if (!mounted) {
-    return null;
-  }
-
-  if (!session.accessToken || !session.organizationId) {
-    return null;
-  }
+  if (!mounted) return null;
+  if (!session.accessToken || !session.organizationId) return null;
 
   if (accessDenied || !canAccessDashboardPath(session.userRole, pathname)) {
     return (
@@ -125,11 +158,7 @@ export default function DashboardLayout({
         <div className="max-w-md rounded-2xl border border-amber-200 bg-white p-6 text-center shadow-soft">
           <h1 className="text-lg font-bold text-slate-950">Access denied</h1>
           <p className="mt-2 text-sm text-slate-600">Your account does not have permission to view this dashboard area.</p>
-          <button
-            type="button"
-            onClick={() => router.replace("/dashboard")}
-            className="mt-4 rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700"
-          >
+          <button type="button" onClick={() => router.replace("/dashboard")} className="mt-4 rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700">
             Back to dashboard
           </button>
         </div>
@@ -142,100 +171,72 @@ export default function DashboardLayout({
       <div className="flex min-h-screen">
         <aside className="hidden w-72 shrink-0 border-r border-slate-200 bg-white xl:flex xl:flex-col">
           <div className="border-b border-slate-200 px-6 py-5">
-            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-700">
-              Freight Back Office OS
+            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-700">Freight Back Office OS</div>
+            <div className="mt-2 text-lg font-bold text-slate-950">Command Center</div>
+            <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+              <div className="font-semibold text-slate-900">{session.userEmail ?? "Signed-in user"}</div>
+              <div className="mt-1 truncate">Org: {session.organizationId}</div>
             </div>
-            <div className="mt-2 text-lg font-bold text-slate-950">Dashboard</div>
-            <div className="mt-3 space-y-1 text-xs text-slate-500">
-              <div>{session.userEmail ?? "Signed-in user"}</div>
-              <div className="break-all">Org: {session.organizationId}</div>
-            </div>
-            <Link
-              href="/"
-              className="mt-3 inline-flex text-xs font-semibold text-brand-700 hover:text-brand-800"
-            >
-              ← Back to landing
-            </Link>
+            <Link href="/" className="mt-3 inline-flex text-xs font-semibold text-brand-700 hover:text-brand-800">← Back to landing</Link>
           </div>
 
-          <nav className="flex-1 space-y-1 px-3 py-4">
-            {NAV_ITEMS.filter((item) => canShowNavItem(item, session.userRole)).map((item) => {
-              const active = isActivePath(pathname, item.href);
-
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={`block rounded-xl px-3 py-2 text-sm font-medium transition ${
-                    active
-                      ? "bg-brand-50 text-brand-700"
-                      : "text-slate-700 hover:bg-slate-100"
-                  }`}
-                >
-                  {item.label}
-                </Link>
-              );
-            })}
-          </nav>
+          <div className="flex-1 overflow-y-auto px-3 py-4">
+            <GroupedNavigation role={session.userRole} pathname={pathname} />
+          </div>
 
           <div className="border-t border-slate-200 p-3">
-            <button
-              type="button"
-              onClick={handleLogout}
-              className="w-full rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
-            >
+            <button type="button" onClick={handleLogout} className="w-full rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-brand-500">
               Log Out
             </button>
           </div>
         </aside>
 
         <div className="flex min-h-screen min-w-0 flex-1 flex-col">
-          <header className="border-b border-slate-200 bg-white">
-            <div className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
-              <div>
-                <div className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-700">
-                  Operations Workspace
-                </div>
-                <p className="mt-1 text-xl font-bold text-slate-950">{pageTitle}</p>
+          <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur">
+            <div className="flex items-center justify-between gap-3 px-4 py-3 sm:px-6">
+              <div className="min-w-0">
+                <div className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-700">Operations Workspace</div>
+                <p className="mt-1 truncate text-xl font-bold text-slate-950">{pageTitle}</p>
               </div>
 
-              <div className="flex w-full items-center justify-between gap-3 sm:w-auto">
+              <div className="flex items-center gap-3">
                 <div className="hidden text-right md:block">
-                  <div className="text-sm font-medium text-slate-900">
-                    {session.userEmail ?? "Signed-in user"}
-                  </div>
+                  <div className="text-sm font-medium text-slate-900">{session.userEmail ?? "Signed-in user"}</div>
                   <div className="text-xs text-slate-500">Organization active</div>
                 </div>
-                <button
-                  type="button"
-                  onClick={handleLogout}
-                  className="touch-target xl:hidden rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
-                >
-                  Log Out
+                <button type="button" onClick={() => setMobileNavOpen(true)} aria-expanded={mobileNavOpen} aria-controls="mobile-workspace-navigation" className="touch-target rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-brand-500 xl:hidden">
+                  Menu
                 </button>
               </div>
             </div>
-
-            <nav aria-label="Dashboard sections" className="mobile-scroll-area flex gap-2 overflow-x-auto border-t border-slate-100 px-4 py-3 xl:hidden">
-              {NAV_ITEMS.filter((item) => canShowNavItem(item, session.userRole)).map((item) => {
-                const active = isActivePath(pathname, item.href);
-
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className={`touch-target inline-flex shrink-0 items-center whitespace-nowrap rounded-full px-3 py-2 text-xs font-semibold transition ${
-                      active
-                        ? "bg-brand-600 text-white"
-                        : "bg-slate-100 text-slate-700 hover:bg-slate-200"
-                    }`}
-                  >
-                    {item.label}
-                  </Link>
-                );
-              })}
-            </nav>
           </header>
+
+          {mobileNavOpen ? (
+            <div className="fixed inset-0 z-50 xl:hidden" role="dialog" aria-modal="true" aria-label="Workspace navigation">
+              <button type="button" className="absolute inset-0 bg-slate-950/40" aria-label="Close navigation" onClick={() => setMobileNavOpen(false)} />
+              <div id="mobile-workspace-navigation" className="absolute inset-y-0 left-0 flex w-full max-w-sm flex-col bg-white shadow-2xl">
+                <div className="sticky top-0 z-10 border-b border-slate-200 bg-white px-4 py-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-700">Freight Back Office OS</div>
+                      <div className="mt-1 text-lg font-bold text-slate-950">Navigate workspace</div>
+                    </div>
+                    <button type="button" onClick={() => setMobileNavOpen(false)} className="touch-target rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 focus-visible:ring-2 focus-visible:ring-brand-500">
+                      Close
+                    </button>
+                  </div>
+                </div>
+                <div className="flex-1 overflow-y-auto px-4 py-5">
+                  <GroupedNavigation role={session.userRole} pathname={pathname} onNavigate={() => setMobileNavOpen(false)} mobile />
+                </div>
+                <div className="border-t border-slate-200 p-4">
+                  <button type="button" onClick={handleLogout} className="touch-target w-full rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100">
+                    Log Out
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : null}
 
           <main className="min-w-0 flex-1 overflow-x-clip">{children}</main>
         </div>
