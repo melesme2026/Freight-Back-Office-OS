@@ -42,7 +42,7 @@ function normalizeLoads(payload: unknown): DriverLoad[] {
           : [];
 
   return items
-    .map((item) => {
+    .map((item): DriverLoad | null => {
       const record = asRecord(item);
       if (!record) return null;
       const packetReadiness = asRecord(record.packet_readiness);
