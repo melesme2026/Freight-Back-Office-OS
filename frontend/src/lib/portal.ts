@@ -81,17 +81,22 @@ export function clearPortalToken(): void {
   window.localStorage.removeItem(PORTAL_TOKEN_KEY);
 }
 
-function portalOptions(token?: string) {
-  return { token: token ?? getPortalToken() ?? undefined, authMode: "auto" as const, onUnauthorized: "throw" as const };
+function portalOptions(token?: string, timeoutMs = 15_000) {
+  return {
+    token: token ?? getPortalToken() ?? undefined,
+    authMode: "auto" as const,
+    onUnauthorized: "throw" as const,
+    timeoutMs,
+  };
 }
 
 export async function fetchPortalScope(token?: string): Promise<{ scope: PortalScope; load: PortalLoad }> {
-  const response = await apiClient.get<ApiEnvelope<{ scope: PortalScope; load: PortalLoad }>>("/portal/me", portalOptions(token));
+  const response = await apiClient.get<ApiEnvelope<{ scope: PortalScope; load: PortalLoad }>>("/portal/me", portalOptions(token, 10_000));
   return response.data;
 }
 
 export async function fetchPortalLoad(loadId: string, token?: string): Promise<{ load: PortalLoad; documents: PortalDocument[]; packets: PortalPacket[] }> {
-  const response = await apiClient.get<ApiEnvelope<{ load: PortalLoad; documents: PortalDocument[]; packets: PortalPacket[] }>>(`/portal/loads/${loadId}`, portalOptions(token));
+  const response = await apiClient.get<ApiEnvelope<{ load: PortalLoad; documents: PortalDocument[]; packets: PortalPacket[] }>>(`/portal/loads/${loadId}`, portalOptions(token, 10_000));
   return response.data;
 }
 
@@ -99,16 +104,16 @@ export async function uploadPortalDocument(loadId: string, documentType: string,
   const form = new FormData();
   form.append("document_type", documentType);
   form.append("file", file);
-  const response = await apiClient.post<ApiEnvelope<PortalDocument>>(`/portal/loads/${loadId}/documents/upload`, form, portalOptions(token));
+  const response = await apiClient.post<ApiEnvelope<PortalDocument>>(`/portal/loads/${loadId}/documents/upload`, form, portalOptions(token, 10_000));
   return response.data;
 }
 
 export async function downloadPortalPacket(loadId: string, packetId: string, token?: string): Promise<Blob> {
-  return apiClient.getBlob(`/portal/loads/${loadId}/packets/${packetId}/download`, portalOptions(token));
+  return apiClient.getBlob(`/portal/loads/${loadId}/packets/${packetId}/download`, portalOptions(token, 10_000));
 }
 
 export async function downloadPortalDocument(loadId: string, documentId: string, token?: string): Promise<Blob> {
-  return apiClient.getBlob(`/portal/loads/${loadId}/documents/${documentId}/download`, portalOptions(token));
+  return apiClient.getBlob(`/portal/loads/${loadId}/documents/${documentId}/download`, portalOptions(token, 10_000));
 }
 
 export function validatePortalUploadFile(file: File): string | null {

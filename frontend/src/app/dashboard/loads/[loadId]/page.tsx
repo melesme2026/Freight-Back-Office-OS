@@ -12,9 +12,10 @@ import {
 
 import { ApiClientError, apiClient } from "@/lib/api-client";
 import { documentTypeLabel, isDocumentType } from "@/lib/document-types";
-import { parseUploadErrorResponse, isHtmlErrorText } from "@/lib/upload-errors";
+import { parseUploadErrorResponse } from "@/lib/upload-errors";
 import { getAccessToken, getOrganizationId } from "@/lib/auth";
 import { buildApiUrl as buildConfiguredApiUrl } from "@/lib/config";
+import { downloadBlobFromApi, friendlyDownloadError, saveBlob } from "@/lib/download";
 
 type LoadStatus =
   | "booked"
@@ -1478,6 +1479,7 @@ export default function LoadDetailPage() {
   const [invoiceAction, setInvoiceAction] = useState<
     "view" | "download" | "regenerate" | null
   >(null);
+  const [invoiceDownloading, setInvoiceDownloading] = useState(false);
   const [isMarkingReviewed, setIsMarkingReviewed] = useState<boolean>(false);
   const [isExecutingWorkflowAction, setIsExecutingWorkflowAction] =
     useState<boolean>(false);
@@ -1605,7 +1607,7 @@ export default function LoadDetailPage() {
 
       const requestId = documentRefreshRequestRef.current + 1;
       documentRefreshRequestRef.current = requestId;
-      const cacheKey = `/loads/${encodeURIComponent(loadId)}/documents?page=1&page_size=50`;
+      const cacheKey = `/loads/${encodeURIComponent(loadId)}/documents?page=1&page_size=25`;
       const startedAtMutationGeneration = documentMutationGenerationRef.current;
 
       traceLoadDetailAction("refresh_documents_started", {
@@ -1843,27 +1845,23 @@ export default function LoadDetailPage() {
   }
 
   async function handleDownloadPacketZip(packetId: string) {
-    if (!loadId || downloadingPacketId) return;
+    if (!loadId || downloadingPacketId === packetId) return;
 
     try {
       setDownloadingPacketId(packetId);
       setError(null);
-      const token = getAccessToken();
-      const blob = await apiClient.getBlob(
+      await downloadBlobFromApi(
         `/loads/${encodeURIComponent(loadId)}/submission-packets/${encodeURIComponent(packetId)}/download`,
-        { token: token ?? undefined, timeoutMs: 15_000, dedupe: false },
+        {
+          filename: `packet-${load?.load_number ?? loadId}.zip`,
+          timeoutMs: 10_000,
+          token: getAccessToken() ?? undefined,
+          organizationId: getOrganizationId() ?? undefined,
+        },
       );
-      const blobUrl = window.URL.createObjectURL(blob);
-      const link = window.document.createElement("a");
-      link.href = blobUrl;
-      link.download = `packet-${load?.load_number ?? loadId}.zip`;
-      window.document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(blobUrl);
       setActionMessage("Packet ZIP downloaded.");
     } catch (caught: unknown) {
-      setError(extractErrorMessage(caught, "Failed to download packet ZIP."));
+      setError(friendlyDownloadError(caught, "Failed to download packet ZIP."));
     } finally {
       setDownloadingPacketId(null);
     }
@@ -2886,7 +2884,7 @@ export default function LoadDetailPage() {
     const daysUntil = diffDaysFromToday(load?.next_follow_up_at);
     if (daysUntil === null) {
       return {
-        label: "Unplanned",
+        label: "No follow-up",
         helper: "No next follow-up date",
         tone: "default" as const,
         sortOrder: 4,
@@ -3247,7 +3245,7 @@ export default function LoadDetailPage() {
     regenerate?: boolean;
     disposition: "inline" | "attachment";
   }) {
-    if (!load || !load.id || isGeneratingInvoice) {
+    if (!load || !load.id || isGeneratingInvoice || invoiceDownloading) {
       return;
     }
 
@@ -3257,6 +3255,7 @@ export default function LoadDetailPage() {
 
     try {
       setIsGeneratingInvoice(true);
+      setInvoiceDownloading(options.disposition === "attachment");
       setInvoiceAction(
         options.regenerate
           ? "regenerate"
@@ -3275,62 +3274,24 @@ export default function LoadDetailPage() {
       const organizationId = getOrganizationId();
       const params = new URLSearchParams({ disposition: options.disposition });
       if (options.regenerate) params.set("regenerate", "true");
-      const response = await fetch(
-        buildConfiguredApiUrl(
-          `/loads/${encodeURIComponent(load.id)}/invoice?${params.toString()}`,
-        ),
+      const response = await apiClient.raw<Response>(
+        `/loads/${encodeURIComponent(load.id)}/invoice?${params.toString()}`,
         {
           method: "GET",
-          headers: {
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-            ...(organizationId ? { "X-Organization-Id": organizationId } : {}),
-          },
+          token: token ?? undefined,
+          organizationId: organizationId ?? undefined,
+          responseType: "response",
+          timeoutMs: 10_000,
+          dedupe: false,
+          retry: false,
         },
       );
 
-      if (!response.ok) {
-        const payload = (await response
-          .json()
-          .catch(() => null)) as ApiResponse<unknown> | null;
-        const errorCode =
-          payload?.error?.code ?? String(payload?.error?.details?.code ?? "");
-        if (errorCode === "carrier_profile_incomplete") {
-          const missingFields = Array.isArray(
-            payload?.error?.details?.missing_fields,
-          )
-            ? payload?.error?.details?.missing_fields.map((item) =>
-                String(item),
-              )
-            : [];
-          const actionUrl =
-            typeof payload?.error?.details?.action_url === "string"
-              ? payload.error.details.action_url
-              : "/dashboard/settings/carrier-profile";
-          setInvoiceBlocker({
-            message:
-              payload?.error?.message ??
-              "Complete your company and remit-to details before generating an invoice.",
-            missingFields,
-            actionUrl,
-          });
-          return;
-        }
-        throw new Error(
-          payload?.error?.message || "Failed to generate invoice.",
-        );
-      }
-
       const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
       if (options.disposition === "attachment") {
-        const link = window.document.createElement("a");
-        link.href = url;
-        link.download = `invoice-${load.load_number ?? load.id}.pdf`;
-        window.document.body.appendChild(link);
-        link.click();
-        link.remove();
-        window.setTimeout(() => URL.revokeObjectURL(url), 5_000);
+        saveBlob(blob, `invoice-${load.load_number ?? load.id}.pdf`);
       } else {
+        const url = URL.createObjectURL(blob);
         window.open(url, "_blank", "noopener,noreferrer");
         window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
       }
@@ -3396,9 +3357,29 @@ export default function LoadDetailPage() {
         setActionMessage("Invoice opened.");
       }
     } catch (caught: unknown) {
-      setError(extractErrorMessage(caught, "Failed to generate invoice."));
+      if (caught instanceof ApiClientError) {
+        const missingFields = Array.isArray(caught.details?.missing_fields)
+          ? caught.details.missing_fields.map((item) => String(item))
+          : [];
+        const actionUrl =
+          typeof caught.details?.action_url === "string"
+            ? caught.details.action_url
+            : "/dashboard/settings/carrier-profile";
+        if (caught.code === "carrier_profile_incomplete") {
+          setInvoiceBlocker({
+            message:
+              caught.message ||
+              "Complete your company and remit-to details before generating an invoice.",
+            missingFields,
+            actionUrl,
+          });
+          return;
+        }
+      }
+      setError(friendlyDownloadError(caught, "Failed to generate invoice."));
     } finally {
       setIsGeneratingInvoice(false);
+      setInvoiceDownloading(false);
       setInvoiceAction(null);
       endWriteAction();
     }
@@ -3486,7 +3467,7 @@ export default function LoadDetailPage() {
     traceLoadDetailAction("upload_clicked", {
       request_id: requestId,
       filename: file.name,
-      cache_key: `/loads/${encodeURIComponent(load.id)}/documents?page=1&page_size=50`,
+      cache_key: `/loads/${encodeURIComponent(load.id)}/documents?page=1&page_size=25`,
       mutation_generation: mutationGeneration,
       hydration_locked: writeActionActiveRef.current,
     });
@@ -3818,7 +3799,7 @@ export default function LoadDetailPage() {
   }
 
   async function handleDownloadDocument(document: LoadDocument) {
-    if (!document.id || downloadingDocumentId) {
+    if (!document.id || downloadingDocumentId === document.id) {
       return;
     }
 
@@ -3827,44 +3808,19 @@ export default function LoadDetailPage() {
       setError(null);
       setActionMessage(null);
 
-      const token = getAccessToken();
-      const organizationId = getOrganizationId();
-
-      const response = await fetch(
-        buildConfiguredApiUrl(
-          `/documents/${encodeURIComponent(document.id)}/download`,
-        ),
+      await downloadBlobFromApi(
+        `/documents/${encodeURIComponent(document.id)}/download`,
         {
-          method: "GET",
-          headers: {
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-            ...(organizationId ? { "X-Organization-Id": organizationId } : {}),
-          },
+          filename: getDocumentDisplayName(document),
+          timeoutMs: 10_000,
+          token: getAccessToken() ?? undefined,
+          organizationId: getOrganizationId() ?? undefined,
         },
       );
 
-      if (!response.ok) {
-        const responseText = await response.text();
-        const message =
-          responseText.trim().length > 0 && !isHtmlErrorText(responseText)
-            ? responseText
-            : "Failed to download document.";
-        throw new Error(message);
-      }
-
-      const blob = await response.blob();
-      const blobUrl = window.URL.createObjectURL(blob);
-      const link = window.document.createElement("a");
-      link.href = blobUrl;
-      link.download = getDocumentDisplayName(document);
-      window.document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(blobUrl);
-
       setActionMessage(`Downloaded ${getDocumentDisplayName(document)}.`);
     } catch (caught: unknown) {
-      setError(extractErrorMessage(caught, "Failed to download document."));
+      setError(friendlyDownloadError(caught, "Failed to download document."));
     } finally {
       setDownloadingDocumentId(null);
     }

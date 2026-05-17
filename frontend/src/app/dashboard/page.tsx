@@ -10,7 +10,7 @@ import { useLoads, type Load } from "@/hooks/useLoads";
 
 type WorkMode = "dispatcher" | "billing" | "collections";
 type OwnershipFilter = "my_follow_ups" | "team_follow_ups" | "unassigned";
-type UrgencyLabel = "Overdue" | "Due today" | "Upcoming" | "Unplanned";
+type UrgencyLabel = "Overdue" | "Due today" | "Upcoming" | "No follow-up";
 
 const WORK_MODE_STORAGE_KEY = "dashboard_work_mode";
 
@@ -78,9 +78,9 @@ function toStartOfDay(value: Date): Date {
 }
 
 function getUrgency(nextFollowUpAt?: string | null): { label: UrgencyLabel; order: number; tone: "danger" | "warning" | "default"; } {
-  if (!nextFollowUpAt) return { label: "Unplanned", order: 4, tone: "default" };
+  if (!nextFollowUpAt) return { label: "No follow-up", order: 4, tone: "default" };
   const parsed = new Date(nextFollowUpAt);
-  if (Number.isNaN(parsed.getTime())) return { label: "Unplanned", order: 4, tone: "default" };
+  if (Number.isNaN(parsed.getTime())) return { label: "No follow-up", order: 4, tone: "default" };
   const today = toStartOfDay(new Date());
   const followUpDay = toStartOfDay(parsed);
   const deltaDays = Math.floor((followUpDay.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));

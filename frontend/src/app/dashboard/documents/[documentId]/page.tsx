@@ -6,6 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 
 import { apiClient } from "@/lib/api-client";
 import { getAccessToken, getOrganizationId } from "@/lib/auth";
+import { downloadBlobFromApi, friendlyDownloadError } from "@/lib/download";
 
 type ApiError = {
   code?: string;
@@ -464,25 +465,18 @@ export default function DocumentDetailPage() {
       setActionError(null);
       setActionMessage(null);
 
-      const blob = await apiClient.getBlob(
+      await downloadBlobFromApi(
         `/documents/${encodeURIComponent(documentId)}/download`,
-        { token, organizationId },
+        {
+          filename: document?.originalFilename || `${documentId}.bin`,
+          token,
+          organizationId,
+          timeoutMs: 10_000,
+        },
       );
-      const downloadUrl = window.URL.createObjectURL(blob);
-      const link = window.document.createElement("a");
-      link.href = downloadUrl;
-      link.download = document?.originalFilename || `${documentId}.bin`;
-      window.document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(downloadUrl);
       setActionMessage("Document download started.");
     } catch (caught: unknown) {
-      setActionError(
-        caught instanceof Error
-          ? caught.message
-          : "Unable to download original file.",
-      );
+      setActionError(friendlyDownloadError(caught, "Unable to download original file."));
     } finally {
       setIsDownloading(false);
     }

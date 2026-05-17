@@ -2,6 +2,7 @@
 
 import { ChangeEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { ApiClientError } from "@/lib/api-client";
+import { friendlyDownloadError, saveBlob } from "@/lib/download";
 import {
   clearPortalToken,
   downloadPortalDocument,
@@ -43,17 +44,6 @@ function formatStatus(value: string | null | undefined): string {
   return value.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
-function saveBlob(blob: Blob, filename: string): void {
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = filename;
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  URL.revokeObjectURL(url);
-}
-
 function friendlyError(error: unknown): string {
   if (error instanceof ApiClientError) {
     if (error.status === 401) return "This portal link is expired or invalid. Ask your carrier contact for a new secure link.";
@@ -73,6 +63,8 @@ export function PortalRuntime({ routeLoadId }: PortalRuntimeProps) {
   const [isUploading, setIsUploading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [downloadingPacketId, setDownloadingPacketId] = useState<string | null>(null);
+  const [downloadingDocumentId, setDownloadingDocumentId] = useState<string | null>(null);
 
   const loadPortal = useCallback(async (token?: string) => {
     setIsLoading(true);
@@ -146,22 +138,30 @@ export function PortalRuntime({ routeLoadId }: PortalRuntimeProps) {
   }
 
   async function handlePacketDownload(packet: PortalPacket) {
-    if (!scope) return;
+    if (!scope || downloadingPacketId === packet.id) return;
+    setDownloadingPacketId(packet.id);
+    setErrorMessage(null);
     try {
       const blob = await downloadPortalPacket(scope.load_id, packet.id);
       saveBlob(blob, `packet-${load?.load_number ?? scope.load_id}.zip`);
     } catch (error) {
-      setErrorMessage(friendlyError(error));
+      setErrorMessage(friendlyDownloadError(error, friendlyError(error)));
+    } finally {
+      setDownloadingPacketId(null);
     }
   }
 
   async function handleDocumentDownload(document: PortalDocument) {
-    if (!scope) return;
+    if (!scope || downloadingDocumentId === document.id) return;
+    setDownloadingDocumentId(document.id);
+    setErrorMessage(null);
     try {
       const blob = await downloadPortalDocument(scope.load_id, document.id);
       saveBlob(blob, document.original_filename || `${document.document_type || "document"}.pdf`);
     } catch (error) {
-      setErrorMessage(friendlyError(error));
+      setErrorMessage(friendlyDownloadError(error, friendlyError(error)));
+    } finally {
+      setDownloadingDocumentId(null);
     }
   }
 
@@ -222,20 +222,20 @@ export function PortalRuntime({ routeLoadId }: PortalRuntimeProps) {
           <div className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-slate-200 sm:p-6">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div><h2 className="text-2xl font-bold">Packet visibility</h2><p className="text-sm text-slate-500">Invoice packet status and safe document availability.</p></div>
-              {latestPacket && scope.allow_packet_download ? <button type="button" onClick={() => handlePacketDownload(latestPacket)} className="rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white">Download packet</button> : null}
+              {latestPacket && scope.allow_packet_download ? <button type="button" onClick={() => handlePacketDownload(latestPacket)} disabled={downloadingPacketId === latestPacket.id} className="rounded-2xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white disabled:opacity-60">{downloadingPacketId === latestPacket.id ? "Downloading..." : "Download packet"}</button> : null}
             </div>
             <div className="mt-5 grid gap-3 sm:grid-cols-3">
               {requiredDocs.map((doc) => <div key={doc} className={`rounded-2xl p-4 ${missingDocs.includes(doc) ? "bg-amber-50 text-amber-900" : "bg-emerald-50 text-emerald-900"}`}><p className="text-sm font-semibold">{formatStatus(doc)}</p><p className="mt-1 text-xs">{missingDocs.includes(doc) ? "Needed" : "Received"}</p></div>)}
             </div>
             <div className="mt-5 space-y-3">
-              {packets.length === 0 ? <p className="rounded-2xl bg-slate-50 p-4 text-sm text-slate-600">No packet has been published for this load yet.</p> : packets.map((packet) => <div key={packet.id} className="flex flex-col gap-2 rounded-2xl border border-slate-200 p-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-semibold">{packet.packet_reference || "Packet"}</p><p className="text-sm text-slate-500">{formatStatus(packet.status)} · Sent {formatDate(packet.sent_at)}</p></div>{scope.allow_packet_download ? <button type="button" onClick={() => handlePacketDownload(packet)} className="rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold">Download</button> : null}</div>)}
+              {packets.length === 0 ? <p className="rounded-2xl bg-slate-50 p-4 text-sm text-slate-600">No packet has been published for this load yet.</p> : packets.map((packet) => <div key={packet.id} className="flex flex-col gap-2 rounded-2xl border border-slate-200 p-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-semibold">{packet.packet_reference || "Packet"}</p><p className="text-sm text-slate-500">{formatStatus(packet.status)} · Sent {formatDate(packet.sent_at)}</p></div>{scope.allow_packet_download ? <button type="button" onClick={() => handlePacketDownload(packet)} disabled={downloadingPacketId === packet.id} className="rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold disabled:opacity-60">{downloadingPacketId === packet.id ? "Downloading..." : "Download"}</button> : null}</div>)}
             </div>
           </div>
 
           <div className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-slate-200 sm:p-6">
             <h2 className="text-2xl font-bold">Documents</h2>
             <div className="mt-4 divide-y divide-slate-100 overflow-hidden rounded-2xl border border-slate-200">
-              {documents.length === 0 ? <p className="p-4 text-sm text-slate-600">No documents are visible yet.</p> : documents.map((document) => <div key={document.id} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-semibold">{formatStatus(document.document_type)}</p><p className="text-sm text-slate-500">{document.original_filename || "Uploaded document"} · {formatDate(document.received_at)}</p></div>{document.download_allowed ? <button type="button" onClick={() => handleDocumentDownload(document)} className="rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold">Download</button> : null}</div>)}
+              {documents.length === 0 ? <p className="p-4 text-sm text-slate-600">No documents are visible yet.</p> : documents.map((document) => <div key={document.id} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-semibold">{formatStatus(document.document_type)}</p><p className="text-sm text-slate-500">{document.original_filename || "Uploaded document"} · {formatDate(document.received_at)}</p></div>{document.download_allowed ? <button type="button" onClick={() => handleDocumentDownload(document)} disabled={downloadingDocumentId === document.id} className="rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold disabled:opacity-60">{downloadingDocumentId === document.id ? "Downloading..." : "Download"}</button> : null}</div>)}
             </div>
           </div>
         </div>

@@ -114,7 +114,7 @@ export default function DriverLoginPage() {
           password,
           ...(normalizedSelectedOrganizationId ? { organization_id: normalizedSelectedOrganizationId } : {}),
         },
-        { onUnauthorized: "throw", timeoutMs: 8_000 }
+        { onUnauthorized: "throw", timeoutMs: 5_000 }
       );
 
       const accessToken = payload?.data?.access_token?.trim();
@@ -153,8 +153,10 @@ export default function DriverLoginPage() {
             : [];
           setOrganizationOptions(organizations);
           setErrorMessage("This email is linked to multiple workspaces. Choose which workspace to access.");
-        } else if (error.status === 401 || error.status === 403) {
-          setErrorMessage("Driver account not found or not activated. Please contact your dispatcher.");
+        } else if (error.status === 403) {
+          setErrorMessage("Driver account is not activated. Please contact your dispatcher.");
+        } else if (error.status === 401) {
+          setErrorMessage("Driver account not found or password is incorrect.");
         } else if (error.code === "client_timeout") {
           setErrorMessage("Driver login is taking longer than expected. Check your connection and try again.");
         } else {
