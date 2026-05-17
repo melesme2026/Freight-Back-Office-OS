@@ -18,13 +18,13 @@ test("driver portal workflow + RBAC restrictions", async ({ page }) => {
   await expect(page.getByText(seed.load.load_number)).toBeVisible();
 
   await gotoProtectedDriverRoute(page, `/driver-portal/loads/${seed.load.id}`);
-  await expect(page.getByText(/What is missing/i)).toBeVisible();
+  await expect(page.getByText(/What dispatch\/accounting is waiting on/i)).toBeVisible();
 
   await page.getByLabel("Upload Proof of Delivery file or photo", { exact: true }).setInputFiles(path.join(process.cwd(), "e2e/fixtures/files/sample-invalid.txt"));
   await expect(page.getByText(/only PDF or image files are allowed/i)).toBeVisible();
 
   await page.getByLabel("Upload Proof of Delivery file or photo", { exact: true }).setInputFiles(path.join(process.cwd(), "e2e/fixtures/files/sample-pod.png"));
-  await expect(page.getByText(/upload success/i)).toBeVisible();
+  await expect(page.getByText(/Dispatch received your Proof of Delivery/i)).toBeVisible();
 
   await page.goto("/dashboard/money");
   await expect(page).toHaveURL(/\/driver-portal/);

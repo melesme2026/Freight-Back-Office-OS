@@ -4,6 +4,7 @@ export type CanonicalDocumentType =
   | "proof_of_delivery"
   | "invoice"
   | "lumper_receipt"
+  | "fuel_receipt"
   | "detention_support"
   | "scale_ticket"
   | "accessorial_support"
@@ -44,6 +45,9 @@ const DOCUMENT_TYPE_ALIASES: Record<string, CanonicalDocumentType> = {
   "generated invoice": "invoice",
   lumper_receipt: "lumper_receipt",
   "lumper receipt": "lumper_receipt",
+  fuel_receipt: "fuel_receipt",
+  "fuel receipt": "fuel_receipt",
+  fuel: "fuel_receipt",
   detention_support: "detention_support",
   "detention support": "detention_support",
   scale_ticket: "scale_ticket",
@@ -69,6 +73,7 @@ const DOCUMENT_TYPE_LABELS: Record<CanonicalDocumentType, string> = {
   proof_of_delivery: "Proof of Delivery",
   invoice: "Invoice",
   lumper_receipt: "Lumper Receipt",
+  fuel_receipt: "Fuel Receipt",
   detention_support: "Detention Support",
   scale_ticket: "Scale Ticket",
   accessorial_support: "Accessorial Support",

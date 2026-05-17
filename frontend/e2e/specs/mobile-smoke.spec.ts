@@ -22,7 +22,7 @@ test("mobile smoke: landing and driver load detail actions visible", async ({ pa
   await loginAsDriver(page);
   await gotoProtectedDriverRoute(page, `/driver-portal/loads/${seed.load.id}`);
   await expect(page.getByRole("main").getByRole("heading", { name: new RegExp(`^Load ${seed.load.load_number}$`) })).toBeVisible();
-  await expect(page.getByRole("region", { name: "Document Uploads" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Document checklist" })).toBeVisible();
   await expectNoPageOverflow(page);
 });
 
@@ -69,7 +69,7 @@ test("mobile smoke: driver portal overview and uploads remain touch-friendly", a
   await mockApi(page);
 
   await loginAsDriver(page);
-  await expect(page.getByRole("heading", { name: "Driver Workspace" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Today’s operating workspace" })).toBeVisible();
   await expectNoPageOverflow(page);
 
   await gotoProtectedDriverRoute(page, "/driver-portal/uploads");
