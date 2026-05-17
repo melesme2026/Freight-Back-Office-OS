@@ -8,12 +8,10 @@ from app.core.exceptions import DuplicateRecordError, NotFoundError, ValidationE
 from app.domain.enums.channel import Channel
 from app.domain.enums.document_type import DocumentType, normalize_document_type_value
 from app.domain.enums.processing_status import ProcessingStatus
-from app.domain.models.load import Load
 from app.domain.models.load_document import LoadDocument
 from app.repositories.document_repo import DocumentRepository
 from app.repositories.load_repo import LoadRepository
-from app.services.loads.packet_readiness import calculate_packet_readiness
-from sqlalchemy import select, update
+from app.services.loads.packet_readiness import sync_load_document_readiness
 from sqlalchemy.orm import Session
 
 
@@ -423,50 +421,12 @@ class DocumentService:
     def sync_load_document_flags_fast(self, load_id: str) -> None:
         """Recompute load document readiness without loading document ORM graphs."""
         normalized_load_id = self._normalize_required_text("load_id", load_id)
-        present_document_types = list(
-            self.db.scalars(
-                select(LoadDocument.document_type)
-                .where(LoadDocument.load_id == normalized_load_id)
-                .execution_options(populate_existing=False)
-            ).all()
-        )
-        readiness = calculate_packet_readiness(document_types=present_document_types)
-        present_values = set(readiness["present_documents"])
-
-        self.db.execute(
-            update(Load)
-            .where(Load.id == normalized_load_id)
-            .values(
-                has_ratecon=DocumentType.RATE_CONFIRMATION.value in present_values,
-                has_bol=DocumentType.BILL_OF_LADING.value in present_values,
-                has_invoice=DocumentType.INVOICE.value in present_values,
-                documents_complete=bool(readiness["ready_to_submit"]),
-            )
-            .execution_options(synchronize_session=False)
-        )
+        sync_load_document_readiness(db=self.db, load_id=normalized_load_id)
 
     def _sync_load_document_flags(self, load_id: str) -> None:
-        documents, _ = self.document_repo.list(
-            load_id=load_id,
-            page=1,
-            page_size=500,
-            include_related=False,
-        )
-
-        present_document_types = [document.document_type for document in documents]
-        readiness = calculate_packet_readiness(document_types=present_document_types)
-        present_values = set(readiness["present_documents"])
-
-        self.db.execute(
-            update(Load)
-            .where(Load.id == self._normalize_required_text("load_id", load_id))
-            .values(
-                has_ratecon=DocumentType.RATE_CONFIRMATION.value in present_values,
-                has_bol=DocumentType.BILL_OF_LADING.value in present_values,
-                has_invoice=DocumentType.INVOICE.value in present_values,
-                documents_complete=bool(readiness["ready_to_submit"]),
-            )
-            .execution_options(synchronize_session="fetch")
+        sync_load_document_readiness(
+            db=self.db,
+            load_id=self._normalize_required_text("load_id", load_id),
         )
         self.db.flush()
         self.db.expire_all()

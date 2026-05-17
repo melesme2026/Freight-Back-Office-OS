@@ -9,18 +9,7 @@ from app.domain.enums.processing_status import ProcessingStatus
 from app.domain.models.load import Load
 
 
-def test_load_serializer_uses_flags_without_document_table_fallback(
-    monkeypatch, db_session
-) -> None:
-    def fail_document_lookup(
-        *_args, **_kwargs
-    ):  # pragma: no cover - only called on regression
-        raise AssertionError("core load serialization must not query documents table")
-
-    monkeypatch.setattr(
-        loads_api.DocumentService, "list_documents", fail_document_lookup
-    )
-
+def test_load_serializer_uses_document_table_over_stale_flags(db_session) -> None:
     load = Load(
         id=uuid.uuid4(),
         organization_id=uuid.uuid4(),
@@ -44,8 +33,7 @@ def test_load_serializer_uses_flags_without_document_table_fallback(
         "proof_of_delivery"
         in payload["packet_readiness"]["missing_required_documents"]["invoice"]
     )
-    assert "rate_confirmation" in payload["packet_readiness"]["present_documents"]
-    assert "invoice" in payload["packet_readiness"]["present_documents"]
+    assert payload["packet_readiness"]["present_documents"] == []
 
 
 import time

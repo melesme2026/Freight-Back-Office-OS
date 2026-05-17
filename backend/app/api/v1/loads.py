@@ -28,7 +28,7 @@ from app.services.documents.storage_service import StorageService
 from app.services.email.email_service import PacketEmailService
 from app.services.loads.load_service import LoadService
 from app.services.loads.operational_queue_service import OperationalQueueService
-from app.services.loads.packet_readiness import calculate_packet_readiness
+from app.services.loads.packet_readiness import calculate_load_packet_readiness
 from app.services.loads.submission_packet_service import SubmissionPacketService
 from app.services.notifications.operational_notification_service import (
     OperationalNotificationService,
@@ -293,52 +293,18 @@ def _parse_load_status(value: str) -> LoadStatus:
 def _build_load_packet_readiness(
     item: Any, *, db: Session | None = None, allow_document_query: bool = True
 ) -> dict[str, Any]:
-    loaded_values = getattr(item, "__dict__", {})
-    documents = loaded_values.get("documents")
-
-    document_types = []
-    if isinstance(documents, list):
-        for document in documents:
-            document_type = getattr(document, "document_type", None)
-            if document_type is not None:
-                document_types.append(document_type)
-
-    readiness_source = "load.documents"
-    if not document_types:
-        if getattr(item, "has_ratecon", False):
-            document_types.append(DocumentType.RATE_CONFIRMATION)
-        if getattr(item, "has_bol", False):
-            document_types.append(DocumentType.BILL_OF_LADING)
-        if getattr(item, "has_invoice", False):
-            document_types.append(DocumentType.INVOICE)
-        readiness_source = "load.document_flags"
-
-    if (
-        not document_types
-        and allow_document_query
-        and db is not None
-        and getattr(item, "id", None)
-    ):
-        document_service = DocumentService(db)
-        persisted_documents, _ = document_service.list_documents(
-            load_id=str(item.id),
-            page=1,
-            page_size=500,
-        )
-        for document in persisted_documents:
-            document_type = getattr(document, "document_type", None)
-            if document_type is not None:
-                document_types.append(document_type)
-        readiness_source = "documents_table"
-
-    logger.debug(
-        "Load packet readiness input: load_id=%s source=%s document_types=%s",
-        getattr(item, "id", None),
-        readiness_source,
-        [getattr(document_type, "value", str(document_type)) for document_type in document_types],
+    readiness = calculate_load_packet_readiness(
+        load=item,
+        db=db if allow_document_query else None,
+        allow_flag_fallback=not allow_document_query,
     )
-
-    return calculate_packet_readiness(document_types=document_types)
+    logger.debug(
+        "Load packet readiness input: load_id=%s source=%s present_documents=%s",
+        getattr(item, "id", None),
+        "canonical_documents" if allow_document_query and db is not None else "loaded_documents_or_flags",
+        readiness.get("present_documents"),
+    )
+    return readiness
 
 
 class SubmissionPacketCreateRequest(BaseModel):
@@ -563,8 +529,8 @@ def _serialize_load(
     documents = getattr(item, "documents", None)
     last_reviewed_by_user = getattr(item, "last_reviewed_by_user", None)
 
-    packet_readiness = _build_load_packet_readiness(item, db=db, allow_document_query=False)
-    operational = OperationalQueueService().evaluate_load(item)
+    packet_readiness = _build_load_packet_readiness(item, db=db, allow_document_query=True)
+    operational = OperationalQueueService(db).evaluate_load(item)
 
     payload = {
         "id": str(item.id),

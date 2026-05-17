@@ -2,6 +2,7 @@
 
 import { ChangeEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { ApiClientError } from "@/lib/api-client";
+import { canonicalDocumentType, documentTypeLabel } from "@/lib/document-types";
 import { friendlyDownloadError, saveBlob } from "@/lib/download";
 import {
   clearPortalToken,
@@ -41,7 +42,30 @@ function formatDate(value: string | null | undefined): string {
 
 function formatStatus(value: string | null | undefined): string {
   if (!value) return "Pending";
-  return value.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+  return documentTypeLabel(value);
+}
+
+function submissionRequiredDocuments(load: PortalLoad | null): string[] {
+  const required = load?.packet_readiness?.required_documents;
+  if (Array.isArray(required)) return required.map(canonicalDocumentType);
+  if (required && Array.isArray(required.submission)) {
+    return required.submission.map(canonicalDocumentType);
+  }
+  return ["invoice", "rate_confirmation", "proof_of_delivery"];
+}
+
+function selfHealingMissingDocuments(load: PortalLoad | null, documents: PortalDocument[]): string[] {
+  const readiness = load?.packet_readiness;
+  const rawMissing = readiness?.missing_required_documents?.submission
+    ?? readiness?.missing_documents
+    ?? [];
+  const actualPresent = new Set([
+    ...(readiness?.present_documents ?? []).map(canonicalDocumentType),
+    ...documents.map((document) => canonicalDocumentType(document.document_type)),
+  ]);
+  return rawMissing
+    .map(canonicalDocumentType)
+    .filter((documentType) => documentType !== "unknown" && !actualPresent.has(documentType));
 }
 
 function friendlyError(error: unknown): string {
@@ -101,8 +125,8 @@ export function PortalRuntime({ routeLoadId }: PortalRuntimeProps) {
   }, [loadPortal]);
 
   const latestPacket = packets[0];
-  const requiredDocs = useMemo(() => load?.packet_readiness?.required_documents ?? ["invoice", "rate_confirmation", "proof_of_delivery"], [load]);
-  const missingDocs = useMemo(() => load?.packet_readiness?.missing_documents ?? [], [load]);
+  const requiredDocs = useMemo(() => submissionRequiredDocuments(load), [load]);
+  const missingDocs = useMemo(() => selfHealingMissingDocuments(load, documents), [load, documents]);
 
   async function unlockPortal() {
     if (!tokenInput.trim()) return;

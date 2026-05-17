@@ -366,3 +366,93 @@ def test_invoice_route_regenerate_requires_explicit_flag_to_replace_stale_pdf(db
 
     assert stale_view_pdf == first_pdf
     assert b"Regenerated only with" in explicit_regen_pdf
+
+
+def test_document_delete_reupload_recomputes_canonical_readiness(db_session) -> None:
+    load = _create_ready_for_invoice_load(db_session)
+    _generate_and_persist_invoice_pdf(db=db_session, load=load)
+    document_service = DocumentService(db_session)
+
+    pod_documents, _ = document_service.list_documents(
+        load_id=str(load.id),
+        document_type=DocumentType.PROOF_OF_DELIVERY,
+        page=1,
+        page_size=25,
+    )
+    document_service.delete_document(document_id=str(pod_documents[0].id))
+    db_session.flush()
+
+    missing_readiness = _build_load_packet_readiness(load, db=db_session)
+    assert DocumentType.PROOF_OF_DELIVERY.value in missing_readiness["missing_required_documents"]["submission"]
+
+    document_service.create_document(
+        organization_id=str(load.organization_id),
+        customer_account_id=str(load.customer_account_id),
+        driver_id=str(load.driver_id),
+        load_id=str(load.id),
+        document_type="signed_pod",
+        source_channel="driver_portal",
+        storage_key="uploads/reuploaded-signed-pod.pdf",
+        original_filename="reuploaded-signed-pod.pdf",
+        mime_type="application/pdf",
+        file_size_bytes=2048,
+    )
+    db_session.flush()
+
+    reuploaded_readiness = _build_load_packet_readiness(load, db=db_session)
+    assert DocumentType.PROOF_OF_DELIVERY.value in reuploaded_readiness["present_documents"]
+    assert DocumentType.PROOF_OF_DELIVERY.value not in reuploaded_readiness["missing_required_documents"]["submission"]
+    assert reuploaded_readiness["ready_to_submit"] is True
+
+    invoice_documents, _ = document_service.list_documents(
+        load_id=str(load.id),
+        document_type=DocumentType.INVOICE,
+        page=1,
+        page_size=25,
+    )
+    assert len(invoice_documents) == 1
+    assert invoice_documents[0].processing_status == ProcessingStatus.COMPLETED
+
+
+def test_actual_documents_override_stale_missing_snapshot_and_flags(db_session) -> None:
+    load = _create_ready_for_invoice_load(db_session)
+    _generate_and_persist_invoice_pdf(db=db_session, load=load)
+
+    stale_projection = SimpleNamespace(
+        id=load.id,
+        documents=None,
+        has_ratecon=False,
+        has_bol=False,
+        has_invoice=False,
+        required_documents_missing=[DocumentType.PROOF_OF_DELIVERY.value],
+        packet_readiness={
+            "missing_required_documents": {
+                "submission": [DocumentType.PROOF_OF_DELIVERY.value]
+            }
+        },
+    )
+
+    readiness = _build_load_packet_readiness(stale_projection, db=db_session)
+
+    assert readiness["ready_to_submit"] is True
+    assert DocumentType.PROOF_OF_DELIVERY.value in readiness["present_documents"]
+    assert readiness["missing_required_documents"]["submission"] == []
+
+
+def test_staff_and_driver_serializers_share_canonical_readiness(db_session) -> None:
+    from app.api.v1.loads import _serialize_load
+
+    load = _create_ready_for_invoice_load(db_session)
+    _generate_and_persist_invoice_pdf(db=db_session, load=load)
+    load.has_ratecon = False
+    load.has_invoice = False
+    load.documents_complete = False
+    db_session.add(load)
+    db_session.flush()
+
+    staff_payload = _serialize_load(load, detailed=True, db=db_session)
+    driver_payload = _serialize_load(load, detailed=False, db=db_session)
+
+    assert staff_payload["packet_readiness"] == driver_payload["packet_readiness"]
+    assert staff_payload["packet_readiness"]["ready_to_submit"] is True
+    assert staff_payload["packet_readiness"]["missing_required_documents"]["submission"] == []

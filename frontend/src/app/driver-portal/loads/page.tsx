@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 
 import { apiClient } from "@/lib/api-client";
 import { toDriverStatus } from "@/lib/driver-portal";
+import { canonicalDocumentType, documentTypeLabel } from "@/lib/document-types";
 import { getAccessToken, getOrganizationId } from "@/lib/auth";
 
 type DriverLoad = {
@@ -46,9 +47,14 @@ function normalizeLoads(payload: unknown): DriverLoad[] {
       if (!record) return null;
       const packetReadiness = asRecord(record.packet_readiness);
       const missingRequired = asRecord(packetReadiness?.missing_required_documents);
-      const missingSubmission = Array.isArray(missingRequired?.submission)
-        ? missingRequired?.submission.filter((item) => typeof item === "string")
+      const presentDocuments = Array.isArray(packetReadiness?.present_documents)
+        ? packetReadiness.present_documents.filter((item) => typeof item === "string").map(canonicalDocumentType)
         : [];
+      const presentSet = new Set(presentDocuments);
+      const missingSubmission = (Array.isArray(missingRequired?.submission)
+        ? missingRequired?.submission.filter((item) => typeof item === "string")
+        : []
+      ).map(canonicalDocumentType).filter((documentType) => documentType !== "unknown" && !presentSet.has(documentType));
 
       const id = asText(record.id, "");
       if (!id) return null;
@@ -131,7 +137,7 @@ export default function DriverLoadsPage() {
                 <div className="mt-1 text-sm text-slate-600">{load.pickup_location} → {load.delivery_location}</div>
                 <div className="mt-2 inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold capitalize text-slate-700">Status: {status}</div>
                 {load.missing_documents.length > 0 ? (
-                  <div className="mt-3 text-sm font-medium text-amber-700">⚠ Missing: {load.missing_documents.join(", ")}</div>
+                  <div className="mt-3 text-sm font-medium text-amber-700">⚠ Missing: {load.missing_documents.map(documentTypeLabel).join(", ")}</div>
                 ) : null}
               </Link>
             );

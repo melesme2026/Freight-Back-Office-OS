@@ -6,7 +6,7 @@ from typing import Any
 
 from app.domain.enums.document_type import DocumentType
 from app.domain.enums.load_status import LoadStatus
-from app.services.loads.packet_readiness import calculate_packet_readiness
+from app.services.loads.packet_readiness import calculate_load_packet_readiness
 
 QUEUE_ORDER: tuple[str, ...] = (
     "disputed_or_short_paid",
@@ -49,6 +49,9 @@ _NEXT_ACTIONS: dict[str, NextActionRule] = {
 
 
 class OperationalQueueService:
+    def __init__(self, db: Any | None = None) -> None:
+        self.db = db
+
     def evaluate_load(self, load: Any, *, now: datetime | None = None) -> dict[str, Any]:
         current_time = now or datetime.now(timezone.utc)
         status = self._normalize_status(getattr(load, "status", None))
@@ -98,24 +101,12 @@ class OperationalQueueService:
         }
 
     def _build_packet_readiness(self, load: Any) -> dict[str, Any]:
-        document_types: list[DocumentType] = []
+        return calculate_load_packet_readiness(
+            load=load,
+            db=self.db,
+            allow_flag_fallback=True,
+        )
 
-        documents = getattr(load, "documents", None)
-        if isinstance(documents, list):
-            for document in documents:
-                document_type = getattr(document, "document_type", None)
-                if isinstance(document_type, DocumentType):
-                    document_types.append(document_type)
-
-        if bool(getattr(load, "has_ratecon", False)):
-            document_types.append(DocumentType.RATE_CONFIRMATION)
-        if bool(getattr(load, "has_bol", False)):
-            document_types.append(DocumentType.BILL_OF_LADING)
-            document_types.append(DocumentType.PROOF_OF_DELIVERY)
-        if bool(getattr(load, "has_invoice", False)):
-            document_types.append(DocumentType.INVOICE)
-
-        return calculate_packet_readiness(document_types=document_types)
 
     def _queue_memberships(
         self,

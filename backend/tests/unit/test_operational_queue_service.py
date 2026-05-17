@@ -3,8 +3,21 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
+from app.domain.enums.document_type import DocumentType
 from app.domain.enums.load_status import LoadStatus
 from app.services.loads.operational_queue_service import OperationalQueueService
+
+
+def _document(document_type: DocumentType):
+    return SimpleNamespace(document_type=document_type)
+
+
+def _complete_documents():
+    return [
+        _document(DocumentType.RATE_CONFIRMATION),
+        _document(DocumentType.PROOF_OF_DELIVERY),
+        _document(DocumentType.INVOICE),
+    ]
 
 
 def _load(**overrides):
@@ -40,6 +53,7 @@ def test_queue_ready_to_submit_and_submit_to_broker_action() -> None:
         has_ratecon=True,
         has_bol=True,
         has_invoice=True,
+        documents=_complete_documents(),
     )
 
     result = service.evaluate_load(load)
@@ -56,6 +70,7 @@ def test_overdue_submitted_load_is_payment_overdue_and_follow_up() -> None:
         has_ratecon=True,
         has_bol=True,
         has_invoice=True,
+        documents=_complete_documents(),
         submitted_at=now - timedelta(days=5),
     )
 

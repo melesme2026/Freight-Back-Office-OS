@@ -28,7 +28,7 @@ from app.schemas.common import ApiResponse
 from app.services.audit.audit_service import AuditService
 from app.services.documents.document_service import DocumentService
 from app.services.documents.storage_service import StorageService
-from app.services.loads.packet_readiness import calculate_packet_readiness
+from app.services.loads.packet_readiness import calculate_load_packet_readiness
 from app.services.loads.submission_packet_service import SubmissionPacketService
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.responses import StreamingResponse
@@ -144,11 +144,9 @@ def _doc_type_value(value: object | None) -> str | None:
     return str(value) if value is not None else None
 
 
-def _serialize_portal_load(load: Any) -> dict[str, Any]:
+def _serialize_portal_load(load: Any, *, db: Session | None = None) -> dict[str, Any]:
     documents = list(getattr(load, "documents", None) or [])
-    doc_types = [
-        _doc_type_value(getattr(document, "document_type", None)) for document in documents
-    ]
+    packet_readiness = calculate_load_packet_readiness(load=load, db=db)
     return {
         "id": str(load.id),
         "load_number": load.load_number,
@@ -169,9 +167,7 @@ def _serialize_portal_load(load: Any) -> dict[str, Any]:
         "has_ratecon": bool(load.has_ratecon),
         "has_bol": bool(load.has_bol),
         "has_invoice": bool(load.has_invoice),
-        "packet_readiness": calculate_packet_readiness(
-            document_types=[doc for doc in doc_types if doc]
-        ),
+        "packet_readiness": packet_readiness,
         "submitted_at": _to_iso_or_none(load.submitted_at),
         "paid_at": _to_iso_or_none(load.paid_at),
         "updated_at": _to_iso_or_none(load.updated_at),
@@ -342,7 +338,7 @@ def get_portal_scope(
                     "allow_document_upload",
                 )
             },
-            "load": _serialize_portal_load(load),
+            "load": _serialize_portal_load(load, db=db),
         },
         meta={},
         error=None,
@@ -375,7 +371,7 @@ def get_portal_load(
     db.commit()
     return ApiResponse(
         data={
-            "load": _serialize_portal_load(load),
+            "load": _serialize_portal_load(load, db=db),
             "documents": [_serialize_portal_document(doc) for doc in docs],
             "packets": [_serialize_portal_packet(packet) for packet in packets],
         },
