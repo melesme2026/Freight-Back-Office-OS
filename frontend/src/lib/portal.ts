@@ -42,9 +42,11 @@ export type PortalLoad = {
   has_invoice: boolean;
   packet_readiness?: {
     ready?: boolean;
+    ready_to_submit?: boolean;
     missing_documents?: string[];
     present_documents?: string[];
-    required_documents?: string[];
+    required_documents?: string[] | { invoice?: string[]; submission?: string[] };
+    missing_required_documents?: { invoice?: string[]; submission?: string[] };
   };
   submitted_at: string | null;
   paid_at: string | null;

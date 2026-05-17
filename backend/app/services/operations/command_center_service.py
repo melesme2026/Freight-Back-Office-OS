@@ -18,7 +18,7 @@ from app.domain.models.load_document import LoadDocument
 from app.domain.models.load_payment_record import LoadPaymentRecord
 from app.domain.models.submission_packet import SubmissionPacket
 from app.domain.models.validation_issue import ValidationIssue
-from app.services.loads.packet_readiness import calculate_packet_readiness
+from app.services.loads.packet_readiness import calculate_load_packet_readiness
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
@@ -1388,12 +1388,7 @@ class DispatcherCommandCenterService:
         ]
 
     def _missing_documents(self, load: Load) -> list[str]:
-        document_types = [
-            document.document_type
-            for document in load.documents
-            if document.processing_status != ProcessingStatus.FAILED
-        ]
-        readiness = calculate_packet_readiness(document_types=document_types)
+        readiness = calculate_load_packet_readiness(load=load, db=self.db)
         return list(readiness["missing_required_documents"]["submission"])
 
     def _missing_doc_priority(

@@ -2,8 +2,13 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass
+from typing import Any
 
 from app.domain.enums.document_type import DocumentType, normalize_document_type_value
+from app.domain.models.load import Load
+from app.domain.models.load_document import LoadDocument
+from sqlalchemy import select, update
+from sqlalchemy.orm import Session
 
 
 @dataclass(frozen=True)
@@ -53,6 +58,89 @@ def _present_values(document_types: Iterable[DocumentType | str | None]) -> set[
         if normalized is not None and normalized != DocumentType.UNKNOWN:
             present.add(normalized.value)
     return present
+
+
+def _loaded_document_types(load: Any) -> list[DocumentType | str | None] | None:
+    loaded_values = getattr(load, "__dict__", {})
+    documents = loaded_values.get("documents")
+    if not isinstance(documents, list):
+        return None
+    return [getattr(document, "document_type", None) for document in documents]
+
+
+def get_load_document_types_from_table(
+    *, db: Session, load_id: str
+) -> list[DocumentType | str | None]:
+    """Return the actual attached document types for a load.
+
+    This is the canonical source of truth for readiness. Persisted load flags or
+    older missing-doc snapshots are intentionally not used here because document
+    delete/reupload flows can make those snapshots stale.
+    """
+
+    return list(
+        db.scalars(
+            select(LoadDocument.document_type)
+            .where(LoadDocument.load_id == load_id)
+            .execution_options(populate_existing=False)
+        ).all()
+    )
+
+
+def calculate_load_packet_readiness(
+    *,
+    load: Any,
+    db: Session | None = None,
+    allow_flag_fallback: bool = False,
+    rule_set: ReadinessRuleSet = BASELINE_RULE_SET,
+) -> dict[str, object]:
+    """Calculate canonical packet readiness for any load surface.
+
+    Staff, driver portal, submission packet, factoring, and invoice views should
+    call this helper instead of rebuilding readiness from load flags. Actual
+    attached documents win over any cached readiness or missing-doc snapshot.
+    """
+
+    document_types = None
+    if db is not None and getattr(load, "id", None):
+        document_types = get_load_document_types_from_table(db=db, load_id=str(load.id))
+    if document_types is None:
+        document_types = _loaded_document_types(load)
+
+    if document_types is None and allow_flag_fallback:
+        document_types = []
+        if getattr(load, "has_ratecon", False):
+            document_types.append(DocumentType.RATE_CONFIRMATION)
+        if getattr(load, "has_bol", False):
+            document_types.append(DocumentType.BILL_OF_LADING)
+        if getattr(load, "has_invoice", False):
+            document_types.append(DocumentType.INVOICE)
+
+    return calculate_packet_readiness(
+        document_types=document_types or [],
+        rule_set=rule_set,
+    )
+
+
+def sync_load_document_readiness(*, db: Session, load_id: str) -> dict[str, object]:
+    """Synchronize denormalized load document flags from canonical readiness."""
+
+    readiness = calculate_packet_readiness(
+        document_types=get_load_document_types_from_table(db=db, load_id=load_id)
+    )
+    present_values = set(readiness["present_documents"])
+    db.execute(
+        update(Load)
+        .where(Load.id == load_id)
+        .values(
+            has_ratecon=DocumentType.RATE_CONFIRMATION.value in present_values,
+            has_bol=DocumentType.BILL_OF_LADING.value in present_values,
+            has_invoice=DocumentType.INVOICE.value in present_values,
+            documents_complete=bool(readiness["ready_to_submit"]),
+        )
+        .execution_options(synchronize_session=False)
+    )
+    return readiness
 
 
 def calculate_packet_readiness(
