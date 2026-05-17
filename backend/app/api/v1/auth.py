@@ -368,6 +368,20 @@ def _login_response(
         x_organization_id=x_organization_id,
     )
     auth_scope = required_role.value if required_role is not None else "any"
+    auth_route = (
+        "/auth/driver-login" if required_role == Role.DRIVER else "/auth/login"
+    )
+    logger.info(
+        "auth_login_started",
+        extra={
+            "auth_scope": auth_scope,
+            "route": auth_route,
+            "email": payload.email.strip().lower(),
+            "organization_id": (
+                str(hinted_organization_id) if hinted_organization_id else None
+            ),
+        },
+    )
 
     auth_service = AuthService(db)
     try:
@@ -383,6 +397,7 @@ def _login_response(
             "auth_login_failed",
             extra={
                 "auth_scope": auth_scope,
+                "route": auth_route,
                 "email": payload.email.strip().lower(),
                 "organization_id": (
                     str(hinted_organization_id) if hinted_organization_id else None
@@ -462,6 +477,7 @@ def _login_response(
         "auth_login_succeeded",
         extra={
             "auth_scope": auth_scope,
+            "route": auth_route,
             "email": payload.email.strip().lower(),
             "organization_id": str(user.organization_id),
             "role": str(getattr(user.role, "value", user.role)).lower(),

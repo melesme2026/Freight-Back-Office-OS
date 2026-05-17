@@ -142,10 +142,10 @@ def test_inactive_driver_login_is_blocked_with_friendly_message(db_session) -> N
             x_organization_id=None,
         )
 
-    assert exc_info.value.status_code == 401
+    assert exc_info.value.status_code == 403
     assert (
         str(exc_info.value)
-        == "Driver account not found or not activated. Please contact your dispatcher."
+        == "Driver account is not activated. Please contact your dispatcher."
     )
 
 
@@ -173,7 +173,7 @@ def test_driver_specific_login_rejects_staff_account_quickly(db_session) -> None
     assert exc_info.value.status_code == 401
     assert (
         str(exc_info.value)
-        == "Driver account not found or not activated. Please contact your dispatcher."
+        == "Driver account not found or password is incorrect."
     )
 
 
