@@ -179,10 +179,10 @@ def test_build_packet_zip_contains_expected_files(db_session) -> None:
     with zipfile.ZipFile(io.BytesIO(zip_bytes)) as archive:
         names = set(archive.namelist())
     assert names == {
-        "invoice-LD-001.pdf",
-        "rate-confirmation-LD-001.pdf",
-        "pod-LD-001.pdf",
-        "bol-LD-001.pdf",
+        "01-invoice-LD-001.pdf",
+        "02-rate-confirmation-LD-001.pdf",
+        "03-bill-of-lading-LD-001.pdf",
+        "04-proof-of-delivery-LD-001.pdf",
     }
 
 
@@ -268,7 +268,7 @@ def test_build_packet_zip_uses_latest_valid_document_after_replace(db_session) -
         packet_id=str(packet.id), load_id=str(load.id), org_id=org_id
     )
     with zipfile.ZipFile(io.BytesIO(zip_bytes)) as archive:
-        assert archive.read("pod-LD-001.pdf") == b"new-pod"
+        assert archive.read("04-proof-of-delivery-LD-001.pdf") == b"new-pod"
 
 
 def test_build_packet_zip_missing_snapshot_file_returns_controlled_error(db_session) -> None:

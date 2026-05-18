@@ -234,6 +234,10 @@ type SubmissionPacketDocument = {
   document_id?: string | null;
   document_type?: string | null;
   filename_snapshot?: string | null;
+  mime_type?: string | null;
+  file_size_bytes?: number | null;
+  received_at?: string | null;
+  created_at?: string | null;
 };
 
 type SubmissionPacketEvent = {
@@ -499,6 +503,50 @@ function packetAuditStatusBadge(status?: string | null) {
     default:
       return "bg-slate-100 text-slate-700";
   }
+}
+
+
+const PACKET_DOCUMENT_ORDER = [
+  "invoice",
+  "rate_confirmation",
+  "bill_of_lading",
+  "proof_of_delivery",
+  "accessorial_support",
+  "detention_support",
+  "lumper_receipt",
+  "scale_ticket",
+  "payment_remittance",
+  "other",
+];
+
+function packetDocumentOrder(documentType?: string | null): number {
+  const normalized = (documentType ?? "").trim().toLowerCase();
+  const index = PACKET_DOCUMENT_ORDER.indexOf(normalized);
+  return index === -1 ? 999 : index;
+}
+
+function sortPacketDocuments(documents: SubmissionPacketDocument[]) {
+  return [...documents].sort((left, right) => {
+    const orderDelta =
+      packetDocumentOrder(left.document_type) -
+      packetDocumentOrder(right.document_type);
+    if (orderDelta !== 0) return orderDelta;
+    return (left.created_at ?? "").localeCompare(right.created_at ?? "");
+  });
+}
+
+function packetDocumentMeta(document: SubmissionPacketDocument): string {
+  return (
+    [
+      document.mime_type || "PDF/document",
+      formatFileSize(document.file_size_bytes),
+      document.received_at
+        ? `received ${formatDateTime(document.received_at)}`
+        : null,
+    ]
+      .filter((value) => value && value !== "—")
+      .join(" • ") || "Snapshot metadata unavailable"
+  );
 }
 
 function packetAuditSeverityBadge(severity?: string | null) {
@@ -1100,6 +1148,10 @@ function normalizeSubmissionPacket(item: unknown): SubmissionPacket | null {
         document_id: getStringField(docRecord, "document_id"),
         document_type: getStringField(docRecord, "document_type"),
         filename_snapshot: getStringField(docRecord, "filename_snapshot"),
+        mime_type: getStringField(docRecord, "mime_type"),
+        file_size_bytes: getOptionalNumberField(docRecord, "file_size_bytes"),
+        received_at: getStringField(docRecord, "received_at"),
+        created_at: getStringField(docRecord, "created_at"),
       };
     }),
     events: eventsRaw.map((event) => {
@@ -4743,11 +4795,27 @@ export default function LoadDetailPage() {
                   {isSubmissionBusy ? "Working..." : "Create Submission Packet"}
                 </button>
               </div>
-              <div className="mb-4 text-sm text-slate-700">
-                Required docs: Invoice, Rate Confirmation, Proof of Delivery.
-                Recommended: Bill of Lading. Missing:{" "}
-                {missingSubmissionDocuments.join(", ") || "none"}
-                .
+              <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+                <div className="font-semibold text-slate-950">
+                  Packet readiness for broker/factor submission
+                </div>
+                <p className="mt-1">
+                  Required before sending: invoice, rate confirmation, and
+                  proof of delivery. Bill of lading and accessorial support are
+                  included when available.
+                </p>
+                <div className="mt-2">
+                  {missingSubmissionDocuments.length > 0 ? (
+                    <span className="font-semibold text-amber-700">
+                      Missing required: {missingSubmissionDocuments.join(", ")}.
+                      Upload or generate these before creating a packet.
+                    </span>
+                  ) : (
+                    <span className="font-semibold text-emerald-700">
+                      Required documents are present. Packet can be created when audit checks pass.
+                    </span>
+                  )}
+                </div>
               </div>
               <SectionLoadNotice
                 isLoading={
@@ -4851,8 +4919,8 @@ export default function LoadDetailPage() {
                             className="rounded-lg border border-slate-300 px-3 py-1 text-xs disabled:opacity-50"
                           >
                             {downloadingPacketId === packet.id
-                              ? "Downloading..."
-                              : "Download Packet ZIP"}
+                              ? "Preparing ZIP..."
+                              : "Download broker/factor ZIP"}
                           </button>
                           <button
                             title="Copy the packet submission email template for manual sending."
@@ -4860,7 +4928,7 @@ export default function LoadDetailPage() {
                             onClick={() => void handleCopySubmissionEmail()}
                             className="rounded-lg border border-slate-300 px-3 py-1 text-xs"
                           >
-                            Copy Submission Email
+                            Copy send-ready email
                           </button>
                           <button
                             aria-label="Email Packet"
@@ -4881,7 +4949,7 @@ export default function LoadDetailPage() {
                             }
                             className="rounded-lg border border-slate-300 px-3 py-1 text-xs disabled:opacity-50"
                           >
-                            Email Packet
+                            Send packet email
                           </button>
                         </div>
                         <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
@@ -4902,7 +4970,7 @@ export default function LoadDetailPage() {
                             }
                             className="rounded-lg border border-slate-300 px-3 py-1 text-xs"
                           >
-                            Mark Packet Sent
+                            Mark sent externally
                           </button>
                           <button
                             type="button"
@@ -4931,13 +4999,45 @@ export default function LoadDetailPage() {
                           </button>
                         </div>
                       </div>
-                      <div className="mt-2 text-xs text-slate-500">
-                        Included docs:{" "}
-                        {packet.documents
-                          .map((doc) =>
-                            normalizeDocumentTypeLabel(doc.document_type),
-                          )
-                          .join(", ") || "none"}
+                      <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                        <div className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                          Packet document order
+                        </div>
+                        <div className="mt-2 space-y-2 text-xs text-slate-700">
+                          {sortPacketDocuments(packet.documents).length > 0 ? (
+                            sortPacketDocuments(packet.documents).map(
+                              (doc, index) => (
+                                <div
+                                  key={`${packet.id}-${doc.id}`}
+                                  className="flex flex-col gap-1 rounded-md bg-white px-3 py-2 sm:flex-row sm:items-center sm:justify-between"
+                                >
+                                  <div className="min-w-0">
+                                    <span className="mr-2 font-mono text-slate-400">
+                                      {String(index + 1).padStart(2, "0")}
+                                    </span>
+                                    <span className="font-semibold text-slate-900">
+                                      {normalizeDocumentTypeLabel(
+                                        doc.document_type,
+                                      )}
+                                    </span>
+                                    <span className="ml-2 break-all text-slate-500">
+                                      {doc.filename_snapshot ||
+                                        "filename unavailable"}
+                                    </span>
+                                  </div>
+                                  <div className="shrink-0 text-slate-500">
+                                    {packetDocumentMeta(doc)}
+                                  </div>
+                                </div>
+                              ),
+                            )
+                          ) : (
+                            <div className="rounded-md bg-white px-3 py-2 text-slate-500">
+                              No packet documents were snapshotted. Recreate the
+                              packet after required docs are present.
+                            </div>
+                          )}
+                        </div>
                       </div>
                       {activeAudit ? (
                         <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">

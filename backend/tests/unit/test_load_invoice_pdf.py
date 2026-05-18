@@ -70,7 +70,7 @@ def test_build_professional_invoice_pdf_contains_professional_sections() -> None
     assert b"USD" in pdf_bytes
     assert b"Pickup Date: 2026-04-01" in pdf_bytes
     assert b"Delivery Date: 2026-04-03" in pdf_bytes
-    assert b"Required Billing Packet Checklist" in pdf_bytes
+    assert b"Broker / Factor Packet Checklist" in pdf_bytes
     assert b"[X] Rate Confirmation" in pdf_bytes
     assert b"[X] Proof of Delivery" in pdf_bytes
     assert b"[ ] Bill of Lading" in pdf_bytes
