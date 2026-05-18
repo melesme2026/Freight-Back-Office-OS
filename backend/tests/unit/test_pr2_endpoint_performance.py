@@ -136,3 +136,51 @@ def test_review_queue_issue_first_pagination_metadata_correct(db_session) -> Non
     assert result["page"] == 1
     assert result["page_size"] == 1
     assert len(result["items"]) == 1
+
+
+def test_load_detail_keeps_packet_readiness_for_submission_gate(db_session) -> None:
+    from app.api.v1.loads import _serialize_load
+
+    org_id = uuid.uuid4()
+    load_id = uuid.uuid4()
+    customer_account_id = uuid.uuid4()
+    driver_id = uuid.uuid4()
+    load = Load(
+        id=load_id,
+        organization_id=org_id,
+        customer_account_id=customer_account_id,
+        driver_id=driver_id,
+        source_channel=Channel.MANUAL,
+        status=LoadStatus.DELIVERED,
+        processing_status=ProcessingStatus.COMPLETED,
+        load_number="READY-1",
+        currency_code="USD",
+    )
+    db_session.add(load)
+    for document_type in (
+        DocumentType.RATE_CONFIRMATION,
+        DocumentType.PROOF_OF_DELIVERY,
+        DocumentType.INVOICE,
+    ):
+        db_session.add(
+            LoadDocument(
+                organization_id=org_id,
+                customer_account_id=customer_account_id,
+                driver_id=driver_id,
+                load_id=load_id,
+                source_channel=Channel.MANUAL,
+                document_type=document_type,
+                original_filename=f"{document_type.value}.pdf",
+                mime_type="application/pdf",
+                file_size_bytes=123,
+                storage_key=f"uploaded/{document_type.value}.pdf",
+                file_hash_sha256=f"{document_type.value}-hash",
+                received_at=datetime.now(timezone.utc),
+                processing_status=ProcessingStatus.COMPLETED,
+            )
+        )
+    db_session.flush()
+
+    payload = _serialize_load(load, detailed=True, db=db_session)
+
+    assert payload["packet_readiness"]["ready_to_submit"] is True

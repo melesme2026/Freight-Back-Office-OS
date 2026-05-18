@@ -1787,7 +1787,7 @@ def get_load(
     loaded_at = time.perf_counter()
     _authorize_load_access(item=item, token_payload=token_payload)
     authorized_at = time.perf_counter()
-    payload = _serialize_load(item, detailed=True, db=db, include_packet_readiness=False)
+    payload = _serialize_load(item, detailed=True, db=db)
     serialized_at = time.perf_counter()
 
     logger.info(

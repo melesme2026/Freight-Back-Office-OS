@@ -113,18 +113,43 @@ export function statusClasses(status: DriverDocumentStatus): string {
   }[status];
 }
 
+function canonicalList(values: unknown): string[] {
+  if (!Array.isArray(values)) return [];
+  return values
+    .filter((item): item is string => typeof item === "string")
+    .map(canonicalDocumentType)
+    .filter((item) => item !== "unknown");
+}
+
+function uniqueDocumentTypes(values: string[]): string[] {
+  return Array.from(new Set(values));
+}
+
 export function checklistFromReadiness(
   readiness: Record<string, unknown> | null | undefined,
   documentStatuses: Record<string, DriverDocumentStatus> = {},
 ): DriverChecklistItem[] {
-  const present = Array.isArray(readiness?.present_documents)
-    ? readiness.present_documents.filter((item): item is string => typeof item === "string").map(canonicalDocumentType)
-    : [];
+  const present = canonicalList(readiness?.present_documents);
   const presentSet = new Set(present);
+  const requiredDocuments = readiness?.required_documents as
+    | Record<string, unknown>
+    | undefined;
+  const required = uniqueDocumentTypes([
+    ...canonicalList(requiredDocuments?.submission),
+    ...(requiredDocuments?.submission ? [] : [...DRIVER_REQUIRED_DOCUMENTS]),
+  ]);
+  const requiredSet = new Set(required);
+  const optional = uniqueDocumentTypes([
+    ...DRIVER_OPTIONAL_DOCUMENTS,
+    ...canonicalList(readiness?.missing_recommended_documents),
+    ...present,
+  ]).filter((type) => !requiredSet.has(type));
 
   const build = (type: string, required: boolean): DriverChecklistItem => {
     const canonical = canonicalDocumentType(type);
-    const status = documentStatuses[canonical] ?? (presentSet.has(canonical) ? "under_review" : "missing");
+    const status =
+      documentStatuses[canonical] ??
+      (presentSet.has(canonical) ? "under_review" : "missing");
     const label = labelForDocumentType(canonical);
     return {
       type: canonical,
@@ -142,8 +167,8 @@ export function checklistFromReadiness(
   };
 
   return [
-    ...DRIVER_REQUIRED_DOCUMENTS.map((type) => build(type, true)),
-    ...DRIVER_OPTIONAL_DOCUMENTS.map((type) => build(type, false)),
+    ...required.map((type) => build(type, true)),
+    ...optional.map((type) => build(type, false)),
   ];
 }
 
