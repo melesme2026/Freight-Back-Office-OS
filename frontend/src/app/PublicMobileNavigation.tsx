@@ -10,6 +10,7 @@ const mobileLinks = [
   { href: "/#faq", label: "FAQ" },
   { href: "/login", label: "App login" },
   { href: "/driver-login", label: "Driver Login" },
+  { href: "/request-demo?intent=request-access", label: "Request access" },
   { href: "/request-demo", label: "Request demo", primary: true },
 ] as const;
 

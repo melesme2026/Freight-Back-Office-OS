@@ -78,6 +78,25 @@ const workflowSteps = [
   "Track collections, payment follow-up, and accounting export",
 ];
 
+const audienceCards = [
+  {
+    title: "Carriers and fleet owners",
+    copy: "See which loads are ready to bill, which packets need driver paperwork, and where cash-flow follow-up is stuck.",
+  },
+  {
+    title: "Dispatch and back-office teams",
+    copy: "Coordinate document intake, billing review, factoring status, and customer follow-up from a shared operating view.",
+  },
+  {
+    title: "Owner-operators",
+    copy: "Keep rate confirmations, PODs, invoices, and follow-up notes together without rebuilding the process in spreadsheets.",
+  },
+  {
+    title: "Pilot customers",
+    copy: "Start with a focused workflow, real loads, and onboarding guidance before expanding to the full operation.",
+  },
+];
+
 const screenshotPanels = [
   {
     label: "Analytics dashboard",
@@ -192,6 +211,7 @@ export default function HomePage() {
           <div className="flex items-center gap-2 text-sm font-semibold">
             <Link href="/login" className="hidden rounded-xl px-4 py-2 text-slate-300 hover:bg-white/10 hover:text-white sm:inline-flex">App login</Link>
             <Link href="/driver-login" className="hidden rounded-xl px-4 py-2 text-slate-300 hover:bg-white/10 hover:text-white md:inline-flex">Driver Login</Link>
+            <Link href="/request-demo?intent=request-access" className="hidden rounded-xl px-4 py-2 text-slate-300 hover:bg-white/10 hover:text-white lg:inline-flex">Request access</Link>
             <Link href="/request-demo" className="hidden rounded-xl bg-white px-4 py-2 text-slate-950 shadow-soft transition hover:bg-brand-50 sm:inline-flex">Request demo</Link>
             <PublicMobileNavigation />
           </div>
@@ -215,7 +235,10 @@ export default function HomePage() {
               <Link href="/request-demo" className="touch-target inline-flex items-center justify-center rounded-xl bg-brand-500 px-6 py-3 text-sm font-bold text-white shadow-soft transition hover:bg-brand-400">
                 Request a demo
               </Link>
-              <a href="#workflow" className="touch-target inline-flex items-center justify-center rounded-xl border border-white/20 bg-white/10 px-6 py-3 text-sm font-bold text-white transition hover:bg-white/15">
+              <Link href="/request-demo?intent=request-access" className="touch-target inline-flex items-center justify-center rounded-xl border border-white/20 bg-white/10 px-6 py-3 text-sm font-bold text-white transition hover:bg-white/15">
+                Request pilot access
+              </Link>
+              <a href="#workflow" className="touch-target inline-flex items-center justify-center rounded-xl border border-white/20 px-6 py-3 text-sm font-bold text-white transition hover:bg-white/10">
                 See the workflow
               </a>
             </div>
@@ -289,13 +312,24 @@ export default function HomePage() {
               </article>
             ))}
           </div>
+          <div className="mt-10 grid gap-4 lg:grid-cols-4" aria-label="Who the demo is for">
+            {audienceCards.map((audience) => (
+              <article key={audience.title} className="rounded-3xl border border-brand-100 bg-brand-50 p-5">
+                <h3 className="text-base font-bold text-brand-950">{audience.title}</h3>
+                <p className="mt-3 text-sm leading-6 text-slate-700">{audience.copy}</p>
+              </article>
+            ))}
+          </div>
           <div className="mt-10 rounded-3xl bg-slate-950 p-6 text-white sm:p-8">
             <div className="grid gap-6 lg:grid-cols-[1fr_auto] lg:items-center">
               <div>
                 <h3 className="text-2xl font-bold">Want to see it with your billing workflow?</h3>
                 <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-300">Bring your load volume, driver count, document flow, and factoring process to the demo. The walkthrough focuses on your operating reality, not a generic SaaS tour.</p>
               </div>
-              <Link href="/request-demo" className="touch-target inline-flex items-center justify-center rounded-xl bg-brand-500 px-5 py-3 text-sm font-bold text-white hover:bg-brand-400">Request demo</Link>
+              <div className="flex flex-col gap-3 sm:flex-row lg:flex-col">
+                <Link href="/request-demo" className="touch-target inline-flex items-center justify-center rounded-xl bg-brand-500 px-5 py-3 text-sm font-bold text-white hover:bg-brand-400">Request demo</Link>
+                <Link href="/request-demo?intent=request-access" className="touch-target inline-flex items-center justify-center rounded-xl border border-white/20 px-5 py-3 text-sm font-bold text-white hover:bg-white/10">Request access</Link>
+              </div>
             </div>
           </div>
         </div>
@@ -436,12 +470,13 @@ export default function HomePage() {
         <div className="mx-auto grid max-w-7xl gap-8 px-4 py-10 sm:px-6 lg:grid-cols-[1fr_auto] lg:px-8">
           <div>
             <BrandLogo variant="platform" tone="dark" className="h-12 w-auto" />
-            <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-300">Public marketing website for www.adwafreight.com. Authenticated operations stay under the app experience at app.adwafreight.com routes such as login and dashboard.</p>
+            <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-300">Freight Back Office OS by Adwa Freight helps freight operators keep packets, invoices, driver paperwork, factoring status, and follow-up work organized. Pilot and demo requests route through the same lightweight lead workflow.</p>
           </div>
           <div className="grid gap-3 text-sm font-semibold sm:grid-cols-2 lg:text-right">
             <a href="#features" className="text-slate-300 hover:text-white">Features</a>
             <a href="#pricing" className="text-slate-300 hover:text-white">Pricing</a>
             <Link href="/request-demo" className="text-slate-300 hover:text-white">Request demo</Link>
+            <Link href="/request-demo?intent=request-access" className="text-slate-300 hover:text-white">Request access</Link>
             <Link href="/driver-login" className="text-slate-300 hover:text-white">Driver Login</Link>
             <Link href="/login" aria-label="App login from footer" className="text-slate-300 hover:text-white">App login</Link>
           </div>
