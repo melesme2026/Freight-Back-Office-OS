@@ -81,7 +81,7 @@ export default function DriverLoginPage() {
     if (token && organizationId && isDriverRole(userRole)) {
       router.replace("/driver-portal");
     } else if (token && organizationId) {
-      setSessionNotice("You are signed in to the staff app. To use Driver Login, sign out of the staff session or open a private browser window.");
+      setSessionNotice("You are signed in to the staff app. To use the Driver portal, sign out of the staff session or open a private browser window.");
       setIsCheckingSession(false);
     } else if (token && !organizationId) {
       clearAuth();
@@ -133,7 +133,7 @@ export default function DriverLoginPage() {
       }
 
       if (!isDriverRole(userRole)) {
-        throw new Error("This account uses Staff Login. Switch to the staff sign-in page to continue.");
+        throw new Error("This account uses the Staff workspace. Switch to the staff sign-in page to continue.");
       }
 
       setAuthSession({
@@ -162,12 +162,12 @@ export default function DriverLoginPage() {
         } else if (error.code === "client_timeout") {
           setErrorMessage("Driver login is taking longer than expected. Check your connection and try again.");
         } else if (error.message === "Use Staff Login") {
-          setErrorMessage("This account uses Staff Login. Switch to the staff sign-in page to continue.");
+          setErrorMessage("This account uses the Staff workspace. Switch to the staff sign-in page to continue.");
         } else {
           setErrorMessage(error.message || "Sign-in could not be completed. Verify your credentials and try again.");
         }
-      } else if (error instanceof Error && (error.message === "Use Staff Login" || error.message === "This account uses Staff Login. Switch to the staff sign-in page to continue.")) {
-        setErrorMessage("This account uses Staff Login. Switch to the staff sign-in page to continue.");
+      } else if (error instanceof Error && (error.message === "Use Staff Login" || error.message === "This account uses the Staff workspace. Switch to the staff sign-in page to continue.")) {
+        setErrorMessage("This account uses the Staff workspace. Switch to the staff sign-in page to continue.");
       } else {
         setErrorMessage("Sign-in could not be completed. Verify your credentials and try again.");
       }
@@ -201,7 +201,7 @@ export default function DriverLoginPage() {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50">
         <div className="rounded-xl border border-slate-200 bg-white px-6 py-4 text-sm text-slate-600 shadow-soft">
-          Checking session...
+          Checking session…
         </div>
       </div>
     );
@@ -213,7 +213,7 @@ export default function DriverLoginPage() {
         <div className="mb-7">
           <BrandLogo variant="operatingSystem" tone="light" className="mb-7 h-12 w-auto" priority />
           <p className="ops-eyebrow">Driver Portal</p>
-          <h1 className="mt-3 text-2xl font-extrabold tracking-tight text-slate-950">Driver Sign in</h1>
+          <h1 className="mt-3 text-2xl font-extrabold tracking-tight text-slate-950">Driver sign in</h1>
           <p className="mt-2 text-sm text-slate-600">Access assigned loads, document uploads, and dispatcher updates.</p>
           <p className="mt-2 text-xs text-slate-500">
             Driver accounts are invite-only. If you were not invited by staff, contact your dispatcher.
@@ -240,7 +240,7 @@ export default function DriverLoginPage() {
                   onClick={handleStaffLogout}
                   className="rounded-lg bg-amber-700 px-3 py-2 text-xs font-bold text-white hover:bg-amber-800"
                 >
-                  Sign out and use Driver Login
+                  Sign out and use the Driver portal
                 </button>
                 <button
                   type="button"
@@ -272,7 +272,7 @@ export default function DriverLoginPage() {
                     disabled={isSubmitting}
                     onClick={async () => {
                       if (option.role && option.role !== "driver") {
-                        setErrorMessage("This account uses Staff Login. Switch to the staff sign-in page to continue.");
+                        setErrorMessage("This account uses the Staff workspace. Switch to the staff sign-in page to continue.");
                         return;
                       }
                       setErrorMessage(null);
@@ -299,7 +299,7 @@ export default function DriverLoginPage() {
           )}
 
           <button type="submit" disabled={isSubmitting} className="brand-button-primary w-full">
-            {isSubmitting ? "Signing in..." : "Sign in"}
+            {isSubmitting ? "Signing in…" : "Sign in"}
           </button>
         </form>
         <AuthNavigationLinks

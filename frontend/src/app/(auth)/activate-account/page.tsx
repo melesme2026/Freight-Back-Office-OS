@@ -92,12 +92,12 @@ function ActivateAccountPageContent() {
         {errorMessage ? <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{errorMessage}</div> : null}
         {isSuccess ? (
           <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
-            Account activated. Use Driver Login for driver accounts, or Staff Login for operator accounts.
+            Account activated. Use the Driver portal for driver accounts, or the Staff workspace for operator accounts.
           </div>
         ) : null}
 
         <button type="submit" disabled={isSubmitting || isSuccess} className="w-full rounded-xl bg-brand-600 px-4 py-3 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60">
-          {isSubmitting ? "Activating..." : "Activate account"}
+          {isSubmitting ? "Activating…" : "Activate account"}
         </button>
       </form>
 

@@ -74,7 +74,7 @@ export default function RequestDemoPage() {
 
     if (requestIntent === "request-access") {
       return {
-        eyebrow: "Request Access",
+        eyebrow: "Request access",
         heading: "Request pilot access for an operational workspace.",
         formTitle: "Submit an access request",
         cta: "Request access",
@@ -83,7 +83,7 @@ export default function RequestDemoPage() {
     }
 
     return {
-      eyebrow: "Request Demo",
+      eyebrow: "Request demo",
       heading: "Book a freight back-office walkthrough.",
       formTitle: "Submit a demo request",
       cta: "Submit demo request",
@@ -164,7 +164,7 @@ export default function RequestDemoPage() {
           </Link>
           <div className="flex flex-wrap items-center gap-2 text-sm font-semibold">
             <Link href="/" className="rounded-xl px-4 py-2 text-slate-300 hover:bg-white/10 hover:text-white">
-              Back home
+              Public site
             </Link>
             <Link href="/pricing" className="rounded-xl border border-white/15 px-4 py-2 text-slate-200 hover:bg-white/10">
               View pricing
@@ -203,7 +203,7 @@ export default function RequestDemoPage() {
         </aside>
 
         <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-soft sm:p-8" aria-labelledby="request-demo-heading">
-          <p className="text-sm font-medium text-brand-700">Lead intake</p>
+          <p className="text-sm font-medium text-brand-700">Public request intake</p>
           <h2 id="request-demo-heading" className="mt-2 text-2xl font-bold tracking-tight text-slate-950">
             {requestCopy.formTitle}
           </h2>

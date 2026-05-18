@@ -778,7 +778,7 @@ export default function DriverDetailPage() {
             <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
               <h2 className="text-lg font-semibold text-slate-950">Driver Portal Invite</h2>
               <p className="mt-2 text-sm text-slate-600">
-                Generate an activation invite for this driver profile. Drivers activate first, then sign in through Driver Login.
+                Generate an activation invite for this driver profile. Drivers activate first, then sign in through the Driver portal.
               </p>
               <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
                 Driver email: <span className="font-semibold">{driver.email ?? "Not set"}</span>

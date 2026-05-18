@@ -87,11 +87,11 @@ export default function PricingPage() {
         <div className="mx-auto max-w-7xl">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <Link href="/" className="text-sm font-semibold text-slate-300 hover:text-white">
-              ← Back to marketing site
+              ← Public site
             </Link>
             <div className="flex gap-2">
               <Link href="/login" className="rounded-xl border border-white/15 px-4 py-2 text-sm font-semibold text-slate-200 hover:bg-white/10">
-                App login
+                Staff workspace
               </Link>
               <Link href="/request-demo" className="rounded-xl bg-white px-4 py-2 text-sm font-bold text-slate-950 hover:bg-brand-50">
                 Request demo

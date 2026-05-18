@@ -12,6 +12,7 @@ import {
 } from "@/lib/auth";
 import { canAccessDashboardPath, canManageLeadPipeline } from "@/lib/rbac";
 import { WORKSPACE_NAV_ITEMS, WORKSPACE_NAV_SECTIONS, type WorkspaceNavItem } from "@/lib/navigation";
+import { AccessState } from "@/components/routing/AccessState";
 import { BrandLogo, BrandMark } from "@/components/ui/BrandLogo";
 
 function canShowNavItem(item: WorkspaceNavItem, role: string | null): boolean {
@@ -155,15 +156,13 @@ export default function DashboardLayout({
 
   if (accessDenied || !canAccessDashboardPath(session.userRole, pathname)) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-50 px-6">
-        <div className="max-w-md rounded-2xl border border-amber-200 bg-white p-6 text-center shadow-soft">
-          <h1 className="text-lg font-bold text-slate-950">Access denied</h1>
-          <p className="mt-2 text-sm text-slate-600">Your account does not have permission to view this dashboard area.</p>
-          <button type="button" onClick={() => router.replace("/dashboard")} className="mt-4 rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700">
-            Back to dashboard
-          </button>
-        </div>
-      </div>
+      <AccessState
+        eyebrow="Forbidden staff workspace route"
+        title="This staff workspace area is restricted"
+        message="Your account is signed in, but it does not include permission for this owner or staff-only dashboard area. No driver portal or public-site access is granted from here."
+        detail="If this looks wrong, ask an owner or administrator to update your Freight Back Office OS role."
+        actions={[{ href: "/dashboard", label: "Back to staff workspace", primary: true }, { href: "/", label: "Public site" }]}
+      />
     );
   }
 
@@ -175,12 +174,12 @@ export default function DashboardLayout({
             <Link href="/dashboard" className="block" aria-label="Adwa Freight OS dashboard">
               <BrandLogo variant="operatingSystem" tone="light" className="h-11 w-auto" priority />
             </Link>
-            <div className="mt-4 ops-eyebrow">Command Center</div>
+            <div className="mt-4 ops-eyebrow">Staff workspace</div>
             <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
               <div className="font-semibold text-slate-900">{session.userEmail ?? "Signed-in user"}</div>
               <div className="mt-1 truncate">Org: {session.organizationId}</div>
             </div>
-            <Link href="/" className="mt-3 inline-flex text-xs font-bold text-brand-700 hover:text-brand-900">← Back to landing</Link>
+            <Link href="/" className="mt-3 inline-flex text-xs font-bold text-brand-700 hover:text-brand-900">← Public site</Link>
           </div>
 
           <div className="flex-1 overflow-y-auto px-3 py-4">
@@ -198,7 +197,7 @@ export default function DashboardLayout({
           <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/90 backdrop-blur-xl">
             <div className="flex items-center justify-between gap-3 px-4 py-3 sm:px-6">
               <div className="min-w-0">
-                <div className="ops-eyebrow">Operations Workspace</div>
+                <div className="ops-eyebrow">Staff workspace</div>
                 <p className="mt-1 truncate text-xl font-bold text-slate-950">{pageTitle}</p>
               </div>
 
@@ -223,7 +222,7 @@ export default function DashboardLayout({
                     <div className="flex items-center gap-3">
                       <BrandMark tone="light" className="h-10 w-10" />
                       <div>
-                        <div className="ops-eyebrow">Adwa Freight OS</div>
+                        <div className="ops-eyebrow">Staff workspace</div>
                         <div className="mt-1 text-lg font-bold text-slate-950">Navigate workspace</div>
                       </div>
                     </div>

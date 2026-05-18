@@ -8,8 +8,8 @@ const mobileLinks = [
   { href: "/#workflow", label: "Workflow" },
   { href: "/pricing", label: "Pricing" },
   { href: "/#faq", label: "FAQ" },
-  { href: "/login", label: "App login" },
-  { href: "/driver-login", label: "Driver Login" },
+  { href: "/login", label: "Staff workspace" },
+  { href: "/driver-login", label: "Driver portal" },
   { href: "/request-demo?intent=request-access", label: "Request access" },
   { href: "/request-demo", label: "Request demo", primary: true },
 ] as const;
