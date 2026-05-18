@@ -6,14 +6,21 @@ from decimal import Decimal
 
 import pytest
 from app.api.v1.operations import _require_command_center_access
+from app.core.cache import operational_cache
 from app.core.exceptions import ForbiddenError
 from app.domain.enums.document_type import DocumentType
 from app.domain.enums.factoring import FactoringReconciliationStatus, FactoringWorkflowStatus
+from app.domain.enums.follow_up_task import (
+    FollowUpTaskPriority,
+    FollowUpTaskStatus,
+    FollowUpTaskType,
+)
 from app.domain.enums.load_payment_status import LoadPaymentStatus
 from app.domain.enums.load_status import LoadStatus
 from app.domain.enums.validation_severity import ValidationSeverity
 from app.domain.models.broker import Broker
 from app.domain.models.driver import Driver
+from app.domain.models.follow_up_task import FollowUpTask
 from app.domain.models.load_document import LoadDocument
 from app.domain.models.submission_packet import SubmissionPacket
 from app.domain.models.validation_issue import ValidationIssue
@@ -29,6 +36,7 @@ BROKER_ID = "00000000-0000-0000-0000-000000043301"
 
 
 def _seed_parties(db_session, org_id: str = ORG_ID) -> None:
+    operational_cache.clear()
     db_session.add_all(
         [
             Driver(
@@ -109,6 +117,33 @@ def _payment(
     record.factoring_status = FactoringWorkflowStatus.NOT_FACTORED
     record.reconciliation_status = FactoringReconciliationStatus.UNRECONCILED
     return record
+
+
+def _add_follow_up(
+    db_session,
+    load,
+    *,
+    title: str,
+    status: FollowUpTaskStatus = FollowUpTaskStatus.OPEN,
+    due_at: datetime | None = None,
+    snoozed_until: datetime | None = None,
+    priority: FollowUpTaskPriority = FollowUpTaskPriority.NORMAL,
+) -> FollowUpTask:
+    task = FollowUpTask(
+        organization_id=ORG_ID,
+        load_id=load.id,
+        task_type=FollowUpTaskType.PACKET_FOLLOW_UP,
+        status=status,
+        priority=priority,
+        title=title,
+        description=f"{title} description",
+        recommended_action=f"{title} action",
+        due_at=due_at or datetime.now(timezone.utc),
+        snoozed_until=snoozed_until,
+    )
+    db_session.add(task)
+    db_session.flush()
+    return task
 
 
 def test_command_center_generates_alerts_tasks_missing_docs_and_collections(db_session):
@@ -338,13 +373,6 @@ def test_ai_operations_assistant_remains_org_scoped(db_session):
 
 
 def test_operational_intelligence_surfaces_followups_stalls_readiness_and_driver_gaps(db_session):
-    from app.domain.enums.follow_up_task import (
-        FollowUpTaskPriority,
-        FollowUpTaskStatus,
-        FollowUpTaskType,
-    )
-    from app.domain.models.follow_up_task import FollowUpTask
-
     _seed_parties(db_session)
     stalled = _make_load(db_session, load_number="OPS-STALLED", delivery_days_ago=14)
     stalled.updated_at = datetime.now(timezone.utc) - timedelta(days=8)
@@ -389,3 +417,94 @@ def test_operational_intelligence_surfaces_followups_stalls_readiness_and_driver
     assert any(item["load_number"] == "OPS-READY" for item in intelligence["readiness"]["items"])
     assert any(item["load_number"] == "OPS-STALLED" for item in intelligence["stalled_loads"]["items"])
     assert any("email" in item["missing_items"] for item in intelligence["driver_visibility"]["items"])
+
+
+def test_command_center_open_overdue_follow_up_surfaces_as_stale_attention(db_session):
+    _seed_parties(db_session)
+    load = _make_load(db_session, load_number="OPS-OPEN-FOLLOW-UP", delivery_days_ago=1)
+    due_at = datetime.now(timezone.utc) - timedelta(days=4)
+    _add_follow_up(
+        db_session,
+        load,
+        title="Open overdue follow-up",
+        status=FollowUpTaskStatus.OPEN,
+        due_at=due_at,
+    )
+
+    data = DispatcherCommandCenterService(db_session).get_command_center(org_id=ORG_ID)
+    intelligence = data["operational_intelligence"]
+
+    assert data["kpis"]["stale_follow_ups"] == 1
+    assert data["kpis"]["overdue_follow_ups"] == 0
+    assert intelligence["follow_ups"]["summary"]["stale"] == 1
+    assert any(
+        item["title"] == "Open overdue follow-up" and item["source"] == "follow_up"
+        for item in intelligence["needs_attention"]
+    )
+
+
+def test_command_center_future_snoozed_follow_up_is_not_urgent_or_active(db_session):
+    _seed_parties(db_session)
+    load = _make_load(db_session, load_number="OPS-FUTURE-SNOOZE", delivery_days_ago=1)
+    original_due_at = datetime.now(timezone.utc) - timedelta(days=10)
+    task = _add_follow_up(
+        db_session,
+        load,
+        title="Future snoozed follow-up",
+        status=FollowUpTaskStatus.SNOOZED,
+        due_at=original_due_at,
+        snoozed_until=datetime.now(timezone.utc) + timedelta(days=2),
+    )
+
+    data = DispatcherCommandCenterService(db_session).get_command_center(org_id=ORG_ID)
+    intelligence = data["operational_intelligence"]
+
+    assert data["kpis"]["overdue_follow_ups"] == 0
+    assert data["kpis"]["stale_follow_ups"] == 0
+    assert intelligence["follow_ups"]["summary"]["overdue"] == 0
+    assert intelligence["follow_ups"]["summary"]["stale"] == 0
+    assert all(
+        item.get("title") != "Future snoozed follow-up"
+        for item in intelligence["needs_attention"]
+    )
+    assert all(
+        item.get("title") != "Future snoozed follow-up"
+        for item in intelligence["follow_ups"]["items"]
+    )
+    db_session.refresh(task)
+    stored_due_at = task.due_at if task.due_at.tzinfo else task.due_at.replace(tzinfo=timezone.utc)
+    assert stored_due_at == original_due_at
+
+
+def test_command_center_expired_snoozed_follow_up_uses_snoozed_until_for_urgency(db_session):
+    _seed_parties(db_session)
+    load = _make_load(db_session, load_number="OPS-EXPIRED-SNOOZE", delivery_days_ago=1)
+    original_due_at = datetime.now(timezone.utc) - timedelta(days=10)
+    snoozed_until = datetime.now(timezone.utc) - timedelta(days=1)
+    _add_follow_up(
+        db_session,
+        load,
+        title="Expired snoozed follow-up",
+        status=FollowUpTaskStatus.SNOOZED,
+        due_at=original_due_at,
+        snoozed_until=snoozed_until,
+    )
+
+    data = DispatcherCommandCenterService(db_session).get_command_center(org_id=ORG_ID)
+    intelligence = data["operational_intelligence"]
+    item = next(
+        item
+        for item in intelligence["follow_ups"]["items"]
+        if item["title"] == "Expired snoozed follow-up"
+    )
+
+    assert item["status"] == "snoozed"
+    assert item["urgency"] == "overdue"
+    assert item["age_days"] <= 2
+    assert item["due_at"].startswith(snoozed_until.date().isoformat())
+    assert data["kpis"]["overdue_follow_ups"] == 1
+    assert data["kpis"]["stale_follow_ups"] == 0
+    assert any(
+        attention["title"] == "Expired snoozed follow-up" and attention["source"] == "follow_up"
+        for attention in intelligence["needs_attention"]
+    )

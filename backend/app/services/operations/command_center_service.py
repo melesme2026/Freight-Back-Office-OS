@@ -22,7 +22,7 @@ from app.domain.models.load_payment_record import LoadPaymentRecord
 from app.domain.models.submission_packet import SubmissionPacket
 from app.domain.models.validation_issue import ValidationIssue
 from app.services.loads.packet_readiness import calculate_load_packet_readiness
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 ZERO = Decimal("0.00")
@@ -324,11 +324,21 @@ class DispatcherCommandCenterService:
         return list(self.db.scalars(stmt).all())
 
     def _load_open_follow_ups(self, *, org_id: str) -> list[FollowUpTask]:
+        now = datetime.now(timezone.utc)
         stmt = (
             select(FollowUpTask)
             .where(
                 FollowUpTask.organization_id == org_id,
-                FollowUpTask.status.in_([FollowUpTaskStatus.OPEN, FollowUpTaskStatus.SNOOZED]),
+                or_(
+                    FollowUpTask.status == FollowUpTaskStatus.OPEN,
+                    (
+                        (FollowUpTask.status == FollowUpTaskStatus.SNOOZED)
+                        & (
+                            (FollowUpTask.snoozed_until.is_(None))
+                            | (FollowUpTask.snoozed_until <= now)
+                        )
+                    ),
+                ),
             )
             .options(selectinload(FollowUpTask.load))
             .order_by(FollowUpTask.due_at.asc(), FollowUpTask.created_at.asc())
@@ -916,9 +926,14 @@ class DispatcherCommandCenterService:
             "href": "/dashboard/loads/" + str(load.id),
         }
 
+    def _follow_up_effective_due_at(self, task: FollowUpTask) -> datetime:
+        if task.status == FollowUpTaskStatus.SNOOZED and task.snoozed_until is not None:
+            return self._as_aware(task.snoozed_until)
+        return self._as_aware(task.due_at)
+
     def _follow_up_item(self, task: FollowUpTask) -> dict[str, Any]:
         now = datetime.now(timezone.utc)
-        due_at = self._as_aware(task.due_at)
+        due_at = self._follow_up_effective_due_at(task)
         age_days = max((now.date() - due_at.date()).days, 0)
         urgency = "upcoming"
         priority = 30
