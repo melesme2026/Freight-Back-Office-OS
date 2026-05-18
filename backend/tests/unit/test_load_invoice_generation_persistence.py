@@ -105,7 +105,7 @@ def test_generate_invoice_creates_invoice_document(db_session) -> None:
     assert storage_service.read_bytes(relative_path=invoice_documents[0].storage_key) == pdf_bytes
     assert b"Freight Invoice" in pdf_bytes
     assert f"Load #: {load.load_number}".encode("latin-1") in pdf_bytes
-    assert b"Required Billing Packet Checklist" in pdf_bytes
+    assert b"Broker / Factor Packet Checklist" in pdf_bytes
 
 
 def test_generate_invoice_updates_has_invoice_and_readiness(db_session) -> None:
@@ -260,7 +260,7 @@ def test_download_invoice_route_returns_professional_invoice_sections(db_session
     assert b"Bill-To / Broker" in pdf_bytes
     assert b"Shipment Details" in pdf_bytes
     assert b"Charges" in pdf_bytes
-    assert b"Required Billing Packet Checklist" in pdf_bytes
+    assert b"Broker / Factor Packet Checklist" in pdf_bytes
     assert b"Please reference invoice number and load number with payment." in pdf_bytes
 
 

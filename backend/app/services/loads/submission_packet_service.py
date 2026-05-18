@@ -26,20 +26,41 @@ REQUIRED_DOC_TYPES = {
 PACKET_DOWNLOAD_DOC_TYPES = (
     DocumentType.INVOICE.value,
     DocumentType.RATE_CONFIRMATION.value,
-    DocumentType.PROOF_OF_DELIVERY.value,
     DocumentType.BILL_OF_LADING.value,
+    DocumentType.PROOF_OF_DELIVERY.value,
+    DocumentType.ACCESSORIAL_SUPPORT.value,
+    DocumentType.DETENTION_SUPPORT.value,
+    DocumentType.LUMPER_RECEIPT.value,
+    DocumentType.SCALE_TICKET.value,
+    DocumentType.PAYMENT_REMITTANCE.value,
+    DocumentType.OTHER.value,
 )
+PACKET_DOCUMENT_ORDER = {
+    doc_type: index for index, doc_type in enumerate(PACKET_DOWNLOAD_DOC_TYPES, start=1)
+}
 PACKET_FILENAME_PREFIXES = {
     DocumentType.INVOICE.value: "Invoice",
     DocumentType.RATE_CONFIRMATION.value: "RateConfirmation",
-    DocumentType.PROOF_OF_DELIVERY.value: "POD",
-    DocumentType.BILL_OF_LADING.value: "BOL",
+    DocumentType.BILL_OF_LADING.value: "BillOfLading",
+    DocumentType.PROOF_OF_DELIVERY.value: "ProofOfDelivery",
+    DocumentType.ACCESSORIAL_SUPPORT.value: "AccessorialSupport",
+    DocumentType.DETENTION_SUPPORT.value: "DetentionSupport",
+    DocumentType.LUMPER_RECEIPT.value: "LumperReceipt",
+    DocumentType.SCALE_TICKET.value: "ScaleTicket",
+    DocumentType.PAYMENT_REMITTANCE.value: "FuelOrRemittance",
+    DocumentType.OTHER.value: "SupportingDocument",
 }
 PACKET_ZIP_FILENAME_PREFIXES = {
     DocumentType.INVOICE.value: "invoice",
     DocumentType.RATE_CONFIRMATION.value: "rate-confirmation",
-    DocumentType.PROOF_OF_DELIVERY.value: "pod",
-    DocumentType.BILL_OF_LADING.value: "bol",
+    DocumentType.BILL_OF_LADING.value: "bill-of-lading",
+    DocumentType.PROOF_OF_DELIVERY.value: "proof-of-delivery",
+    DocumentType.ACCESSORIAL_SUPPORT.value: "accessorial-support",
+    DocumentType.DETENTION_SUPPORT.value: "detention-support",
+    DocumentType.LUMPER_RECEIPT.value: "lumper-receipt",
+    DocumentType.SCALE_TICKET.value: "scale-ticket",
+    DocumentType.PAYMENT_REMITTANCE.value: "fuel-remittance",
+    DocumentType.OTHER.value: "supporting-document",
 }
 
 
@@ -72,7 +93,7 @@ class SubmissionPacketService:
         self.db.add(packet)
         self.db.flush()
 
-        for document in documents:
+        for document in sorted(documents, key=self._document_packet_sort_key):
             if document.id is None:
                 continue
             self.db.add(
@@ -264,11 +285,12 @@ class SubmissionPacketService:
         )
         zip_buffer = io.BytesIO()
         with zipfile.ZipFile(zip_buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as archive:
-            for attachment in attachments:
+            for index, attachment in enumerate(attachments, start=1):
                 archive.writestr(
                     self._packet_zip_filename(
                         doc_type=str(attachment["document_type"]),
                         load_number=load_number,
+                        sequence=index,
                     ),
                     attachment["bytes"],
                 )
@@ -294,9 +316,10 @@ class SubmissionPacketService:
         safe_reference = self._safe_filename_reference(reference=reference, replacement="_")
         return f"{PACKET_FILENAME_PREFIXES[doc_type]}_{safe_reference or 'Load'}.pdf"
 
-    def _packet_zip_filename(self, *, doc_type: str, load_number: str) -> str:
+    def _packet_zip_filename(self, *, doc_type: str, load_number: str, sequence: int) -> str:
         safe_reference = self._safe_filename_reference(reference=load_number, replacement="-")
-        return f"{PACKET_ZIP_FILENAME_PREFIXES[doc_type]}-{safe_reference or 'load'}.pdf"
+        prefix = PACKET_ZIP_FILENAME_PREFIXES.get(doc_type, "supporting-document")
+        return f"{sequence:02d}-{prefix}-{safe_reference or 'load'}.pdf"
 
     def _safe_filename_reference(self, *, reference: str, replacement: str) -> str:
         return "".join(
@@ -394,6 +417,19 @@ class SubmissionPacketService:
             or 0
         )
         return f"PKT-{load_id[:8].upper()}-{existing_count + 1:03d}"
+
+    def _document_packet_sort_key(self, document: LoadDocument) -> tuple[int, datetime, str]:
+        doc_type = self._doc_type_value(document)
+        received_at = getattr(document, "received_at", None) or getattr(
+            document, "created_at", None
+        )
+        if received_at is None:
+            received_at = datetime.min.replace(tzinfo=timezone.utc)
+        return (
+            PACKET_DOCUMENT_ORDER.get(doc_type, 999),
+            received_at,
+            str(getattr(document, "id", "")),
+        )
 
     def _latest_documents_by_type(self, documents: list[LoadDocument]) -> dict[str, LoadDocument]:
         selected: dict[str, LoadDocument] = {}

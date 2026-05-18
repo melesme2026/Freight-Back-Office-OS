@@ -14,7 +14,7 @@ from typing import Any
 from app.core.dependencies import get_db_session
 from app.core.exceptions import ConflictError, ForbiddenError, UnauthorizedError, ValidationError
 from app.core.security import get_current_token_payload
-from app.domain.enums.document_type import DocumentType
+from app.domain.enums.document_type import DocumentType, canonical_document_type
 from app.domain.enums.follow_up_task import FollowUpTaskStatus, FollowUpTaskType
 from app.domain.enums.load_status import LoadStatus
 from app.domain.enums.processing_status import ProcessingStatus
@@ -371,9 +371,28 @@ def _serialize_packet_audit(audit: Any) -> dict[str, Any] | None:
     return None
 
 
+def _packet_document_sort_key(doc: Any) -> tuple[int, str]:
+    order = {
+        DocumentType.INVOICE.value: 1,
+        DocumentType.RATE_CONFIRMATION.value: 2,
+        DocumentType.BILL_OF_LADING.value: 3,
+        DocumentType.PROOF_OF_DELIVERY.value: 4,
+        DocumentType.ACCESSORIAL_SUPPORT.value: 5,
+        DocumentType.DETENTION_SUPPORT.value: 6,
+        DocumentType.LUMPER_RECEIPT.value: 7,
+        DocumentType.SCALE_TICKET.value: 8,
+        DocumentType.PAYMENT_REMITTANCE.value: 9,
+        DocumentType.OTHER.value: 10,
+    }
+    doc_type = canonical_document_type(getattr(doc, "document_type", None), default="")
+    return (order.get(doc_type, 999), str(getattr(doc, "created_at", "")))
+
+
 def _serialize_submission_packet(packet: Any) -> dict[str, Any]:
     loaded_values = getattr(packet, "__dict__", {})
-    packet_documents = loaded_values.get("documents") or []
+    packet_documents = sorted(
+        loaded_values.get("documents") or [], key=_packet_document_sort_key
+    )
     packet_events = loaded_values.get("events") or []
     return {
         "id": _uuid_to_str(getattr(packet, "id", None)),
@@ -385,7 +404,9 @@ def _serialize_submission_packet(packet: Any) -> dict[str, Any]:
         "destination_email": getattr(packet, "destination_email", None),
         "status": getattr(packet, "status", None),
         "notes": getattr(packet, "notes", None),
-        "created_by_staff_user_id": _uuid_to_str(getattr(packet, "created_by_staff_user_id", None)),
+        "created_by_staff_user_id": _uuid_to_str(
+            getattr(packet, "created_by_staff_user_id", None)
+        ),
         "sent_by_staff_user_id": _uuid_to_str(getattr(packet, "sent_by_staff_user_id", None)),
         "sent_at": _to_iso_or_none(getattr(packet, "sent_at", None)),
         "accepted_at": _to_iso_or_none(getattr(packet, "accepted_at", None)),
@@ -399,6 +420,13 @@ def _serialize_submission_packet(packet: Any) -> dict[str, Any]:
                 "document_id": _uuid_to_str(getattr(doc, "document_id", None)),
                 "document_type": getattr(doc, "document_type", None),
                 "filename_snapshot": getattr(doc, "filename_snapshot", None),
+                "mime_type": getattr(getattr(doc, "document", None), "mime_type", None),
+                "file_size_bytes": getattr(
+                    getattr(doc, "document", None), "file_size_bytes", None
+                ),
+                "received_at": _to_iso_or_none(
+                    getattr(getattr(doc, "document", None), "received_at", None)
+                ),
                 "created_at": _to_iso_or_none(getattr(doc, "created_at", None)),
             }
             for doc in packet_documents
@@ -819,6 +847,13 @@ def _build_professional_invoice_pdf(*, load: Any, carrier_profile: dict[str, str
         escaped = _escape_pdf_text(text)
         text_ops.extend(["BT", f"/{font} {size} Tf", f"{x} {y} Td", f"({escaped}) Tj", "ET"])
 
+    def add_right_text(
+        x_right: int, y: int, text: str, *, font: str = "F1", size: int = 9
+    ) -> None:
+        # Approximate Type1 Helvetica width well enough for stable invoice total alignment.
+        width = len(str(text)) * size * 0.54
+        add_text(max(36, int(x_right - width)), y, text, font=font, size=size)
+
     def add_box(x: int, y: int, width: int, height: int) -> None:
         text_ops.append("0.72 0.76 0.82 RG")
         text_ops.append(f"{x} {y} {width} {height} re S")
@@ -922,10 +957,11 @@ def _build_professional_invoice_pdf(*, load: Any, carrier_profile: dict[str, str
     add_text(59, 734, brand_initials(display_brand_name), font="F2", size=11)
     add_text(104, 746, _safe_text(display_brand_name), font="F2", size=13)
     add_wrapped_field(x=104, y=728, label="Carrier", value=carrier_name, max_chars=43, max_lines=1)
-    add_text(432, 746, "Freight Invoice", font="F2", size=15)
-    add_text(432, 729, f"Invoice #: {invoice_number}", font="F2", size=9)
-    add_text(432, 716, f"Invoice Date: {invoice_date}", size=8)
-    add_text(432, 703, f"Due Date: {due_date}", size=8)
+    add_right_text(562, 746, "Freight Invoice", font="F2", size=16)
+    add_right_text(562, 729, f"Invoice #: {invoice_number}", font="F2", size=9)
+    add_right_text(562, 716, f"Invoice Date: {invoice_date}", size=8)
+    add_right_text(562, 703, f"Due Date: {due_date}", size=8)
+    add_rule(50, 688, 562)
 
     # Carrier / Bill-to sections
     left_x = 36
@@ -1100,16 +1136,16 @@ def _build_professional_invoice_pdf(*, load: Any, carrier_profile: dict[str, str
     add_filled_box(36, 348, 540, 28)
     add_text(50, 358, "Charges", font="F2", size=10)
     add_text(50, 332, "Description", font="F2", size=8)
-    add_text(380, 332, "Amount", font="F2", size=8)
+    add_right_text(438, 332, "Amount", font="F2", size=8)
     add_text(470, 332, "Currency", font="F2", size=8)
     add_rule(50, 324, 562)
     add_text(50, 309, "Linehaul / Freight Charge", size=9)
-    add_text(380, 309, gross_amount, size=9)
+    add_right_text(438, 309, gross_amount, size=9)
     add_text(470, 309, currency_code, size=9)
     add_rule(50, 296, 562)
     add_filled_box(360, 278, 202, 40, fill="0.90 0.95 0.91 rg", stroke="0.42 0.62 0.44 RG")
     add_text(374, 302, "Total Due", font="F2", size=11)
-    add_text(446, 290, total_due, font="F2", size=13)
+    add_right_text(548, 290, total_due, font="F2", size=13)
     add_text(50, 284, f"Payment Terms: {_safe_text(payment_terms)}", size=8)
 
     # Checklist
@@ -1120,7 +1156,7 @@ def _build_professional_invoice_pdf(*, load: Any, carrier_profile: dict[str, str
     add_text(
         50,
         checklist_y + checklist_h - 18,
-        "Required Billing Packet Checklist",
+        "Broker / Factor Packet Checklist",
         font="F2",
         size=10,
     )
@@ -1185,6 +1221,7 @@ def _build_professional_invoice_pdf(*, load: Any, carrier_profile: dict[str, str
     add_text(
         50, 72, "Please reference invoice number and load number with payment.", font="F2", size=9
     )
+    add_text(50, 60, "Carrier-ready invoice generated by Freight Back Office OS.", size=8)
     add_text(50, 48, f"Generated At: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}", size=8)
 
     stream = "\n".join(text_ops).encode("latin-1", errors="replace")
@@ -1225,6 +1262,16 @@ def _build_professional_invoice_pdf(*, load: Any, carrier_profile: dict[str, str
 
     return bytes(pdf)
 
+
+
+def _generated_invoice_filename(load: Any) -> str:
+    reference = _normalize_optional_text(getattr(load, "invoice_number", None)) or _normalize_optional_text(
+        getattr(load, "load_number", None)
+    ) or str(getattr(load, "id", "invoice"))
+    safe_reference = "".join(
+        char if char.isalnum() or char in {"-", "_"} else "-" for char in reference
+    ).strip("-_")
+    return f"freight-invoice-{safe_reference or 'load'}.pdf"
 
 
 def _invoice_generation_lock(load_id: str) -> threading.Lock:
@@ -1439,7 +1486,7 @@ def _generate_and_persist_invoice_pdf(
                 invoice_document.storage_key = generated_storage_key
             invoice_document.mime_type = "application/pdf"
             invoice_document.file_size_bytes = len(pdf_bytes)
-            invoice_document.original_filename = f"invoice-{load.load_number or load.id}.pdf"
+            invoice_document.original_filename = _generated_invoice_filename(load)
             invoice_document.processing_status = ProcessingStatus.COMPLETED
             invoice_document.ocr_completed_at = None
             invoice_document.received_at = datetime.now(timezone.utc)
@@ -1472,7 +1519,7 @@ def _generate_and_persist_invoice_pdf(
                 document_type=DocumentType.INVOICE,
                 source_channel=getattr(load, "source_channel", "manual"),
                 storage_key=storage_key,
-                original_filename=f"invoice-{load.load_number or load.id}.pdf",
+                original_filename=_generated_invoice_filename(load),
                 mime_type="application/pdf",
                 file_size_bytes=len(pdf_bytes),
             )
@@ -2091,7 +2138,7 @@ def download_submission_packet_zip(
     return StreamingResponse(
         io.BytesIO(zip_bytes),
         media_type="application/zip",
-        headers={"Content-Disposition": f'attachment; filename="packet-{load_number}.zip"'},
+        headers={"Content-Disposition": f'attachment; filename="submission-packet-{load_number}.zip"'},
     )
 
 

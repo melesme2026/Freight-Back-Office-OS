@@ -149,8 +149,8 @@ def test_successful_send_attaches_packet_documents_logs_events_and_marks_sent(
     assert attachments
     filenames = {attachment["filename"] for attachment in attachments}
     assert "Invoice_LD-EMAIL-001.pdf" in filenames
-    assert "POD_LD-EMAIL-001.pdf" in filenames
-    assert "BOL_LD-EMAIL-001.pdf" in filenames
+    assert "ProofOfDelivery_LD-EMAIL-001.pdf" in filenames
+    assert "BillOfLading_LD-EMAIL-001.pdf" in filenames
     assert "RateConfirmation_LD-EMAIL-001.pdf" in filenames
     assert all(attachment["content_type"] == "application/pdf" for attachment in attachments)
     assert all(attachment["bytes"] for attachment in attachments)
