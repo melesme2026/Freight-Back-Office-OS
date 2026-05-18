@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { ReactNode } from "react";
 
+import { BrandLogo } from "@/components/ui/BrandLogo";
+
 type AppShellProps = {
   title: string;
   subtitle?: string;
@@ -21,11 +23,11 @@ const navItems = [
 
 export function AppShell({ title, subtitle, children }: AppShellProps) {
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900">
-      <div className="border-b border-slate-200 bg-white">
+    <div className="min-h-screen brand-page-shell text-slate-900">
+      <div className="border-b border-slate-200/80 bg-white/90 backdrop-blur-xl">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
-          <Link href="/dashboard" className="text-lg font-bold text-slate-950">
-            Freight Back Office OS
+          <Link href="/dashboard" aria-label="Adwa Freight OS dashboard">
+            <BrandLogo variant="operatingSystem" tone="light" className="h-11 w-auto" />
           </Link>
 
           <nav className="hidden gap-5 md:flex">
@@ -33,7 +35,7 @@ export function AppShell({ title, subtitle, children }: AppShellProps) {
               <Link
                 key={item.href}
                 href={item.href}
-                className="text-sm font-medium text-slate-600 hover:text-slate-950"
+                className="text-sm font-semibold text-slate-600 hover:text-brand-950"
               >
                 {item.label}
               </Link>

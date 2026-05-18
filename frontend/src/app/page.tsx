@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
+import { BrandLogo } from "@/components/ui/BrandLogo";
+
 import { PublicMobileNavigation } from "./PublicMobileNavigation";
 
 export const metadata: Metadata = {
@@ -175,12 +177,11 @@ const faqs = [
 
 export default function HomePage() {
   return (
-    <main className="safe-page min-h-screen bg-slate-950 text-white">
-      <header className="sticky top-0 z-40 border-b border-white/10 bg-slate-950/90 backdrop-blur">
+    <main className="safe-page min-h-screen bg-brand-950 text-white">
+      <header className="sticky top-0 z-40 border-b border-white/10 bg-brand-950/90 backdrop-blur-xl">
         <nav className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-4 sm:px-6 lg:px-8" aria-label="Public navigation">
-          <Link href="/" className="flex items-center gap-3 font-semibold tracking-tight">
-            <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-brand-500 text-sm font-bold text-white shadow-soft">FB</span>
-            <span className="hidden text-sm uppercase tracking-[0.2em] text-slate-200 sm:inline">Freight Back Office OS</span>
+          <Link href="/" className="flex items-center gap-3 font-semibold tracking-tight" aria-label="Adwa Freight OS home">
+            <BrandLogo variant="operatingSystem" tone="dark" className="h-11 w-auto" priority />
           </Link>
           <div className="hidden items-center gap-6 text-sm font-medium text-slate-300 lg:flex">
             <a href="#features" className="hover:text-white">Features</a>
@@ -198,7 +199,7 @@ export default function HomePage() {
       </header>
 
       <section className="relative overflow-hidden border-b border-white/10">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(55,125,255,0.32),_transparent_34%),radial-gradient(circle_at_80%_20%,_rgba(14,165,233,0.16),_transparent_28%)]" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(47,128,237,0.34),_transparent_34%),radial-gradient(circle_at_80%_20%,_rgba(49,196,179,0.20),_transparent_28%)]" />
         <div className="relative mx-auto grid max-w-7xl gap-12 px-4 py-16 sm:px-6 sm:py-20 lg:grid-cols-[1.02fr_0.98fr] lg:px-8 lg:py-24">
           <div className="max-w-3xl">
             <div className="inline-flex max-w-full items-center rounded-full border border-brand-300/30 bg-white/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-brand-100">
@@ -434,7 +435,7 @@ export default function HomePage() {
       <footer className="border-t border-white/10 bg-slate-950 text-white">
         <div className="mx-auto grid max-w-7xl gap-8 px-4 py-10 sm:px-6 lg:grid-cols-[1fr_auto] lg:px-8">
           <div>
-            <h2 className="text-xl font-bold">Freight Back Office OS</h2>
+            <BrandLogo variant="platform" tone="dark" className="h-12 w-auto" />
             <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-300">Public marketing website for www.adwafreight.com. Authenticated operations stay under the app experience at app.adwafreight.com routes such as login and dashboard.</p>
           </div>
           <div className="grid gap-3 text-sm font-semibold sm:grid-cols-2 lg:text-right">
