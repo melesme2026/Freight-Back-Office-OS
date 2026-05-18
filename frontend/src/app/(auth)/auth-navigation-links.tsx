@@ -11,9 +11,9 @@ type AuthNavigationLinksProps = {
 };
 
 const PRIMARY_LINKS: AuthNavigationLink[] = [
-  { href: "/", label: "Back to Home" },
-  { href: "/login", label: "Staff Login" },
-  { href: "/driver-login", label: "Driver Login" },
+  { href: "/", label: "Public site" },
+  { href: "/login", label: "Staff login" },
+  { href: "/driver-login", label: "Driver portal" },
 ];
 
 export function AuthNavigationLinks({ secondaryLinks = [] }: AuthNavigationLinksProps) {

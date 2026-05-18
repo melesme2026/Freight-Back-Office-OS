@@ -1,13 +1,17 @@
+import { AccessState } from "@/components/routing/AccessState";
+
 export default function NotFound() {
   return (
-    <main className="min-h-screen bg-slate-50 px-6 py-16 text-slate-900">
-      <div className="mx-auto max-w-2xl rounded-2xl border border-slate-200 bg-white p-8 shadow-soft">
-        <p className="text-sm font-medium text-brand-700">404</p>
-        <h1 className="mt-2 text-2xl font-bold text-slate-950">Page not found</h1>
-        <p className="mt-3 text-sm text-slate-600">
-          The page you requested does not exist or may have moved.
-        </p>
-      </div>
-    </main>
+    <AccessState
+      eyebrow="Route not found"
+      title="We could not find that Freight Back Office OS page"
+      message="Public site, staff workspace, and driver portal routes are intentionally separated. Use the correct entry point below to continue."
+      detail="Staff workspace routes live under /dashboard, driver routes live under /driver-portal, and public information stays on the marketing site."
+      actions={[
+        { href: "/", label: "Public site", primary: true },
+        { href: "/login", label: "Staff workspace" },
+        { href: "/driver-login", label: "Driver portal" },
+      ]}
+    />
   );
 }

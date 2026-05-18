@@ -6,7 +6,7 @@ import { BrandLogo } from "@/components/ui/BrandLogo";
 import { PublicMobileNavigation } from "./PublicMobileNavigation";
 
 export const metadata: Metadata = {
-  title: "Freight Back Office OS | Freight billing, packets, factoring, and collections",
+  title: "Freight Back Office OS | Public site • Freight billing, packets, factoring, and collections",
   description:
     "A freight back-office operating system for carriers, dispatchers, and billing teams that need cleaner billing packets, factoring workflows, invoices, collections visibility, and operational reporting.",
   alternates: {
@@ -209,8 +209,8 @@ export default function HomePage() {
             <a href="#faq" className="hover:text-white">FAQ</a>
           </div>
           <div className="flex items-center gap-2 text-sm font-semibold">
-            <Link href="/login" className="hidden rounded-xl px-4 py-2 text-slate-300 hover:bg-white/10 hover:text-white sm:inline-flex">App login</Link>
-            <Link href="/driver-login" className="hidden rounded-xl px-4 py-2 text-slate-300 hover:bg-white/10 hover:text-white md:inline-flex">Driver Login</Link>
+            <Link href="/login" className="hidden rounded-xl px-4 py-2 text-slate-300 hover:bg-white/10 hover:text-white sm:inline-flex">Staff workspace</Link>
+            <Link href="/driver-login" className="hidden rounded-xl px-4 py-2 text-slate-300 hover:bg-white/10 hover:text-white md:inline-flex">Driver portal</Link>
             <Link href="/request-demo?intent=request-access" className="hidden rounded-xl px-4 py-2 text-slate-300 hover:bg-white/10 hover:text-white lg:inline-flex">Request access</Link>
             <Link href="/request-demo" className="hidden rounded-xl bg-white px-4 py-2 text-slate-950 shadow-soft transition hover:bg-brand-50 sm:inline-flex">Request demo</Link>
             <PublicMobileNavigation />
@@ -223,7 +223,7 @@ export default function HomePage() {
         <div className="relative mx-auto grid max-w-7xl gap-12 px-4 py-16 sm:px-6 sm:py-20 lg:grid-cols-[1.02fr_0.98fr] lg:px-8 lg:py-24">
           <div className="max-w-3xl">
             <div className="inline-flex max-w-full items-center rounded-full border border-brand-300/30 bg-white/10 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-brand-100">
-              Freight billing, packets, factoring, and collections
+              Public site • Freight billing, packets, factoring, and collections
             </div>
             <h1 className="mt-6 text-4xl font-bold tracking-tight text-white sm:text-5xl lg:text-6xl">
               A cleaner freight back office for paperwork, billing packets, invoices, factoring, and collections.
@@ -477,8 +477,8 @@ export default function HomePage() {
             <a href="#pricing" className="text-slate-300 hover:text-white">Pricing</a>
             <Link href="/request-demo" className="text-slate-300 hover:text-white">Request demo</Link>
             <Link href="/request-demo?intent=request-access" className="text-slate-300 hover:text-white">Request access</Link>
-            <Link href="/driver-login" className="text-slate-300 hover:text-white">Driver Login</Link>
-            <Link href="/login" aria-label="App login from footer" className="text-slate-300 hover:text-white">App login</Link>
+            <Link href="/driver-login" className="text-slate-300 hover:text-white">Driver portal</Link>
+            <Link href="/login" aria-label="Staff workspace from footer" className="text-slate-300 hover:text-white">Staff workspace</Link>
           </div>
         </div>
       </footer>

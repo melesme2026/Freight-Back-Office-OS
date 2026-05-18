@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { clearAuth, getAuthSession, onAuthChanged, type AuthSession } from "@/lib/auth";
+import { AccessState } from "@/components/routing/AccessState";
 import DriverMobileRuntime from "@/components/driver/DriverMobileRuntime";
 import { canAccessDriverPortal } from "@/lib/rbac";
 import { BrandLogo } from "@/components/ui/BrandLogo";
@@ -62,7 +63,6 @@ export default function DriverPortalLayout({
     }
 
     if (!canAccessDriverPortal(session.userRole)) {
-      router.replace("/dashboard");
       return;
     }
 
@@ -76,11 +76,33 @@ export default function DriverPortalLayout({
     router.replace("/driver-login?reason=logged_out");
   }
 
-  if (!isHydrated || !hasDriverAccess) {
+  if (!isHydrated) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50 px-6">
         <div className="rounded-2xl border border-slate-200 bg-white px-6 py-5 text-sm text-slate-600 shadow-soft">
-          Opening driver workspace…
+          Opening driver portal…
+        </div>
+      </div>
+    );
+  }
+
+  if (session.accessToken && session.organizationId && !hasDriverAccess) {
+    return (
+      <AccessState
+        eyebrow="Wrong portal"
+        title="This is the driver portal"
+        message="You are signed in with a staff workspace account. Staff and owner operations stay in the dashboard so driver-only load and upload screens remain separated."
+        detail="Driver portal access requires an invited driver account from your carrier or dispatcher."
+        actions={[{ href: "/dashboard", label: "Go to staff workspace", primary: true }, { href: "/", label: "Public site" }]}
+      />
+    );
+  }
+
+  if (!hasDriverAccess) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-50 px-6">
+        <div className="rounded-2xl border border-slate-200 bg-white px-6 py-5 text-sm text-slate-600 shadow-soft">
+          Opening driver portal…
         </div>
       </div>
     );
@@ -94,13 +116,13 @@ export default function DriverPortalLayout({
             <BrandLogo variant="operatingSystem" tone="light" lockup="mark" className="mt-1 h-11 w-11 shrink-0" priority />
             <div>
               <div className="ops-eyebrow">Driver Portal</div>
-              <div className="mt-1 text-lg font-bold text-slate-950">Operational workspace</div>
+              <div className="mt-1 text-lg font-bold text-slate-950">Driver-only workspace</div>
               <div className="text-sm text-slate-500">{session.userEmail ?? "Authenticated user"}</div>
               <Link
                 href="/"
                 className="mt-1 inline-flex text-xs font-semibold text-brand-700 hover:text-brand-800"
               >
-                ← Back to landing
+                ← Public site
               </Link>
             </div>
           </div>

@@ -128,7 +128,7 @@ export default function LoginPage() {
       }
 
       if (isDriverRole(userRole)) {
-        throw new Error("This account uses Driver Login. Switch to the driver sign-in page to continue.");
+        throw new Error("This account uses the Driver portal. Switch to the driver sign-in page to continue.");
       }
 
       setAuthSession({
@@ -153,12 +153,12 @@ export default function LoginPage() {
         } else if (error.status === 401) {
           setErrorMessage("Email or password was not recognized. Check your credentials and try again.");
         } else if (error.message === "Use Driver Login") {
-          setErrorMessage("This account uses Driver Login. Switch to the driver sign-in page to continue.");
+          setErrorMessage("This account uses the Driver portal. Switch to the driver sign-in page to continue.");
         } else {
           setErrorMessage(error.message || "Sign-in could not be completed. Verify your credentials and try again.");
         }
-      } else if (error instanceof Error && (error.message === "Use Driver Login" || error.message === "This account uses Driver Login. Switch to the driver sign-in page to continue.")) {
-        setErrorMessage("This account uses Driver Login. Switch to the driver sign-in page to continue.");
+      } else if (error instanceof Error && (error.message === "Use Driver Login" || error.message === "This account uses the Driver portal. Switch to the driver sign-in page to continue.")) {
+        setErrorMessage("This account uses the Driver portal. Switch to the driver sign-in page to continue.");
       } else {
         setErrorMessage("Sign-in could not be completed. Verify your credentials and try again.");
       }
@@ -194,7 +194,7 @@ export default function LoginPage() {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50">
         <div className="rounded-xl border border-slate-200 bg-white px-6 py-4 text-sm text-slate-600 shadow-soft">
-          Checking session...
+          Checking session…
         </div>
       </div>
     );
@@ -204,15 +204,15 @@ export default function LoginPage() {
     <section className="w-full max-w-md rounded-[1.75rem] border border-slate-200/90 bg-white/95 p-6 shadow-operational backdrop-blur sm:p-8">
         <div className="mb-7">
           <BrandLogo variant="operatingSystem" tone="light" className="mb-7 h-12 w-auto" priority />
-          <p className="ops-eyebrow">Operations Workspace</p>
+          <p className="ops-eyebrow">Staff workspace</p>
           <h1 className="mt-3 text-2xl font-extrabold tracking-tight text-slate-950">
             Sign in
           </h1>
           <p className="mt-2 text-sm text-slate-600">
-            Access the Freight Back Office OS operator dashboard.
+            Access the Freight Back Office OS staff workspace.
           </p>
           <p className="mt-2 text-xs text-slate-500">
-            Driver account? Use Driver Login. Driver accounts are staff-invited only.
+            Driver account? Use the Driver portal. Driver accounts are staff-invited only.
           </p>
         </div>
 
@@ -270,7 +270,7 @@ export default function LoginPage() {
                     disabled={isSubmitting}
                     onClick={async () => {
                       if (option.role === "driver") {
-                        setErrorMessage("This account uses Driver Login. Switch to the driver sign-in page to continue.");
+                        setErrorMessage("This account uses the Driver portal. Switch to the driver sign-in page to continue.");
                         return;
                       }
                       setErrorMessage(null);
@@ -301,7 +301,7 @@ export default function LoginPage() {
             disabled={isSubmitting}
             className="brand-button-primary w-full"
           >
-            {isSubmitting ? "Signing in..." : "Sign in"}
+            {isSubmitting ? "Signing in…" : "Sign in"}
           </button>
 
         </form>
