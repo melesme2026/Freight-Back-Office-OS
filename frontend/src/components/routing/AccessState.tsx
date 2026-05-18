@@ -4,7 +4,7 @@ import type { Route } from "next";
 import { BrandLogo } from "@/components/ui/BrandLogo";
 
 type AccessStateAction = {
-  href: Route | string;
+  href: Route;
   label: string;
   primary?: boolean;
 };
