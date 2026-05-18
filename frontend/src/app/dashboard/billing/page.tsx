@@ -356,6 +356,12 @@ export default function BillingPage() {
               Plans
             </Link>
             <Link
+              href="/dashboard/billing/settings"
+              className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
+            >
+              Billing Settings
+            </Link>
+            <Link
               href="/dashboard/billing/invoices"
               className="rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-700"
             >

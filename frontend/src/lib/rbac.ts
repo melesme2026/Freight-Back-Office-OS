@@ -54,6 +54,10 @@ export function canAccessDashboardPath(role: string | null | undefined, pathname
     return OWNER_ONLY_ROLES.has(normalized) || isAdmin(normalized);
   }
 
+  if (pathname === "/dashboard/billing/settings" || pathname.startsWith("/dashboard/billing/settings/")) {
+    return OWNER_ONLY_ROLES.has(normalized);
+  }
+
   return true;
 }
 

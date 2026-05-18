@@ -22,6 +22,7 @@ GET_SETTINGS_DEPENDENCY = Depends(get_settings)
 
 router = APIRouter(prefix="/billing")
 
+OWNER_ONLY_ROLES = {"owner"}
 OWNER_ADMIN_ROLES = {"owner", "admin", "billing_admin"}
 
 
@@ -39,6 +40,12 @@ def _token_org_id(token_payload: dict[str, Any]) -> uuid.UUID:
         return uuid.UUID(raw_org_id)
     except ValueError as exc:
         raise UnauthorizedError("Token organization_id is invalid") from exc
+
+
+def _require_owner(token_payload: dict[str, Any]) -> None:
+    role = str(token_payload.get("role") or "").strip().lower()
+    if role not in OWNER_ONLY_ROLES:
+        raise UnauthorizedError("Owner role required")
 
 
 def _require_owner_admin(token_payload: dict[str, Any]) -> None:
@@ -64,6 +71,34 @@ def get_billing_status(
     organization = _get_token_organization(db, token_payload)
     service = StripeSubscriptionService(db, settings)
     return ApiResponse(data=service.serialize_status(organization), meta={}, error=None)
+
+
+
+@router.get("/settings", response_model=ApiResponse)
+def get_billing_settings(
+    token_payload: dict[str, Any] = GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY,
+    db: Session = GET_DB_SESSION_DEPENDENCY,
+    settings: Settings = GET_SETTINGS_DEPENDENCY,
+) -> ApiResponse:
+    _require_owner(token_payload)
+    organization = _get_token_organization(db, token_payload)
+    return ApiResponse(
+        data={
+            "organization_id": str(organization.id),
+            "plan_key": organization.plan_key,
+            "plan_code": organization.plan_code,
+            "subscription_status": organization.subscription_status,
+            "billing_status": organization.billing_status,
+            "billing_provider": organization.billing_provider,
+            "billing_notes": organization.billing_notes,
+            "billing_enabled": settings.billing_enabled,
+            "payment_provider": settings.payment_provider,
+            "billing_mode": settings.app_env,
+            "supports_checkout": settings.payment_provider != "none",
+        },
+        meta={},
+        error=None,
+    )
 
 
 @router.post("/checkout-session", response_model=ApiResponse)
