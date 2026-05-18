@@ -22,7 +22,7 @@ from app.domain.models.load_payment_record import LoadPaymentRecord
 from app.domain.models.submission_packet import SubmissionPacket
 from app.domain.models.validation_issue import ValidationIssue
 from app.services.loads.packet_readiness import calculate_load_packet_readiness
-from sqlalchemy import func, or_, select
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 ZERO = Decimal("0.00")
@@ -325,6 +325,14 @@ class DispatcherCommandCenterService:
 
     def _load_open_follow_ups(self, *, org_id: str) -> list[FollowUpTask]:
         now = datetime.now(timezone.utc)
+        effective_due_at = case(
+            (
+                (FollowUpTask.status == FollowUpTaskStatus.SNOOZED)
+                & FollowUpTask.snoozed_until.is_not(None),
+                FollowUpTask.snoozed_until,
+            ),
+            else_=FollowUpTask.due_at,
+        )
         stmt = (
             select(FollowUpTask)
             .where(
@@ -341,7 +349,7 @@ class DispatcherCommandCenterService:
                 ),
             )
             .options(selectinload(FollowUpTask.load))
-            .order_by(FollowUpTask.due_at.asc(), FollowUpTask.created_at.asc())
+            .order_by(effective_due_at.asc(), FollowUpTask.created_at.asc())
             .limit(COMMAND_CENTER_LOAD_LIMIT)
         )
         return list(self.db.scalars(stmt).unique().all())
