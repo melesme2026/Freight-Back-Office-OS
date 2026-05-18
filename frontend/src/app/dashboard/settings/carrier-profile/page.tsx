@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 
 import { apiClient } from "@/lib/api-client";
 import { getAccessToken, getUserRole } from "@/lib/auth";
+import { EmptyState } from "@/components/ui/DesignSystem";
 
 type CarrierProfile = {
   legal_name: string;
@@ -146,6 +147,16 @@ export default function CarrierProfilePage() {
     setProfile((p) => ({ ...p, [key]: value }));
   };
 
+  const hasProfileBasics = Boolean(
+    profile.legal_name.trim() &&
+      profile.address_line1.trim() &&
+      profile.city.trim() &&
+      profile.state.trim() &&
+      profile.zip.trim() &&
+      profile.remit_to_name.trim() &&
+      profile.remit_to_address.trim(),
+  );
+
   if (isLoading) {
     return <main className="p-6">Loading...</main>;
   }
@@ -162,6 +173,22 @@ export default function CarrierProfilePage() {
         <p className="mt-2 text-sm text-slate-600">
           Single source of truth for invoice carrier details. Required fields are marked with *
         </p>
+
+        {!hasProfileBasics ? (
+          <div className="mt-6">
+            <EmptyState
+              eyebrow="Carrier profile setup"
+              title="Complete carrier and remit-to details before invoicing"
+              steps={[
+                "Enter legal company, MC/DOT, address, phone, and billing contact details.",
+                "Confirm remit-to information so invoices tell customers exactly where to pay.",
+                "Save the profile once, then reuse it across invoices and packets.",
+              ]}
+            >
+              Carrier profile information is the source of truth for invoice headers, payment instructions, and submission packets. Completing it early keeps billing consistent and professional.
+            </EmptyState>
+          </div>
+        ) : null}
 
         {error ? (
           <div className="mt-4 rounded border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">

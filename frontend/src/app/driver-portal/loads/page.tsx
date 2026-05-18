@@ -7,6 +7,7 @@ import { apiClient } from "@/lib/api-client";
 import { toDriverStatus } from "@/lib/driver-portal";
 import { canonicalDocumentType, documentTypeLabel } from "@/lib/document-types";
 import { getAccessToken, getOrganizationId } from "@/lib/auth";
+import { EmptyState } from "@/components/ui/DesignSystem";
 
 type DriverLoad = {
   id: string;
@@ -127,7 +128,24 @@ export default function DriverLoadsPage() {
 
         <section className="space-y-3">
           {isLoading ? <div className="rounded-2xl border border-slate-200 bg-white px-4 py-6 text-sm text-slate-500">Loading loads...</div> : null}
-          {!isLoading && loads.length === 0 ? <div className="rounded-2xl border border-slate-200 bg-white px-4 py-6 text-sm text-slate-500">No loads assigned yet.</div> : null}
+          {!isLoading && loads.length === 0 ? (
+            <EmptyState
+              eyebrow="Driver workflow"
+              title="Assigned loads will appear here when dispatch is ready"
+              steps={[
+                "Dispatch creates the load and assigns it to your driver profile.",
+                "Open the load to see route details and any missing document checklist.",
+                "Upload PODs, BOLs, receipts, or photos from the mobile portal after each milestone.",
+              ]}
+              action={(
+                <Link href="/driver-portal/uploads" className="touch-target rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white">
+                  Open uploads
+                </Link>
+              )}
+            >
+              This page is your driver-facing checklist for active freight. If you expected a load, contact dispatch so they can assign it.
+            </EmptyState>
+          ) : null}
 
           {loads.map((load) => {
             const status = toDriverStatus(load.status, load.missing_documents.length > 0);

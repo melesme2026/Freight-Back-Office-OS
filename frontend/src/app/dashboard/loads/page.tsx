@@ -7,6 +7,7 @@ import { apiClient } from "@/lib/api-client";
 import { getAccessToken, getOrganizationId } from "@/lib/auth";
 
 import { useLoads } from "@/hooks/useLoads";
+import { EmptyState } from "@/components/ui/DesignSystem";
 
 type NullableString = string | null | undefined;
 type NullableNumberLike = number | string | null | undefined;
@@ -468,11 +469,22 @@ export default function LoadsPage() {
                       className="px-5 py-8 text-center text-sm text-slate-600"
                     >
                       {typedLoads.length === 0 ? (
-                        <div className="space-y-2">
-                          <p className="font-semibold text-slate-700">No loads yet.</p>
-                          <p>Create your first load, then upload docs, generate an invoice, and send a packet.</p>
-                          <p className="text-xs text-slate-500">Tip: start with “New Load”, then go to Documents and Billing.</p>
-                        </div>
+                        <EmptyState
+                          eyebrow="Dispatch setup"
+                          title="Create your first load to start the freight workflow"
+                          steps={[
+                            "Enter pickup, delivery, broker, customer, and driver details.",
+                            "Attach rate confirmation, BOL, POD, and supporting documents as they arrive.",
+                            "Generate the invoice and submission packet when paperwork is ready.",
+                          ]}
+                          action={(
+                            <Link href="/dashboard/loads/new" className="touch-target rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white">
+                              Create first load
+                            </Link>
+                          )}
+                        >
+                          Loads are the operating record for dispatch, document collection, billing, and follow-up. Starting with one load gives your team a clear path from booking to paid.
+                        </EmptyState>
                       ) : "No loads match the current search or filter."}
                     </td>
                   </tr>

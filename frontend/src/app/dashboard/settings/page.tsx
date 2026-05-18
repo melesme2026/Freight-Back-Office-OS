@@ -5,6 +5,7 @@ import { FormEvent, useEffect, useState } from "react";
 import { apiClient } from "@/lib/api-client";
 import { ActivityEvent, fetchRecentActivity, formatActivityAction } from "@/lib/activity";
 import { getAccessToken, getOrganizationId } from "@/lib/auth";
+import { EmptyState } from "@/components/ui/DesignSystem";
 
 type OrganizationSettings = {
   id: string;
@@ -338,9 +339,17 @@ export default function SettingsPage() {
               ))}
             </div>
           ) : (
-            <div className="rounded-xl border border-slate-100 bg-slate-50 px-4 py-6 text-sm text-slate-600">
-              No activity events yet. Uploads, packet sends, billing, factoring, and settings changes will appear here.
-            </div>
+            <EmptyState
+              eyebrow="Operational activity"
+              title="Activity appears after your team starts working"
+              steps={[
+                "Complete setup details such as carrier profile and team access.",
+                "Create loads, upload documents, and send packets as work moves forward.",
+                "Use this feed to confirm recent uploads, billing, factoring, and settings changes.",
+              ]}
+            >
+              The activity feed is an audit-friendly trail for back-office operations. It stays quiet until real workspace actions begin.
+            </EmptyState>
           )}
         </section>
       </div>

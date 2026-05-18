@@ -33,7 +33,7 @@ const emptyStateActions = [
   { title: "Create first load", href: "/dashboard/loads/new", helper: "Start the operating workflow with pickup, delivery, broker, and driver details." },
   { title: "Upload first document", href: "/dashboard/documents", helper: "Add a rate confirmation, BOL, POD, or invoice to begin packet readiness tracking." },
   { title: "Invite first driver", href: "/dashboard/drivers/new", helper: "Connect drivers to load updates and mobile document capture." },
-  { title: "Create first customer", href: "/dashboard/customers/new", helper: "Set up the customer record that anchors billing and workflow history." },
+  { title: "Complete carrier profile", href: "/dashboard/settings/carrier-profile", helper: "Add remit-to and company details before invoices or packets go out." },
 ] as const;
 
 function toneClasses(tone: Tone): string {
@@ -304,7 +304,7 @@ export default function DashboardPage() {
           <section className="rounded-3xl border border-dashed border-slate-300 bg-white p-5 shadow-soft sm:p-6">
             <p className="text-xs font-bold uppercase tracking-[0.14em] text-brand-700">Guided setup</p>
             <h2 className="mt-2 text-xl font-bold text-slate-950">Build your first operating workflow</h2>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">Fresh workspaces are ready for dispatch, documents, driver coordination, and billing. Start with one load, then add paperwork and collaborators as the workflow grows.</p>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">Fresh workspaces are ready for dispatch, documents, driver coordination, carrier profile setup, and billing. Start with the profile or one load, then add paperwork and collaborators as the workflow grows.</p>
             <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
               {emptyStateActions.map((action) => (
                 <Link key={action.title} href={action.href} className="rounded-2xl border border-slate-200 bg-slate-50 p-4 transition hover:border-brand-300 hover:bg-brand-50">

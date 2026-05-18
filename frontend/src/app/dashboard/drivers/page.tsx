@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useMemo } from "react";
 
 import { useDrivers } from "@/hooks/useDrivers";
+import { EmptyState } from "@/components/ui/DesignSystem";
 
 function statusBadgeClass(isActive: boolean): string {
   return isActive
@@ -148,10 +149,22 @@ export default function DriversPage() {
                       colSpan={5}
                       className="px-5 py-10 text-center text-slate-600"
                     >
-                      <div className="space-y-2">
-                        <p className="font-semibold text-slate-700">No drivers yet.</p>
-                        <p>Add your first driver so you can assign loads and collect driver-submitted docs.</p>
-                      </div>
+                      <EmptyState
+                        eyebrow="Driver coordination"
+                        title="Invite your first driver before assigning freight"
+                        steps={[
+                          "Add driver contact details and keep the profile active.",
+                          "Assign loads so the driver sees the right mobile checklist.",
+                          "Collect PODs, BOLs, receipts, and exception photos from the portal.",
+                        ]}
+                        action={(
+                          <button type="button" onClick={openNewDriver} className="touch-target rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white">
+                            Add first driver
+                          </button>
+                        )}
+                      >
+                        Drivers connect dispatch to real-world document capture. Set up the first driver so paperwork can move from the road into packet readiness without manual chasing.
+                      </EmptyState>
                     </td>
                   </tr>
                 ) : (
