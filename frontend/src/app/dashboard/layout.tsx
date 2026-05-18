@@ -12,6 +12,7 @@ import {
 } from "@/lib/auth";
 import { canAccessDashboardPath, canManageLeadPipeline } from "@/lib/rbac";
 import { WORKSPACE_NAV_ITEMS, WORKSPACE_NAV_SECTIONS, type WorkspaceNavItem } from "@/lib/navigation";
+import { BrandLogo, BrandMark } from "@/components/ui/BrandLogo";
 
 function canShowNavItem(item: WorkspaceNavItem, role: string | null): boolean {
   if (item.href === "/dashboard/leads") {
@@ -39,8 +40,8 @@ function NavLink({ item, pathname, onNavigate }: { item: WorkspaceNavItem; pathn
       aria-current={active ? "page" : undefined}
       className={`group flex min-h-11 items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold outline-none transition focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 ${
         active
-          ? "bg-slate-950 text-white shadow-sm"
-          : "text-slate-700 hover:bg-slate-100 hover:text-slate-950"
+          ? "bg-brand-950 text-white shadow-sm"
+          : "text-slate-700 hover:bg-brand-50 hover:text-brand-950"
       }`}
     >
       <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-xs ${active ? "bg-white/15 text-white" : "bg-slate-100 text-slate-500 group-hover:bg-white"}`} aria-hidden="true">
@@ -167,17 +168,19 @@ export default function DashboardLayout({
   }
 
   return (
-    <div className="safe-page min-h-screen bg-slate-50 text-slate-900">
+    <div className="safe-page min-h-screen brand-page-shell text-slate-900">
       <div className="flex min-h-screen">
-        <aside className="hidden w-72 shrink-0 border-r border-slate-200 bg-white xl:flex xl:flex-col">
-          <div className="border-b border-slate-200 px-6 py-5">
-            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-700">Freight Back Office OS</div>
-            <div className="mt-2 text-lg font-bold text-slate-950">Command Center</div>
-            <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+        <aside className="hidden w-72 shrink-0 border-r border-slate-200/80 bg-white/95 shadow-soft xl:flex xl:flex-col">
+          <div className="border-b border-slate-200 px-5 py-5">
+            <Link href="/dashboard" className="block" aria-label="Adwa Freight OS dashboard">
+              <BrandLogo variant="operatingSystem" tone="light" className="h-11 w-auto" priority />
+            </Link>
+            <div className="mt-4 ops-eyebrow">Command Center</div>
+            <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
               <div className="font-semibold text-slate-900">{session.userEmail ?? "Signed-in user"}</div>
               <div className="mt-1 truncate">Org: {session.organizationId}</div>
             </div>
-            <Link href="/" className="mt-3 inline-flex text-xs font-semibold text-brand-700 hover:text-brand-800">← Back to landing</Link>
+            <Link href="/" className="mt-3 inline-flex text-xs font-bold text-brand-700 hover:text-brand-900">← Back to landing</Link>
           </div>
 
           <div className="flex-1 overflow-y-auto px-3 py-4">
@@ -192,10 +195,10 @@ export default function DashboardLayout({
         </aside>
 
         <div className="flex min-h-screen min-w-0 flex-1 flex-col">
-          <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur">
+          <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/90 backdrop-blur-xl">
             <div className="flex items-center justify-between gap-3 px-4 py-3 sm:px-6">
               <div className="min-w-0">
-                <div className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-700">Operations Workspace</div>
+                <div className="ops-eyebrow">Operations Workspace</div>
                 <p className="mt-1 truncate text-xl font-bold text-slate-950">{pageTitle}</p>
               </div>
 
@@ -217,9 +220,12 @@ export default function DashboardLayout({
               <div id="mobile-workspace-navigation" className="absolute inset-y-0 left-0 flex w-full max-w-sm flex-col bg-white shadow-2xl">
                 <div className="sticky top-0 z-10 border-b border-slate-200 bg-white px-4 py-4">
                   <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <div className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-700">Freight Back Office OS</div>
-                      <div className="mt-1 text-lg font-bold text-slate-950">Navigate workspace</div>
+                    <div className="flex items-center gap-3">
+                      <BrandMark tone="light" className="h-10 w-10" />
+                      <div>
+                        <div className="ops-eyebrow">Adwa Freight OS</div>
+                        <div className="mt-1 text-lg font-bold text-slate-950">Navigate workspace</div>
+                      </div>
                     </div>
                     <button type="button" onClick={() => setMobileNavOpen(false)} className="touch-target rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 focus-visible:ring-2 focus-visible:ring-brand-500">
                       Close

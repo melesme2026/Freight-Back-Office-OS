@@ -4,6 +4,22 @@
 
 :root {
   color-scheme: light;
+  --brand-primary: #10233f;
+  --brand-primary-2: #183a66;
+  --brand-accent: #2f80ed;
+  --brand-route: #31c4b3;
+  --brand-success: #147d64;
+  --brand-warning: #b7791f;
+  --brand-danger: #c2413d;
+  --brand-ink: #111827;
+  --brand-muted: #64748b;
+  --brand-line: #d8e2ee;
+  --brand-canvas: #f6f8fb;
+  --brand-panel: #ffffff;
+  --radius-card: 24px;
+  --radius-control: 14px;
+  --shadow-card: 0 14px 40px rgba(16, 35, 63, 0.10);
+  --shadow-operational: 0 18px 60px rgba(16, 35, 63, 0.14);
 }
 
 html,
@@ -21,8 +37,9 @@ body {
     BlinkMacSystemFont,
     "Segoe UI",
     sans-serif;
-  background: #f8fafc;
-  color: #0f172a;
+  background: var(--brand-canvas);
+  color: var(--brand-ink);
+  text-rendering: optimizeLegibility;
 }
 
 * {
@@ -66,10 +83,102 @@ textarea {
   font: inherit;
 }
 
-::selection {
-  background: #bfdbfe;
-  color: #0f172a;
+button,
+a,
+input,
+select,
+textarea {
+  outline-color: var(--brand-accent);
 }
+
+::selection {
+  background: #cbf7ef;
+  color: #10233f;
+}
+
+@layer base {
+  h1,
+  h2,
+  h3 {
+    letter-spacing: -0.035em;
+  }
+
+  h1 {
+    @apply text-3xl font-extrabold text-slate-950 sm:text-4xl;
+  }
+
+  h2 {
+    @apply text-2xl font-bold text-slate-950;
+  }
+
+  h3 {
+    @apply text-lg font-bold text-slate-950;
+  }
+}
+
+@layer components {
+  .brand-page-shell {
+    @apply bg-ops-canvas bg-brand-radial text-slate-900;
+  }
+
+  .brand-card {
+    @apply rounded-3xl border border-slate-200/80 bg-white shadow-soft;
+  }
+
+  .brand-card-muted {
+    @apply rounded-3xl border border-slate-200 bg-slate-50/80 shadow-soft;
+  }
+
+  .brand-kpi-card {
+    @apply rounded-3xl border border-slate-200 bg-white p-5 shadow-soft transition hover:-translate-y-0.5 hover:shadow-operational;
+  }
+
+  .brand-button-primary {
+    @apply inline-flex min-h-11 items-center justify-center rounded-xl bg-brand-950 px-4 py-2 text-sm font-bold text-white shadow-soft transition hover:bg-brand-900 focus-visible:ring-2 focus-visible:ring-route-300 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60;
+  }
+
+  .brand-button-secondary {
+    @apply inline-flex min-h-11 items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-slate-800 transition hover:border-brand-200 hover:bg-brand-50 focus-visible:ring-2 focus-visible:ring-brand-400 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60;
+  }
+
+  .brand-input {
+    @apply w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-slate-950 shadow-sm transition placeholder:text-slate-400 hover:border-slate-400 focus:border-brand-500 focus:ring-4 focus:ring-brand-100 disabled:bg-slate-100 disabled:text-slate-500;
+  }
+
+  .brand-label {
+    @apply mb-2 block text-xs font-bold uppercase tracking-[0.16em] text-slate-600;
+  }
+
+  .brand-chip {
+    @apply inline-flex items-center rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-bold text-slate-700 shadow-sm;
+  }
+
+  .status-chip-success {
+    @apply border-emerald-200 bg-emerald-50 text-emerald-800;
+  }
+
+  .status-chip-warning {
+    @apply border-amber-200 bg-amber-50 text-amber-900;
+  }
+
+  .status-chip-danger {
+    @apply border-red-200 bg-red-50 text-red-800;
+  }
+
+  .status-chip-info {
+    @apply border-brand-200 bg-brand-50 text-brand-800;
+  }
+
+  .ops-eyebrow {
+    @apply text-xs font-extrabold uppercase tracking-[0.2em] text-brand-700;
+  }
+
+  .ops-grid-panel {
+    @apply bg-ops-grid;
+    background-size: 28px 28px;
+  }
+}
+
 @layer utilities {
   .safe-page {
     max-width: 100%;
@@ -118,6 +227,7 @@ textarea {
   .skeleton {
     position: relative;
     overflow: hidden;
+    background: linear-gradient(90deg, #edf2f7, #f8fafc, #edf2f7);
   }
 
   .skeleton::after {
@@ -125,7 +235,7 @@ textarea {
     inset: 0;
     content: "";
     transform: translateX(-100%);
-    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.65), transparent);
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.72), transparent);
     animation: skeleton-shimmer 1.4s infinite;
   }
 

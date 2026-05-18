@@ -7,6 +7,7 @@ import { ApiClientError, apiClient } from "@/lib/api-client";
 import { clearAuth, getAccessToken, getOrganizationId, getUserRole, setAuthSession } from "@/lib/auth";
 import { isDriverRole, resolvePostLoginRoute } from "@/lib/rbac";
 import { AuthNavigationLinks } from "../(auth)/auth-navigation-links";
+import { BrandLogo } from "@/components/ui/BrandLogo";
 
 type LoginResponse = {
   data?: {
@@ -204,11 +205,13 @@ export default function DriverLoginPage() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-slate-50 px-6">
-      <section className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-8 shadow-soft">
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold tracking-tight text-slate-950">Driver Sign in</h1>
-          <p className="mt-2 text-sm text-slate-600">Access your driver portal workspace.</p>
+    <main className="flex min-h-screen items-center justify-center brand-page-shell px-6 py-10">
+      <section className="w-full max-w-md rounded-[1.75rem] border border-slate-200/90 bg-white/95 p-6 shadow-operational backdrop-blur sm:p-8">
+        <div className="mb-7">
+          <BrandLogo variant="operatingSystem" tone="light" className="mb-7 h-12 w-auto" priority />
+          <p className="ops-eyebrow">Driver Portal</p>
+          <h1 className="mt-3 text-2xl font-extrabold tracking-tight text-slate-950">Driver Sign in</h1>
+          <p className="mt-2 text-sm text-slate-600">Access assigned loads, document uploads, and dispatcher updates.</p>
           <p className="mt-2 text-xs text-slate-500">
             Driver accounts are invite-only. If you were not invited by staff, contact your dispatcher.
           </p>
@@ -216,13 +219,13 @@ export default function DriverLoginPage() {
 
         <form className="space-y-5" onSubmit={handleSubmit} noValidate>
           <div>
-            <label className="mb-2 block text-sm font-medium text-slate-700">Email</label>
-            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm" disabled={isSubmitting} />
+            <label className="brand-label">Email</label>
+            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="brand-input" disabled={isSubmitting} />
           </div>
 
           <div>
-            <label className="mb-2 block text-sm font-medium text-slate-700">Password</label>
-            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm" disabled={isSubmitting} />
+            <label className="brand-label">Password</label>
+            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="brand-input" disabled={isSubmitting} />
           </div>
 
           {sessionNotice && (
@@ -232,7 +235,7 @@ export default function DriverLoginPage() {
                 <button
                   type="button"
                   onClick={handleStaffLogout}
-                  className="rounded-lg bg-amber-600 px-3 py-2 text-xs font-semibold text-white hover:bg-amber-700"
+                  className="rounded-lg bg-amber-700 px-3 py-2 text-xs font-bold text-white hover:bg-amber-800"
                 >
                   Sign out and use Driver Login
                 </button>
@@ -292,7 +295,7 @@ export default function DriverLoginPage() {
             </div>
           )}
 
-          <button type="submit" disabled={isSubmitting} className="w-full rounded-xl bg-brand-600 px-4 py-3 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-60">
+          <button type="submit" disabled={isSubmitting} className="brand-button-primary w-full">
             {isSubmitting ? "Signing in..." : "Sign in"}
           </button>
         </form>

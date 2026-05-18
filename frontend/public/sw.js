@@ -1,5 +1,5 @@
-const CACHE_NAME = "adwa-driver-shell-v1";
-const SHELL_ASSETS = ["/offline.html", "/logo.svg", "/icons/driver-icon.svg"];
+const CACHE_NAME = "adwa-freight-os-shell-v2";
+const SHELL_ASSETS = ["/offline.html", "/logo.svg", "/brand/adwa-mark-light.svg", "/icons/driver-icon.svg"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(SHELL_ASSETS)));

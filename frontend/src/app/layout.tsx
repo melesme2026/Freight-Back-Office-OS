@@ -10,9 +10,14 @@ export const metadata: Metadata = {
     "Freight Back Office OS helps carriers, dispatchers, and billing teams manage billing packets, factoring workflows, invoices, collections visibility, and freight back-office reporting.",
   applicationName: "Freight Back Office OS",
   manifest: "/manifest.webmanifest",
+  icons: {
+    icon: [{ url: "/brand/adwa-mark-light.svg", type: "image/svg+xml" }],
+    shortcut: [{ url: "/brand/adwa-mark-light.svg", type: "image/svg+xml" }],
+    apple: [{ url: "/brand/adwa-mark-light.svg", type: "image/svg+xml" }],
+  },
   appleWebApp: {
     capable: true,
-    title: "ADWA Driver",
+    title: "Adwa Freight OS",
     statusBarStyle: "default",
   },
   keywords: [
@@ -41,7 +46,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#2563eb",
+  themeColor: "#10233f",
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
@@ -54,7 +59,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className="min-h-screen bg-slate-50 text-slate-900 antialiased">
+      <body className="min-h-screen bg-ops-canvas text-slate-900 antialiased">
         <div className="min-h-screen">{children}</div>
       </body>
     </html>

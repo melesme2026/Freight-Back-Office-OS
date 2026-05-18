@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import { clearAuth, getAuthSession, onAuthChanged, type AuthSession } from "@/lib/auth";
 import DriverMobileRuntime from "@/components/driver/DriverMobileRuntime";
 import { canAccessDriverPortal } from "@/lib/rbac";
+import { BrandLogo } from "@/components/ui/BrandLogo";
 
 const DRIVER_NAV = [
   { href: "/driver-portal", label: "Overview", helper: "Next action" },
@@ -86,19 +87,22 @@ export default function DriverPortalLayout({
   }
 
   return (
-    <div className="safe-page min-h-screen bg-slate-50 text-slate-900">
-      <header className="border-b border-slate-200 bg-white">
+    <div className="safe-page min-h-screen brand-page-shell text-slate-900">
+      <header className="border-b border-slate-200/80 bg-white/90 backdrop-blur-xl">
         <div className="mx-auto flex max-w-6xl flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
-          <div>
-            <div className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-700">Driver Portal</div>
-            <div className="mt-1 text-lg font-bold text-slate-950">Operational workspace</div>
-            <div className="text-sm text-slate-500">{session.userEmail ?? "Authenticated user"}</div>
-            <Link
-              href="/"
-              className="mt-1 inline-flex text-xs font-semibold text-brand-700 hover:text-brand-800"
-            >
-              ← Back to landing
-            </Link>
+          <div className="flex items-start gap-4">
+            <BrandLogo variant="operatingSystem" tone="light" lockup="mark" className="mt-1 h-11 w-11 shrink-0" priority />
+            <div>
+              <div className="ops-eyebrow">Driver Portal</div>
+              <div className="mt-1 text-lg font-bold text-slate-950">Operational workspace</div>
+              <div className="text-sm text-slate-500">{session.userEmail ?? "Authenticated user"}</div>
+              <Link
+                href="/"
+                className="mt-1 inline-flex text-xs font-semibold text-brand-700 hover:text-brand-800"
+              >
+                ← Back to landing
+              </Link>
+            </div>
           </div>
           <button
             type="button"
@@ -116,8 +120,8 @@ export default function DriverPortalLayout({
               aria-current={isActive(pathname, item.href) ? "page" : undefined}
               className={`touch-target rounded-2xl px-3 py-2 text-left text-xs font-semibold transition focus-visible:ring-2 focus-visible:ring-brand-500 ${
                 isActive(pathname, item.href)
-                  ? "bg-slate-950 text-white shadow-sm"
-                  : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                  ? "bg-brand-950 text-white shadow-sm"
+                  : "bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-brand-50"
               }`}
             >
               <span className="block whitespace-nowrap">{item.label}</span>
