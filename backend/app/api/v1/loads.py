@@ -2130,10 +2130,35 @@ def download_submission_packet_zip(
     load = service.get_load(str(load_id))
     _authorize_submission_download(item=load, token_payload=token_payload)
 
-    zip_bytes, load_number = SubmissionPacketService(db).build_packet_zip(
-        packet_id=str(packet_id),
-        load_id=str(load_id),
-        org_id=str(load.organization_id),
+    started_at = time.perf_counter()
+    try:
+        zip_bytes, load_number = SubmissionPacketService(db).build_packet_zip(
+            packet_id=str(packet_id),
+            load_id=str(load_id),
+            org_id=str(load.organization_id),
+        )
+    except Exception:
+        logger.exception(
+            "Submission packet download failed",
+            extra={
+                "operation": "packet.download",
+                "organization_id": str(load.organization_id),
+                "load_id": str(load_id),
+                "packet_id": str(packet_id),
+                "status": "failed",
+            },
+        )
+        raise
+    logger.info(
+        "Submission packet download prepared",
+        extra={
+            "operation": "packet.download",
+            "organization_id": str(load.organization_id),
+            "load_id": str(load_id),
+            "packet_id": str(packet_id),
+            "status": "ok",
+            "duration_ms": _elapsed_ms(started_at),
+        },
     )
     return StreamingResponse(
         io.BytesIO(zip_bytes),
@@ -2305,14 +2330,16 @@ def send_submission_packet_email(
     if not bool(send_result.get("accepted")):
         error_message = str(send_result.get("error_message") or "Failed to send packet email.")
         logger.warning(
-            (
-                "Billing packet email failed: organization_id=%s load_id=%s "
-                "recipient=%s attachment_count=%s"
-            ),
-            load.organization_id,
-            load.id,
-            normalized_to_email,
-            attachment_count,
+            "Billing packet email failed",
+            extra={
+                "operation": "packet.send_email",
+                "organization_id": str(load.organization_id),
+                "load_id": str(load.id),
+                "packet_id": str(packet.id),
+                "status": "failed",
+                "attachment_count": attachment_count,
+                "provider": sanitized_result.get("provider"),
+            },
         )
         packet_service._add_event(  # noqa: SLF001
             str(load.organization_id),
@@ -2335,6 +2362,18 @@ def send_submission_packet_email(
             "Packet email could not be sent. Check email configuration and try again."
         )
 
+    logger.info(
+        "Billing packet email accepted",
+        extra={
+            "operation": "packet.send_email",
+            "organization_id": str(load.organization_id),
+            "load_id": str(load.id),
+            "packet_id": str(packet.id),
+            "status": "ok",
+            "attachment_count": attachment_count,
+            "provider": sanitized_result.get("provider"),
+        },
+    )
     provider = str(send_result.get("provider") or "smtp")
     provider_message_id = _normalize_optional_text(
         str(send_result.get("provider_message_id") or "")
@@ -2502,6 +2541,15 @@ def download_load_invoice(
     try:
         pdf_bytes = _generate_and_persist_invoice_pdf(db=db, load=load, force_regenerate=normalized_regenerate)
     except ValidationError as exc:
+        logger.warning(
+            "Invoice generation validation failed",
+            extra={
+                "operation": "invoice.generate",
+                "organization_id": str(load.organization_id),
+                "load_id": str(load.id),
+                "status": "validation_failed",
+            },
+        )
         details = exc.details if isinstance(exc.details, dict) else {}
         if details.get("code") == "carrier_profile_incomplete":
             raise ValidationError(
@@ -2535,10 +2583,18 @@ def download_load_invoice(
     db.commit()
     status = _serialize_invoice_status(db=db, load=load)
     logger.info(
-        "Invoice endpoint timings load_id=%s load_fetch_ms=%s total_ms=%s",
-        load.id,
-        load_fetch_ms,
-        _elapsed_ms(endpoint_started_at),
+        "Invoice download prepared",
+        extra={
+            "operation": "invoice.download" if action == "invoice.downloaded" else "invoice.generate",
+            "organization_id": str(load.organization_id),
+            "load_id": str(load.id),
+            "document_id": str(status.get("invoice_document_id") or "") or None,
+            "status": "ok",
+            "load_fetch_ms": load_fetch_ms,
+            "duration_ms": _elapsed_ms(endpoint_started_at),
+            "regenerate": normalized_regenerate,
+            "reused_existing": before_document is not None and not normalized_regenerate,
+        },
     )
     filename = f"invoice-{load.load_number or load.id}.pdf"
 

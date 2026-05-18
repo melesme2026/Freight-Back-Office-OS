@@ -364,6 +364,120 @@ function asRecord(value: unknown): Record<string, unknown> | null {
   return value as Record<string, unknown>;
 }
 
+const emptyKpis: CommandCenterKpis = {
+  active_loads: 0,
+  loads_missing_docs: 0,
+  loads_ready_for_invoice: 0,
+  loads_ready_to_submit: 0,
+  overdue_invoices: 0,
+  urgent_collections: 0,
+  pending_packet_sends: 0,
+  unresolved_packet_intelligence_blockers: 0,
+  unresolved_validation_issues: 0,
+  stalled_loads: 0,
+  overdue_follow_ups: 0,
+  stale_follow_ups: 0,
+  drivers_missing_profile_items: 0,
+  factoring_reserve_pending: 0,
+  unpaid_total: "0",
+  factoring_reserve_pending_total: "0",
+};
+
+const emptyCommandCenter: CommandCenterData = {
+  generated_at: new Date(0).toISOString(),
+  kpis: emptyKpis,
+  alerts: [],
+  missing_docs: {
+    summary: { total_loads: 0, blocked_from_packet_send: 0, by_document_type: {}, critical_count: 0, warning_count: 0 },
+    items: [],
+  },
+  collections: {
+    summary: { total_unpaid_items: 0, urgent_count: 0, overdue_count: 0, unpaid_total: "0", reserve_pending_total: "0" },
+    items: [],
+  },
+  tasks: { summary: { total: 0, critical: 0, warning: 0, info: 0 }, items: [] },
+  priority_cards: [],
+  recent_activity: [],
+  meta: { load_limit: 0, payment_limit: 0, logic: "fallback", not_implemented: [] },
+};
+
+function asArray<T>(value: unknown): T[] {
+  return Array.isArray(value) ? (value as T[]) : [];
+}
+
+function asNumber(value: unknown, fallback = 0): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function asString(value: unknown, fallback = "0"): string {
+  return typeof value === "string" && value.trim() ? value : fallback;
+}
+
+export function normalizeCommandCenterData(value: unknown): CommandCenterData {
+  const data = asRecord(value) ?? {};
+  const kpis = asRecord(data.kpis) ?? {};
+  const missingDocs = asRecord(data.missing_docs) ?? {};
+  const missingSummary = asRecord(missingDocs.summary) ?? {};
+  const collections = asRecord(data.collections) ?? {};
+  const collectionsSummary = asRecord(collections.summary) ?? {};
+  const tasks = asRecord(data.tasks) ?? {};
+  const tasksSummary = asRecord(tasks.summary) ?? {};
+
+  return {
+    ...emptyCommandCenter,
+    ...data,
+    generated_at: typeof data.generated_at === "string" ? data.generated_at : new Date().toISOString(),
+    kpis: {
+      ...emptyKpis,
+      active_loads: asNumber(kpis.active_loads),
+      loads_missing_docs: asNumber(kpis.loads_missing_docs),
+      loads_ready_for_invoice: asNumber(kpis.loads_ready_for_invoice),
+      loads_ready_to_submit: asNumber(kpis.loads_ready_to_submit),
+      overdue_invoices: asNumber(kpis.overdue_invoices),
+      urgent_collections: asNumber(kpis.urgent_collections),
+      pending_packet_sends: asNumber(kpis.pending_packet_sends),
+      unresolved_packet_intelligence_blockers: asNumber(kpis.unresolved_packet_intelligence_blockers),
+      factoring_reserve_pending: asNumber(kpis.factoring_reserve_pending),
+      unpaid_total: asString(kpis.unpaid_total),
+      factoring_reserve_pending_total: asString(kpis.factoring_reserve_pending_total),
+    },
+    alerts: asArray<CommandCenterAlert>(data.alerts),
+    missing_docs: {
+      summary: {
+        total_loads: asNumber(missingSummary.total_loads),
+        blocked_from_packet_send: asNumber(missingSummary.blocked_from_packet_send),
+        by_document_type: (asRecord(missingSummary.by_document_type) as Record<string, number> | null) ?? {},
+        critical_count: asNumber(missingSummary.critical_count),
+        warning_count: asNumber(missingSummary.warning_count),
+      },
+      items: asArray<MissingDocItem>(missingDocs.items),
+    },
+    collections: {
+      summary: {
+        total_unpaid_items: asNumber(collectionsSummary.total_unpaid_items),
+        urgent_count: asNumber(collectionsSummary.urgent_count),
+        overdue_count: asNumber(collectionsSummary.overdue_count),
+        unpaid_total: asString(collectionsSummary.unpaid_total),
+        reserve_pending_total: asString(collectionsSummary.reserve_pending_total),
+      },
+      items: asArray<CollectionItem>(collections.items),
+    },
+    tasks: {
+      summary: {
+        total: asNumber(tasksSummary.total),
+        critical: asNumber(tasksSummary.critical),
+        warning: asNumber(tasksSummary.warning),
+        info: asNumber(tasksSummary.info),
+      },
+      items: asArray<CommandCenterTask>(tasks.items),
+    },
+    priority_cards: asArray<PriorityCard>(data.priority_cards),
+    recent_activity: asArray<CommandCenterData["recent_activity"][number]>(data.recent_activity),
+    meta: { ...emptyCommandCenter.meta, ...(asRecord(data.meta) ?? {}) } as CommandCenterData["meta"],
+  } as CommandCenterData;
+}
+
 export async function getCommandCenter(): Promise<CommandCenterData> {
   const token = getAccessToken();
   const organizationId = getOrganizationId();
@@ -383,5 +497,5 @@ export async function getCommandCenter(): Promise<CommandCenterData> {
     throw new Error("Command center response did not include usable data.");
   }
 
-  return data as unknown as CommandCenterData;
+  return normalizeCommandCenterData(data);
 }

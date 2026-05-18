@@ -4,6 +4,7 @@ import Link from "next/link";
 import type { Route } from "next";
 import { useEffect, useMemo, useState } from "react";
 
+import { normalizeApiError } from "@/lib/api-client";
 import { getDashboardMetrics, type DashboardMetrics } from "@/lib/dashboard";
 import { getCommandCenter, type CommandCenterData, type Severity } from "@/lib/command-center";
 import { useLoads, type Load } from "@/hooks/useLoads";
@@ -352,7 +353,8 @@ export default function DashboardPage() {
       setMetrics(data);
       setCommandCenter(commandCenterData);
     } catch (error: unknown) {
-      setErrorMessage(error instanceof Error ? error.message : "Couldn’t refresh this panel.");
+      const normalized = normalizeApiError(error, "Couldn’t refresh this panel. Retry or continue using workspace navigation.");
+      setErrorMessage(normalized.requestId ? `${normalized.message} Reference: ${normalized.requestId}` : normalized.message);
     } finally {
       setLoading(false);
     }

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+import time
 from typing import Any
 
 from app.core.dependencies import get_db_session
@@ -15,6 +17,7 @@ GET_CURRENT_TOKEN_PAYLOAD_DEPENDENCY = Depends(get_current_token_payload)
 GET_DB_SESSION_DEPENDENCY = Depends(get_db_session)
 
 router = APIRouter(prefix="/operations")
+logger = logging.getLogger(__name__)
 
 
 def _require_admin(token_payload: dict[str, Any]) -> None:
@@ -51,7 +54,30 @@ def get_dispatcher_command_center(
     if not token_org_id or str(effective_org_id) != token_org_id:
         raise ForbiddenError("organization_id does not match authenticated organization")
 
-    data = DispatcherCommandCenterService(db).get_command_center(org_id=effective_org_id)
+    started_at = time.perf_counter()
+    try:
+        data = DispatcherCommandCenterService(db).get_command_center(org_id=effective_org_id)
+    except Exception:
+        logger.exception(
+            "Command center payload generation failed",
+            extra={
+                "operation": "command_center.generate",
+                "organization_id": effective_org_id,
+                "status": "failed",
+            },
+        )
+        raise
+    logger.info(
+        "Command center payload generated",
+        extra={
+            "operation": "command_center.generate",
+            "organization_id": effective_org_id,
+            "status": "ok",
+            "duration_ms": round((time.perf_counter() - started_at) * 1000, 2),
+            "alert_count": len(data.get("alerts", [])) if isinstance(data, dict) else None,
+            "task_count": len((data.get("tasks", {}) or {}).get("items", [])) if isinstance(data, dict) else None,
+        },
+    )
     return ApiResponse(data=data, meta={"organization_id": effective_org_id}, error=None)
 
 

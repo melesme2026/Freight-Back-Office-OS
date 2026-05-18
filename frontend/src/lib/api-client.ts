@@ -18,6 +18,7 @@ export class ApiClientError extends Error {
   status: number;
   code?: string;
   details?: Record<string, unknown>;
+  requestId?: string;
 
   constructor(
     message: string,
@@ -25,6 +26,7 @@ export class ApiClientError extends Error {
       status: number;
       code?: string;
       details?: Record<string, unknown>;
+      requestId?: string;
     }
   ) {
     super(message);
@@ -32,7 +34,58 @@ export class ApiClientError extends Error {
     this.status = options.status;
     this.code = options.code;
     this.details = options.details;
+    this.requestId = options.requestId;
   }
+}
+
+export type NormalizedApiError = {
+  message: string;
+  status?: number;
+  code?: string;
+  requestId?: string;
+  retryable: boolean;
+};
+
+function userSafeStatusMessage(status: number): string {
+  if (status === 401) return "Your session expired. Sign in again and retry.";
+  if (status === 403) return "You do not have permission to complete this action.";
+  if (status === 404) return "We could not find that record. Refresh and try again.";
+  if (status === 409) return "This action conflicts with the latest saved state. Refresh and try again.";
+  if (status === 413) return "That file is too large. Choose a smaller file and try again.";
+  if (status === 415) return "That file type is not supported. Upload a PDF or supported image.";
+  if (status === 422) return "Some information needs attention before this can continue.";
+  if (status === 429) return "This area is busy. Wait a moment, then retry.";
+  if ([502, 503, 504].includes(status)) return "The service is temporarily unavailable. Retry in a moment.";
+  if (status >= 500) return "Something went wrong on our side. Retry, and contact support if it continues.";
+  return "We could not complete the request. Please try again.";
+}
+
+export function normalizeApiError(error: unknown, fallback = "We could not complete the request. Please try again."): NormalizedApiError {
+  if (error instanceof ApiClientError) {
+    const detailsRequestId = typeof error.details?.request_id === "string" ? error.details.request_id : undefined;
+    const message = error.message && error.message !== "HTTP error" ? error.message : userSafeStatusMessage(error.status);
+    return {
+      message: message || fallback,
+      status: error.status,
+      code: error.code,
+      requestId: error.requestId ?? detailsRequestId,
+      retryable: error.status === 408 || error.status === 409 || error.status === 429 || error.status >= 500 || error.code === "client_timeout",
+    };
+  }
+
+  if (error instanceof DOMException && error.name === "AbortError") {
+    return { message: "The request was interrupted. Check your connection and retry.", code: "client_aborted", retryable: true };
+  }
+
+  if (error instanceof TypeError) {
+    return { message: "Network connection failed. Check your connection and retry.", code: "network_error", retryable: true };
+  }
+
+  if (error instanceof Error && error.message.trim()) {
+    return { message: error.message, retryable: false };
+  }
+
+  return { message: fallback, retryable: false };
 }
 
 const inFlightGetRequests = new Map<string, Promise<unknown>>();
@@ -212,6 +265,7 @@ async function parseResponseBody<T>(
 }
 
 async function buildError(response: Response): Promise<ApiClientError> {
+  const responseRequestId = response.headers.get("x-request-id") ?? undefined;
   const fallbackMessage = response.status === 403 ? "You do not have permission to access this page or resource." : "We could not complete the request. Please try again.";
 
   try {
@@ -223,12 +277,16 @@ async function buildError(response: Response): Promise<ApiClientError> {
         organizations?: Array<Record<string, unknown>>;
         detail?: string | Array<unknown> | Record<string, unknown>;
         message?: string;
+        meta?: { request_id?: string };
       }>(response)) as {
         error?: { code?: string; message?: string; details?: Record<string, unknown> };
         organizations?: Array<Record<string, unknown>>;
         detail?: string | Array<unknown> | Record<string, unknown>;
         message?: string;
+        meta?: { request_id?: string };
       };
+      const bodyRequestId = typeof errorBody?.meta?.request_id === "string" ? errorBody.meta.request_id : undefined;
+      const requestId = responseRequestId ?? bodyRequestId;
 
       if (typeof errorBody?.error === "string" && typeof errorBody?.message === "string") {
         return new ApiClientError(errorBody.message, {
@@ -237,6 +295,7 @@ async function buildError(response: Response): Promise<ApiClientError> {
           details: Array.isArray(errorBody.organizations)
             ? { organizations: errorBody.organizations }
             : undefined,
+          requestId,
         });
       }
 
@@ -245,11 +304,12 @@ async function buildError(response: Response): Promise<ApiClientError> {
           status: response.status,
           code: errorBody.error.code,
           details: errorBody.error.details,
+          requestId,
         });
       }
 
       if (typeof errorBody?.detail === "string") {
-        return new ApiClientError(errorBody.detail, { status: response.status });
+        return new ApiClientError(errorBody.detail, { status: response.status, requestId });
       }
 
       if (errorBody?.detail !== undefined) {
@@ -261,25 +321,26 @@ async function buildError(response: Response): Promise<ApiClientError> {
             status: response.status,
             code,
             details: detail,
+            requestId,
           });
         }
 
-        return new ApiClientError(fallbackMessage, { status: response.status });
+        return new ApiClientError(fallbackMessage, { status: response.status, requestId });
       }
 
       if (typeof errorBody?.message === "string" && errorBody.message.trim().length > 0) {
-        return new ApiClientError(errorBody.message, { status: response.status });
+        return new ApiClientError(errorBody.message, { status: response.status, requestId });
       }
-      return new ApiClientError(fallbackMessage, { status: response.status });
+      return new ApiClientError(fallbackMessage, { status: response.status, requestId });
     }
 
     const text = await response.text();
     if (text.trim().length > 0 && !isHtmlErrorText(text)) {
-      return new ApiClientError(text, { status: response.status });
+      return new ApiClientError(text, { status: response.status, requestId: responseRequestId });
     }
-    return new ApiClientError(fallbackMessage, { status: response.status });
+    return new ApiClientError(fallbackMessage, { status: response.status, requestId: responseRequestId });
   } catch {
-    return new ApiClientError(fallbackMessage, { status: response.status });
+    return new ApiClientError(fallbackMessage, { status: response.status, requestId: responseRequestId });
   }
 }
 
