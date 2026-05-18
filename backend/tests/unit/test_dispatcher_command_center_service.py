@@ -25,7 +25,10 @@ from app.domain.models.load_document import LoadDocument
 from app.domain.models.submission_packet import SubmissionPacket
 from app.domain.models.validation_issue import ValidationIssue
 from app.services.loads.load_service import LoadService
-from app.services.operations.command_center_service import DispatcherCommandCenterService
+from app.services.operations.command_center_service import (
+    COMMAND_CENTER_LOAD_LIMIT,
+    DispatcherCommandCenterService,
+)
 from app.services.payments.payment_reconciliation_service import PaymentReconciliationService
 
 ORG_ID = "00000000-0000-0000-0000-000000043001"
@@ -130,7 +133,7 @@ def _add_follow_up(
     priority: FollowUpTaskPriority = FollowUpTaskPriority.NORMAL,
 ) -> FollowUpTask:
     task = FollowUpTask(
-        organization_id=ORG_ID,
+        organization_id=load.organization_id,
         load_id=load.id,
         task_type=FollowUpTaskType.PACKET_FOLLOW_UP,
         status=status,
@@ -474,6 +477,66 @@ def test_command_center_future_snoozed_follow_up_is_not_urgent_or_active(db_sess
     db_session.refresh(task)
     stored_due_at = task.due_at if task.due_at.tzinfo else task.due_at.replace(tzinfo=timezone.utc)
     assert stored_due_at == original_due_at
+
+
+def test_command_center_expired_snoozed_follow_up_is_limited_by_effective_due_at(db_session):
+    _seed_parties(db_session)
+    load = _make_load(db_session, load_number="OPS-SNOOZE-LIMIT", delivery_days_ago=1)
+    now = datetime.now(timezone.utc)
+
+    _add_follow_up(
+        db_session,
+        load,
+        title="Open overdue follow-up survives limit",
+        status=FollowUpTaskStatus.OPEN,
+        due_at=now - timedelta(days=2),
+    )
+    expired_snoozed = _add_follow_up(
+        db_session,
+        load,
+        title="Expired snoozed follow-up survives limit",
+        status=FollowUpTaskStatus.SNOOZED,
+        due_at=now + timedelta(days=365),
+        snoozed_until=now - timedelta(days=1),
+    )
+    _add_follow_up(
+        db_session,
+        load,
+        title="Future snoozed follow-up remains hidden",
+        status=FollowUpTaskStatus.SNOOZED,
+        due_at=now - timedelta(days=30),
+        snoozed_until=now + timedelta(days=1),
+    )
+    for index in range(COMMAND_CENTER_LOAD_LIMIT):
+        _add_follow_up(
+            db_session,
+            load,
+            title=f"Lower priority open follow-up {index:03d}",
+            status=FollowUpTaskStatus.OPEN,
+            due_at=now + timedelta(days=1, minutes=index),
+        )
+
+    data = DispatcherCommandCenterService(db_session).get_command_center(org_id=ORG_ID)
+    intelligence = data["operational_intelligence"]
+    follow_up_titles = {item["title"] for item in intelligence["follow_ups"]["items"]}
+    attention_titles = {item["title"] for item in intelligence["needs_attention"]}
+
+    assert "Expired snoozed follow-up survives limit" in follow_up_titles
+    assert "Expired snoozed follow-up survives limit" in attention_titles
+    assert "Open overdue follow-up survives limit" in follow_up_titles
+    assert "Open overdue follow-up survives limit" in attention_titles
+    assert "Future snoozed follow-up remains hidden" not in follow_up_titles
+    assert "Future snoozed follow-up remains hidden" not in attention_titles
+
+    expired_item = next(
+        item
+        for item in intelligence["follow_ups"]["items"]
+        if item["title"] == "Expired snoozed follow-up survives limit"
+    )
+    assert expired_item["status"] == "snoozed"
+    assert expired_item["urgency"] == "overdue"
+    assert expired_item["due_at"].startswith(expired_snoozed.snoozed_until.date().isoformat())
+    assert data["kpis"]["overdue_follow_ups"] >= 2
 
 
 def test_command_center_expired_snoozed_follow_up_uses_snoozed_until_for_urgency(db_session):
