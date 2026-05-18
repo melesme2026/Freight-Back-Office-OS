@@ -15,6 +15,7 @@ from app.services.validation.rules.missing_signature import MissingSignatureRule
 from app.services.validation.rules.unreadable_document import UnreadableDocumentRule
 from app.services.validation.validation_engine import ValidationEngine
 from app.services.validation.validation_issue_generator import ValidationIssueGenerator
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 
@@ -53,6 +54,20 @@ class ValidationOrchestrator:
         now = datetime.now(timezone.utc)
 
         canonical_rule_codes = {issue.rule_code for issue in canonical_issues}
+        result_rule_codes = [str(item["rule_code"]) for item in results]
+        if result_rule_codes:
+            canonical_rule_codes.update(
+                self.db.scalars(
+                    select(ValidationIssue.rule_code).where(
+                        ValidationIssue.organization_id == organization_id,
+                        ValidationIssue.load_id == load_id,
+                        ValidationIssue.document_id == document_id,
+                        ValidationIssue.is_resolved.is_(False),
+                        ValidationIssue.rule_code.in_(result_rule_codes),
+                    )
+                ).all()
+            )
+
         for item in results:
             if item["rule_code"] in canonical_rule_codes:
                 continue

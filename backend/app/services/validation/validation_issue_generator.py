@@ -191,13 +191,13 @@ class ValidationIssueGenerator:
                 )
             )
 
-        confidence = self._as_float(
-            payload.get("extraction_confidence")
-            or payload.get("classification_confidence")
+        confidence = self._first_float(
+            payload.get("extraction_confidence"),
+            payload.get("classification_confidence"),
         )
-        threshold = (
-            self._as_float(payload.get("confidence_threshold"))
-            or LOW_CONFIDENCE_THRESHOLD
+        threshold = self._first_float(
+            payload.get("confidence_threshold"),
+            LOW_CONFIDENCE_THRESHOLD,
         )
         if confidence is not None and confidence < threshold:
             issues.append(
@@ -292,3 +292,13 @@ class ValidationIssueGenerator:
             return float(value)
         except (TypeError, ValueError):
             return None
+
+    @classmethod
+    def _first_float(cls, *values: Any) -> float | None:
+        for value in values:
+            if value is None:
+                continue
+            converted = cls._as_float(value)
+            if converted is not None:
+                return converted
+        return None
