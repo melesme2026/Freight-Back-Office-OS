@@ -34,11 +34,12 @@ class ValidationError(AppError):
         message: str = "Validation failed",
         *,
         details: Mapping[str, Any] | None = None,
+        status_code: int = status.HTTP_422_UNPROCESSABLE_ENTITY,
     ) -> None:
         super().__init__(
             message,
             code="validation_error",
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status_code,
             details=details,
         )
 

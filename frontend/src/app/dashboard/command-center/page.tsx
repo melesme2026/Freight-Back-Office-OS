@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import type { Route } from "next";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { AppShell } from "@/components/layout/AppShell";
+import { normalizeApiError } from "@/lib/api-client";
 import { getCommandCenter, type CollectionItem, type CommandCenterAlert, type CommandCenterData, type CommandCenterTask, type MissingDocItem, type Severity } from "@/lib/command-center";
 
 function formatCurrency(value: string | number | null | undefined): string {
@@ -196,30 +197,46 @@ function TaskCenter({ tasks }: { tasks: CommandCenterTask[] }) {
 export default function CommandCenterPage() {
   const [data, setData] = useState<CommandCenterData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{ message: string; requestId?: string; retryable: boolean } | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const response = await getCommandCenter();
+      setData(response);
+    } catch (err: unknown) {
+      const normalized = normalizeApiError(err, "Command center is temporarily unavailable. Retry or use the load, billing, and document workspaces directly.");
+      setError({ message: normalized.message, requestId: normalized.requestId, retryable: normalized.retryable });
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    let active = true;
-    async function load() {
-      try {
-        setLoading(true);
-        setError(null);
-        const response = await getCommandCenter();
-        if (active) setData(response);
-      } catch (err: unknown) {
-        if (active) setError(err instanceof Error ? err.message : "Failed to load command center.");
-      } finally {
-        if (active) setLoading(false);
-      }
-    }
     void load();
-    return () => { active = false; };
-  }, []);
+  }, [load]);
 
   return (
     <AppShell title="Dispatcher Command Center" subtitle="Prioritized freight operations workspace for missing docs, blocked packets, urgent collections, factoring reserves, and daily dispatcher tasks.">
       {loading ? <div className="rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-500">Loading command center…</div> : null}
-      {error ? <div className="rounded-2xl border border-rose-200 bg-rose-50 p-6 text-sm text-rose-700">{error}</div> : null}
+      {error ? (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-6 text-sm text-amber-800">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <p className="font-semibold">Command center is unavailable right now.</p>
+              <p className="mt-1">{error.message}</p>
+              {error.requestId ? <p className="mt-2 text-xs text-amber-700">Support reference: {error.requestId}</p> : null}
+            </div>
+            <button type="button" onClick={() => void load()} className="touch-target rounded-xl bg-amber-600 px-4 py-2 text-sm font-semibold text-white">Retry</button>
+          </div>
+          <div className="mt-4 grid gap-2 sm:grid-cols-3">
+            <Link href="/dashboard/loads" className="rounded-xl bg-white px-4 py-3 font-semibold text-slate-800 ring-1 ring-amber-100">Open loads</Link>
+            <Link href="/dashboard/documents" className="rounded-xl bg-white px-4 py-3 font-semibold text-slate-800 ring-1 ring-amber-100">Open documents</Link>
+            <Link href="/dashboard/billing" className="rounded-xl bg-white px-4 py-3 font-semibold text-slate-800 ring-1 ring-amber-100">Open billing</Link>
+          </div>
+        </div>
+      ) : null}
       {data ? (
         <div className="space-y-6">
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
