@@ -9,7 +9,7 @@ export type DownloadOptions = {
 
 export function friendlyDownloadError(error: unknown, fallback: string): string {
   if (error instanceof ApiClientError && error.code === "client_timeout") {
-    return "Download is taking longer than expected. Check your connection and try again.";
+    return "Download is taking longer than expected. Check your connection, then try again or refresh the page.";
   }
   return error instanceof Error && error.message ? error.message : fallback;
 }

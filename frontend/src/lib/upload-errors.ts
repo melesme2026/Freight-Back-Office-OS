@@ -52,7 +52,7 @@ export function parseUploadErrorText(
     return {
       duplicate: true,
       code: duplicateDetail.code,
-      message: cleanMessage(duplicateDetail.message) ?? "A required document already exists for this load.",
+      message: cleanMessage(duplicateDetail.message) ?? "This required document is already on file for the load. Choose Replace if you want to update it.",
     };
   }
 

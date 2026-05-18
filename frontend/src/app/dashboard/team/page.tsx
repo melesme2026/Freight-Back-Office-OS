@@ -6,6 +6,7 @@ import { apiClient } from "@/lib/api-client";
 import { ApiClientError } from "@/lib/api-client";
 import { getAccessToken, getOrganizationId, getUserRole } from "@/lib/auth";
 import { copyTextWithFallback } from "@/lib/clipboard";
+import { EMAIL_DISABLED_INVITE_MESSAGE, SESSION_REQUIRED_MESSAGE, actionCompleted, actionFailed, inviteReady } from "@/lib/notification-copy";
 import { canManageTeam, canModifyTeamMember } from "@/lib/rbac";
 
 type StaffMember = {
@@ -87,7 +88,7 @@ export default function TeamPage() {
 
   async function loadStaff() {
     if (!token || !organizationId) {
-      setErrorMessage("Missing session context. Please sign in again.");
+      setErrorMessage(SESSION_REQUIRED_MESSAGE);
       setIsLoading(false);
       return;
     }
@@ -107,7 +108,7 @@ export default function TeamPage() {
       setStaffMembers(members);
       setErrorMessage(null);
     } catch (error: unknown) {
-      setErrorMessage(error instanceof Error ? error.message : "Unable to load team members.");
+      setErrorMessage(error instanceof Error ? error.message : actionFailed("Team members could not be loaded.", "Refresh the team page and try again."));
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
@@ -139,11 +140,11 @@ export default function TeamPage() {
   async function handleInviteStaff(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!token || !organizationId) {
-      setErrorMessage("Missing session context. Please sign in again.");
+      setErrorMessage(SESSION_REQUIRED_MESSAGE);
       return;
     }
     if (!inviteName.trim() || !inviteEmail.trim()) {
-      setInviteStatus("Full name and email are required.");
+      setInviteStatus("Enter the team member’s full name and email before sending an invite.");
       return;
     }
 
@@ -164,13 +165,17 @@ export default function TeamPage() {
 
       const message = payload?.data?.message?.trim();
       const emailStatus = payload?.data?.email_status?.trim();
-      setInviteStatus(message ?? `Invite processed. Email status: ${emailStatus ?? "unknown"}.`);
+      setInviteStatus(
+        emailStatus === "disabled"
+          ? EMAIL_DISABLED_INVITE_MESSAGE
+          : message ?? inviteReady(inviteEmail.trim().toLowerCase()),
+      );
       setActivationUrl(payload?.data?.activation_url?.trim() || null);
       setInviteName("");
       setInviteEmail("");
       await loadStaff();
     } catch (error: unknown) {
-      setInviteStatus(toFriendlyError(error, "Unable to send invite."));
+      setInviteStatus(toFriendlyError(error, actionFailed("Staff invite could not be sent.", "Check the email address and try again.")));
     } finally {
       setIsInviting(false);
     }
@@ -180,10 +185,10 @@ export default function TeamPage() {
     if (!activationUrl) return;
     const copied = await copyTextWithFallback(activationUrl);
     if (copied) {
-      setInviteStatus("Activation link copied. Share it directly with the invited team member.");
+      setInviteStatus(actionCompleted("Activation link copied.", "Share it directly with the invited team member."));
       return;
     }
-    setInviteStatus("Copy failed — select and copy the link manually.");
+    setInviteStatus(actionFailed("Activation link could not be copied.", "Select the link and copy it manually."));
   }
 
   async function handleRoleChange(member: StaffMember, role: string) {
@@ -194,7 +199,7 @@ export default function TeamPage() {
       setIsRefreshing(true);
       await loadStaff();
     } catch (error: unknown) {
-      setErrorMessage(toFriendlyError(error, "Unable to update role."));
+      setErrorMessage(toFriendlyError(error, actionFailed("Team role could not be updated.", "Refresh the team page and try again.")));
     } finally {
       setUpdatingMemberId(null);
     }
@@ -213,7 +218,7 @@ export default function TeamPage() {
       await loadStaff();
       setErrorMessage(null);
     } catch (error: unknown) {
-      setErrorMessage(toFriendlyError(error, "Unable to update user status."));
+      setErrorMessage(toFriendlyError(error, actionFailed("Team member status could not be updated.", "Refresh the team page and try again.")));
     } finally {
       setUpdatingMemberId(null);
     }
@@ -234,9 +239,9 @@ export default function TeamPage() {
         { token, organizationId }
       );
       setActivationUrl(payload?.data?.activation_url?.trim() || null);
-      setInviteStatus("Invite link regenerated.");
+      setInviteStatus(actionCompleted("Invite link regenerated.", "Copy the activation link if workspace email delivery is not configured."));
     } catch (error: unknown) {
-      setErrorMessage(toFriendlyError(error, "Unable to regenerate invite."));
+      setErrorMessage(toFriendlyError(error, actionFailed("Invite link could not be regenerated.", "Check the team member and try again.")));
     } finally {
       setUpdatingMemberId(null);
     }
@@ -255,7 +260,7 @@ export default function TeamPage() {
       await loadStaff();
       setErrorMessage(null);
     } catch (error: unknown) {
-      setErrorMessage(toFriendlyError(error, "Unable to remove staff member."));
+      setErrorMessage(toFriendlyError(error, actionFailed("Staff member could not be removed.", "Refresh the team page and try again.")));
     } finally {
       setDeletingMemberId(null);
       setRemoveCandidate(null);
@@ -280,7 +285,7 @@ export default function TeamPage() {
         <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-soft">
           <h2 className="text-lg font-semibold text-slate-950">Invite staff member</h2>
           <p className="mt-1 text-sm text-slate-600">
-            Choose a role and send activation access. If email is disabled, copy the activation link and send it manually.
+            Choose a role and send activation access. If workspace email delivery is not configured, copy the activation link and share it directly with the authorized staff member.
           </p>
 
           <form onSubmit={(event) => void handleInviteStaff(event)} className="mt-4 grid gap-4 md:grid-cols-2">
@@ -316,7 +321,7 @@ export default function TeamPage() {
               disabled={isInviting}
               className="rounded-xl bg-brand-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:opacity-60"
             >
-              {isInviting ? "Sending invite..." : "Invite staff"}
+              {isInviting ? "Preparing invite..." : "Invite staff"}
             </button>
           </form>
 

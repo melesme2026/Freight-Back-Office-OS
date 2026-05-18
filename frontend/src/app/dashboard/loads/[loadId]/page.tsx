@@ -16,6 +16,19 @@ import { parseUploadErrorResponse } from "@/lib/upload-errors";
 import { getAccessToken, getOrganizationId } from "@/lib/auth";
 import { buildApiUrl as buildConfiguredApiUrl } from "@/lib/config";
 import { downloadBlobFromApi, friendlyDownloadError, saveBlob } from "@/lib/download";
+import {
+  SESSION_REQUIRED_MESSAGE,
+  actionCompleted,
+  actionFailed,
+  actionInProgress,
+  documentDeleted,
+  documentDeleteVerifying,
+  documentDeleteVerificationFailed,
+  documentUploaded,
+  documentUploadVerifying,
+  documentUploadVerificationFailed,
+  emailSendFailed,
+} from "@/lib/notification-copy";
 
 type LoadStatus =
   | "booked"
@@ -1810,9 +1823,9 @@ export default function LoadDetailPage() {
       setSubmissionPackets(await fetchSubmissionPackets());
       setPacketAudit(await fetchPacketAudit());
       setLoad(await fetchLoad());
-      setActionMessage("Billing packet created.");
+      setActionMessage(actionCompleted("Billing packet created.", "Review the packet audit before sending it."));
     } catch (caught: unknown) {
-      setError(extractErrorMessage(caught, "Failed to create billing packet."));
+      setError(extractErrorMessage(caught, actionFailed("Billing packet could not be created.", "Review packet readiness and try again.")));
     } finally {
       setIsSubmissionBusy(false);
     }
@@ -1836,12 +1849,12 @@ export default function LoadDetailPage() {
       setSubmissionPackets(await fetchSubmissionPackets());
       setPacketAudit(await fetchPacketAudit());
       setLoad(await fetchLoad());
-      setActionMessage("Submission evidence updated.");
+      setActionMessage(actionCompleted("Submission evidence updated.", "Packet history now reflects the latest status."));
     } catch (caught: unknown) {
       setError(
         extractErrorMessage(
           caught,
-          "Failed to update packet submission status.",
+          actionFailed("Packet submission status could not be updated.", "Refresh the load and try again."),
         ),
       );
     } finally {
@@ -1864,9 +1877,9 @@ export default function LoadDetailPage() {
           organizationId: getOrganizationId() ?? undefined,
         },
       );
-      setActionMessage("Packet ZIP downloaded.");
+      setActionMessage(actionCompleted("Packet ZIP downloaded.", "Send it manually if email delivery is unavailable."));
     } catch (caught: unknown) {
-      setError(friendlyDownloadError(caught, "Failed to download packet ZIP."));
+      setError(friendlyDownloadError(caught, actionFailed("Packet ZIP could not be downloaded.", "Refresh the packet and try again.")));
     } finally {
       setDownloadingPacketId(null);
     }
@@ -1906,10 +1919,10 @@ export default function LoadDetailPage() {
 
     try {
       await navigator.clipboard.writeText(`Subject: ${subject}\n\n${body}`);
-      setActionMessage("Email copied to clipboard");
+      setActionMessage(actionCompleted("Submission email copied to clipboard.", "Paste it into your mail client and attach the packet ZIP."));
       setError(null);
     } catch {
-      setError("Unable to copy email. Please copy manually.");
+      setError(actionFailed("Submission email could not be copied.", "Select the template text and copy it manually."));
     }
   }
 
@@ -1977,7 +1990,7 @@ export default function LoadDetailPage() {
                   {
                     id: `local-packet-email-sent-${packetId}-${loggedAt}`,
                     event_type: "packet_email_sent",
-                    message: "Packet email sent and logged",
+                    message: "Packet email sent and logged.",
                     created_at: loggedAt,
                     recipient: recipientEmail,
                   },
@@ -1986,7 +1999,7 @@ export default function LoadDetailPage() {
               },
         ),
       );
-      setPacketEmailConfirmation("Packet email sent and logged");
+      setPacketEmailConfirmation("Packet email sent and logged.");
       setModalState({ kind: "none" });
       setModalError(null);
       setError(null);
@@ -2010,11 +2023,11 @@ export default function LoadDetailPage() {
     } catch (caught: unknown) {
       const message = extractErrorMessage(
         caught,
-        "Packet email could not be sent. Check email configuration and try again.",
+        emailSendFailed(),
       );
       setModalError(
-        message.toLowerCase().includes("smtp")
-          ? "Packet email could not be sent. Check email configuration and try again."
+        message.toLowerCase().includes("smtp") || message.toLowerCase().includes("email")
+          ? emailSendFailed()
           : message,
       );
     } finally {
@@ -2044,10 +2057,10 @@ export default function LoadDetailPage() {
               { token: token ?? undefined },
             );
       setPaymentRecord(normalizePaymentReconciliation(response.data));
-      setActionMessage("Payment reconciliation updated.");
+      setActionMessage(actionCompleted("Payment reconciliation updated.", "Review balances and follow-ups for any remaining attention items."));
     } catch (caught: unknown) {
       setError(
-        extractErrorMessage(caught, "Failed to update payment reconciliation."),
+        extractErrorMessage(caught, actionFailed("Payment reconciliation could not be updated.", "Check the payment details and try again.")),
       );
     } finally {
       setIsSavingPayment(false);
@@ -2065,10 +2078,10 @@ export default function LoadDetailPage() {
         { token: token ?? undefined },
       );
       setFollowUpTasks(await fetchFollowUpTasks());
-      setActionMessage("Follow-up reminders refreshed.");
+      setActionMessage(actionCompleted("Follow-up reminders refreshed.", "Open tasks now reflect the latest packet and payment status."));
     } catch (caught: unknown) {
       setError(
-        extractErrorMessage(caught, "Failed to generate follow-up reminders."),
+        extractErrorMessage(caught, actionFailed("Follow-up reminders could not be refreshed.", "Refresh the load and try again.")),
       );
     } finally {
       setIsSavingFollowUpTask(false);
@@ -2099,10 +2112,10 @@ export default function LoadDetailPage() {
         );
       }
       setFollowUpTasks(await fetchFollowUpTasks());
-      setActionMessage("Follow-up updated.");
+      setActionMessage(actionCompleted("Follow-up updated.", "The task list now reflects your change."));
       setModalState({ kind: "none" });
     } catch (caught: unknown) {
-      setError(extractErrorMessage(caught, "Failed to update follow-up task."));
+      setError(extractErrorMessage(caught, actionFailed("Follow-up task could not be updated.", "Review the task fields and try again.")));
     } finally {
       setIsSavingFollowUpTask(false);
     }
@@ -2264,7 +2277,7 @@ export default function LoadDetailPage() {
 
     const staffUserId = extractStaffUserId(response.data);
     if (!staffUserId) {
-      throw new Error("Unable to determine current staff user ID.");
+      throw new Error("Your staff session could not be verified. Please sign in again.");
     }
 
     return staffUserId;
@@ -2276,7 +2289,7 @@ export default function LoadDetailPage() {
       setReviewQueueItem(null);
       setLoadDocuments([]);
       setInvoiceStatus(null);
-      setError("Invalid load identifier.");
+      setError("We could not open this load. Return to Loads and try again.");
       setIsLoading(false);
       return;
     }
@@ -2456,7 +2469,7 @@ export default function LoadDetailPage() {
       );
     } catch (caught: unknown) {
       if (!isClientAbortError(caught)) {
-        setError(extractErrorMessage(caught, "Failed to fetch load."));
+        setError(extractErrorMessage(caught, actionFailed("Load details could not be loaded.", "Return to Loads or refresh this page.")));
       }
     } finally {
       setIsLoading(false);
@@ -3017,9 +3030,9 @@ export default function LoadDetailPage() {
   async function copyTemplate(value: string) {
     try {
       await navigator.clipboard.writeText(value);
-      setActionMessage("Template copied to clipboard.");
+      setActionMessage(actionCompleted("Follow-up template copied to clipboard.", "Paste it into your email or notes before sending."));
     } catch {
-      setError("Unable to copy template. Please copy manually.");
+      setError(actionFailed("Follow-up template could not be copied.", "Select the template text and copy it manually."));
     }
   }
 
@@ -3042,10 +3055,10 @@ export default function LoadDetailPage() {
         { token: token ?? undefined },
       );
       await fetchPageData();
-      setActionMessage("Follow-up details updated.");
+      setActionMessage(actionCompleted("Follow-up details updated.", "The needs-attention queue now reflects your changes."));
     } catch (caught: unknown) {
       setError(
-        extractErrorMessage(caught, "Failed to save follow-up details."),
+        extractErrorMessage(caught, actionFailed("Follow-up details could not be saved.", "Check the follow-up date and owner, then try again.")),
       );
     } finally {
       setIsSavingFollowUp(false);
@@ -3068,9 +3081,9 @@ export default function LoadDetailPage() {
         { token: token ?? undefined },
       );
       await fetchPageData();
-      setActionMessage("Contact logged. Last contacted timestamp refreshed.");
+      setActionMessage(actionCompleted("Contact logged.", "The last-contacted time has been refreshed."));
     } catch (caught: unknown) {
-      setError(extractErrorMessage(caught, "Failed to log contact."));
+      setError(extractErrorMessage(caught, actionFailed("Contact could not be logged.", "Refresh the load and try again.")));
     } finally {
       setIsSavingFollowUp(false);
     }
@@ -3108,7 +3121,7 @@ export default function LoadDetailPage() {
 
       setActionMessage(message);
     } catch (caught: unknown) {
-      setError(extractErrorMessage(caught, "Failed to mark load reviewed."));
+      setError(extractErrorMessage(caught, actionFailed("Load review could not be saved.", "Refresh the load and try again.")));
     } finally {
       setIsMarkingReviewed(false);
     }
@@ -3151,7 +3164,7 @@ export default function LoadDetailPage() {
         `Status updated to ${resolvedStatus.replaceAll("_", " ")}.`,
       );
     } catch (caught: unknown) {
-      setError(extractErrorMessage(caught, "Failed to advance status."));
+      setError(extractErrorMessage(caught, actionFailed("Load status could not be advanced.", "Review workflow requirements and try again.")));
     } finally {
       setIsAdvancing(false);
       endWriteAction();
@@ -3194,7 +3207,7 @@ export default function LoadDetailPage() {
         `Status updated to ${resolvedStatus.replaceAll("_", " ")}.`,
       );
     } catch (caught: unknown) {
-      setError(extractErrorMessage(caught, "Failed to set status."));
+      setError(extractErrorMessage(caught, actionFailed("Load status could not be updated.", "Review the selected status and try again.")));
     } finally {
       setIsSettingStatus(false);
       endWriteAction();
@@ -3238,7 +3251,7 @@ export default function LoadDetailPage() {
       );
     } catch (caught: unknown) {
       setError(
-        extractErrorMessage(caught, "Failed to execute workflow action."),
+        extractErrorMessage(caught, actionFailed("Workflow action could not be completed.", "Review packet readiness and try again.")),
       );
     } finally {
       setIsExecutingWorkflowAction(false);
@@ -3381,7 +3394,7 @@ export default function LoadDetailPage() {
           return;
         }
       }
-      setError(friendlyDownloadError(caught, "Failed to generate invoice."));
+      setError(friendlyDownloadError(caught, actionFailed("Invoice could not be prepared.", "Complete required carrier details or refresh the load and try again.")));
     } finally {
       setIsGeneratingInvoice(false);
       setInvoiceDownloading(false);
@@ -3422,19 +3435,19 @@ export default function LoadDetailPage() {
     }
 
     if (!load?.id) {
-      setError("Load is required before uploading documents.");
+      setError("Open a saved load before uploading documents.");
       return;
     }
 
     const organizationId = getOrganizationId();
     if (!organizationId) {
-      setError("Organization context is missing. Please sign in again.");
+      setError(SESSION_REQUIRED_MESSAGE);
       return;
     }
 
     if (!load.customer_account_id) {
       setError(
-        "Customer account is missing for this load. Cannot upload document.",
+        "A customer account is required before uploading documents to this load. Add the account, then try again.",
       );
       return;
     }
@@ -3505,7 +3518,7 @@ export default function LoadDetailPage() {
         );
         setLoadDocuments(loadDocumentsRef.current);
         setActionMessage(
-          `Upload timed out for "${file.name}". Verifying server state...`,
+          documentUploadVerifying(file.name),
         );
         await new Promise((resolve) => window.setTimeout(resolve, 2_000));
       }
@@ -3592,7 +3605,7 @@ export default function LoadDetailPage() {
         );
         setLoadDocuments(loadDocumentsRef.current);
         throw new Error(
-          "Upload could not be verified. Please retry from the document row.",
+          documentUploadVerificationFailed(file.name),
         );
       }
 
@@ -3604,7 +3617,7 @@ export default function LoadDetailPage() {
       setPendingDuplicateUpload(null);
       setDocumentUploadError(null);
       setError(null);
-      setActionMessage(`Uploading "${file.name}"...`);
+      setActionMessage(actionInProgress(`Uploading ${file.name}.`));
 
       const token = getAccessToken();
       const uploadOrganizationId = getOrganizationId() ?? organizationId;
@@ -3651,7 +3664,7 @@ export default function LoadDetailPage() {
       if (!uploadResponse.ok) {
         const uploadError = await parseUploadErrorResponse(
           uploadResponse,
-          "Document upload failed. Please try again.",
+          actionFailed("Document upload did not complete.", "Check the file and try again."),
         );
         if (uploadError.duplicate) {
           loadDocumentsRef.current = loadDocumentsRef.current.filter(
@@ -3700,8 +3713,7 @@ export default function LoadDetailPage() {
       const uploadTypeLabel = UPLOAD_DOCUMENT_TYPE_OPTIONS.find(
         (option) => option.value === selectedUploadDocumentType,
       )?.label;
-      const uploadTypeSuffix = uploadTypeLabel ? ` (${uploadTypeLabel})` : "";
-      setActionMessage(`Upload successful: ${file.name}${uploadTypeSuffix}.`);
+      setActionMessage(documentUploaded(file.name, uploadTypeLabel));
     } catch (caught: unknown) {
       if (isMutationTimeoutError(caught)) {
         try {
@@ -3711,12 +3723,12 @@ export default function LoadDetailPage() {
           if (fileInputRef.current) fileInputRef.current.value = "";
           setDocumentUploadError(null);
           setError(null);
-          setActionMessage(`Upload verified: ${file.name}.`);
+          setActionMessage(documentUploaded(file.name));
           return;
         } catch (reconcileError: unknown) {
           const message = extractErrorMessage(
             reconcileError,
-            "Upload could not be verified.",
+            documentUploadVerificationFailed(file.name),
           );
           setDocumentUploadError(message);
           setError(message);
@@ -3728,7 +3740,7 @@ export default function LoadDetailPage() {
         (document) => document.id !== optimisticDocumentId,
       );
       setLoadDocuments(loadDocumentsRef.current);
-      const message = extractErrorMessage(caught, "Failed to upload document.");
+      const message = extractErrorMessage(caught, actionFailed("Document upload did not complete.", "Check the file and try again."));
       setDocumentUploadError(message);
       setError(message);
       setActionMessage(null);
@@ -3754,7 +3766,7 @@ export default function LoadDetailPage() {
       setIsUploadingDocument(true);
       setDocumentUploadError(null);
       setError(null);
-      setActionMessage(`Replacing "${pendingDuplicateUpload.file.name}"...`);
+      setActionMessage(actionInProgress(`Replacing ${pendingDuplicateUpload.file.name}.`));
       const token = getAccessToken();
       const organizationId = getOrganizationId();
       pendingDuplicateUpload.formData.set("replace", "true");
@@ -3773,7 +3785,7 @@ export default function LoadDetailPage() {
       if (!replaceResponse.ok) {
         const uploadError = await parseUploadErrorResponse(
           replaceResponse,
-          "Document replacement failed. Please try again.",
+          actionFailed("Document replacement did not complete.", "Check the file and try again."),
         );
         throw new Error(uploadError.message);
       }
@@ -3788,11 +3800,11 @@ export default function LoadDetailPage() {
         fileInputRef.current.value = "";
       }
       setPendingDuplicateUpload(null);
-      setActionMessage("Document replaced.");
+      setActionMessage(actionCompleted("Document replaced.", "Packet readiness has been refreshed with the latest file."));
     } catch (caught: unknown) {
       const message = extractErrorMessage(
         caught,
-        "Failed to replace document.",
+        actionFailed("Document replacement did not complete.", "Review the duplicate notice and try again."),
       );
       setDocumentUploadError(message);
       setError(message);
@@ -3825,7 +3837,7 @@ export default function LoadDetailPage() {
 
       setActionMessage(`Downloaded ${getDocumentDisplayName(document)}.`);
     } catch (caught: unknown) {
-      setError(friendlyDownloadError(caught, "Failed to download document."));
+      setError(friendlyDownloadError(caught, actionFailed("Document could not be downloaded.", "Check your connection and try again.")));
     } finally {
       setDownloadingDocumentId(null);
     }
@@ -3868,9 +3880,9 @@ export default function LoadDetailPage() {
       void fetchLoad()
         .then((updatedLoad) => setLoad(updatedLoad))
         .catch(() => undefined);
-      setActionMessage("Documents refreshed.");
+      setActionMessage(actionCompleted("Documents refreshed.", "Packet readiness is using the latest document list."));
     } catch (caught: unknown) {
-      setError(extractErrorMessage(caught, "Failed to refresh documents."));
+      setError(extractErrorMessage(caught, actionFailed("Documents could not be refreshed.", "Check your connection and try again.")));
     }
   }
 
@@ -3901,9 +3913,9 @@ export default function LoadDetailPage() {
       void fetchLoad()
         .then((updatedLoad) => setLoad(updatedLoad))
         .catch(() => undefined);
-      setActionMessage("Document type updated.");
+      setActionMessage(actionCompleted("Document type updated.", "Packet readiness has been recalculated."));
     } catch (caught: unknown) {
-      setError(extractErrorMessage(caught, "Failed to update document type."));
+      setError(extractErrorMessage(caught, actionFailed("Document type could not be updated.", "Choose a valid type and try again.")));
     } finally {
       setSavingDocumentId(null);
       endWriteAction();
@@ -3929,7 +3941,7 @@ export default function LoadDetailPage() {
 
     if (isInvoiceManagedDocument(document)) {
       setError(
-        "Invoice documents are managed from the invoice workflow. Use Regenerate Invoice to replace this file.",
+        "Invoice documents are managed by the invoice workflow. Use Regenerate Invoice when the invoice PDF needs to be replaced.",
       );
       setActionMessage(null);
       return;
@@ -3965,7 +3977,7 @@ export default function LoadDetailPage() {
           mutation_generation: mutationGeneration,
         });
         setActionMessage(
-          `Delete timed out for ${getDocumentDisplayName(document)}. Verifying server state...`,
+          documentDeleteVerifying(getDocumentDisplayName(document)),
         );
       }
 
@@ -4007,7 +4019,7 @@ export default function LoadDetailPage() {
         loadDocumentsRef.current = documentsBeforeDelete;
         setLoadDocuments(documentsBeforeDelete);
         throw new Error(
-          "Delete could not be verified. The document was restored.",
+          documentDeleteVerificationFailed(getDocumentDisplayName(document)),
         );
       }
     };
@@ -4033,19 +4045,19 @@ export default function LoadDetailPage() {
       });
 
       await reconcileDelete("success");
-      setActionMessage("Deleted successfully.");
+      setActionMessage(documentDeleted(getDocumentDisplayName(document)));
     } catch (caught: unknown) {
       if (isMutationTimeoutError(caught)) {
         try {
           await new Promise((resolve) => window.setTimeout(resolve, 2_000));
           await reconcileDelete("timeout");
           setError(null);
-          setActionMessage("Delete verified successfully.");
+          setActionMessage(documentDeleted(getDocumentDisplayName(document)));
           return;
         } catch (reconcileError: unknown) {
           const message = extractErrorMessage(
             reconcileError,
-            "Could not verify delete.",
+            documentDeleteVerificationFailed(getDocumentDisplayName(document)),
           );
           traceLoadDetailAction("delete_failed", {
             request_id: requestId,
@@ -4062,9 +4074,9 @@ export default function LoadDetailPage() {
       traceLoadDetailAction("delete_failed", {
         request_id: requestId,
         document_id: document.id,
-        message: extractErrorMessage(caught, "Could not delete document."),
+        message: extractErrorMessage(caught, actionFailed("Document could not be deleted.", "Refresh the load and try again.")),
       });
-      setError(extractErrorMessage(caught, "Could not delete document."));
+      setError(extractErrorMessage(caught, actionFailed("Document could not be deleted.", "Refresh the load and try again.")));
     } finally {
       deletingDocumentRequestRef.current = null;
       setDeletingDocumentId(null);
@@ -4102,7 +4114,7 @@ export default function LoadDetailPage() {
               Dashboard / Loads / Detail
             </p>
             <h1 className="mt-2 text-2xl font-bold text-rose-800">
-              Unable to load load detail
+              Load details could not be loaded
             </h1>
             <p className="mt-2 text-sm text-rose-700">{error}</p>
             <div className="mt-5 flex flex-wrap gap-3">
@@ -4830,7 +4842,7 @@ export default function LoadDetailPage() {
                         </div>
                         <div className="flex flex-wrap gap-2">
                           <button
-                            title="Download a ZIP packet to send manually."
+                            title="Download a ZIP packet to send manually when email delivery is unavailable."
                             type="button"
                             onClick={() =>
                               void handleDownloadPacketZip(packet.id)
@@ -4843,7 +4855,7 @@ export default function LoadDetailPage() {
                               : "Download Packet ZIP"}
                           </button>
                           <button
-                            title="Copy the packet submission email template."
+                            title="Copy the packet submission email template for manual sending."
                             type="button"
                             onClick={() => void handleCopySubmissionEmail()}
                             className="rounded-lg border border-slate-300 px-3 py-1 text-xs"
@@ -5577,7 +5589,7 @@ export default function LoadDetailPage() {
                               className="touch-target rounded-xl border border-rose-300 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 disabled:cursor-not-allowed disabled:opacity-50"
                               title={
                                 isInvoiceManagedDocument(document)
-                                  ? "Invoice documents are managed from the invoice workflow. Use Regenerate Invoice to replace this file."
+                                  ? "Invoice documents are managed by the invoice workflow. Use Regenerate Invoice when the invoice PDF needs to be replaced."
                                   : undefined
                               }
                             >
@@ -6200,20 +6212,19 @@ export default function LoadDetailPage() {
                       ?.submission ?? []
                   ).length > 0 ? (
                     <div className="mt-2 text-rose-700">
-                      Missing required docs:{" "}
+                      Missing required documents:{" "}
                       {(
                         load?.packet_readiness?.missing_required_documents
                           ?.submission ?? []
                       ).join(", ")}
-                      . Sending is blocked.
+                      . Complete packet readiness before sending.
                     </div>
                   ) : null}
                   {hasBlockingPacketAudit(
                     modalState.packet.packet_audit ?? packetAudit,
                   ) ? (
                     <div className="mt-2 text-rose-700">
-                      Blocking packet audit findings are present. Fix them
-                      before emailing.
+                      Packet audit needs attention. Resolve blocking findings before emailing.
                     </div>
                   ) : null}
                 </div>
@@ -6311,11 +6322,11 @@ export default function LoadDetailPage() {
                     className="touch-target rounded-xl bg-brand-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
                     onClick={() => {
                       if (!isValidEmail(modalState.toEmail))
-                        return setModalError("Enter a valid recipient email.");
+                        return setModalError("Enter a valid recipient email before sending the packet.");
                       if (modalState.subject.trim().length < 3)
-                        return setModalError("Email subject is required.");
+                        return setModalError("Add an email subject before sending the packet.");
                       if (modalState.body.trim().length < 3)
-                        return setModalError("Email body is required.");
+                        return setModalError("Add an email message before sending the packet.");
                       void handleSendPacketEmail(
                         modalState.packet.id,
                         modalState.toEmail.trim(),
@@ -6324,7 +6335,7 @@ export default function LoadDetailPage() {
                       );
                     }}
                   >
-                    {isSubmissionBusy ? "Sending..." : "Send Email"}
+                    {isSubmissionBusy ? "Sending email..." : "Send Email"}
                   </button>
                 </div>
               </>

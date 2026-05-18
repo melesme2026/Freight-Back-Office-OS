@@ -9,6 +9,7 @@ import { useLoads } from "@/hooks/useLoads";
 import { ApiClientError, apiClient } from "@/lib/api-client";
 import { getAccessToken, getOrganizationId } from "@/lib/auth";
 import { labelForDocumentType } from "@/lib/driver-portal";
+import { actionFailed, documentUploaded } from "@/lib/notification-copy";
 import {
   DriverUploadNetworkError,
   enqueueDriverUpload,
@@ -81,7 +82,7 @@ function getFriendlyError(error: unknown): string {
       return "You do not have access to upload that document. Sign in again or contact dispatch.";
     }
   }
-  return error instanceof Error ? error.message : "Upload failed. Please try again.";
+  return error instanceof Error ? error.message : actionFailed("Upload did not complete.", "Check the file and try again.");
 }
 
 export default function DriverUploadsPage() {
@@ -158,7 +159,7 @@ export default function DriverUploadsPage() {
     const organizationId = getOrganizationId();
 
     if (!organizationId || !file || !documentType.trim()) {
-      setErrorMessage("Select a document type and file before uploading.");
+      setErrorMessage("Select a document type and attach a file before uploading.");
       return;
     }
 
@@ -188,7 +189,7 @@ export default function DriverUploadsPage() {
         setDocuments((current) => [uploadedDocument, ...current.filter((item) => item.id !== uploadedDocument.id)]);
       }
 
-      setSuccessMessage(`Upload successful: ${uploadedFilename}`);
+      setSuccessMessage(documentUploaded(uploadedFilename, labelForDocumentType(documentType.trim())));
       setFile(null);
       setSelectedLoadId("");
       const uploadInput = event.currentTarget.elements.namedItem("upload-file") as HTMLInputElement | null;
@@ -204,13 +205,13 @@ export default function DriverUploadsPage() {
       if (shouldQueueOffline) {
         try {
           await enqueueDriverUpload({ file, documentType: documentType.trim(), loadId: selectedLoadId || null });
-          setSuccessMessage(`Offline: queued ${file.name}. It will retry when your connection returns.`);
+          setSuccessMessage(`Offline mode: ${file.name} is queued and will upload automatically when your connection returns.`);
           setFile(null);
           setSelectedLoadId("");
           const uploadInput = event.currentTarget.elements.namedItem("upload-file") as HTMLInputElement | null;
           if (uploadInput) uploadInput.value = "";
         } catch (queueError: unknown) {
-          setErrorMessage(queueError instanceof Error ? queueError.message : "Upload failed and could not be queued.");
+          setErrorMessage(queueError instanceof Error ? queueError.message : actionFailed("Upload did not complete and could not be queued.", "Reconnect and try again."));
         }
       } else {
         setErrorMessage(getFriendlyError(error));
@@ -358,7 +359,7 @@ export default function DriverUploadsPage() {
                   <div className="h-3 overflow-hidden rounded-full bg-slate-200">
                     <div className="h-full rounded-full bg-brand-600 transition-all" style={{ width: `${uploadProgress}%` }} />
                   </div>
-                  <p className="mt-1 text-xs font-semibold text-slate-600">Uploading: {uploadProgress}%</p>
+                  <p className="mt-1 text-xs font-semibold text-slate-600">Uploading document: {uploadProgress}%</p>
                 </div>
               ) : null}
             </div>
@@ -385,9 +386,9 @@ export default function DriverUploadsPage() {
           </div>
 
           {isLoadingDocuments ? (
-            <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-500">Loading upload history...</div>
+            <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-500">Loading upload history…</div>
           ) : documentsByLoad.length === 0 ? (
-            <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-500">No documents submitted yet.</div>
+            <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-500">No documents have been submitted yet. Upload a POD, BOL, or supporting receipt to start the document history.</div>
           ) : (
             <div className="mt-4 space-y-4">
               {documentsByLoad.map((group) => (
