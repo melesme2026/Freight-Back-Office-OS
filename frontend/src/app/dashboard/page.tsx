@@ -119,6 +119,102 @@ function isPriorityLoad(load: Load, workMode: WorkMode): boolean {
   return queues.has("missing_documents") || queues.has("docs_needs_attention") || Boolean(load.follow_up_required);
 }
 
+function OperationalIntelligencePanel({ commandCenter, isLoading }: { commandCenter: CommandCenterData | null; isLoading: boolean }) {
+  const intelligence = commandCenter?.operational_intelligence;
+  const needsAttention = intelligence?.needs_attention ?? [];
+  const readiness = intelligence?.readiness.items ?? [];
+  const followUps = intelligence?.follow_ups.items ?? [];
+  const driverGaps = intelligence?.driver_visibility.items ?? [];
+
+  return (
+    <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-soft sm:p-6">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.14em] text-brand-700">Operational intelligence</p>
+          <h2 className="mt-1 text-lg font-bold text-slate-950">Needs-attention command center</h2>
+          <p className="mt-1 text-sm text-slate-600">Rules-backed readiness, follow-up urgency, stalled-load, driver, and validation signals. No AI actions or invoice math changes.</p>
+        </div>
+        {intelligence ? (
+          <span className="w-fit rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">{intelligence.summary.needs_attention_count} items to triage</span>
+        ) : null}
+      </div>
+
+      {!intelligence && isLoading ? (
+        <div className="mt-5 grid gap-4 lg:grid-cols-4">
+          <SkeletonBlock className="h-28" />
+          <SkeletonBlock className="h-28" />
+          <SkeletonBlock className="h-28" />
+          <SkeletonBlock className="h-28" />
+        </div>
+      ) : null}
+
+      {intelligence ? (
+        <>
+          <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <KpiCard label="Needs Attention" value={intelligence.summary.needs_attention_count} helper="Blocking alerts, stale work, and due follow-ups" tone={intelligence.summary.needs_attention_count > 0 ? "danger" : "success"} />
+            <KpiCard label="Ready Revenue" value={intelligence.summary.ready_to_submit_count} helper="Loads ready to submit or invoice" tone="success" />
+            <KpiCard label="Stalled Loads" value={intelligence.summary.stalled_load_count} helper="No operational update past threshold" tone={intelligence.summary.stalled_load_count > 0 ? "warning" : "default"} />
+            <KpiCard label="Driver Gaps" value={intelligence.summary.driver_gap_count} helper="Active driver profiles missing contact items" tone={intelligence.summary.driver_gap_count > 0 ? "warning" : "default"} />
+          </div>
+
+          <div className="mt-5 grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <div className="flex items-center justify-between gap-3">
+                <h3 className="text-sm font-bold text-slate-950">Work first</h3>
+                <span className="text-xs font-semibold text-slate-500">Priority ordered</span>
+              </div>
+              <div className="mt-3 space-y-3">
+                {needsAttention.slice(0, 5).map((item) => {
+                  const href = isDashboardHref(item.href) ? item.href : "/dashboard";
+                  return (
+                    <Link key={`${item.source}:${item.id ?? item.load_id ?? item.title}`} href={href} className={`block rounded-2xl border p-4 transition hover:bg-white ${severityClasses(item.severity)}`}>
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                        <div>
+                          <div className="text-sm font-bold">{item.title ?? "Operational follow-up"}</div>
+                          <p className="mt-1 text-xs leading-5">{item.next_action ?? item.description ?? "Review this workflow before it blocks revenue movement."}</p>
+                        </div>
+                        <span className="w-fit rounded-full bg-white/80 px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.08em]">{item.source.replaceAll("_", " ")}</span>
+                      </div>
+                    </Link>
+                  );
+                })}
+                {needsAttention.length === 0 ? <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-4 text-sm text-slate-600">No elevated needs-attention items found.</div> : null}
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <h3 className="text-sm font-bold text-slate-950">Readiness snapshot</h3>
+                <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                  <div className="rounded-xl bg-white p-3"><div className="font-bold text-slate-950">{intelligence.readiness.summary.ready_to_invoice}</div><div className="text-slate-500">ready to invoice</div></div>
+                  <div className="rounded-xl bg-white p-3"><div className="font-bold text-slate-950">{intelligence.readiness.summary.blocked_packet_submission}</div><div className="text-slate-500">packet blocked</div></div>
+                </div>
+                <div className="mt-3 space-y-2">
+                  {readiness.slice(0, 3).map((item) => {
+                    const href = isDashboardHref(item.href) ? item.href : "/dashboard/loads";
+                    return <Link key={item.load_id} href={href} className="block rounded-xl bg-white p-3 text-xs text-slate-600 ring-1 ring-slate-200"><span className="font-bold text-slate-950">{item.load_number ?? item.load_id.slice(0, 8)}</span> · {item.next_action}</Link>;
+                  })}
+                </div>
+              </div>
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <h3 className="text-sm font-bold text-slate-950">Follow-up urgency</h3>
+                <p className="mt-1 text-xs text-slate-500">{intelligence.follow_ups.summary.overdue} overdue · {intelligence.follow_ups.summary.stale} stale · {intelligence.follow_ups.summary.due_today} due today</p>
+                <div className="mt-3 space-y-2">
+                  {followUps.slice(0, 2).map((item) => <Link key={item.id} href="/dashboard/follow-ups" className="block rounded-xl bg-white p-3 text-xs text-slate-600 ring-1 ring-slate-200"><span className="font-bold text-slate-950">{item.title}</span> · {item.urgency.replaceAll("_", " ")}</Link>)}
+                  {driverGaps.slice(0, 1).map((item) => {
+                    const href = isDashboardHref(item.href) ? item.href : "/dashboard/drivers";
+                    return <Link key={item.driver_id} href={href} className="block rounded-xl bg-white p-3 text-xs text-slate-600 ring-1 ring-slate-200"><span className="font-bold text-slate-950">{item.driver_name}</span> missing {item.missing_items.join(", ")}</Link>;
+                  })}
+                </div>
+              </div>
+            </div>
+          </div>
+        </>
+      ) : null}
+    </section>
+  );
+}
+
 function ActivePriorities({ loads, workMode, isLoading }: { loads: Load[]; workMode: WorkMode; isLoading: boolean }) {
   const priorityLoads = useMemo(() => loads.filter((load) => isPriorityLoad(load, workMode)).slice(0, 5), [loads, workMode]);
 
@@ -268,8 +364,8 @@ export default function DashboardPage() {
 
   const primaryKpis = [
     { label: "Missing Documents", value: metrics?.operational_queues?.missing_documents ?? commandCenter?.kpis.loads_missing_docs ?? 0, helper: "Loads blocked before packet completion", tone: "danger" as Tone, href: "/dashboard/loads?queue=missing_documents" },
-    { label: "Ready to Invoice", value: metrics?.operational_queues?.ready_to_invoice ?? metrics?.loads_ready_to_submit ?? 0, helper: "Packets ready for billing work", tone: "warning" as Tone, href: "/dashboard/billing" },
-    { label: "Awaiting Submission", value: metrics?.operational_queues?.ready_to_submit ?? commandCenter?.kpis.pending_packet_sends ?? 0, helper: "Invoices or packets ready to send", tone: "warning" as Tone, href: "/dashboard/billing" },
+    { label: "Ready to Invoice", value: metrics?.operational_queues?.ready_to_invoice ?? commandCenter?.kpis.loads_ready_for_invoice ?? metrics?.loads_ready_to_submit ?? 0, helper: "Packets ready for billing work", tone: "warning" as Tone, href: "/dashboard/billing" },
+    { label: "Awaiting Submission", value: metrics?.operational_queues?.ready_to_submit ?? commandCenter?.kpis.loads_ready_to_submit ?? commandCenter?.kpis.pending_packet_sends ?? 0, helper: "Invoices or packets ready to send", tone: "warning" as Tone, href: "/dashboard/billing" },
     { label: "Payment Overdue", value: metrics?.operational_queues?.payment_overdue ?? commandCenter?.kpis.overdue_invoices ?? 0, helper: "Collection follow-up required", tone: "danger" as Tone, href: "/dashboard/money" },
     { label: "Open Follow-Ups", value: commandCenter?.tasks.summary.total ?? metrics?.operational_queues?.disputed_or_short_paid ?? 0, helper: "Owner-assigned operational next steps", tone: "default" as Tone, href: "/dashboard/follow-ups" },
   ] satisfies KpiCardProps[];
@@ -315,6 +411,8 @@ export default function DashboardPage() {
             </div>
           </section>
         ) : null}
+
+        <OperationalIntelligencePanel commandCenter={commandCenter} isLoading={loading} />
 
         <ActivePriorities loads={loads} workMode={workMode} isLoading={loadsLoading} />
 

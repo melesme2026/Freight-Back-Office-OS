@@ -9,10 +9,13 @@ from typing import Any
 from app.core.cache import CacheKey, operational_cache
 from app.domain.enums.document_type import DocumentType
 from app.domain.enums.factoring import FactoringReconciliationStatus, FactoringWorkflowStatus
+from app.domain.enums.follow_up_task import FollowUpTaskStatus
 from app.domain.enums.load_payment_status import LoadPaymentStatus
 from app.domain.enums.load_status import LoadStatus
 from app.domain.enums.processing_status import ProcessingStatus
 from app.domain.models.audit_log import AuditLog
+from app.domain.models.driver import Driver
+from app.domain.models.follow_up_task import FollowUpTask
 from app.domain.models.load import Load
 from app.domain.models.load_document import LoadDocument
 from app.domain.models.load_payment_record import LoadPaymentRecord
@@ -86,6 +89,8 @@ class DispatcherCommandCenterService:
         payments = self._load_payment_records(org_id=org_id)
         packets = self._load_packets(org_id=org_id)
         unresolved_blockers = self._load_unresolved_blockers(org_id=org_id)
+        open_follow_ups = self._load_open_follow_ups(org_id=org_id)
+        active_drivers = self._load_active_drivers(org_id=org_id)
 
         packet_by_load = self._group_packets_by_load(packets)
         blockers_by_load = self._group_blockers_by_load(unresolved_blockers)
@@ -130,6 +135,15 @@ class DispatcherCommandCenterService:
             missing_doc_items=missing_docs, collection_items=collections, alerts=alerts
         )
         broker_insights = self._broker_behavior_insights(payments, today=today)
+        operational_intelligence = self._build_operational_intelligence(
+            loads=loads,
+            alerts=alerts,
+            tasks=tasks,
+            unresolved_blockers=unresolved_blockers,
+            open_follow_ups=open_follow_ups,
+            active_drivers=active_drivers,
+            today=today,
+        )
         ai_assistant = self._build_ai_operations_assistant(
             loads=loads,
             payments=payments,
@@ -149,6 +163,8 @@ class DispatcherCommandCenterService:
                 payments=payments,
                 packets=packets,
                 unresolved_blockers=unresolved_blockers,
+                open_follow_ups=open_follow_ups,
+                active_drivers=active_drivers,
                 today=today,
             ),
             "alerts": alerts[:25],
@@ -164,6 +180,7 @@ class DispatcherCommandCenterService:
                 "summary": self._task_summary(tasks),
                 "items": tasks[:30],
             },
+            "operational_intelligence": operational_intelligence,
             "ai_operations_assistant": ai_assistant,
             "broker_behavior": {
                 "summary": self._broker_behavior_summary(broker_insights),
@@ -181,7 +198,7 @@ class DispatcherCommandCenterService:
                 "logic": (
                     "Deterministic operational prioritization based on missing required documents, "
                     "packet blockers, unpaid aging, factoring reserve state, "
-                    "reconciliation status, "
+                    "reconciliation status, follow-up urgency, driver profile gaps, "
                     "broker payment behavior, and unresolved validation blockers."
                 ),
                 "ai_assistant_logic": (
@@ -209,7 +226,7 @@ class DispatcherCommandCenterService:
 
     def _cache_fingerprint(
         self, org_id: str
-    ) -> tuple[int, object, int, object, int, object, int, object]:
+    ) -> tuple[int, object, int, object, int, object, int, object, int, object, int, object]:
         load_count, load_newest = self.db.execute(
             select(func.count(Load.id), func.max(Load.updated_at)).where(
                 Load.organization_id == org_id
@@ -230,6 +247,16 @@ class DispatcherCommandCenterService:
                 LoadDocument.organization_id == org_id
             )
         ).one()
+        follow_up_count, follow_up_newest = self.db.execute(
+            select(func.count(FollowUpTask.id), func.max(FollowUpTask.updated_at)).where(
+                FollowUpTask.organization_id == org_id
+            )
+        ).one()
+        driver_count, driver_newest = self.db.execute(
+            select(func.count(Driver.id), func.max(Driver.updated_at)).where(
+                Driver.organization_id == org_id
+            )
+        ).one()
         return (
             int(load_count or 0),
             load_newest,
@@ -239,6 +266,10 @@ class DispatcherCommandCenterService:
             blocker_newest,
             int(document_count or 0),
             document_newest,
+            int(follow_up_count or 0),
+            follow_up_newest,
+            int(driver_count or 0),
+            driver_newest,
         )
 
     def _load_recent_operational_loads(self, *, org_id: str) -> list[Load]:
@@ -292,6 +323,29 @@ class DispatcherCommandCenterService:
         )
         return list(self.db.scalars(stmt).all())
 
+    def _load_open_follow_ups(self, *, org_id: str) -> list[FollowUpTask]:
+        stmt = (
+            select(FollowUpTask)
+            .where(
+                FollowUpTask.organization_id == org_id,
+                FollowUpTask.status.in_([FollowUpTaskStatus.OPEN, FollowUpTaskStatus.SNOOZED]),
+            )
+            .options(selectinload(FollowUpTask.load))
+            .order_by(FollowUpTask.due_at.asc(), FollowUpTask.created_at.asc())
+            .limit(COMMAND_CENTER_LOAD_LIMIT)
+        )
+        return list(self.db.scalars(stmt).unique().all())
+
+    def _load_active_drivers(self, *, org_id: str) -> list[Driver]:
+        stmt = (
+            select(Driver)
+            .where(Driver.organization_id == org_id, Driver.is_active.is_(True))
+            .options(selectinload(Driver.loads))
+            .order_by(Driver.full_name.asc())
+            .limit(COMMAND_CENTER_LOAD_LIMIT)
+        )
+        return list(self.db.scalars(stmt).unique().all())
+
     def _build_kpis(
         self,
         *,
@@ -300,6 +354,8 @@ class DispatcherCommandCenterService:
         payments: list[LoadPaymentRecord],
         packets: list[SubmissionPacket],
         unresolved_blockers: list[ValidationIssue],
+        open_follow_ups: list[FollowUpTask],
+        active_drivers: list[Driver],
         today: date,
     ) -> dict[str, Any]:
         active_loads = (
@@ -324,9 +380,14 @@ class DispatcherCommandCenterService:
             for record in payments
             if self._outstanding(record) > ZERO and self._age_days(record, today=today) > 30
         ]
+        readiness_by_load = {str(load.id): calculate_load_packet_readiness(load=load, db=self.db) for load in loads}
+        stalled_loads = self._stalled_load_items(loads, today=today)
+        follow_up_summary = self._follow_up_summary(open_follow_ups)
         return {
             "active_loads": int(active_loads),
-            "loads_missing_docs": sum(1 for load in loads if self._missing_documents(load)),
+            "loads_missing_docs": sum(1 for readiness in readiness_by_load.values() if readiness["missing_required_documents"]["submission"]),
+            "loads_ready_for_invoice": sum(1 for readiness in readiness_by_load.values() if readiness["ready_for_invoice"]),
+            "loads_ready_to_submit": sum(1 for readiness in readiness_by_load.values() if readiness["ready_to_submit"]),
             "overdue_invoices": len(overdue),
             "urgent_collections": sum(
                 1 for record in payments if self._collection_priority(record, today=today) >= 80
@@ -335,6 +396,11 @@ class DispatcherCommandCenterService:
                 1 for packet in packets if self._packet_status(packet) in PENDING_PACKET_STATUSES
             ),
             "unresolved_packet_intelligence_blockers": len(unresolved_blockers),
+            "unresolved_validation_issues": sum(1 for load in loads for issue in load.validation_issues if not issue.is_resolved),
+            "stalled_loads": len(stalled_loads),
+            "overdue_follow_ups": follow_up_summary["overdue"],
+            "stale_follow_ups": follow_up_summary["stale"],
+            "drivers_missing_profile_items": sum(1 for driver in active_drivers if self._driver_missing_items(driver)),
             "factoring_reserve_pending": sum(
                 1
                 for record in payments
@@ -718,6 +784,287 @@ class DispatcherCommandCenterService:
                 "next_action": "Upload PODs, invoices, and rate confirmations.",
             },
         ]
+
+    def _build_operational_intelligence(
+        self,
+        *,
+        loads: list[Load],
+        alerts: list[dict[str, Any]],
+        tasks: list[dict[str, Any]],
+        unresolved_blockers: list[ValidationIssue],
+        open_follow_ups: list[FollowUpTask],
+        active_drivers: list[Driver],
+        today: date,
+    ) -> dict[str, Any]:
+        readiness_items = [self._readiness_item(load) for load in loads]
+        readiness_items.sort(
+            key=lambda item: (
+                -int(item["priority_score"]),
+                item.get("load_number") or "",
+            )
+        )
+        follow_up_items = [self._follow_up_item(task) for task in open_follow_ups]
+        follow_up_items.sort(
+            key=lambda item: (
+                -int(item["priority_score"]),
+                item["due_at"] or "",
+                item.get("load_number") or "",
+            )
+        )
+        stalled_items = self._stalled_load_items(loads, today=today)
+        driver_items = self._driver_visibility_items(active_drivers)
+        needs_attention = self._needs_attention_items(
+            alerts=alerts, tasks=tasks, follow_ups=follow_up_items, stalled_loads=stalled_items
+        )
+        ready_to_invoice = [item for item in readiness_items if item["ready_for_invoice"]]
+        ready_to_submit = [item for item in readiness_items if item["ready_to_submit"]]
+        invoice_blocked = [item for item in readiness_items if item["missing_invoice_documents"]]
+        packet_blocked = [item for item in readiness_items if item["missing_submission_documents"]]
+        validation_aging = self._validation_issue_aging(unresolved_blockers, today=today)
+        return {
+            "summary": {
+                "needs_attention_count": len(needs_attention),
+                "ready_to_invoice_count": len(ready_to_invoice),
+                "ready_to_submit_count": len(ready_to_submit),
+                "invoice_blocked_count": len(invoice_blocked),
+                "packet_blocked_count": len(packet_blocked),
+                "overdue_follow_up_count": sum(1 for item in follow_up_items if item["urgency"] in {"overdue", "stale"}),
+                "stalled_load_count": len(stalled_items),
+                "driver_gap_count": len(driver_items),
+                "unresolved_validation_issue_count": len(unresolved_blockers),
+                "oldest_validation_issue_age_days": validation_aging["oldest_age_days"],
+            },
+            "needs_attention": needs_attention[:12],
+            "readiness": {
+                "summary": {
+                    "ready_to_invoice": len(ready_to_invoice),
+                    "ready_to_submit": len(ready_to_submit),
+                    "blocked_invoice_readiness": len(invoice_blocked),
+                    "blocked_packet_submission": len(packet_blocked),
+                },
+                "items": readiness_items[:20],
+            },
+            "follow_ups": {
+                "summary": self._follow_up_summary(open_follow_ups),
+                "items": follow_up_items[:15],
+            },
+            "stalled_loads": {
+                "summary": {
+                    "total": len(stalled_items),
+                    "critical": sum(1 for item in stalled_items if item["severity"] == "critical"),
+                    "warning": sum(1 for item in stalled_items if item["severity"] == "warning"),
+                },
+                "items": stalled_items[:15],
+            },
+            "driver_visibility": {
+                "summary": {
+                    "active_drivers": len(active_drivers),
+                    "drivers_missing_profile_items": len(driver_items),
+                    "drivers_with_active_loads": sum(
+                        1 for driver in active_drivers if any(load.status in ACTIVE_LOAD_STATUSES for load in driver.loads)
+                    ),
+                },
+                "items": driver_items[:12],
+            },
+            "validation_issues": validation_aging,
+            "guardrails": {
+                "uses_llm": False,
+                "invoice_math_changed": False,
+                "packet_readiness_rules_changed": False,
+                "source": "existing operational records and packet readiness service",
+            },
+        }
+
+    def _readiness_item(self, load: Load) -> dict[str, Any]:
+        readiness = calculate_load_packet_readiness(load=load, db=self.db)
+        missing_invoice = list(readiness["missing_required_documents"]["invoice"])
+        missing_submission = list(readiness["missing_required_documents"]["submission"])
+        priority = 0
+        if missing_submission:
+            priority += 35
+        if missing_invoice and load.status in {LoadStatus.DELIVERED, LoadStatus.DOCS_RECEIVED, LoadStatus.INVOICE_READY}:
+            priority += 25
+        if readiness["ready_to_submit"] and load.status in {LoadStatus.DOCS_RECEIVED, LoadStatus.INVOICE_READY}:
+            priority += 30
+        if load.follow_up_required:
+            priority += 20
+        priority = min(priority, 100)
+        if readiness["ready_to_submit"]:
+            action = "Submit packet or invoice through billing workflow."
+        elif readiness["ready_for_invoice"]:
+            action = "Create invoice, then collect remaining submission documents."
+        else:
+            action = "Collect required documents before invoice or packet movement."
+        return {
+            "load_id": str(load.id),
+            "load_number": load.load_number,
+            "status": self._enum_value(load.status),
+            "driver_name": load.driver.full_name if load.driver else None,
+            "broker_name": load.broker.name if load.broker else load.broker_name_raw,
+            "lane": self._lane_label(load),
+            "readiness_state": readiness["readiness_state"],
+            "ready_for_invoice": bool(readiness["ready_for_invoice"]),
+            "ready_to_submit": bool(readiness["ready_to_submit"]),
+            "present_required_documents": readiness["present_required_documents"],
+            "missing_invoice_documents": missing_invoice,
+            "missing_submission_documents": missing_submission,
+            "missing_recommended_documents": readiness["missing_recommended_documents"],
+            "blockers": readiness["blockers"],
+            "next_action": action,
+            "severity": self._severity(priority),
+            "priority_score": priority,
+            "href": "/dashboard/loads/" + str(load.id),
+        }
+
+    def _follow_up_item(self, task: FollowUpTask) -> dict[str, Any]:
+        now = datetime.now(timezone.utc)
+        due_at = self._as_aware(task.due_at)
+        age_days = max((now.date() - due_at.date()).days, 0)
+        urgency = "upcoming"
+        priority = 30
+        if due_at.date() <= now.date():
+            urgency = "due_today"
+            priority = 55
+        if due_at < now:
+            urgency = "overdue"
+            priority = 70
+        if age_days >= 3:
+            urgency = "stale"
+            priority = 90
+        priority_value = self._enum_value(task.priority)
+        if priority_value == "urgent":
+            priority = min(priority + 20, 100)
+        elif priority_value == "high":
+            priority = min(priority + 10, 100)
+        load = task.load
+        return {
+            "id": str(task.id),
+            "type": self._enum_value(task.task_type),
+            "title": task.title,
+            "description": task.description,
+            "recommended_action": task.recommended_action,
+            "status": self._enum_value(task.status),
+            "urgency": urgency,
+            "due_at": due_at.isoformat(),
+            "age_days": age_days,
+            "load_id": str(task.load_id),
+            "load_number": load.load_number if load else None,
+            "severity": self._severity(priority),
+            "priority_score": priority,
+            "href": "/dashboard/follow-ups",
+        }
+
+    def _follow_up_summary(self, tasks: list[FollowUpTask]) -> dict[str, int]:
+        items = [self._follow_up_item(task) for task in tasks]
+        return {
+            "open": len(tasks),
+            "due_today": sum(1 for item in items if item["urgency"] == "due_today"),
+            "overdue": sum(1 for item in items if item["urgency"] == "overdue"),
+            "stale": sum(1 for item in items if item["urgency"] == "stale"),
+        }
+
+    def _stalled_load_items(self, loads: list[Load], *, today: date) -> list[dict[str, Any]]:
+        items: list[dict[str, Any]] = []
+        for load in loads:
+            updated_at = self._as_aware(load.updated_at)
+            age_days = max((today - updated_at.date()).days, 0)
+            threshold = 5 if load.status in {LoadStatus.DELIVERED, LoadStatus.DOCS_RECEIVED, LoadStatus.DOCS_NEEDS_ATTENTION} else 7
+            if age_days < threshold:
+                continue
+            priority = min(35 + age_days * 5, 100)
+            items.append(
+                {
+                    "load_id": str(load.id),
+                    "load_number": load.load_number,
+                    "status": self._enum_value(load.status),
+                    "driver_name": load.driver.full_name if load.driver else None,
+                    "lane": self._lane_label(load),
+                    "age_days": age_days,
+                    "reason": f"No operational update in {age_days} day(s).",
+                    "next_action": "Review load status, documents, and follow-up ownership.",
+                    "severity": self._severity(priority),
+                    "priority_score": priority,
+                    "href": "/dashboard/loads/" + str(load.id),
+                }
+            )
+        items.sort(key=lambda item: (-int(item["priority_score"]), -int(item["age_days"])))
+        return items
+
+    def _driver_visibility_items(self, drivers: list[Driver]) -> list[dict[str, Any]]:
+        items: list[dict[str, Any]] = []
+        for driver in drivers:
+            missing = self._driver_missing_items(driver)
+            if not missing:
+                continue
+            active_load_count = sum(1 for load in driver.loads if load.status in ACTIVE_LOAD_STATUSES)
+            priority = 45 + min(active_load_count * 15, 30)
+            items.append(
+                {
+                    "driver_id": str(driver.id),
+                    "driver_name": driver.full_name,
+                    "missing_items": missing,
+                    "active_load_count": active_load_count,
+                    "severity": self._severity(priority),
+                    "priority_score": priority,
+                    "next_action": "Complete driver contact/profile details before assigning more document work.",
+                    "href": "/dashboard/drivers/" + str(driver.id),
+                }
+            )
+        items.sort(key=lambda item: (-int(item["priority_score"]), item["driver_name"]))
+        return items
+
+    def _driver_missing_items(self, driver: Driver) -> list[str]:
+        missing: list[str] = []
+        if not (driver.email or "").strip():
+            missing.append("email")
+        if not (driver.phone or "").strip():
+            missing.append("phone")
+        if not driver.customer_account_id:
+            missing.append("customer_account")
+        return missing
+
+    def _needs_attention_items(
+        self,
+        *,
+        alerts: list[dict[str, Any]],
+        tasks: list[dict[str, Any]],
+        follow_ups: list[dict[str, Any]],
+        stalled_loads: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        items: list[dict[str, Any]] = []
+        for alert in alerts[:15]:
+            items.append({**alert, "source": "alert", "next_action": alert["description"]})
+        for task in tasks[:15]:
+            items.append({**task, "source": "task", "next_action": task["description"]})
+        for follow_up in follow_ups[:10]:
+            if follow_up["urgency"] in {"overdue", "stale", "due_today"}:
+                items.append({**follow_up, "source": "follow_up", "next_action": follow_up.get("recommended_action") or follow_up.get("description") or "Complete follow-up."})
+        for stalled in stalled_loads[:10]:
+            items.append({**stalled, "source": "stalled_load", "title": "Review stalled load", "description": stalled["reason"]})
+        deduped: dict[str, dict[str, Any]] = {}
+        for item in items:
+            deduped.setdefault(f"{item.get('source')}:{item.get('id') or item.get('load_id')}", item)
+        result = list(deduped.values())
+        result.sort(
+            key=lambda item: (
+                -int(item.get("priority_score", 0)),
+                -self._severity_order(str(item.get("severity", "info"))),
+                str(item.get("title") or ""),
+            )
+        )
+        return result
+
+    def _validation_issue_aging(
+        self, unresolved_blockers: list[ValidationIssue], *, today: date
+    ) -> dict[str, Any]:
+        ages = [max((today - self._as_aware(issue.created_at).date()).days, 0) for issue in unresolved_blockers]
+        severity_counts = Counter(self._enum_value(issue.severity) for issue in unresolved_blockers)
+        return {
+            "unresolved_blocking_count": len(unresolved_blockers),
+            "oldest_age_days": max(ages) if ages else 0,
+            "aging_over_3_days": sum(1 for age in ages if age > 3),
+            "by_severity": dict(sorted(severity_counts.items())),
+        }
 
     def _build_ai_operations_assistant(
         self,

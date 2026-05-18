@@ -335,3 +335,57 @@ def test_ai_operations_assistant_remains_org_scoped(db_session):
     assert "AI-ORG" in serialized
     assert "AI-OTHER" not in serialized
     assert "9000.00" not in serialized
+
+
+def test_operational_intelligence_surfaces_followups_stalls_readiness_and_driver_gaps(db_session):
+    from app.domain.enums.follow_up_task import (
+        FollowUpTaskPriority,
+        FollowUpTaskStatus,
+        FollowUpTaskType,
+    )
+    from app.domain.models.follow_up_task import FollowUpTask
+
+    _seed_parties(db_session)
+    stalled = _make_load(db_session, load_number="OPS-STALLED", delivery_days_ago=14)
+    stalled.updated_at = datetime.now(timezone.utc) - timedelta(days=8)
+    _add_document(db_session, stalled, DocumentType.RATE_CONFIRMATION)
+
+    ready = _make_load(
+        db_session,
+        load_number="OPS-READY",
+        status=LoadStatus.INVOICE_READY,
+        delivery_days_ago=2,
+    )
+    _add_document(db_session, ready, DocumentType.RATE_CONFIRMATION)
+    _add_document(db_session, ready, DocumentType.PROOF_OF_DELIVERY)
+    _add_document(db_session, ready, DocumentType.INVOICE)
+
+    db_session.add(
+        FollowUpTask(
+            organization_id=ORG_ID,
+            load_id=stalled.id,
+            task_type=FollowUpTaskType.PACKET_FOLLOW_UP,
+            status=FollowUpTaskStatus.OPEN,
+            priority=FollowUpTaskPriority.URGENT,
+            title="Request stalled POD",
+            description="Driver needs to upload POD.",
+            recommended_action="Call driver and request POD upload.",
+            due_at=datetime.now(timezone.utc) - timedelta(days=4),
+        )
+    )
+    db_session.flush()
+
+    data = DispatcherCommandCenterService(db_session).get_command_center(org_id=ORG_ID)
+    intelligence = data["operational_intelligence"]
+
+    assert intelligence["guardrails"]["uses_llm"] is False
+    assert intelligence["guardrails"]["invoice_math_changed"] is False
+    assert intelligence["guardrails"]["packet_readiness_rules_changed"] is False
+    assert intelligence["summary"]["needs_attention_count"] >= 1
+    assert intelligence["summary"]["ready_to_submit_count"] >= 1
+    assert intelligence["summary"]["stalled_load_count"] >= 1
+    assert intelligence["summary"]["driver_gap_count"] >= 1
+    assert intelligence["follow_ups"]["summary"]["stale"] == 1
+    assert any(item["load_number"] == "OPS-READY" for item in intelligence["readiness"]["items"])
+    assert any(item["load_number"] == "OPS-STALLED" for item in intelligence["stalled_loads"]["items"])
+    assert any("email" in item["missing_items"] for item in intelligence["driver_visibility"]["items"])
