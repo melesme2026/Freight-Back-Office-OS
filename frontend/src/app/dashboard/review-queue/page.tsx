@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useMemo } from "react";
 
 import { useReviewQueue } from "@/hooks/useReviewQueue";
+import { EmptyState } from "@/components/ui/DesignSystem";
 
 type ReviewQueueRow = {
   load_id: string;
@@ -201,7 +202,22 @@ export default function ReviewQueuePage() {
                 ) : normalizedQueue.length === 0 ? (
                   <tr>
                     <td colSpan={5} className="px-5 py-10 text-center text-slate-500">
-                      No items currently require review. If this is a fresh org, create demo loads/documents first.
+                      <EmptyState
+                        eyebrow="Packet readiness"
+                        title="Review items appear when paperwork needs correction"
+                        steps={[
+                          "Create a load and attach required documents.",
+                          "Let validation identify missing, mismatched, or unclear fields.",
+                          "Resolve issues here before submitting packets or invoices.",
+                        ]}
+                        action={(
+                          <Link href="/dashboard/documents" className="touch-target rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white">
+                            Open documents
+                          </Link>
+                        )}
+                      >
+                        A clear review queue protects broker submissions, factoring packets, and invoice quality by surfacing readiness issues before they become rejections.
+                      </EmptyState>
                     </td>
                   </tr>
                 ) : (

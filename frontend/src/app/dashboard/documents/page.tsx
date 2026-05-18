@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { apiClient } from "@/lib/api-client";
 import { documentTypeLabel } from "@/lib/document-types";
 import { getAccessToken, getOrganizationId } from "@/lib/auth";
+import { EmptyState } from "@/components/ui/DesignSystem";
 
 type ApiError = {
   code?: string;
@@ -430,14 +431,23 @@ export default function DocumentsPage() {
                 Loading documents...
               </div>
             ) : documents.length === 0 ? (
-              <div className="px-5 py-10 text-center text-slate-600">
-                <p className="font-semibold text-slate-700">
-                  No documents yet.
-                </p>
-                <p className="mt-2 text-sm">
-                  Upload BOL, rate con, or POD files from Load Detail or Driver
-                  Portal.
-                </p>
+              <div className="px-4 py-6 text-slate-600">
+                <EmptyState
+                  eyebrow="Document intake"
+                  title="Upload the paperwork that proves each load is billable"
+                  steps={[
+                    "Create or open a load so documents have an operational home.",
+                    "Upload rate confirmations, BOLs, PODs, invoices, and receipts as they arrive.",
+                    "Review extracted fields and readiness issues before generating packets.",
+                  ]}
+                  action={(
+                    <button type="button" onClick={() => router.push("/dashboard/loads/new")} className="touch-target rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white">
+                      Create load for documents
+                    </button>
+                  )}
+                >
+                  Documents power packet readiness, invoice accuracy, and broker or factoring submissions. Keeping them linked to loads reduces manual follow-up.
+                </EmptyState>
               </div>
             ) : (
               documents.map((document) => (
@@ -534,19 +544,22 @@ export default function DocumentsPage() {
                       colSpan={9}
                       className="px-5 py-10 text-center text-slate-600"
                     >
-                      <div className="space-y-2">
-                        <p className="font-semibold text-slate-700">
-                          No documents yet.
-                        </p>
-                        <p>
-                          Upload BOL, rate con, or POD files from Load Detail
-                          (office workflow) or Driver Portal (driver workflow).
-                        </p>
-                        <p className="text-xs text-slate-500">
-                          After upload, verify extracted fields before creating
-                          invoices or packets.
-                        </p>
-                      </div>
+                      <EmptyState
+                        eyebrow="Document intake"
+                        title="Upload the paperwork that proves each load is billable"
+                        steps={[
+                          "Create or open a load so documents have an operational home.",
+                          "Upload rate confirmations, BOLs, PODs, invoices, and receipts as they arrive.",
+                          "Review extracted fields and readiness issues before generating packets.",
+                        ]}
+                        action={(
+                          <button type="button" onClick={() => router.push("/dashboard/loads/new")} className="touch-target rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white">
+                            Create load for documents
+                          </button>
+                        )}
+                      >
+                        Documents power packet readiness, invoice accuracy, and broker or factoring submissions. Keeping them linked to loads reduces manual follow-up.
+                      </EmptyState>
                     </td>
                   </tr>
                 ) : (

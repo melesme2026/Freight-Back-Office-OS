@@ -17,18 +17,36 @@ export function EmptyState({
   title,
   children,
   action,
+  steps,
+  className,
 }: {
   eyebrow?: string;
   title: string;
   children: ReactNode;
   action?: ReactNode;
+  steps?: string[];
+  className?: string;
 }) {
   return (
-    <section className="brand-card-muted p-8 text-center">
-      <p className="ops-eyebrow">{eyebrow}</p>
-      <h2 className="mt-3 text-2xl font-extrabold tracking-tight text-slate-950">{title}</h2>
-      <div className="mx-auto mt-3 max-w-xl text-sm leading-6 text-slate-600">{children}</div>
-      {action ? <div className="mt-6">{action}</div> : null}
+    <section className={join("brand-card-muted p-6 text-left sm:p-8", className)}>
+      <div className="mx-auto max-w-2xl text-center">
+        <p className="ops-eyebrow">{eyebrow}</p>
+        <h2 className="mt-3 text-xl font-extrabold tracking-tight text-slate-950 sm:text-2xl">{title}</h2>
+        <div className="mt-3 text-sm leading-6 text-slate-600">{children}</div>
+      </div>
+      {steps && steps.length > 0 ? (
+        <ol className="mx-auto mt-5 grid max-w-3xl gap-3 text-left text-sm text-slate-700 sm:grid-cols-3">
+          {steps.map((step, index) => (
+            <li key={step} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+              <span className="mb-2 inline-flex h-7 w-7 items-center justify-center rounded-full bg-brand-100 text-xs font-bold text-brand-700">
+                {index + 1}
+              </span>
+              <span className="block leading-5">{step}</span>
+            </li>
+          ))}
+        </ol>
+      ) : null}
+      {action ? <div className="mt-6 flex justify-center">{action}</div> : null}
     </section>
   );
 }

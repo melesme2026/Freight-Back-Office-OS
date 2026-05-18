@@ -10,6 +10,7 @@ import { ApiClientError, apiClient } from "@/lib/api-client";
 import { getAccessToken, getOrganizationId } from "@/lib/auth";
 import { labelForDocumentType } from "@/lib/driver-portal";
 import { actionFailed, documentUploaded } from "@/lib/notification-copy";
+import { EmptyState } from "@/components/ui/DesignSystem";
 import {
   DriverUploadNetworkError,
   enqueueDriverUpload,
@@ -388,7 +389,18 @@ export default function DriverUploadsPage() {
           {isLoadingDocuments ? (
             <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-500">Loading upload history…</div>
           ) : documentsByLoad.length === 0 ? (
-            <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-500">No documents have been submitted yet. Upload a POD, BOL, or supporting receipt to start the document history.</div>
+            <EmptyState
+              className="mt-4"
+              eyebrow="Upload history"
+              title="Submitted documents will build your load history"
+              steps={[
+                "Choose the assigned load whenever possible.",
+                "Select the exact document type before attaching a file or photo.",
+                "Wait for the success message so dispatch can review it for packet readiness.",
+              ]}
+            >
+              Upload history gives you and dispatch a shared record of PODs, BOLs, receipts, and supporting photos already sent from the road.
+            </EmptyState>
           ) : (
             <div className="mt-4 space-y-4">
               {documentsByLoad.map((group) => (

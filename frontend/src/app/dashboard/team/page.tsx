@@ -8,6 +8,7 @@ import { getAccessToken, getOrganizationId, getUserRole } from "@/lib/auth";
 import { copyTextWithFallback } from "@/lib/clipboard";
 import { EMAIL_DISABLED_INVITE_MESSAGE, SESSION_REQUIRED_MESSAGE, actionCompleted, actionFailed, inviteReady } from "@/lib/notification-copy";
 import { canManageTeam, canModifyTeamMember } from "@/lib/rbac";
+import { EmptyState } from "@/components/ui/DesignSystem";
 
 type StaffMember = {
   id: string;
@@ -392,7 +393,19 @@ export default function TeamPage() {
                   </tr>
                 ) : activeMembers.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-6 py-8 text-center text-slate-500">No staff users found yet.</td>
+                    <td colSpan={6} className="px-4 py-6 text-slate-600 sm:px-6">
+                      <EmptyState
+                        eyebrow="Team setup"
+                        title="Invite the office team that will run the workflow"
+                        steps={[
+                          "Invite dispatch, billing, and support staff with the right operational role.",
+                          "Keep at least one owner or admin active for workspace control.",
+                          "Use roles to route work without changing core freight workflows.",
+                        ]}
+                      >
+                        Team access keeps load updates, document review, invoicing, and follow-up work visible to the right people during daily operations.
+                      </EmptyState>
+                    </td>
                   </tr>
                 ) : (
                   activeMembers.map((member) => {

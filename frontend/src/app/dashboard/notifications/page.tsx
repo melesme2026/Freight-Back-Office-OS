@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { apiClient } from "@/lib/api-client";
 import { getAccessToken, getOrganizationId } from "@/lib/auth";
+import { EmptyState } from "@/components/ui/DesignSystem";
 
 type NotificationItem = {
   id: string;
@@ -319,7 +320,22 @@ export default function NotificationsPage() {
                       colSpan={6}
                       className="px-5 py-10 text-center text-slate-500"
                     >
-                      No notifications found.
+                      <EmptyState
+                        eyebrow="Notification history"
+                        title="Messages will appear after operational updates are sent"
+                        steps={[
+                          "Create loads and assign drivers or recipients.",
+                          "Send workflow updates, packet notices, or follow-up messages from the relevant workspace.",
+                          "Return here to confirm delivery status and communication history.",
+                        ]}
+                        action={(
+                          <Link href="/dashboard/loads/new" className="touch-target rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white">
+                            Create first load
+                          </Link>
+                        )}
+                      >
+                        Notifications help the office verify what was sent, to whom, and whether any message needs attention.
+                      </EmptyState>
                     </td>
                   </tr>
                 ) : (

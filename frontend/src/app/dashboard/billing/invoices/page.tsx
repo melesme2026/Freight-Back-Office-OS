@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { apiClient } from "@/lib/api-client";
 import { getAccessToken, getOrganizationId } from "@/lib/auth";
 import { BillingModeNotice } from "@/components/billing/BillingModeNotice";
+import { EmptyState } from "@/components/ui/DesignSystem";
 
 type InvoiceListItem = {
   id: string;
@@ -424,8 +425,23 @@ export default function BillingInvoicesPage() {
           ) : null}
 
           {!isLoading && !errorMessage && items.length === 0 ? (
-            <div className="px-6 py-12 text-sm text-slate-600">
-              No invoices found for this organization.
+            <div className="px-4 py-6 sm:px-6">
+              <EmptyState
+                eyebrow="Billing setup"
+                title="Create the first invoice when a load is ready to bill"
+                steps={[
+                  "Complete carrier profile and remit-to details for professional invoice output.",
+                  "Confirm load documents are present before billing.",
+                  "Create the invoice, then track submission and payment follow-up from billing.",
+                ]}
+                action={(
+                  <button type="button" onClick={() => void handleCreateInvoice()} disabled={isCreating} className="touch-target rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">
+                    {isCreating ? "Creating..." : "Create first invoice"}
+                  </button>
+                )}
+              >
+                Invoices turn completed freight into cash flow. This workspace helps office staff package the charge, send it to the right party, and monitor what is still open.
+              </EmptyState>
             </div>
           ) : null}
 
