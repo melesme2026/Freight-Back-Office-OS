@@ -7,10 +7,17 @@ export type RiskLevel = "low" | "medium" | "high" | "critical";
 export type CommandCenterKpis = {
   active_loads: number;
   loads_missing_docs: number;
+  loads_ready_for_invoice?: number;
+  loads_ready_to_submit?: number;
   overdue_invoices: number;
   urgent_collections: number;
   pending_packet_sends: number;
   unresolved_packet_intelligence_blockers: number;
+  unresolved_validation_issues?: number;
+  stalled_loads?: number;
+  overdue_follow_ups?: number;
+  stale_follow_ups?: number;
+  drivers_missing_profile_items?: number;
   factoring_reserve_pending: number;
   unpaid_total: string;
   factoring_reserve_pending_total: string;
@@ -129,6 +136,133 @@ export type CollectionPriority = CollectionItem & {
   recommended_action: string;
 };
 
+
+export type OperationalAttentionItem = {
+  id?: string;
+  source: "alert" | "task" | "follow_up" | "stalled_load" | string;
+  type?: string;
+  severity: Severity;
+  priority_score: number;
+  title?: string;
+  description?: string | null;
+  next_action?: string | null;
+  load_id?: string;
+  load_number?: string | null;
+  href: string;
+};
+
+export type OperationalReadinessItem = {
+  load_id: string;
+  load_number: string | null;
+  status: string;
+  driver_name: string | null;
+  broker_name: string | null;
+  lane: string;
+  readiness_state: string;
+  ready_for_invoice: boolean;
+  ready_to_submit: boolean;
+  present_required_documents: Record<string, string[]>;
+  missing_invoice_documents: string[];
+  missing_submission_documents: string[];
+  missing_recommended_documents: string[];
+  blockers: string[];
+  next_action: string;
+  severity: Severity;
+  priority_score: number;
+  href: string;
+};
+
+export type OperationalFollowUpItem = {
+  id: string;
+  type: string;
+  title: string;
+  description: string | null;
+  recommended_action: string | null;
+  status: string;
+  urgency: "upcoming" | "due_today" | "overdue" | "stale";
+  due_at: string;
+  age_days: number;
+  load_id: string;
+  load_number: string | null;
+  severity: Severity;
+  priority_score: number;
+  href: string;
+};
+
+export type StalledLoadItem = {
+  load_id: string;
+  load_number: string | null;
+  status: string;
+  driver_name: string | null;
+  lane: string;
+  age_days: number;
+  reason: string;
+  next_action: string;
+  severity: Severity;
+  priority_score: number;
+  href: string;
+};
+
+export type DriverVisibilityItem = {
+  driver_id: string;
+  driver_name: string;
+  missing_items: string[];
+  active_load_count: number;
+  severity: Severity;
+  priority_score: number;
+  next_action: string;
+  href: string;
+};
+
+export type OperationalIntelligence = {
+  summary: {
+    needs_attention_count: number;
+    ready_to_invoice_count: number;
+    ready_to_submit_count: number;
+    invoice_blocked_count: number;
+    packet_blocked_count: number;
+    overdue_follow_up_count: number;
+    stalled_load_count: number;
+    driver_gap_count: number;
+    unresolved_validation_issue_count: number;
+    oldest_validation_issue_age_days: number;
+  };
+  needs_attention: OperationalAttentionItem[];
+  readiness: {
+    summary: {
+      ready_to_invoice: number;
+      ready_to_submit: number;
+      blocked_invoice_readiness: number;
+      blocked_packet_submission: number;
+    };
+    items: OperationalReadinessItem[];
+  };
+  follow_ups: {
+    summary: { open: number; due_today: number; overdue: number; stale: number };
+    items: OperationalFollowUpItem[];
+  };
+  stalled_loads: {
+    summary: { total: number; critical: number; warning: number };
+    items: StalledLoadItem[];
+  };
+  driver_visibility: {
+    summary: { active_drivers: number; drivers_missing_profile_items: number; drivers_with_active_loads: number };
+    items: DriverVisibilityItem[];
+  };
+  validation_issues: {
+    unresolved_blocking_count: number;
+    oldest_age_days: number;
+    aging_over_3_days: number;
+    by_severity: Record<string, number>;
+  };
+  guardrails: {
+    uses_llm: false;
+    invoice_math_changed: false;
+    packet_readiness_rules_changed: false;
+    source: string;
+  };
+};
+
 export type AIOperationsAssistant = {
   summary: AssistantInsight[];
   invoice_risks: InvoiceRiskInsight[];
@@ -196,6 +330,7 @@ export type CommandCenterData = {
     };
     items: CommandCenterTask[];
   };
+  operational_intelligence?: OperationalIntelligence;
   ai_operations_assistant?: AIOperationsAssistant;
   broker_behavior?: {
     summary: {
