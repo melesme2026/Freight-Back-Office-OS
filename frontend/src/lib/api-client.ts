@@ -212,7 +212,7 @@ async function parseResponseBody<T>(
 }
 
 async function buildError(response: Response): Promise<ApiClientError> {
-  const fallbackMessage = response.status === 403 ? "You do not have permission to access this page or resource." : "Something went wrong. Please try again.";
+  const fallbackMessage = response.status === 403 ? "You do not have permission to access this page or resource." : "We could not complete the request. Please try again.";
 
   try {
     const contentType = response.headers.get("content-type") ?? "";
@@ -376,8 +376,8 @@ async function performRequest<T>(path: string, options: RequestOptions = {}): Pr
       });
       throw new ApiClientError(
         didTimeout
-          ? `Request timed out after ${timeoutMs}ms (${method} ${path}). Please try again.`
-          : `Request was canceled (${method} ${path}). Please try again.`,
+          ? "The request is taking longer than expected. Check your connection and try again."
+          : "The request was canceled before it finished. Please try again.",
         {
           status: didTimeout ? 504 : 499,
           code: didTimeout ? "client_timeout" : "client_aborted",

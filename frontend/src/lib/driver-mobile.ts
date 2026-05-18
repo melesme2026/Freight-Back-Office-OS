@@ -127,18 +127,9 @@ function parseXhrResponseBody(request: XMLHttpRequest, fallback?: unknown): unkn
   }
 }
 
-function formatXhrNetworkError(request: XMLHttpRequest, uploadUrl: string): DriverUploadNetworkError {
-  const responseUrl = request.responseURL || uploadUrl;
-  const detail = [
-    `url=${responseUrl}`,
-    `status=${request.status}`,
-    request.statusText ? `statusText=${request.statusText}` : null,
-  ]
-    .filter(Boolean)
-    .join(" ");
-
+function formatXhrNetworkError(_request: XMLHttpRequest, _uploadUrl: string): DriverUploadNetworkError {
   return new DriverUploadNetworkError(
-    `Network upload failed (${detail}). The document can be queued and retried when online.`
+    "The upload could not reach the server. The document can be queued and retried when you are back online."
   );
 }
 
@@ -190,15 +181,15 @@ function uploadViaXhr(
           resolveOnce(parsedBody);
           return;
         }
-        const message = extractUploadErrorMessage(parsedBody) || `Upload failed (${request.status}).`;
+        const message = extractUploadErrorMessage(parsedBody) || "The upload was not accepted. Review the file and try again.";
         rejectOnce(new Error(message));
       } catch (error: unknown) {
-        rejectOnce(error instanceof Error ? error : new Error("Upload response could not be processed."));
+        rejectOnce(error instanceof Error ? error : new Error("The upload finished, but the confirmation could not be read. Refresh the document list before retrying."));
       }
     };
 
     request.onerror = () => rejectOnce(formatXhrNetworkError(request, uploadUrl));
-    request.onabort = () => rejectOnce(new Error("Upload was canceled before it finished."));
+    request.onabort = () => rejectOnce(new Error("Upload was canceled before it finished. Select the file again to retry."));
     request.send(formData);
   });
 }
@@ -240,10 +231,10 @@ export function subscribeToDriverUploadQueue(listener: () => void): () => void {
 
 export function validateDriverUploadFile(file: File): string | null {
   if (!ALLOWED_UPLOAD_MIME_TYPES.has(file.type)) {
-    return "Upload error: only PDF or image files are allowed.";
+    return "Select a PDF or supported image file before uploading.";
   }
   if (file.size > MAX_UPLOAD_BYTES) {
-    return "Upload error: file exceeds 15MB limit.";
+    return "This file is larger than 15 MB. Compress it or upload a smaller copy.";
   }
   return null;
 }
@@ -283,7 +274,7 @@ export async function enqueueDriverUpload(input: {
 }): Promise<QueuedDriverUpload> {
   const queue = readQueue();
   if (queue.length >= MAX_QUEUE_ITEMS) {
-    throw new Error("Offline queue is full. Reconnect and sync existing uploads before adding more.");
+    throw new Error("Offline upload queue is full. Reconnect and sync queued documents before adding more.");
   }
 
   const item: QueuedDriverUpload = {
@@ -340,7 +331,7 @@ export async function processDriverUploadQueue(options: {
           ? {
               ...queued,
               attempts: queued.attempts + 1,
-              lastError: error instanceof Error ? error.message : "Retry failed.",
+              lastError: error instanceof Error ? error.message : "Retry did not complete. It will remain queued until the connection is stable.",
             }
           : queued
       );

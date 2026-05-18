@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { apiClient } from "@/lib/api-client";
 import { getAccessToken, getOrganizationId } from "@/lib/auth";
 import { copyTextWithFallback } from "@/lib/clipboard";
+import { EMAIL_DISABLED_INVITE_MESSAGE, SESSION_REQUIRED_MESSAGE, actionCompleted, actionFailed, inviteReady } from "@/lib/notification-copy";
 
 type DriverDetailView = {
   id: string;
@@ -191,7 +192,7 @@ export default function DriverDetailPage() {
 
       if (!token || !organizationId) {
         if (isMounted) {
-          setError("Missing session context. Please sign in again.");
+          setError(SESSION_REQUIRED_MESSAGE);
           setDriver(null);
           setIsLoading(false);
         }
@@ -297,12 +298,12 @@ export default function DriverDetailPage() {
     const organizationId = getOrganizationId();
 
     if (!token || !organizationId) {
-      setInviteError("Missing session context. Please sign in again.");
+      setInviteError(SESSION_REQUIRED_MESSAGE);
       return;
     }
 
     if (!driver?.email) {
-      setInviteError("Driver email is required before generating an invite. Add and save an email first.");
+      setInviteError("Add and save a driver email before generating an activation invite.");
       return;
     }
 
@@ -342,7 +343,7 @@ export default function DriverDetailPage() {
         asNullableString(inviteData?.activation_token) ??
         asNullableString(inviteData?.token);
       const resolvedActivationUrl = activationUrlValue || (tokenValue ? `/activate-account?token=${encodeURIComponent(tokenValue)}` : null);
-      const disabledEmailMessage = "Email delivery is disabled. Copy the activation link and send it manually.";
+      const disabledEmailMessage = EMAIL_DISABLED_INVITE_MESSAGE;
       const isEmailDisabled =
         emailStatus === "disabled" ||
         apiMessage === disabledEmailMessage ||
@@ -352,15 +353,15 @@ export default function DriverDetailPage() {
       setInviteEmailDisabledNotice(isEmailDisabled ? disabledEmailMessage : null);
       setInviteStatus(
         isEmailDisabled
-          ? "Activation link ready."
-          : `Invite sent to ${driver.email}.`
+          ? actionCompleted("Activation link ready.", "Copy it and share it directly with the driver.")
+          : inviteReady(driver.email)
       );
       setActivationUrl(resolvedActivationUrl);
     } catch (caught: unknown) {
       setInviteError(
         caught instanceof Error
-          ? `${caught.message} (Confirm this email matches an existing driver profile before inviting.)`
-          : "Unable to generate driver invite. Confirm driver profile email is saved first."
+          ? actionFailed(caught.message, "Confirm this email matches the saved driver profile, then try again.")
+          : actionFailed("Driver invite could not be generated.", "Confirm the driver email is saved, then try again.")
       );
     } finally {
       setIsInviting(false);
@@ -376,10 +377,10 @@ export default function DriverDetailPage() {
     const absoluteLink = relativeLink.startsWith("http") ? relativeLink : `${window.location.origin}${relativeLink}`;
     const copied = await copyTextWithFallback(absoluteLink);
     if (copied) {
-      setInviteStatus("Activation link copied.");
+      setInviteStatus(actionCompleted("Activation link copied.", "Share it directly with the driver."));
       return;
     }
-    setInviteStatus("Copy failed — select and copy the link manually.");
+    setInviteStatus(actionFailed("Activation link could not be copied.", "Select the link and copy it manually."));
   }
 
   async function saveDriverEdits() {
@@ -391,7 +392,7 @@ export default function DriverDetailPage() {
     const organizationId = getOrganizationId();
 
     if (!token || !organizationId) {
-      setUpdateError("Missing session context. Please sign in again.");
+      setUpdateError(SESSION_REQUIRED_MESSAGE);
       return;
     }
 
@@ -433,9 +434,9 @@ export default function DriverDetailPage() {
       setEditPhone(normalized.phone ?? "");
       setEditEmail(normalized.email ?? "");
       setIsEditing(false);
-      setUpdateMessage("Driver profile updated.");
+      setUpdateMessage(actionCompleted("Driver profile updated.", "Invite details now use the latest contact information."));
     } catch (caught: unknown) {
-      setUpdateError(caught instanceof Error ? caught.message : "Unable to update driver.");
+      setUpdateError(caught instanceof Error ? caught.message : actionFailed("Driver profile could not be updated.", "Check the required fields and try again."));
     } finally {
       setIsSaving(false);
     }
@@ -450,7 +451,7 @@ export default function DriverDetailPage() {
     const organizationId = getOrganizationId();
 
     if (!token || !organizationId) {
-      setUpdateError("Missing session context. Please sign in again.");
+      setUpdateError(SESSION_REQUIRED_MESSAGE);
       return;
     }
 
@@ -486,9 +487,9 @@ export default function DriverDetailPage() {
       }
 
       setDriver(normalized);
-      setUpdateMessage(nextIsActive ? "Driver reactivated." : "Driver deactivated.");
+      setUpdateMessage(nextIsActive ? actionCompleted("Driver reactivated.", "They can be assigned to future work.") : actionCompleted("Driver deactivated.", "They will not be used for new assignments."));
     } catch (caught: unknown) {
-      setUpdateError(caught instanceof Error ? caught.message : "Unable to update driver status.");
+      setUpdateError(caught instanceof Error ? caught.message : actionFailed("Driver status could not be updated.", "Refresh the profile and try again."));
     } finally {
       setIsTogglingActive(false);
     }
@@ -503,7 +504,7 @@ export default function DriverDetailPage() {
               Dashboard / Drivers / Detail
             </p>
             <h1 className="mt-2 text-2xl font-bold text-slate-950">
-              Loading driver...
+              Loading driver profile...
             </h1>
             <p className="mt-3 text-sm text-slate-600">
               Fetching driver profile and operational details.
@@ -523,7 +524,7 @@ export default function DriverDetailPage() {
               Dashboard / Drivers / Detail
             </p>
             <h1 className="mt-2 text-2xl font-bold text-rose-800">
-              Unable to load driver
+              Driver profile could not be loaded
             </h1>
             <p className="mt-2 text-sm text-rose-700">{error}</p>
 
@@ -797,7 +798,7 @@ export default function DriverDetailPage() {
 
               {inviteEmailDisabledNotice || inviteEmailStatus === "disabled" ? (
                 <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                  {inviteEmailDisabledNotice || "Email delivery is disabled. Copy the activation link and send it manually."}
+                  {inviteEmailDisabledNotice || EMAIL_DISABLED_INVITE_MESSAGE}
                 </div>
               ) : null}
 
@@ -826,7 +827,7 @@ export default function DriverDetailPage() {
                 disabled={isInviting}
                 className="mt-4 rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-700 disabled:opacity-60"
               >
-                {isInviting ? "Generating invite..." : "Generate driver activation invite"}
+                {isInviting ? "Preparing activation invite..." : "Generate driver activation invite"}
               </button>
             </div>
           </section>

@@ -1,5 +1,6 @@
 "use client";
 
+import { SESSION_EXPIRED_MESSAGE } from "@/lib/notification-copy";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
@@ -69,7 +70,7 @@ export default function DriverLoginPage() {
     if (reason === "logged_out") {
       setStatusMessage("You have been signed out.");
     } else if (session === "expired") {
-      setErrorMessage("Your session expired. Please sign in again.");
+      setErrorMessage(SESSION_EXPIRED_MESSAGE);
     }
     setSessionNotice(null);
 
@@ -132,7 +133,7 @@ export default function DriverLoginPage() {
       }
 
       if (!isDriverRole(userRole)) {
-        throw new Error("Use Staff Login");
+        throw new Error("This account uses Staff Login. Switch to the staff sign-in page to continue.");
       }
 
       setAuthSession({
@@ -160,13 +161,15 @@ export default function DriverLoginPage() {
           setErrorMessage("Driver account not found or password is incorrect.");
         } else if (error.code === "client_timeout") {
           setErrorMessage("Driver login is taking longer than expected. Check your connection and try again.");
+        } else if (error.message === "Use Staff Login") {
+          setErrorMessage("This account uses Staff Login. Switch to the staff sign-in page to continue.");
         } else {
-          setErrorMessage(error.message || "Unable to sign in. Please verify your credentials and try again.");
+          setErrorMessage(error.message || "Sign-in could not be completed. Verify your credentials and try again.");
         }
-      } else if (error instanceof Error && error.message === "Use Staff Login") {
-        setErrorMessage("Use Staff Login");
+      } else if (error instanceof Error && (error.message === "Use Staff Login" || error.message === "This account uses Staff Login. Switch to the staff sign-in page to continue.")) {
+        setErrorMessage("This account uses Staff Login. Switch to the staff sign-in page to continue.");
       } else {
-        setErrorMessage("Unable to sign in. Please verify your credentials and try again.");
+        setErrorMessage("Sign-in could not be completed. Verify your credentials and try again.");
       }
     } finally {
       setIsSubmitting(false);
@@ -269,7 +272,7 @@ export default function DriverLoginPage() {
                     disabled={isSubmitting}
                     onClick={async () => {
                       if (option.role && option.role !== "driver") {
-                        setErrorMessage("Use Staff Login");
+                        setErrorMessage("This account uses Staff Login. Switch to the staff sign-in page to continue.");
                         return;
                       }
                       setErrorMessage(null);

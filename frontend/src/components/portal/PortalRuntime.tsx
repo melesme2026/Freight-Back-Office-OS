@@ -4,6 +4,7 @@ import { ChangeEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { ApiClientError } from "@/lib/api-client";
 import { canonicalDocumentType, documentTypeLabel } from "@/lib/document-types";
 import { friendlyDownloadError, saveBlob } from "@/lib/download";
+import { actionFailed, documentUploaded } from "@/lib/notification-copy";
 import {
   clearPortalToken,
   downloadPortalDocument,
@@ -70,10 +71,10 @@ function selfHealingMissingDocuments(load: PortalLoad | null, documents: PortalD
 
 function friendlyError(error: unknown): string {
   if (error instanceof ApiClientError) {
-    if (error.status === 401) return "This portal link is expired or invalid. Ask your carrier contact for a new secure link.";
-    if (error.status === 403) return error.message || "This action is not allowed for your portal link.";
+    if (error.status === 401) return "This secure portal link has expired or is not valid. Ask your carrier contact for a new link.";
+    if (error.status === 403) return error.message || "This portal link is not authorized for that action. Contact your carrier representative if you need access.";
   }
-  return error instanceof Error ? error.message : "Portal action failed. Please try again.";
+  return error instanceof Error ? error.message : actionFailed("Portal action could not be completed.", "Refresh the page and try again.");
 }
 
 export function PortalRuntime({ routeLoadId }: PortalRuntimeProps) {
@@ -95,7 +96,7 @@ export function PortalRuntime({ routeLoadId }: PortalRuntimeProps) {
     setErrorMessage(null);
     const scoped = await fetchPortalScope(token);
     if (routeLoadId && routeLoadId !== scoped.scope.load_id) {
-      throw new Error("This secure portal link is scoped to a different load.");
+      throw new Error("This secure portal link belongs to a different load. Open the correct link from your carrier contact.");
     }
     const detail = await fetchPortalLoad(scoped.scope.load_id, token);
     setScope(scoped.scope);
@@ -151,7 +152,7 @@ export function PortalRuntime({ routeLoadId }: PortalRuntimeProps) {
     try {
       const uploaded = await uploadPortalDocument(scope.load_id, documentType, file);
       setDocuments((current) => [uploaded, ...current]);
-      setMessage("Document uploaded securely. Your carrier team can now review it.");
+      setMessage(documentUploaded(file.name, documentTypeLabel(documentType)));
       await loadPortal();
     } catch (error) {
       setErrorMessage(friendlyError(error));
@@ -259,7 +260,7 @@ export function PortalRuntime({ routeLoadId }: PortalRuntimeProps) {
           <div className="rounded-3xl bg-white p-5 shadow-sm ring-1 ring-slate-200 sm:p-6">
             <h2 className="text-2xl font-bold">Documents</h2>
             <div className="mt-4 divide-y divide-slate-100 overflow-hidden rounded-2xl border border-slate-200">
-              {documents.length === 0 ? <p className="p-4 text-sm text-slate-600">No documents are visible yet.</p> : documents.map((document) => <div key={document.id} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-semibold">{formatStatus(document.document_type)}</p><p className="text-sm text-slate-500">{document.original_filename || "Uploaded document"} · {formatDate(document.received_at)}</p></div>{document.download_allowed ? <button type="button" onClick={() => handleDocumentDownload(document)} disabled={downloadingDocumentId === document.id} className="rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold disabled:opacity-60">{downloadingDocumentId === document.id ? "Downloading..." : "Download"}</button> : null}</div>)}
+              {documents.length === 0 ? <p className="p-4 text-sm text-slate-600">No documents are visible yet. Uploaded paperwork will appear here once your carrier team shares or receives it.</p> : documents.map((document) => <div key={document.id} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="font-semibold">{formatStatus(document.document_type)}</p><p className="text-sm text-slate-500">{document.original_filename || "Uploaded document"} · {formatDate(document.received_at)}</p></div>{document.download_allowed ? <button type="button" onClick={() => handleDocumentDownload(document)} disabled={downloadingDocumentId === document.id} className="rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold disabled:opacity-60">{downloadingDocumentId === document.id ? "Downloading..." : "Download"}</button> : null}</div>)}
             </div>
           </div>
         </div>
@@ -270,7 +271,7 @@ export function PortalRuntime({ routeLoadId }: PortalRuntimeProps) {
             <p className="mt-2 text-sm text-slate-600">Upload revised rate confirmations, signed documents, lumper receipts, or supporting paperwork. Files are attributed to your portal identity.</p>
             {message ? <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">{message}</div> : null}
             {errorMessage ? <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{errorMessage}</div> : null}
-            {scope.allow_document_upload ? <div className="mt-5 space-y-3"><label className="block text-sm font-semibold" htmlFor="document-type">Document type</label><select id="document-type" value={documentType} onChange={(event) => setDocumentType(event.target.value)} className="w-full rounded-2xl border border-slate-300 p-3">{UPLOAD_TYPES.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}</select><label className="flex min-h-36 cursor-pointer flex-col items-center justify-center rounded-3xl border-2 border-dashed border-slate-300 bg-slate-50 p-5 text-center text-sm font-semibold text-slate-700"><span>{isUploading ? "Uploading…" : "Tap to choose PDF or image"}</span><input type="file" className="sr-only" accept="application/pdf,image/*" disabled={isUploading} onChange={handleUpload} /></label></div> : <p className="mt-4 rounded-2xl bg-slate-50 p-4 text-sm text-slate-600">Uploads are disabled for this secure link.</p>}
+            {scope.allow_document_upload ? <div className="mt-5 space-y-3"><label className="block text-sm font-semibold" htmlFor="document-type">Document type</label><select id="document-type" value={documentType} onChange={(event) => setDocumentType(event.target.value)} className="w-full rounded-2xl border border-slate-300 p-3">{UPLOAD_TYPES.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}</select><label className="flex min-h-36 cursor-pointer flex-col items-center justify-center rounded-3xl border-2 border-dashed border-slate-300 bg-slate-50 p-5 text-center text-sm font-semibold text-slate-700"><span>{isUploading ? "Uploading…" : "Tap to choose PDF or image"}</span><input type="file" className="sr-only" accept="application/pdf,image/*" disabled={isUploading} onChange={handleUpload} /></label></div> : <p className="mt-4 rounded-2xl bg-slate-50 p-4 text-sm text-slate-600">Uploads are not enabled for this secure link. Contact your carrier representative if you need to send paperwork.</p>}
           </div>
           <div className="rounded-3xl bg-slate-950 p-5 text-white shadow-sm sm:p-6">
             <h2 className="text-xl font-bold">Security scope</h2>

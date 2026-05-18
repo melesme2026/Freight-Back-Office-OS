@@ -89,16 +89,16 @@ export default function DriverMobileRuntime() {
     const organizationId = getOrganizationId();
     if (!organizationId) return;
 
-    setSyncMessage("Syncing queued uploads...");
+    setSyncMessage("Syncing queued documents…");
     const result = await processDriverUploadQueue({
       organizationId,
-      onSynced: (item) => setSyncMessage(`Synced ${item.fileName}.`),
+      onSynced: (item) => setSyncMessage(`Synced ${item.fileName}. Dispatch can now review it.`),
     });
     setQueue(getDriverUploadQueue());
     if (result.synced > 0) {
-      setSyncMessage(result.remaining > 0 ? `${result.synced} upload synced. ${result.remaining} still queued.` : `${result.synced} queued upload synced.`);
+      setSyncMessage(result.remaining > 0 ? `${result.synced} queued document synced. ${result.remaining} still queued for retry.` : `${result.synced} queued document synced. Dispatch can now review it.`);
     } else if (result.remaining > 0) {
-      setSyncMessage("Queued uploads will retry when the connection is stable.");
+      setSyncMessage("Queued documents will retry automatically when the connection is stable.");
     } else {
       setSyncMessage(null);
     }
@@ -125,8 +125,8 @@ export default function DriverMobileRuntime() {
         <div className={`rounded-2xl border px-4 py-3 text-sm shadow-soft ${isOnline ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-amber-200 bg-amber-50 text-amber-900"}`}>
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <p className="font-semibold">{isOnline ? "Online and ready to sync" : "Offline mode active"}</p>
-              <p className="mt-1 text-xs">{queuedCount > 0 ? `${queuedCount} upload${queuedCount === 1 ? "" : "s"} queued${failedCount ? ` · ${failedCount} need retry attention` : ""}.` : "No pending uploads."} {syncMessage ?? ""}</p>
+              <p className="font-semibold">{isOnline ? "Online and ready to upload" : "Offline mode active"}</p>
+              <p className="mt-1 text-xs">{queuedCount > 0 ? `${queuedCount} upload${queuedCount === 1 ? "" : "s"} queued${failedCount ? ` · ${failedCount} need connection attention` : ""}.` : "No pending document uploads."} {syncMessage ?? ""}</p>
             </div>
             <div className="flex gap-2">
               <button type="button" onClick={() => void syncQueuedUploads()} disabled={!isOnline || queuedCount === 0} className="touch-target rounded-xl bg-white px-3 py-2 text-xs font-semibold text-slate-800 ring-1 ring-inset ring-slate-200 disabled:cursor-not-allowed disabled:opacity-60">
