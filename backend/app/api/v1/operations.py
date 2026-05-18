@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 def _require_admin(token_payload: dict[str, Any]) -> None:
     role = str(token_payload.get("role") or "").strip().lower()
-    if role not in {"owner", "admin", "ops_manager", "support"}:
+    if role not in {"owner", "admin", "ops_manager", "support_agent"}:
         raise ForbiddenError("You do not have permission to run operational safety checks")
 
 
@@ -34,7 +34,6 @@ def _require_command_center_access(token_payload: dict[str, Any]) -> None:
         "ops_manager",
         "ops_agent",
         "billing_admin",
-        "support",
         "support_agent",
     }:
         raise ForbiddenError("Drivers cannot access dispatcher command center operations views")
